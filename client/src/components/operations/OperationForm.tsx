@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -13,17 +15,30 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ListTodo, FileText, Shield, Trash2, Target } from "lucide-react";
+import MarkdownEditor from "@/components/markdown/MarkdownEditor";
+import DynamicFieldList from "@/components/shared/DynamicFieldList";
+import QuestionResponseTable, { QuestionResponseRow } from "@/components/shared/QuestionResponseTable";
+import LinkedTargets from "./LinkedTargets";
 
 interface OperationFormData {
   name: string;
   description?: string;
   status: string;
-  type?: string;
+  startDate?: string;
+  endDate?: string;
+  objectives?: string;
+  scope?: string;
+  applicationOverview?: Record<string, string>;
+  businessImpact?: Record<string, string>;
+  scopeData?: Record<string, string>;
+  authentication?: Record<string, string>;
+  additionalInfo?: string;
+  metadata?: any;
 }
 
 interface OperationFormProps {
@@ -32,7 +47,42 @@ interface OperationFormProps {
   onSubmit: (data: OperationFormData) => void;
   initialData?: Partial<OperationFormData>;
   mode?: "create" | "edit";
+  onDelete?: (id: string) => void;
+  onViewTargets?: (operationId: string) => void;
+  onAddTarget?: (operationId: string) => void;
 }
+
+// Define table structures based on the document
+const applicationOverviewRows: QuestionResponseRow[] = [
+  { question: "Application Type", field: "applicationType", type: "text", placeholder: "Standard Web App and Supporting API" },
+  { question: "In-Scope Domain(s)", field: "inScopeDomains", type: "textarea", placeholder: "dev-platform.example.com..." },
+  { question: "Tester Account", field: "testerAccount", type: "text", placeholder: "Security Admin, Organization Admin..." },
+  { question: "Relevant Department", field: "relevantDept", type: "text", placeholder: "Customer Centric App" },
+  { question: "User Base", field: "userBase", type: "text", placeholder: "50,000 - 100,000" },
+  { question: "Use Cases (Services)", field: "useCases", type: "text", placeholder: "Medical Submission and Billing" },
+  { question: "Brief Application Description", field: "briefDescription", type: "textarea" },
+];
+
+const businessImpactRows: QuestionResponseRow[] = [
+  { question: "Employee Impact", field: "employeeImpact", type: "select", options: ["High", "Medium", "Low", "N/A"] },
+  { question: "Customer Impact", field: "customerImpact", type: "select", options: ["High", "Medium", "Low", "N/A"] },
+  { question: "Financial Impact", field: "financialImpact", type: "select", options: ["High", "Medium", "Low", "N/A"] },
+  { question: "Resource Impact", field: "resourceImpact", type: "select", options: ["High", "Medium", "Low", "N/A"] },
+];
+
+const scopeDataRows: QuestionResponseRow[] = [
+  { question: "Asset URL in scope for testing?", field: "assetUrlInScope", type: "textarea" },
+  { question: "Asset URL out of scope for testing?", field: "assetUrlOutScope", type: "textarea" },
+  { question: "Any upcoming changes might impact the test?", field: "upcomingChanges", type: "select", options: ["Yes", "No", "N/A"] },
+  { question: "Identify and assess potential negative impacts", field: "negativeImpacts", type: "textarea" },
+];
+
+const authenticationRows: QuestionResponseRow[] = [
+  { question: "Does the application use MFA, OTP, or CAPTCHA?", field: "usesMFA", type: "text" },
+  { question: "Does the application use self-registration?", field: "usesSignup", type: "text" },
+  { question: "Does your application use NTLM Authentication?", field: "usesNTLM", type: "select", options: ["Yes", "No", "N/A"] },
+  { question: "Is VPN required for this application?", field: "requiresVPN", type: "select", options: ["Yes", "No", "N/A"] },
+];
 
 export default function OperationForm({
   open,
@@ -40,129 +90,297 @@ export default function OperationForm({
   onSubmit,
   initialData,
   mode = "create",
+  onDelete,
+  onViewTargets,
+  onAddTarget,
 }: OperationFormProps) {
+  const { user } = useAuth();
   const [formData, setFormData] = useState<OperationFormData>({
-    name: initialData?.name || "",
-    description: initialData?.description || "",
-    status: initialData?.status || "planning",
-    type: initialData?.type || "",
+    name: "",
+    description: "",
+    status: "planning",
+    objectives: "",
+    scope: "",
+    applicationOverview: {},
+    businessImpact: {},
+    scopeData: {},
+    authentication: {},
+    additionalInfo: "",
   });
+  const [goals, setGoals] = useState<string[]>([""]);
+
+  useEffect(() => {
+    if (initialData) {
+      setFormData({
+        name: initialData.name || "",
+        description: initialData.description || "",
+        status: initialData.status || "planning",
+        startDate: initialData.startDate || "",
+        endDate: initialData.endDate || "",
+        objectives: initialData.objectives || "",
+        scope: initialData.scope || "",
+        applicationOverview: initialData.applicationOverview || {},
+        businessImpact: initialData.businessImpact || {},
+        scopeData: initialData.scopeData || {},
+        authentication: initialData.authentication || {},
+        additionalInfo: initialData.additionalInfo || "",
+      });
+      
+      // Parse goals if they exist in metadata
+      if (initialData.metadata?.goals) {
+        setGoals(initialData.metadata.goals);
+      }
+    }
+  }, [initialData, open]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData);
-    onOpenChange(false);
-    // Reset form
-    setFormData({
-      name: "",
-      description: "",
-      status: "planning",
-      type: "",
+
+    // Clean up goals
+    const cleanGoals = goals.filter((g) => g.trim() !== "");
+
+    // Package metadata
+    const metadata = {
+      goals: cleanGoals,
+      applicationOverview: formData.applicationOverview,
+      businessImpact: formData.businessImpact,
+      scopeData: formData.scopeData,
+      authentication: formData.authentication,
+    };
+
+    onSubmit({
+      ...formData,
+      objectives: formData.objectives,
+      scope: formData.scope,
+      metadata,
     });
+    
+    onOpenChange(false);
   };
+
+  const handleDelete = () => {
+    if (initialData && (initialData as any).id && onDelete) {
+      if (confirm("Are you sure you want to delete this operation? All linked targets and vulnerabilities will also be deleted.")) {
+        onDelete((initialData as any).id);
+        onOpenChange(false);
+      }
+    }
+  };
+
+  const updateTableValue = (table: string, field: string, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      [table]: {
+        ...(prev as any)[table],
+        [field]: value,
+      },
+    }));
+  };
+
+  const isEditing = mode === "edit";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ListTodo className="h-5 w-5" />
+            {mode === "create" ? "Create New Operation" : "Edit Operation"}
+          </DialogTitle>
+        </DialogHeader>
+
         <form onSubmit={handleSubmit}>
-          <DialogHeader>
-            <DialogTitle>
-              {mode === "create" ? "Create New Operation" : "Edit Operation"}
-            </DialogTitle>
-            <DialogDescription>
-              {mode === "create"
-                ? "Set up a new red team operation"
-                : "Update operation details"}
-            </DialogDescription>
-          </DialogHeader>
+          <Tabs defaultValue="basic" className="w-full">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="basic">Basic Info</TabsTrigger>
+              <TabsTrigger value="scope">Scope & Goals</TabsTrigger>
+              <TabsTrigger value="details">Details</TabsTrigger>
+              <TabsTrigger value="impact">Impact & Auth</TabsTrigger>
+            </TabsList>
 
-          <div className="grid gap-4 py-4">
-            {/* Operation Name */}
-            <div className="grid gap-2">
-              <Label htmlFor="name">Operation Name *</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
-                placeholder="Operation Red Dawn"
-                required
+            {/* Tab 1: Basic Information */}
+            <TabsContent value="basic" className="space-y-4 mt-4">
+              <div>
+                <Label htmlFor="name">Operation Name *</Label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="Penetration Test - Q1 2025"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="startDate">Start Date</Label>
+                  <Input
+                    id="startDate"
+                    type="date"
+                    value={formData.startDate || ""}
+                    onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="endDate">End Date</Label>
+                  <Input
+                    id="endDate"
+                    type="date"
+                    value={formData.endDate || ""}
+                    onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="status">Status *</Label>
+                <Select
+                  value={formData.status}
+                  onValueChange={(value) => setFormData({ ...formData, status: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="planning">Planning</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="paused">Paused</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="description">Purpose</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description || ""}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="A PCI DSS Penetration Test is a critical component that is used to determine an organization's security posture..."
+                  rows={5}
+                />
+              </div>
+            </TabsContent>
+
+            {/* Tab 2: Scope & Goals */}
+            <TabsContent value="scope" className="space-y-4 mt-4">
+              <div>
+                <Label className="mb-2 block">Goals</Label>
+                <DynamicFieldList
+                  label="Goal"
+                  values={goals}
+                  onChange={setGoals}
+                  placeholder="Determine the security level of the web application"
+                  maxFields={10}
+                />
+              </div>
+
+              <div>
+                <Label className="mb-2 block">Scope</Label>
+                <MarkdownEditor
+                  value={formData.scope || ""}
+                  onChange={(value) => setFormData({ ...formData, scope: value })}
+                  placeholder="The scope of this penetration test is to determine the type and the scalability for all existing and potential vulnerabilities..."
+                  rows={8}
+                />
+              </div>
+            </TabsContent>
+
+            {/* Tab 3: Details */}
+            <TabsContent value="details" className="space-y-4 mt-4">
+              <div>
+                <h3 className="text-sm font-semibold mb-3">Application Overview</h3>
+                <QuestionResponseTable
+                  rows={applicationOverviewRows}
+                  values={formData.applicationOverview || {}}
+                  onChange={(field, value) => updateTableValue("applicationOverview", field, value)}
+                />
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold mb-3">Scope & Data Impact</h3>
+                <QuestionResponseTable
+                  rows={scopeDataRows}
+                  values={formData.scopeData || {}}
+                  onChange={(field, value) => updateTableValue("scopeData", field, value)}
+                />
+              </div>
+            </TabsContent>
+
+            {/* Tab 4: Impact & Authentication */}
+            <TabsContent value="impact" className="space-y-4 mt-4">
+              <div>
+                <h3 className="text-sm font-semibold mb-3">Business Impact Analysis</h3>
+                <QuestionResponseTable
+                  rows={businessImpactRows}
+                  values={formData.businessImpact || {}}
+                  onChange={(field, value) => updateTableValue("businessImpact", field, value)}
+                />
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold mb-3">Authentication</h3>
+                <QuestionResponseTable
+                  rows={authenticationRows}
+                  values={formData.authentication || {}}
+                  onChange={(field, value) => updateTableValue("authentication", field, value)}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="additionalInfo">Additional Information</Label>
+                <Textarea
+                  id="additionalInfo"
+                  value={formData.additionalInfo || ""}
+                  onChange={(e) => setFormData({ ...formData, additionalInfo: e.target.value })}
+                  placeholder="Any additional information or notes..."
+                  rows={4}
+                />
+              </div>
+            </TabsContent>
+          </Tabs>
+
+          {/* Linked Targets Section (only for existing operations) */}
+          {isEditing && (initialData as any)?.id && (
+            <div className="mt-6">
+              <LinkedTargets
+                operationId={(initialData as any).id}
+                onViewAll={() => {
+                  if (onViewTargets && (initialData as any).id) {
+                    onViewTargets((initialData as any).id);
+                  }
+                }}
+                onAddNew={() => {
+                  if (onAddTarget && (initialData as any).id) {
+                    onAddTarget((initialData as any).id);
+                  }
+                }}
               />
             </div>
+          )}
 
-            {/* Description */}
-            <div className="grid gap-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) =>
-                  setFormData({ ...formData, description: e.target.value })
-                }
-                placeholder="Describe the operation objectives and scope..."
-                rows={3}
-              />
+          <DialogFooter className="mt-6 flex justify-between items-center">
+            <div className="flex-1">
+              {isEditing && onDelete && (initialData as any)?.id && (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={handleDelete}
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Delete
+                </Button>
+              )}
             </div>
-
-            {/* Type */}
-            <div className="grid gap-2">
-              <Label htmlFor="type">Operation Type</Label>
-              <Select
-                value={formData.type}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, type: value })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Phishing">Phishing Campaign</SelectItem>
-                  <SelectItem value="Network">Network Penetration</SelectItem>
-                  <SelectItem value="Web">Web Application</SelectItem>
-                  <SelectItem value="Physical">Physical Security</SelectItem>
-                  <SelectItem value="Social">Social Engineering</SelectItem>
-                  <SelectItem value="Assessment">Vulnerability Assessment</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button type="submit">
+                {mode === "create" ? "Create Operation" : "Save Changes"}
+              </Button>
             </div>
-
-            {/* Status */}
-            <div className="grid gap-2">
-              <Label htmlFor="status">Status *</Label>
-              <Select
-                value={formData.status}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, status: value })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="planning">Planning</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="paused">Paused</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="failed">Failed</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit">
-              {mode === "create" ? "Create Operation" : "Save Changes"}
-            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

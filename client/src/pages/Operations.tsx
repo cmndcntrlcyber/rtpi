@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import OperationList from "@/components/operations/OperationList";
@@ -6,6 +7,7 @@ import OperationForm from "@/components/operations/OperationForm";
 import { useOperations, useCreateOperation, useUpdateOperation, useDeleteOperation } from "@/hooks/useOperations";
 
 export default function Operations() {
+  const [, navigate] = useLocation();
   const { operations, loading, refetch } = useOperations();
   const { create, creating } = useCreateOperation();
   const { update, updating } = useUpdateOperation();
@@ -13,8 +15,6 @@ export default function Operations() {
   
   const [formOpen, setFormOpen] = useState(false);
   const [editingOperation, setEditingOperation] = useState<any>(null);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [operationToDelete, setOperationToDelete] = useState<any>(null);
 
   const handleCreateOperation = async (data: any) => {
     try {
@@ -35,22 +35,32 @@ export default function Operations() {
     setFormOpen(true);
   };
 
-  const handleDeleteOperation = (operation: any) => {
-    setOperationToDelete(operation);
-    setDeleteConfirmOpen(true);
+  const handleDeleteOperation = async (id: string) => {
+    try {
+      await deleteOp(id);
+      await refetch();
+    } catch (err) {
+      console.error("Failed to delete operation:", err);
+      alert("Failed to delete operation");
+    }
   };
 
-  const confirmDelete = async () => {
-    if (operationToDelete) {
-      try {
-        await deleteOp(operationToDelete.id);
-        await refetch();
-        setDeleteConfirmOpen(false);
-        setOperationToDelete(null);
-      } catch (err) {
-        console.error("Failed to delete operation:", err);
-      }
-    }
+  const handleViewTargets = (operationId: string) => {
+    // Navigate to targets page
+    // TODO: Add filtering support in targets page
+    setFormOpen(false);
+    navigate("/targets");
+  };
+
+  const handleAddTarget = (operationId: string) => {
+    // Navigate to targets page to add new target
+    setFormOpen(false);
+    navigate("/targets");
+    // TODO: Pass operationId to targets page to pre-fill in add dialog
+  };
+  const handleDeleteClick = (operation: any) => {
+    setEditingOperation(operation);
+    setFormOpen(true);
   };
 
   const handleSelectOperation = (operation: any) => {
@@ -112,7 +122,7 @@ export default function Operations() {
         loading={loading}
         onSelect={handleSelectOperation}
         onEdit={handleEditOperation}
-        onDelete={handleDeleteOperation}
+        onDelete={handleDeleteClick}
       />
 
       {/* Create/Edit Form Dialog */}
@@ -125,39 +135,10 @@ export default function Operations() {
         onSubmit={handleCreateOperation}
         initialData={editingOperation}
         mode={editingOperation ? "edit" : "create"}
+        onDelete={handleDeleteOperation}
+        onViewTargets={handleViewTargets}
+        onAddTarget={handleAddTarget}
       />
-
-      {/* Delete Confirmation Dialog */}
-      {deleteConfirmOpen && operationToDelete && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h2 className="text-xl font-semibold mb-2">Delete Operation</h2>
-            <p className="text-gray-600 mb-4">
-              Are you sure you want to delete "{operationToDelete.name}"? This action cannot be undone.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setDeleteConfirmOpen(false);
-                  setOperationToDelete(null);
-                }}
-                disabled={deleting}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={confirmDelete}
-                disabled={deleting}
-                className="bg-red-600 hover:bg-red-700 text-white"
-              >
-                {deleting ? "Deleting..." : "Delete"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

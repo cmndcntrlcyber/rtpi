@@ -1,61 +1,100 @@
+import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import TargetList from "@/components/targets/TargetList";
+import EditTargetDialog from "@/components/targets/EditTargetDialog";
+import { api } from "@/lib/api";
 
 export default function Targets() {
-  // Mock data for now - will connect to API in next iteration
-  const targets = [
-    {
-      id: "1",
-      hostname: "web-server-01",
-      ipAddress: "192.168.1.100",
-      domain: "example.com",
-      port: 443,
-      status: "active",
-      operationId: "1",
-      lastScanAt: "2025-01-15T10:00:00Z",
-    },
-    {
-      id: "2",
-      hostname: "db-server",
-      ipAddress: "192.168.1.101",
-      port: 5432,
-      status: "active",
-      operationId: "1",
-      lastScanAt: "2025-01-14T15:30:00Z",
-    },
-    {
-      id: "3",
-      ipAddress: "10.0.0.50",
-      domain: "api.client.com",
-      port: 8080,
-      status: "vulnerable",
-      operationId: "2",
-      notes: "Unpatched web server - critical vulnerabilities detected",
-      lastScanAt: "2025-01-10T09:00:00Z",
-    },
-  ];
+  const [, navigate] = useLocation();
+  const [targets, setTargets] = useState<any[]>([]);
+  const [operations, setOperations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [selectedTarget, setSelectedTarget] = useState<any>(null);
 
-  const loading = false;
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const [targetsRes, operationsRes] = await Promise.all([
+        api.get<{ targets: any[] }>("/targets"),
+        api.get<{ operations: any[] }>("/operations"),
+      ]);
+      setTargets(targetsRes.targets);
+      setOperations(operationsRes.operations);
+    } catch (error) {
+      console.error("Failed to load data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleAddTarget = () => {
-    console.log("Add target clicked");
+    setSelectedTarget(null);
+    setEditDialogOpen(true);
   };
 
   const handleSelectTarget = (target: any) => {
-    console.log("Selected target:", target);
+    setSelectedTarget(target);
+    setEditDialogOpen(true);
   };
 
   const handleEditTarget = (target: any) => {
-    console.log("Edit target:", target);
+    setSelectedTarget(target);
+    setEditDialogOpen(true);
   };
 
-  const handleDeleteTarget = (target: any) => {
-    console.log("Delete target:", target);
+  const handleSaveTarget = async (target: any) => {
+    try {
+      if (target.id) {
+        // Update existing
+        await api.put(`/targets/${target.id}`, target);
+      } else {
+        // Create new
+        await api.post("/targets", target);
+      }
+      setEditDialogOpen(false);
+      await loadData();
+    } catch (error) {
+      console.error("Failed to save target:", error);
+      alert("Failed to save target");
+    }
+  };
+
+  const handleDeleteTarget = async (id: string) => {
+    try {
+      await api.delete(`/targets/${id}`);
+      setEditDialogOpen(false);
+      await loadData();
+    } catch (error) {
+      console.error("Failed to delete target:", error);
+      alert("Failed to delete target");
+    }
   };
 
   const handleScanTarget = (target: any) => {
     console.log("Scan target:", target);
+    // TODO: Implement scan functionality in future
+    alert(`Scan functionality for ${target.name} will be implemented in future updates`);
+  };
+
+  const handleViewVulnerabilities = (targetId: string) => {
+    // Navigate to vulnerabilities page
+    // TODO: Add filtering support in vulnerabilities page
+    setEditDialogOpen(false);
+    navigate("/vulnerabilities");
+  };
+
+  const handleAddVulnerability = (targetId: string) => {
+    // This would ideally open the vulnerability dialog with targetId pre-filled
+    // For now, navigate to vulnerabilities page
+    setEditDialogOpen(false);
+    navigate("/vulnerabilities");
+    // TODO: Pass targetId to vulnerabilities page to pre-fill in add dialog
   };
 
   // Calculate stats
@@ -110,8 +149,20 @@ export default function Targets() {
         loading={loading}
         onSelect={handleSelectTarget}
         onEdit={handleEditTarget}
-        onDelete={handleDeleteTarget}
+        onDelete={(t) => handleDeleteTarget(t.id)}
         onScan={handleScanTarget}
+      />
+
+      {/* Edit Dialog */}
+      <EditTargetDialog
+        open={editDialogOpen}
+        target={selectedTarget}
+        operations={operations}
+        onClose={() => setEditDialogOpen(false)}
+        onSave={handleSaveTarget}
+        onDelete={handleDeleteTarget}
+        onViewVulnerabilities={handleViewVulnerabilities}
+        onAddVulnerability={handleAddVulnerability}
       />
     </div>
   );

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -6,10 +7,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileText, Download, Plus, Calendar } from "lucide-react";
+import { FileText, Download, Plus, Calendar, Trash2 } from "lucide-react";
 import { useReports, useReportTemplates, useCreateReport, useCreateTemplate, useDeleteReport } from "@/hooks/useReports";
+import { reportsService } from "@/services/reports";
 
 export default function Reports() {
+  const { isAdmin } = useAuth();
   const { reports, loading: reportsLoading, refetch: refetchReports } = useReports();
   const { templates, loading: templatesLoading, refetch: refetchTemplates } = useReportTemplates();
   const { create: createReport, creating } = useCreateReport();
@@ -70,10 +73,34 @@ export default function Reports() {
     }
   };
 
-  const handleDownload = (report: any) => {
-    // In a real implementation, this would download the actual file
-    console.log("Download report:", report.name);
-    alert(`Download functionality for: ${report.name}\nFile path: ${report.filePath || "Not yet generated"}`);
+  const handleDownload = async (report: any) => {
+    if (!report.filePath) {
+      alert(`Report file not yet generated for: ${report.name}`);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/v1/reports/${report.id}/download`, {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to download report");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${report.name}.${report.format === "markdown" ? "md" : report.format}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error("Download error:", error);
+      alert("Failed to download report");
+    }
   };
 
   const handleDeleteReport = async (reportId: string) => {
@@ -86,6 +113,19 @@ export default function Reports() {
       await refetchReports();
     } catch (err) {
       console.error("Failed to delete report:", err);
+    }
+  };
+
+  const handleDeleteTemplate = async (templateId: string) => {
+    if (!confirm("Are you sure you want to delete this template?")) {
+      return;
+    }
+
+    try {
+      await reportsService.deleteTemplate(templateId);
+      await refetchTemplates();
+    } catch (err) {
+      console.error("Failed to delete template:", err);
     }
   };
 
@@ -243,12 +283,23 @@ export default function Reports() {
                         )}
                       </div>
                     </div>
-                    <Button size="sm" variant="ghost" onClick={() => {
-                      setNewReport({ ...newReport, name: `New ${template.name}`, type: template.type });
-                      setReportDialogOpen(true);
-                    }}>
-                      Use
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="ghost" onClick={() => {
+                        setNewReport({ ...newReport, name: `New ${template.name}`, type: template.type });
+                        setReportDialogOpen(true);
+                      }}>
+                        Use
+                      </Button>
+                      {isAdmin() && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleDeleteTemplate(template.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>

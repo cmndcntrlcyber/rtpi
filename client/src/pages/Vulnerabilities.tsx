@@ -1,75 +1,77 @@
+import { useState, useEffect } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import VulnerabilityList from "@/components/vulnerabilities/VulnerabilityList";
+import EditVulnerabilityDialog from "@/components/vulnerabilities/EditVulnerabilityDialog";
+import { api } from "@/lib/api";
 
 export default function Vulnerabilities() {
-  // Mock data for now - will connect to API in next iteration
-  const vulnerabilities = [
-    {
-      id: "1",
-      title: "SQL Injection in Login Form",
-      description: "User input not properly sanitized, allowing SQL injection attacks",
-      severity: "critical",
-      cvss: 9.8,
-      cve: "CVE-2024-12345",
-      status: "open",
-      targetId: "1",
-      operationId: "1",
-      discoveredAt: "2025-01-15T10:00:00Z",
-    },
-    {
-      id: "2",
-      title: "Cross-Site Scripting (XSS)",
-      description: "Stored XSS vulnerability in user comments section",
-      severity: "high",
-      cvss: 7.5,
-      cve: "CVE-2024-12346",
-      status: "investigating",
-      targetId: "1",
-      operationId: "1",
-      discoveredAt: "2025-01-14T14:30:00Z",
-    },
-    {
-      id: "3",
-      title: "Weak Password Policy",
-      description: "System allows weak passwords without complexity requirements",
-      severity: "medium",
-      cvss: 5.3,
-      status: "open",
-      targetId: "2",
-      operationId: "2",
-      discoveredAt: "2025-01-10T09:00:00Z",
-    },
-    {
-      id: "4",
-      title: "Outdated TLS Version",
-      description: "Server supports TLS 1.0, which is deprecated and insecure",
-      severity: "high",
-      cvss: 7.4,
-      status: "remediated",
-      targetId: "3",
-      operationId: "3",
-      discoveredAt: "2024-12-20T11:00:00Z",
-      remediatedAt: "2025-01-05T16:00:00Z",
-    },
-  ];
+  const [vulnerabilities, setVulnerabilities] = useState<any[]>([]);
+  const [targets, setTargets] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [selectedVulnerability, setSelectedVulnerability] = useState<any>(null);
 
-  const loading = false;
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const [vulnsRes, targetsRes] = await Promise.all([
+        api.get<{ vulnerabilities: any[] }>("/vulnerabilities"),
+        api.get<{ targets: any[] }>("/targets"),
+      ]);
+      setVulnerabilities(vulnsRes.vulnerabilities);
+      setTargets(targetsRes.targets);
+    } catch (error) {
+      console.error("Failed to load data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleAddVulnerability = () => {
-    console.log("Add vulnerability clicked");
+    setSelectedVulnerability(null);
+    setEditDialogOpen(true);
   };
 
   const handleSelectVulnerability = (vulnerability: any) => {
-    console.log("Selected vulnerability:", vulnerability);
+    setSelectedVulnerability(vulnerability);
+    setEditDialogOpen(true);
   };
 
   const handleEditVulnerability = (vulnerability: any) => {
-    console.log("Edit vulnerability:", vulnerability);
+    setSelectedVulnerability(vulnerability);
+    setEditDialogOpen(true);
   };
 
-  const handleDeleteVulnerability = (vulnerability: any) => {
-    console.log("Delete vulnerability:", vulnerability);
+  const handleSaveVulnerability = async (vulnerability: any) => {
+    try {
+      if (vulnerability.id) {
+        // Update existing
+        await api.put(`/vulnerabilities/${vulnerability.id}`, vulnerability);
+      } else {
+        // Create new
+        await api.post("/vulnerabilities", vulnerability);
+      }
+      setEditDialogOpen(false);
+      await loadData();
+    } catch (error) {
+      console.error("Failed to save vulnerability:", error);
+      alert("Failed to save vulnerability");
+    }
+  };
+
+  const handleDeleteVulnerability = async (id: string) => {
+    try {
+      await api.delete(`/vulnerabilities/${id}`);
+      setEditDialogOpen(false);
+      await loadData();
+    } catch (error) {
+      console.error("Failed to delete vulnerability:", error);
+      alert("Failed to delete vulnerability");
+    }
   };
 
   // Calculate stats
@@ -127,6 +129,16 @@ export default function Vulnerabilities() {
         loading={loading}
         onSelect={handleSelectVulnerability}
         onEdit={handleEditVulnerability}
+        onDelete={(v) => handleDeleteVulnerability(v.id)}
+      />
+
+      {/* Edit Dialog */}
+      <EditVulnerabilityDialog
+        open={editDialogOpen}
+        vulnerability={selectedVulnerability}
+        targets={targets}
+        onClose={() => setEditDialogOpen(false)}
+        onSave={handleSaveVulnerability}
         onDelete={handleDeleteVulnerability}
       />
     </div>

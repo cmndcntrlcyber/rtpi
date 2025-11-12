@@ -3,6 +3,8 @@ import { db } from "../../db";
 import { reports, reportTemplates } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
+import { generateMarkdownReport, getReportFilePath } from "../../services/report-generator";
+import fs from "fs/promises";
 
 const router = Router();
 
@@ -47,12 +49,20 @@ router.post("/", ensureRole("admin", "operator"), async (req, res) => {
   const user = req.user as any;
 
   try {
+    // Only generate files for markdown format (MVP)
+    let fileData = null;
+    if (req.body.format === "markdown") {
+      fileData = await generateMarkdownReport(req.body);
+    }
+
     const report = await db
       .insert(reports)
       .values({
         ...req.body,
         generatedBy: user.id,
         status: req.body.status || "draft",
+        filePath: fileData?.filePath,
+        fileSize: fileData?.fileSize,
       })
       .returning();
 
@@ -169,6 +179,60 @@ router.delete("/templates/:id", ensureRole("admin"), async (req, res) => {
     console.error("Delete template error:", error);
     await logAudit(user.id, "delete_template", "/reports/templates", id, false, req);
     res.status(500).json({ error: "Failed to delete template" });
+  }
+});
+
+// GET /api/v1/reports/:id/download - Download report file
+router.get("/:id/download", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await db
+      .select()
+      .from(reports)
+      .where(eq(reports.id, id))
+      .limit(1);
+    
+    if (!result || result.length === 0) {
+      return res.status(404).json({ error: "Report not found" });
+    }
+
+    const report = result[0];
+
+    if (!report.filePath) {
+      return res.status(404).json({ error: "Report file not yet generated" });
+    }
+
+    const fullPath = await getReportFilePath(report.filePath);
+
+    // Check if file exists
+    try {
+      await fs.access(fullPath);
+    } catch {
+      return res.status(404).json({ error: "Report file not found on disk" });
+    }
+
+    // Determine content type based on format
+    const contentTypes: any = {
+      markdown: "text/markdown",
+      pdf: "application/pdf",
+      docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      html: "text/html",
+    };
+
+    const contentType = contentTypes[report.format] || "application/octet-stream";
+    const downloadName = `${report.name.replace(/[^a-z0-9]/gi, "_")}.${report.format === "markdown" ? "md" : report.format}`;
+
+    // Set headers and stream file
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Disposition", `attachment; filename="${downloadName}"`);
+    res.setHeader("Content-Length", report.fileSize || 0);
+
+    const fileContent = await fs.readFile(fullPath);
+    res.send(fileContent);
+  } catch (error) {
+    console.error("Download report error:", error);
+    res.status(500).json({ error: "Failed to download report" });
   }
 });
 

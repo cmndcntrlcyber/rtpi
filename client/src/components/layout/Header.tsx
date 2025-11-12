@@ -1,0 +1,55 @@
+import { Menu, User, LogOut } from "lucide-react";
+import { Button } from "@/components/ui/button";
+
+interface HeaderProps {
+  onMenuClick: () => void;
+}
+
+export default function Header({ onMenuClick }: HeaderProps) {
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/v1/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+      window.location.href = "/";
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
+  };
+
+  return (
+    <header className="bg-white border-b border-gray-200 h-16 fixed top-0 left-0 right-0 z-10">
+      <div className="h-full px-4 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onMenuClick}
+            className="lg:hidden"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+          <h1 className="text-xl font-bold text-gray-900">RTPI</h1>
+          <span className="text-sm text-gray-500 hidden sm:inline">
+            Red Team Portable Infrastructure
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" title="Profile">
+            <User className="h-5 w-5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleLogout}
+            title="Logout"
+          >
+            <LogOut className="h-5 w-5" />
+          </Button>
+        </div>
+      </div>
+    </header>
+  );
+}

@@ -19,20 +19,35 @@ router.get("/csrf-token", (req, res) => {
 });
 
 // Login with username/password
-router.post("/login", authLimiter, passport.authenticate("local"), async (req, res) => {
-  const user = req.user as any;
-  await logAudit(user.id, "login", "/auth", user.id, true, req);
-  
-  res.json({
-    success: true,
-    user: {
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      role: user.role,
-      authMethod: user.authMethod,
-    },
-  });
+router.post("/login", authLimiter, (req, res, next) => {
+  passport.authenticate("local", async (err: any, user: any, info: any) => {
+    if (err) {
+      return res.status(500).json({ error: "Authentication error" });
+    }
+    
+    if (!user) {
+      return res.status(401).json({ error: info?.message || "Invalid credentials" });
+    }
+    
+    req.logIn(user, async (err) => {
+      if (err) {
+        return res.status(500).json({ error: "Login failed" });
+      }
+      
+      await logAudit(user.id, "login", "/auth", user.id, true, req);
+      
+      return res.json({
+        success: true,
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          role: user.role,
+          authMethod: user.authMethod,
+        },
+      });
+    });
+  })(req, res, next);
 });
 
 // Google OAuth routes - only register if OAuth is configured

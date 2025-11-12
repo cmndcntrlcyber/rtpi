@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function Login() {
-  const [, navigate] = useLocation();
+  const { login } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -18,27 +18,7 @@ export default function Login() {
     setError("");
 
     try {
-      // Get CSRF token
-      const csrfResponse = await fetch("/api/v1/auth/csrf-token");
-      const { csrfToken } = await csrfResponse.json();
-
-      // Login
-      const response = await fetch("/api/v1/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-Token": csrfToken,
-        },
-        credentials: "include",
-        body: JSON.stringify({ username, password }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Login failed");
-      }
-
-      navigate("/dashboard");
+      await login(username, password);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -53,7 +33,10 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <Card className="w-full max-w-md">
-        <CardHeader>
+        <CardHeader className="text-center">
+          <div className="flex justify-center mb-4">
+            <img src="/RTPI.png" alt="RTPI Logo" className="h-16 w-16" />
+          </div>
           <CardTitle>Login to RTPI</CardTitle>
           <CardDescription>Red Team Portable Infrastructure</CardDescription>
         </CardHeader>

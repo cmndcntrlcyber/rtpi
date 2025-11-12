@@ -1,4 +1,6 @@
 import { Menu, User, LogOut } from "lucide-react";
+import { useLocation } from "wouter";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 
 interface HeaderProps {
@@ -6,16 +8,19 @@ interface HeaderProps {
 }
 
 export default function Header({ onMenuClick }: HeaderProps) {
+  const { user, logout } = useAuth();
+  const [, navigate] = useLocation();
+
   const handleLogout = async () => {
     try {
-      await fetch("/api/v1/auth/logout", {
-        method: "POST",
-        credentials: "include",
-      });
-      window.location.href = "/";
+      await logout();
     } catch (error) {
       console.error("Logout failed:", error);
     }
+  };
+
+  const handleProfile = () => {
+    navigate("/profile");
   };
 
   return (
@@ -30,14 +35,23 @@ export default function Header({ onMenuClick }: HeaderProps) {
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <h1 className="text-xl font-bold text-gray-900">RTPI</h1>
+          <div className="flex items-center gap-2">
+            <img src="/RTPI.png" alt="RTPI" className="h-8 w-8" />
+            <h1 className="text-xl font-bold text-gray-900">RTPI</h1>
+          </div>
           <span className="text-sm text-gray-500 hidden sm:inline">
             Red Team Portable Infrastructure
           </span>
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" title="Profile">
+          <div className="hidden sm:flex items-center gap-2 mr-2">
+            <span className="text-sm text-gray-600">{user?.username}</span>
+            <span className="text-xs text-gray-500 capitalize bg-gray-100 px-2 py-1 rounded">
+              {user?.role}
+            </span>
+          </div>
+          <Button variant="ghost" size="icon" onClick={handleProfile} title="Profile">
             <User className="h-5 w-5" />
           </Button>
           <Button

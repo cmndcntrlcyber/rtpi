@@ -1,4 +1,5 @@
 import { Route, Switch } from "wouter";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import MainLayout from "@/components/layout/MainLayout";
 import Dashboard from "@/pages/Dashboard";
 import Operations from "@/pages/Operations";
@@ -10,14 +11,24 @@ import Tools from "@/pages/Tools";
 import Reports from "@/pages/Reports";
 import Settings from "@/pages/Settings";
 import Profile from "@/pages/Profile";
+import Users from "@/pages/Users";
 import Login from "@/pages/Login";
 
-export default function App() {
-  // TODO: Add authentication check in M6
-  // For now, we'll skip auth to enable navigation testing
-  const isAuthenticated = true;
+function AppContent() {
+  const { user, loading } = useAuth();
 
-  if (!isAuthenticated) {
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
     return <Login />;
   }
 
@@ -34,6 +45,7 @@ export default function App() {
         <Route path="/reports" component={Reports} />
         <Route path="/settings" component={Settings} />
         <Route path="/profile" component={Profile} />
+        <Route path="/users" component={Users} />
         <Route>
           <div className="p-8">
             <h1 className="text-3xl font-bold mb-4">404 - Page Not Found</h1>
@@ -42,5 +54,13 @@ export default function App() {
         </Route>
       </Switch>
     </MainLayout>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }

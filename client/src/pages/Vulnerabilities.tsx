@@ -48,12 +48,31 @@ export default function Vulnerabilities() {
 
   const handleSaveVulnerability = async (vulnerability: any) => {
     try {
+      // Only send editable fields (exclude timestamps which cause date conversion errors)
+      const payload = {
+        title: vulnerability.title,
+        description: vulnerability.description,
+        severity: vulnerability.severity,
+        cvssScore: vulnerability.cvssScore,
+        cvssVector: vulnerability.cvssVector,
+        cveId: vulnerability.cveId,
+        cweId: vulnerability.cweId,
+        targetId: vulnerability.targetId,
+        operationId: vulnerability.operationId,
+        proofOfConcept: vulnerability.proofOfConcept,
+        remediation: vulnerability.remediation,
+        references: vulnerability.references,
+        status: vulnerability.status,
+      };
+
+      console.log("Saving vulnerability:", payload);
+
       if (vulnerability.id) {
         // Update existing
-        await api.put(`/vulnerabilities/${vulnerability.id}`, vulnerability);
+        await api.put(`/vulnerabilities/${vulnerability.id}`, payload);
       } else {
         // Create new
-        await api.post("/vulnerabilities", vulnerability);
+        await api.post("/vulnerabilities", payload);
       }
       setEditDialogOpen(false);
       await loadData();

@@ -1,7 +1,10 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Plus } from "lucide-react";
+import { Plus, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import TargetList from "@/components/targets/TargetList";
 import EditTargetDialog from "@/components/targets/EditTargetDialog";
 import { api } from "@/lib/api";
@@ -10,9 +13,13 @@ export default function Targets() {
   const [, navigate] = useLocation();
   const [targets, setTargets] = useState<any[]>([]);
   const [operations, setOperations] = useState<any[]>([]);
+  const [agents, setAgents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedTarget, setSelectedTarget] = useState<any>(null);
+  const [loopDialogOpen, setLoopDialogOpen] = useState(false);
+  const [selectedAgent, setSelectedAgent] = useState("");
+  const [runningLoop, setRunningLoop] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -20,16 +27,45 @@ export default function Targets() {
 
   const loadData = async () => {
     try {
-      const [targetsRes, operationsRes] = await Promise.all([
+      const [targetsRes, operationsRes, agentsRes] = await Promise.all([
         api.get<{ targets: any[] }>("/targets"),
         api.get<{ operations: any[] }>("/operations"),
+        api.get<{ agents: any[] }>("/agents"),
       ]);
       setTargets(targetsRes.targets);
       setOperations(operationsRes.operations);
+      setAgents(agentsRes.agents || []);
     } catch (error) {
       console.error("Failed to load data:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRunAgentLoop = (target: any) => {
+    setSelectedTarget(target);
+    setLoopDialogOpen(true);
+  };
+
+  const handleExecuteLoop = async () => {
+    if (!selectedAgent || !selectedTarget) return;
+
+    setRunningLoop(true);
+    try {
+      await api.post("/agent-loops/start", {
+        agentId: selectedAgent,
+        targetId: selectedTarget.id,
+        initialInput: `Analyze target ${selectedTarget.name} (${selectedTarget.value}) for security vulnerabilities`,
+      });
+      
+      alert(`Agent loop started successfully for target: ${selectedTarget.name}`);
+      setLoopDialogOpen(false);
+      setSelectedAgent("");
+    } catch (error) {
+      console.error("Failed to start agent loop:", error);
+      alert("Failed to start agent loop");
+    } finally {
+      setRunningLoop(false);
     }
   };
 
@@ -163,7 +199,64 @@ export default function Targets() {
         onDelete={handleDeleteTarget}
         onViewVulnerabilities={handleViewVulnerabilities}
         onAddVulnerability={handleAddVulnerability}
+        onRunAgentLoop={handleRunAgentLoop}
       />
+
+      {/* Agent Loop Dialog */}
+      <Dialog open={loopDialogOpen} onOpenChange={setLoopDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RotateCcw className="h-5 w-5 text-blue-600" />
+              Run Agent Loop
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div>
+              <Label>Target</Label>
+              <p className="text-sm text-gray-600 mt-1">
+                {selectedTarget?.name} ({selectedTarget?.type}: {selectedTarget?.value})
+              </p>
+            </div>
+
+            <div>
+              <Label htmlFor="agent-select">Select Agent</Label>
+              <Select value={selectedAgent} onValueChange={setSelectedAgent}>
+                <SelectTrigger id="agent-select">
+                  <SelectValue placeholder="Choose an agent with loop enabled" />
+                </SelectTrigger>
+                <SelectContent>
+                  {agents
+                    .filter((a) => a.config?.loopEnabled)
+                    .map((agent) => (
+                      <SelectItem key={agent.id} value={agent.id}>
+                        {agent.name} ({agent.type})
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              {agents.filter((a) => a.config?.loopEnabled).length === 0 && (
+                <p className="text-sm text-amber-600 mt-2">
+                  No agents with loop configuration found. Please configure an agent first.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLoopDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleExecuteLoop} 
+              disabled={!selectedAgent || runningLoop}
+            >
+              {runningLoop ? "Starting..." : "Start Agent Loop"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

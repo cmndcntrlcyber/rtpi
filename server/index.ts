@@ -21,6 +21,8 @@ import containersRoutes from "./api/v1/containers";
 import healthChecksRoutes from "./api/v1/health-checks";
 import reportsRoutes from "./api/v1/reports";
 import toolsRoutes from "./api/v1/tools";
+import settingsRoutes from "./api/v1/settings";
+import agentLoopsRoutes from "./api/v1/agent-loops";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -67,6 +69,8 @@ app.use("/api/v1/containers", containersRoutes);
 app.use("/api/v1/health-checks", healthChecksRoutes);
 app.use("/api/v1/reports", reportsRoutes);
 app.use("/api/v1/tools", toolsRoutes);
+app.use("/api/v1/settings", settingsRoutes);
+app.use("/api/v1/agent-loops", agentLoopsRoutes);
 
 // Root endpoint
 app.get("/api/v1", (req, res) => {
@@ -86,6 +90,8 @@ app.get("/api/v1", (req, res) => {
       healthChecks: "/api/v1/health-checks",
       reports: "/api/v1/reports",
       tools: "/api/v1/tools",
+      settings: "/api/v1/settings",
+      agentLoops: "/api/v1/agent-loops",
     },
   });
 });

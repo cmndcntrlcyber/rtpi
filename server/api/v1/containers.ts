@@ -3,6 +3,7 @@ import { db } from "../../db";
 import { containers } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
+import { dockerExecutor } from "../../services/docker-executor";
 
 const router = Router();
 
@@ -106,6 +107,68 @@ router.delete("/:id", ensureRole("admin"), async (req, res) => {
     console.error("Delete container error:", error);
     await logAudit(user.id, "delete_container", "/containers", id, false, req);
     res.status(500).json({ error: "Failed to delete container" });
+  }
+});
+
+// GET /api/v1/containers/rtpi-tools/status - Get rtpi-tools container status
+router.get("/rtpi-tools/status", async (req, res) => {
+  try {
+    const status = await dockerExecutor.getContainerStatus("rtpi-tools");
+    res.json({ status });
+  } catch (error) {
+    console.error("Get rtpi-tools status error:", error);
+    res.status(500).json({ 
+      error: "Failed to get container status",
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+// POST /api/v1/containers/rtpi-tools/restart - Restart rtpi-tools container
+router.post("/rtpi-tools/restart", ensureRole("admin"), async (req, res) => {
+  const user = req.user as any;
+
+  try {
+    await dockerExecutor.restartContainer("rtpi-tools");
+    await logAudit(user.id, "restart_container", "/containers", "rtpi-tools", true, req);
+    res.json({ message: "Container restarted successfully" });
+  } catch (error) {
+    console.error("Restart rtpi-tools error:", error);
+    await logAudit(user.id, "restart_container", "/containers", "rtpi-tools", false, req);
+    res.status(500).json({ 
+      error: "Failed to restart container",
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+// GET /api/v1/containers/rtpi-tools/logs - Get rtpi-tools container logs
+router.get("/rtpi-tools/logs", async (req, res) => {
+  const { tail = "100" } = req.query;
+
+  try {
+    const logs = await dockerExecutor.getContainerLogs("rtpi-tools", parseInt(tail as string));
+    res.json({ logs });
+  } catch (error) {
+    console.error("Get rtpi-tools logs error:", error);
+    res.status(500).json({ 
+      error: "Failed to get container logs",
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+// GET /api/v1/containers/docker/list - List all Docker containers
+router.get("/docker/list", async (req, res) => {
+  try {
+    const containersList = await dockerExecutor.listContainers();
+    res.json({ containers: containersList });
+  } catch (error) {
+    console.error("List Docker containers error:", error);
+    res.status(500).json({ 
+      error: "Failed to list Docker containers",
+      details: error instanceof Error ? error.message : String(error)
+    });
   }
 });
 

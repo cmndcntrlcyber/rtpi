@@ -62,8 +62,12 @@ The following ports must be available:
 - `3000` - Application server
 - `5432` - PostgreSQL database
 - `6379` - Redis cache
+- `4444` - rtpi-tools container (Metasploit/tool services)
+- `5555` - rtpi-tools container (additional tool services)
 - `80` - HTTP (production with reverse proxy)
 - `443` - HTTPS (production with reverse proxy)
+
+**Note**: Ports 4444 and 5555 are exposed by the rtpi-tools container for security tool operations but are typically not exposed to the internet.
 
 ---
 
@@ -161,6 +165,185 @@ openssl rand -base64 32
 # JWT secret
 openssl rand -base64 64
 ```
+
+---
+
+## RTPI-Tools Container Setup
+
+The rtpi-tools container provides an isolated environment for executing security tools. This section covers its deployment and configuration.
+
+### Container Overview
+
+The rtpi-tools container includes:
+- **19 pre-installed security tools** across 9 categories
+- **Isolated execution environment** for security operations
+- **Docker-based security** with non-root user execution
+- **API integration** for agent-driven tool execution
+
+### Building the Container
+
+1. **Build rtpi-tools image:**
+
+```bash
+# From project root
+docker-compose build rtpi-tools
+
+# Or build directly
+docker build -f Dockerfile.tools -t rtpi-tools .
+```
+
+2. **Verify build:**
+
+```bash
+docker images | grep rtpi-tools
+```
+
+### Starting the Container
+
+The rtpi-tools container starts automatically with docker-compose:
+
+```bash
+# Development
+docker-compose up -d
+
+# Production
+docker-compose -f docker-compose.prod.yml up -d
+
+# Verify container is running
+docker ps | grep rtpi-tools
+```
+
+### Seeding Security Tools Database
+
+After the container is running, populate the tools database:
+
+```bash
+# Ensure database is up to date
+npm run db:push
+
+# Run the seeder
+npx tsx scripts/seed-tools.ts
+```
+
+Expected output:
+```
+🌱 Seeding security tools...
+✓ Cleared existing tools
+✓ Added: Nmap (reconnaissance)
+✓ Added: Metasploit Framework (exploitation)
+✓ Added: Hashcat (password_cracking)
+...
+✅ Successfully seeded 19 security tools!
+```
+
+### Container Configuration
+
+The rtpi-tools container is configured in `docker-compose.yml`:
+
+```yaml
+rtpi-tools:
+  build:
+    context: .
+    dockerfile: Dockerfile.tools
+  container_name: rtpi-tools
+  networks:
+    - rtpi-network
+  volumes:
+    - tool-results:/var/log/rtpi
+    - tool-configs:/opt/tools/config
+    - shared-data:/shared
+  stdin_open: true
+  tty: true
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD", "echo", "healthy"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+```
+
+### Volume Mounts
+
+The container uses three volumes for data persistence:
+
+- **tool-results**: Stores tool execution results and logs
+- **tool-configs**: Configuration files for tools
+- **shared-data**: Shared data between containers
+
+### Testing Tool Execution
+
+Verify tools are working correctly:
+
+```bash
+# Test Nmap
+docker exec rtpi-tools nmap --version
+
+# Test Python
+docker exec rtpi-tools python3 --version
+
+# Test PowerShell
+docker exec rtpi-tools pwsh -Command "Write-Host 'Test'"
+
+# List installed tools
+docker exec rtpi-tools ls -la /opt/tools/
+```
+
+### Container Management
+
+```bash
+# View container logs
+docker logs rtpi-tools
+
+# Restart container
+docker restart rtpi-tools
+
+# Access container shell
+docker exec -it rtpi-tools /bin/bash
+
+# Check container status via API
+curl http://localhost:3000/api/v1/containers/rtpi-tools/status
+```
+
+### Security Considerations
+
+- **Non-root execution**: Tools run as `rtpi-tools` user
+- **Network isolation**: Container on isolated bridge network
+- **Command validation**: All commands validated before execution
+- **Resource limits**: CPU and memory limits enforced
+- **Audit logging**: All tool executions logged
+
+### Troubleshooting rtpi-tools
+
+**Container won't start:**
+```bash
+# Check logs
+docker logs rtpi-tools
+
+# Rebuild container
+docker-compose build --no-cache rtpi-tools
+docker-compose up -d rtpi-tools
+```
+
+**Tools not found:**
+```bash
+# Verify tools are installed
+docker exec rtpi-tools which nmap
+docker exec rtpi-tools which msfconsole
+
+# Check PATH
+docker exec rtpi-tools echo $PATH
+```
+
+**Database not seeded:**
+```bash
+# Check if tools exist in database
+curl http://localhost:3000/api/v1/tools
+
+# Re-run seeder
+npx tsx scripts/seed-tools.ts
+```
+
+For complete rtpi-tools documentation, see [RTPI-Tools Implementation Guide](RTPI-TOOLS-IMPLEMENTATION.md).
 
 ---
 
@@ -1024,24 +1207,47 @@ For security vulnerabilities, please follow responsible disclosure:
 
 ## Checklist for Production Deployment
 
+### Infrastructure
 - [ ] System requirements met
+- [ ] Docker and Docker Compose installed
+- [ ] Firewall rules configured
+- [ ] SSL/TLS certificates obtained (if exposing directly to internet)
+- [ ] Network isolation configured for containers
+
+### Configuration
 - [ ] `.env` file created from `.env.example`
 - [ ] All environment variables configured (especially `REDIS_PASSWORD`)
 - [ ] Secure secrets generated (`SESSION_SECRET`, `JWT_SECRET`)
 - [ ] Database credentials set (`DB_USER`, `DB_PASSWORD`, `DB_NAME`)
-- [ ] SSL/TLS certificates obtained (if exposing directly to internet)
-- [ ] Firewall rules configured
-- [ ] Docker and Docker Compose installed
+- [ ] OAuth providers configured (if used)
+- [ ] CORS settings configured for production domain
+
+### Deployment
 - [ ] Application built: `docker-compose -f docker-compose.prod.yml build`
 - [ ] Services started: `docker-compose -f docker-compose.prod.yml up -d`
 - [ ] Database migrations applied: `docker-compose -f docker-compose.prod.yml exec app npm run db:push`
 - [ ] Health endpoints accessible and returning healthy status
-- [ ] OAuth providers configured (if used)
+
+### RTPI-Tools Container
+- [ ] rtpi-tools container built successfully
+- [ ] rtpi-tools container running and healthy
+- [ ] Security tools database seeded: `npx tsx scripts/seed-tools.ts`
+- [ ] Tool execution tested via API
+- [ ] Container volumes configured for persistence
+- [ ] Tool execution logs accessible
+
+### Security
+- [ ] Container running as non-root user verified
+- [ ] Command validation enabled
+- [ ] Resource limits configured
+- [ ] Audit logging functional
+- [ ] Security audit completed
+
+### Operations
 - [ ] Backup system configured and tested
 - [ ] Monitoring and alerting setup
 - [ ] Log aggregation configured
 - [ ] Performance baseline established
-- [ ] Security audit completed
 - [ ] Documentation updated
 - [ ] Team training completed
 - [ ] Rollback procedure tested

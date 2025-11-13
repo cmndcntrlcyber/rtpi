@@ -44,7 +44,7 @@ interface OperationFormData {
 interface OperationFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (data: OperationFormData) => void;
+  onSubmit: (data: OperationFormData) => Promise<void>;
   initialData?: Partial<OperationFormData>;
   mode?: "create" | "edit";
   onDelete?: (id: string) => void;
@@ -108,9 +108,36 @@ export default function OperationForm({
     additionalInfo: "",
   });
   const [goals, setGoals] = useState<string[]>([""]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
+  const resetForm = () => {
+    setFormData({
+      name: "",
+      description: "",
+      status: "planning",
+      objectives: "",
+      scope: "",
+      applicationOverview: {},
+      businessImpact: {},
+      scopeData: {},
+      authentication: {},
+      additionalInfo: "",
+    });
+    setGoals([""]);
+    setError("");
+  };
+
+  // Reset form when dialog closes (and not editing)
   useEffect(() => {
-    if (initialData) {
+    if (!open && !initialData) {
+      resetForm();
+    }
+  }, [open, initialData]);
+
+  // Load initial data when editing
+  useEffect(() => {
+    if (initialData && open) {
       setFormData({
         name: initialData.name || "",
         description: initialData.description || "",
@@ -119,11 +146,12 @@ export default function OperationForm({
         endDate: initialData.endDate || "",
         objectives: initialData.objectives || "",
         scope: initialData.scope || "",
-        applicationOverview: initialData.applicationOverview || {},
-        businessImpact: initialData.businessImpact || {},
-        scopeData: initialData.scopeData || {},
-        authentication: initialData.authentication || {},
-        additionalInfo: initialData.additionalInfo || "",
+        // Load table data from metadata (where it's actually stored)
+        applicationOverview: initialData.metadata?.applicationOverview || {},
+        businessImpact: initialData.metadata?.businessImpact || {},
+        scopeData: initialData.metadata?.scopeData || {},
+        authentication: initialData.metadata?.authentication || {},
+        additionalInfo: initialData.metadata?.additionalInfo || "",
       });
       
       // Parse goals if they exist in metadata
@@ -133,29 +161,67 @@ export default function OperationForm({
     }
   }, [initialData, open]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSaveAsDraft = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Use "planning" status for drafts (no "draft" in enum)
+    await handleSubmit(e, "planning");
+  };
 
-    // Clean up goals
-    const cleanGoals = goals.filter((g) => g.trim() !== "");
+  const handleSubmit = async (e: React.FormEvent, forcedStatus?: string) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setError("");
 
-    // Package metadata
-    const metadata = {
-      goals: cleanGoals,
-      applicationOverview: formData.applicationOverview,
-      businessImpact: formData.businessImpact,
-      scopeData: formData.scopeData,
-      authentication: formData.authentication,
-    };
+    try {
+      // Clean up goals
+      const cleanGoals = goals.filter((g) => g.trim() !== "");
 
-    onSubmit({
-      ...formData,
-      objectives: formData.objectives,
-      scope: formData.scope,
-      metadata,
-    });
-    
-    onOpenChange(false);
+      // Package metadata (includes all custom form fields)
+      const metadata = {
+        goals: cleanGoals,
+        applicationOverview: formData.applicationOverview,
+        businessImpact: formData.businessImpact,
+        scopeData: formData.scopeData,
+        authentication: formData.authentication,
+        additionalInfo: formData.additionalInfo,
+      };
+
+      // Build submitData explicitly (avoid spread operator conflicts)
+      const submitData: any = {
+        name: formData.name,
+        status: forcedStatus || formData.status,
+      };
+
+      // Add optional fields only if they have values
+      if (formData.description) submitData.description = formData.description;
+      if (formData.objectives) submitData.objectives = formData.objectives;
+      if (formData.scope) submitData.scope = formData.scope;
+      
+      // Convert date strings to proper Date objects with time component
+      if (formData.startDate) {
+        submitData.startDate = new Date(formData.startDate + 'T00:00:00.000Z');
+      }
+      if (formData.endDate) {
+        submitData.endDate = new Date(formData.endDate + 'T23:59:59.999Z');
+      }
+      
+      // Add metadata last
+      submitData.metadata = metadata;
+
+      console.log("Submitting operation data:", submitData);
+      console.log("Start date type:", typeof submitData.startDate, submitData.startDate);
+      console.log("End date type:", typeof submitData.endDate, submitData.endDate);
+      
+      await onSubmit(submitData);
+      
+      // Reset and close on success
+      resetForm();
+      onOpenChange(false);
+    } catch (err: any) {
+      setError(err.message || "Failed to save operation");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleDelete = () => {
@@ -190,6 +256,12 @@ export default function OperationForm({
         </DialogHeader>
 
         <form onSubmit={handleSubmit}>
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
+              {error}
+            </div>
+          )}
+          
           <Tabs defaultValue="basic" className="w-full">
             <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="basic">Basic Info</TabsTrigger>
@@ -374,11 +446,33 @@ export default function OperationForm({
               )}
             </div>
             <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              {mode === "create" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleSaveAsDraft}
+                  disabled={submitting}
+                >
+                  Save as Draft
+                </Button>
+              )}
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => {
+                  if (!initialData) resetForm();
+                  onOpenChange(false);
+                }}
+                disabled={submitting}
+              >
                 Cancel
               </Button>
-              <Button type="submit">
-                {mode === "create" ? "Create Operation" : "Save Changes"}
+              <Button type="submit" disabled={submitting}>
+                {submitting 
+                  ? "Saving..." 
+                  : mode === "create" 
+                  ? "Create Operation" 
+                  : "Save Changes"}
               </Button>
             </div>
           </DialogFooter>

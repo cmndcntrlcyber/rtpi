@@ -115,3 +115,58 @@ export function useUploadToolFile() {
     error,
   };
 }
+
+export function useExecuteDockerTool() {
+  const [executing, setExecuting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const executeDocker = async (
+    id: string,
+    params: { targetId?: string; agentId?: string; params?: any; command?: string[] }
+  ) => {
+    try {
+      setExecuting(true);
+      setError(null);
+      const response = await toolsService.executeDocker(id, params);
+      return response;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to execute tool");
+      console.error("Error executing tool:", err);
+      throw err;
+    } finally {
+      setExecuting(false);
+    }
+  };
+
+  return {
+    executeDocker,
+    executing,
+    error,
+  };
+}
+
+export function useDeleteTool() {
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const deleteTool = async (id: string) => {
+    try {
+      setDeleting(true);
+      setError(null);
+      const response = await toolsService.delete(id);
+      return response;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete tool");
+      console.error("Error deleting tool:", err);
+      throw err;
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return {
+    deleteTool,
+    deleting,
+    error,
+  };
+}

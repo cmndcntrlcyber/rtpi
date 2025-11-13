@@ -24,7 +24,7 @@ export default function QuestionResponseTable({
   return (
     <div className="border border-gray-200 rounded-lg overflow-hidden">
       <table className="w-full">
-        <thead className="bg-purple-100">
+        <thead className="bg-red-200">
           <tr>
             <th className="text-left p-3 font-semibold text-gray-900 w-1/3">
               Question

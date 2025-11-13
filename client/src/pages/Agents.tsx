@@ -1,28 +1,114 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Bot, Server, Activity, Clock, Plus } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { Bot, Server, Activity, Clock, Plus, RotateCcw, Pause, Target, CheckCircle, AlertTriangle, Zap, GripVertical, ArrowRight } from "lucide-react";
 import { useAgents } from "@/hooks/useAgents";
 import { useMCPServers } from "@/hooks/useMCPServers";
+import { useTargets } from "@/hooks/useTargets";
+import { api } from "@/lib/api";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import {
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+// Sortable agent item for drag-drop
+function SortableAgentItem({ agent }: { agent: any }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id: agent.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      className="flex items-center p-3 bg-gray-50 border border-gray-200 rounded-lg"
+    >
+      <div
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing p-1 mr-3 text-gray-400 hover:text-gray-600"
+      >
+        <GripVertical className="h-4 w-4" />
+      </div>
+      
+      <div className="flex items-center flex-1">
+        <div className="bg-blue-100 p-2 rounded-lg mr-3">
+          <Bot className="h-4 w-4 text-blue-600" />
+        </div>
+        <div className="flex-1">
+          <h4 className="text-gray-900 font-medium">{agent.name}</h4>
+          <p className="text-sm text-gray-500 capitalize">{agent.type} Agent</p>
+        </div>
+        <div className="text-sm text-gray-500">
+          Order: {agent.config?.flowOrder || 0}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Agents() {
   const { agents, loading: agentsLoading, refetch: refetchAgents } = useAgents();
   const { servers: mcpServers, loading: serversLoading, refetch: refetchServers } = useMCPServers();
   
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+  
   const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const [serverDialogOpen, setServerDialogOpen] = useState(false);
+  const [editingAgent, setEditingAgent] = useState<any>(null);
   const [newAgent, setNewAgent] = useState({
     name: "",
     type: "openai" as any,
-    config: {},
+    config: {
+      model: "gpt-4",
+      systemPrompt: "",
+      loopEnabled: false,
+      loopPartnerId: "",
+      maxLoopIterations: 5,
+      loopExitCondition: "functional_poc",
+      flowOrder: 0,
+    },
     capabilities: [],
   });
+  const [activeLoops, setActiveLoops] = useState<any[]>([]);
+  const { targets } = useTargets();
   const [newServer, setNewServer] = useState({
     name: "",
     command: "",
@@ -30,23 +116,164 @@ export default function Agents() {
     autoRestart: true,
   });
 
+  // Load active loops
+  useEffect(() => {
+    loadActiveLoops();
+    const interval = setInterval(loadActiveLoops, 3000); // Refresh every 3s
+    return () => clearInterval(interval);
+  }, []);
+
+  const loadActiveLoops = async () => {
+    try {
+      const response = await api.get<{ loops: any[] }>("/agent-loops");
+      setActiveLoops(response.loops || []);
+    } catch (err) {
+      console.error("Failed to load loops:", err);
+    }
+  };
+
+  const handleEditAgent = (agent: any) => {
+    setEditingAgent(agent);
+    const config = agent.config || {};
+    setNewAgent({
+      name: agent.name,
+      type: agent.type,
+      config: {
+        model: config.model || (agent.type === "openai" ? "GPT-5" : "claude-sonnet-4-5-20250929"),
+        systemPrompt: config.systemPrompt || "",
+        loopEnabled: config.loopEnabled || false,
+        loopPartnerId: config.loopPartnerId || "",
+        maxLoopIterations: config.maxLoopIterations || 5,
+        loopExitCondition: config.loopExitCondition || "functional_poc",
+        flowOrder: config.flowOrder || 0,
+      },
+      capabilities: agent.capabilities || [],
+    });
+    setAgentDialogOpen(true);
+  };
+
   const handleCreateAgent = async () => {
     try {
-      const response = await fetch("/api/v1/agents", {
-        method: "POST",
+      const method = editingAgent ? "PUT" : "POST";
+      const url = editingAgent ? `/api/v1/agents/${editingAgent.id}` : "/api/v1/agents";
+      
+      const response = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify(newAgent),
       });
 
-      if (!response.ok) throw new Error("Failed to create agent");
+      if (!response.ok) throw new Error(`Failed to ${editingAgent ? 'update' : 'create'} agent`);
 
       await refetchAgents();
       setAgentDialogOpen(false);
-      setNewAgent({ name: "", type: "openai", config: {}, capabilities: [] });
+      setEditingAgent(null);
+      setNewAgent({ 
+        name: "", 
+        type: "openai", 
+        config: {
+          model: "GPT-5",
+          systemPrompt: "",
+          loopEnabled: false,
+          loopPartnerId: "",
+          maxLoopIterations: 5,
+          loopExitCondition: "functional_poc",
+          flowOrder: 0,
+        }, 
+        capabilities: [] 
+      });
     } catch (err) {
-      console.error("Failed to create agent:", err);
-      alert("Failed to create agent");
+      console.error("Failed to save agent:", err);
+      alert("Failed to save agent");
+    }
+  };
+
+  const handleDeleteAgent = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this agent?")) return;
+
+    try {
+      const response = await fetch(`/api/v1/agents/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      if (!response.ok) throw new Error("Failed to delete agent");
+
+      await refetchAgents();
+    } catch (err) {
+      console.error("Failed to delete agent:", err);
+      alert("Failed to delete agent");
+    }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id && agents) {
+      const sortedAgents = [...agents].sort((a, b) => {
+        const aOrder = (a.config as any)?.flowOrder || 0;
+        const bOrder = (b.config as any)?.flowOrder || 0;
+        return aOrder - bOrder;
+      });
+      
+      const oldIndex = sortedAgents.findIndex((agent) => agent.id === active.id);
+      const newIndex = sortedAgents.findIndex((agent) => agent.id === over.id);
+
+      const newAgents = arrayMove(sortedAgents, oldIndex, newIndex);
+      
+      // Update flow order for all agents
+      newAgents.forEach(async (agent, index) => {
+        const currentOrder = (agent.config as any)?.flowOrder || 0;
+        if (currentOrder !== index) {
+          try {
+            await fetch(`/api/v1/agents/${agent.id}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({
+                config: { ...(agent.config as any), flowOrder: index }
+              }),
+            });
+          } catch (err) {
+            console.error("Failed to update flow order:", err);
+          }
+        }
+      });
+      
+      // Refresh after updates
+      setTimeout(() => refetchAgents(), 500);
+    }
+  };
+
+  const handleStartLoop = async (agentId: string) => {
+    const targetId = targets[0]?.id; // Use first target for demo
+    if (!targetId) {
+      alert("No targets available. Please create a target first.");
+      return;
+    }
+
+    try {
+      await api.post("/agent-loops/start", {
+        agentId,
+        targetId,
+        initialInput: "Begin vulnerability analysis and exploit development",
+      });
+      await loadActiveLoops();
+      alert("Agent loop started successfully!");
+    } catch (err) {
+      console.error("Failed to start loop:", err);
+      alert("Failed to start loop");
+    }
+  };
+
+  const handleStopLoop = async (loopId: string) => {
+    try {
+      await api.post(`/agent-loops/${loopId}/stop`, {});
+      await loadActiveLoops();
+    } catch (err) {
+      console.error("Failed to stop loop:", err);
+      alert("Failed to stop loop");
     }
   };
 
@@ -134,47 +361,271 @@ export default function Agents() {
               </Button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {agents.map((agent) => (
-                <Card key={agent.id} className="bg-white">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center">
-                        <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white mr-3">
-                          <Bot className="h-5 w-5" />
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {agents.map((agent) => {
+                  const config = agent.config as any;
+                  const loopPartner = config?.loopEnabled 
+                    ? agents.find((a) => a.id === config.loopPartnerId) 
+                    : null;
+                  
+                  return (
+                    <Card key={agent.id} className="bg-white">
+                      <CardContent className="p-6">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center">
+                            <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white mr-3">
+                              <Bot className="h-5 w-5" />
+                            </div>
+                            <div>
+                              <h3 className="font-semibold text-gray-900">{agent.name}</h3>
+                              <p className="text-sm text-gray-500 capitalize">{agent.type}</p>
+                            </div>
+                          </div>
+                          <Badge
+                            variant="secondary"
+                            className={`${
+                              agent.status === "running"
+                                ? "bg-green-500/10 text-green-600"
+                                : "bg-gray-500/10 text-gray-600"
+                            }`}
+                          >
+                            {agent.status}
+                          </Badge>
                         </div>
-                        <div>
-                          <h3 className="font-semibold text-gray-900">{agent.name}</h3>
-                          <p className="text-sm text-gray-500">{agent.type}</p>
+
+                        {/* Capabilities Section */}
+                        <div className="mb-4 p-3 bg-gray-50 rounded">
+                          <h4 className="text-xs font-semibold text-gray-700 mb-2">CAPABILITIES</h4>
+                          <p className="text-xs text-gray-600">
+                            {agent.type === "openai" && "Report generation, vulnerability analysis, CVSS scoring, remediation suggestions"}
+                            {agent.type === "anthropic" && "Advanced reasoning, vulnerability analysis, comprehensive reporting, ethical assessment"}
+                            {agent.type === "mcp_server" && "Tool integration, automated workflows, external service connectivity"}
+                            {agent.type === "custom" && "Custom AI processing and analysis"}
+                          </p>
                         </div>
-                      </div>
-                      <Badge
-                        variant="secondary"
-                        className={`${
-                          agent.status === "running"
-                            ? "bg-green-500/10 text-green-600"
-                            : "bg-gray-500/10 text-gray-600"
-                        }`}
+
+                        {/* Loop Configuration Display */}
+                        {config?.loopEnabled && loopPartner && (
+                          <div className="mb-4 p-3 bg-blue-50 rounded border-l-4 border-blue-600">
+                            <div className="flex items-center gap-2 mb-2">
+                              <RotateCcw className="h-4 w-4 text-blue-600" />
+                              <h4 className="text-xs font-semibold text-gray-700">LOOP ENABLED</h4>
+                            </div>
+                            <div className="text-xs text-gray-600 space-y-1">
+                              <div>Partner: {loopPartner.name}</div>
+                              <div>Max Iterations: {config.maxLoopIterations || 5}</div>
+                              <div>Exit: {config.loopExitCondition || "functional_poc"}</div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Stats */}
+                        <div className="grid grid-cols-2 gap-4 text-sm mb-4">
+                          <div className="flex items-center text-gray-600">
+                            <Activity className="h-4 w-4 mr-2" />
+                            <span>{agent.tasksCompleted || 0} tasks</span>
+                          </div>
+                          {agent.lastActivity && (
+                            <div className="flex items-center text-gray-600">
+                              <Clock className="h-4 w-4 mr-2" />
+                              <span>{new Date(agent.lastActivity).toLocaleTimeString()}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex gap-2">
+                          {config?.loopEnabled && loopPartner && (
+                            <Button
+                              size="sm"
+                              onClick={() => handleStartLoop(agent.id)}
+                            >
+                              <RotateCcw className="h-3 w-3 mr-1" />
+                              Start Loop
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleEditAgent(agent)}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDeleteAgent(agent.id)}
+                            className="hover:bg-red-50 hover:text-red-600 hover:border-red-600"
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+
+              {/* Agent Flow Order Section */}
+              {agents.length > 0 && (
+                <Card className="mt-6 bg-white">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <ArrowRight className="h-5 w-5 text-blue-600" />
+                      Agent Flow Order
+                    </CardTitle>
+                    <p className="text-gray-600 text-sm">
+                      Drag and drop to organize the order that AI agents will communicate with each other
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={handleDragEnd}
+                    >
+                      <SortableContext
+                        items={[...agents]
+                          .sort((a, b) => {
+                            const aOrder = (a.config as any)?.flowOrder || 0;
+                            const bOrder = (b.config as any)?.flowOrder || 0;
+                            return aOrder - bOrder;
+                          })
+                          .map((agent) => agent.id)}
+                        strategy={verticalListSortingStrategy}
                       >
-                        {agent.status}
-                      </Badge>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div className="flex items-center text-gray-600">
-                        <Activity className="h-4 w-4 mr-2" />
-                        <span>{agent.tasksCompleted} tasks</span>
-                      </div>
-                      {agent.lastActivity && (
-                        <div className="flex items-center text-gray-600">
-                          <Clock className="h-4 w-4 mr-2" />
-                          <span>{new Date(agent.lastActivity).toLocaleTimeString()}</span>
+                        <div className="space-y-3">
+                          {[...agents]
+                            .sort((a, b) => {
+                              const aOrder = (a.config as any)?.flowOrder || 0;
+                              const bOrder = (b.config as any)?.flowOrder || 0;
+                              return aOrder - bOrder;
+                            })
+                            .map((agent, index) => (
+                              <div key={agent.id} className="flex items-center gap-3">
+                                <div className="flex items-center justify-center w-8 h-8 bg-blue-100 rounded-full text-blue-600 text-sm font-medium">
+                                  {index + 1}
+                                </div>
+                                <SortableAgentItem agent={agent} />
+                                {index < agents.length - 1 && (
+                                  <ArrowRight className="h-4 w-4 text-gray-400" />
+                                )}
+                              </div>
+                            ))}
                         </div>
-                      )}
+                      </SortableContext>
+                    </DndContext>
+
+                    {agents.length > 1 && (
+                      <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                        <h4 className="text-sm font-medium text-gray-900 mb-2">How Agent Flow Works</h4>
+                        <ul className="text-xs text-gray-600 space-y-1">
+                          <li>• Agents execute in the order shown above (top to bottom)</li>
+                          <li>• Each agent can process and enhance the previous agent's output</li>
+                          <li>• Drag agents up or down to change their execution order</li>
+                          <li>• The final output combines insights from all agents in sequence</li>
+                        </ul>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Active Loops Section */}
+              {activeLoops.length > 0 && (
+                <Card className="mt-6 bg-white">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <RotateCcw className="h-5 w-5 text-blue-600" />
+                      Active Agent Loops
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {activeLoops.map((loop) => {
+                        const agent = agents.find((a) => a.id === loop.agentId);
+                        const partner = agents.find((a) => a.id === loop.partnerId);
+                        
+                        return (
+                          <div key={loop.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-3">
+                                <Target className="h-4 w-4 text-blue-600" />
+                                <span className="text-sm font-medium text-gray-900">
+                                  {agent?.name} ↔ {partner?.name}
+                                </span>
+                                <Badge
+                                  className={`${
+                                    loop.status === "running"
+                                      ? "bg-blue-600"
+                                      : loop.status === "completed"
+                                      ? "bg-green-600"
+                                      : "bg-gray-600"
+                                  } text-white`}
+                                >
+                                  {loop.status}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-500">
+                                  {loop.currentIteration}/{loop.maxIterations} iterations
+                                </span>
+                                {loop.status === "running" && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleStopLoop(loop.id)}
+                                  >
+                                    <Pause className="h-3 w-3 mr-1" />
+                                    Stop
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="text-xs text-gray-600 space-y-1 mb-3">
+                              <div>Exit Condition: {loop.exitCondition}</div>
+                              <div>Started: {new Date(loop.startedAt).toLocaleString()}</div>
+                              {loop.completedAt && (
+                                <div>Completed: {new Date(loop.completedAt).toLocaleString()}</div>
+                              )}
+                            </div>
+
+                            {/* Latest Iteration */}
+                            {loop.iterations && loop.iterations.length > 0 && (
+                              <div className="p-3 bg-white rounded border border-gray-200">
+                                <h5 className="text-xs font-semibold text-gray-700 mb-2">
+                                  Latest Iteration
+                                </h5>
+                                <div className="text-xs text-gray-600">
+                                  <div className="mb-1">
+                                    <span className="text-gray-700">Agent:</span>{" "}
+                                    {agents.find((a) => a.id === loop.iterations[loop.iterations.length - 1].agentId)?.name}
+                                  </div>
+                                  <div className="mb-1">
+                                    <span className="text-gray-700">Output:</span>{" "}
+                                    {loop.iterations[loop.iterations.length - 1].output.substring(0, 100)}...
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-gray-700">Success:</span>
+                                    {loop.iterations[loop.iterations.length - 1].success ? (
+                                      <CheckCircle className="h-3 w-3 text-green-600" />
+                                    ) : (
+                                      <AlertTriangle className="h-3 w-3 text-red-600" />
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </CardContent>
                 </Card>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </TabsContent>
 
@@ -240,11 +691,14 @@ export default function Agents() {
         </TabsContent>
       </Tabs>
 
-      {/* Import Agent Dialog */}
-      <Dialog open={agentDialogOpen} onOpenChange={setAgentDialogOpen}>
-        <DialogContent>
+      {/* Import/Edit Agent Dialog */}
+      <Dialog open={agentDialogOpen} onOpenChange={(open) => {
+        setAgentDialogOpen(open);
+        if (!open) setEditingAgent(null);
+      }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Import AI Agent</DialogTitle>
+            <DialogTitle>{editingAgent ? "Edit AI Agent" : "Import AI Agent"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -256,9 +710,22 @@ export default function Agents() {
                 placeholder="GPT-4 Analysis Agent"
               />
             </div>
+            
             <div>
               <Label htmlFor="agent-type">Agent Type</Label>
-              <Select value={newAgent.type} onValueChange={(value: any) => setNewAgent({ ...newAgent, type: value })}>
+              <Select 
+                value={newAgent.type} 
+                onValueChange={(value: any) => {
+                  // Set default model based on type
+                  const defaultModel = value === "openai" ? "GPT-5" : 
+                                      value === "anthropic" ? "claude-sonnet-4-5-20250929" : "";
+                  setNewAgent({ 
+                    ...newAgent, 
+                    type: value,
+                    config: { ...newAgent.config, model: defaultModel }
+                  });
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -270,12 +737,148 @@ export default function Agents() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex gap-2 justify-end">
+
+            {/* Model Selection - conditional based on agent type */}
+            {(newAgent.type === "openai" || newAgent.type === "anthropic") && (
+              <div>
+                <Label htmlFor="model">Model</Label>
+                <Select
+                  value={newAgent.config.model}
+                  onValueChange={(value) => setNewAgent({
+                    ...newAgent,
+                    config: { ...newAgent.config, model: value }
+                  })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {newAgent.type === "openai" && (
+                      <>
+                        <SelectItem value="GPT-5">GPT-5</SelectItem>
+                        <SelectItem value="GPT-5 mini">GPT-5 Mini</SelectItem>
+                        <SelectItem value="GPT-5-Codex">GPT-5 Codex</SelectItem>
+                        <SelectItem value="o3-deep-research">O3 Deep Research</SelectItem>
+                        <SelectItem value="o4-mini-deep-research">O4 Mini Deep Research</SelectItem>
+                      </>
+                    )}
+                    {newAgent.type === "anthropic" && (
+                      <>
+                        <SelectItem value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5</SelectItem>
+                        <SelectItem value="claude-opus-4-1-20250805">Claude Opus 4.1</SelectItem>
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div>
+              <Label htmlFor="model-prompt">Model Prompt</Label>
+              <Textarea
+                id="model-prompt"
+                value={newAgent.config.systemPrompt || ""}
+                onChange={(e) => setNewAgent({
+                  ...newAgent,
+                  config: { ...newAgent.config, systemPrompt: e.target.value }
+                })}
+                placeholder="Enter custom prompt to characterize this agent's behavior..."
+                rows={4}
+              />
+            </div>
+
+            {/* Loop Configuration Section */}
+            <div className="border-t border-gray-200 pt-4">
+              <div className="flex items-center gap-2 mb-4">
+                <RotateCcw className="h-4 w-4 text-blue-600" />
+                <h3 className="text-lg font-semibold">Loop Configuration</h3>
+              </div>
+
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <Label>Enable Agent Loop</Label>
+                  <p className="text-sm text-gray-500">
+                    Allow this agent to loop with another agent for iterative refinement
+                  </p>
+                </div>
+                <Switch
+                  checked={newAgent.config.loopEnabled}
+                  onCheckedChange={(checked) => setNewAgent({
+                    ...newAgent,
+                    config: { ...newAgent.config, loopEnabled: checked }
+                  })}
+                />
+              </div>
+
+              {newAgent.config.loopEnabled && (
+                <div className="space-y-4 pl-4 border-l-2 border-blue-200">
+                  <div>
+                    <Label htmlFor="loop-partner">Loop Partner Agent</Label>
+                    <Select
+                      value={newAgent.config.loopPartnerId}
+                      onValueChange={(value) => setNewAgent({
+                        ...newAgent,
+                        config: { ...newAgent.config, loopPartnerId: value }
+                      })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select agent to loop with" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {agents
+                          ?.filter((a) => a.id !== editingAgent?.id)
+                          .map((agent) => (
+                            <SelectItem key={agent.id} value={agent.id}>
+                              {agent.name} ({agent.type})
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="max-iterations">Maximum Loop Iterations</Label>
+                    <Input
+                      id="max-iterations"
+                      type="number"
+                      value={newAgent.config.maxLoopIterations}
+                      onChange={(e) => setNewAgent({
+                        ...newAgent,
+                        config: { ...newAgent.config, maxLoopIterations: parseInt(e.target.value) || 5 }
+                      })}
+                      placeholder="5"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="exit-condition">Loop Exit Condition</Label>
+                    <Select
+                      value={newAgent.config.loopExitCondition}
+                      onValueChange={(value) => setNewAgent({
+                        ...newAgent,
+                        config: { ...newAgent.config, loopExitCondition: value }
+                      })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select exit condition" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="functional_poc">Functional POC</SelectItem>
+                        <SelectItem value="vulnerability_confirmed">Vulnerability Confirmed</SelectItem>
+                        <SelectItem value="exploit_successful">Exploit Successful</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 justify-end pt-4">
               <Button variant="outline" onClick={() => setAgentDialogOpen(false)}>
                 Cancel
               </Button>
               <Button onClick={handleCreateAgent} disabled={!newAgent.name}>
-                Import Agent
+                {editingAgent ? "Save Changes" : "Import Agent"}
               </Button>
             </div>
           </div>

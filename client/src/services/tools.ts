@@ -56,7 +56,15 @@ export const toolsService = {
   execute: (id: string, params?: any) =>
     api.post<{ message: string; tool: Tool; executionId: string }>(`/tools/${id}/execute`, params || {}),
 
+  // Execute tool in Docker container
+  executeDocker: (id: string, params: { targetId?: string; agentId?: string; params?: any; command?: string[] }) =>
+    api.post<{ success: boolean; tool: string; result: any }>(`/tools/${id}/execute-docker`, params),
+
   // Launch tool (for web-based tools)
   launch: (id: string) =>
     api.post<{ message: string; url?: string; tool: Tool }>(`/tools/${id}/launch`, {}),
+
+  // Delete tool
+  delete: (id: string) =>
+    api.delete<{ message: string; tool: Tool }>(`/tools/${id}`),
 };

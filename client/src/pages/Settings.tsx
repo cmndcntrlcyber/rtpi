@@ -4,10 +4,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Settings as SettingsIcon, Shield, Database, Bell, Moon, Sun } from "lucide-react";
+import { Settings as SettingsIcon, Shield, Database, Bell, Moon, Sun, Brain, Eye, EyeOff } from "lucide-react";
+import { api } from "@/lib/api";
 
 export default function Settings() {
   const [darkMode, setDarkMode] = useState(false);
+  const [llmSettings, setLlmSettings] = useState({
+    openaiApiKey: "",
+    anthropicApiKey: "",
+    tavilyApiKey: "",
+    defaultModel: "GPT-5",
+  });
+  const [showOpenAI, setShowOpenAI] = useState(false);
+  const [showAnthropic, setShowAnthropic] = useState(false);
+  const [showTavily, setShowTavily] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     // Check for saved dark mode preference
@@ -16,7 +27,39 @@ export default function Settings() {
       setDarkMode(true);
       document.documentElement.classList.add("dark");
     }
+    
+    // Load LLM settings
+    loadLlmSettings();
   }, []);
+
+  const loadLlmSettings = async () => {
+    try {
+      const response = await api.get<any>("/settings/llm");
+      if (response.settings) {
+        setLlmSettings({
+          openaiApiKey: response.settings.openaiApiKey || "",
+          anthropicApiKey: response.settings.anthropicApiKey || "",
+          tavilyApiKey: response.settings.tavilyApiKey || "",
+          defaultModel: response.settings.defaultModel || "GPT-5",
+        });
+      }
+    } catch (error) {
+      console.error("Failed to load LLM settings:", error);
+    }
+  };
+
+  const saveLlmSettings = async () => {
+    setSaving(true);
+    try {
+      await api.post("/settings/llm", llmSettings);
+      alert("LLM settings saved successfully!");
+    } catch (error) {
+      console.error("Failed to save LLM settings:", error);
+      alert("Failed to save LLM settings");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const toggleDarkMode = (enabled: boolean) => {
     setDarkMode(enabled);
@@ -34,6 +77,99 @@ export default function Settings() {
       <h1 className="text-3xl font-bold mb-8">Settings</h1>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* LLM API Keys */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Brain className="h-5 w-5" />
+              AI & LLM Configuration
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="openai-key">OpenAI API Key</Label>
+              <div className="relative">
+                <Input
+                  id="openai-key"
+                  type={showOpenAI ? "text" : "password"}
+                  value={llmSettings.openaiApiKey}
+                  onChange={(e) => setLlmSettings({ ...llmSettings, openaiApiKey: e.target.value })}
+                  placeholder="sk-..."
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  onClick={() => setShowOpenAI(!showOpenAI)}
+                >
+                  {showOpenAI ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="anthropic-key">Anthropic API Key</Label>
+              <div className="relative">
+                <Input
+                  id="anthropic-key"
+                  type={showAnthropic ? "text" : "password"}
+                  value={llmSettings.anthropicApiKey}
+                  onChange={(e) => setLlmSettings({ ...llmSettings, anthropicApiKey: e.target.value })}
+                  placeholder="sk-ant-..."
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  onClick={() => setShowAnthropic(!showAnthropic)}
+                >
+                  {showAnthropic ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="tavily-key">Tavily API Key</Label>
+              <div className="relative">
+                <Input
+                  id="tavily-key"
+                  type={showTavily ? "text" : "password"}
+                  value={llmSettings.tavilyApiKey}
+                  onChange={(e) => setLlmSettings({ ...llmSettings, tavilyApiKey: e.target.value })}
+                  placeholder="tvly-..."
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  onClick={() => setShowTavily(!showTavily)}
+                >
+                  {showTavily ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="default-model">Default Model</Label>
+              <select
+                id="default-model"
+                className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                value={llmSettings.defaultModel}
+                onChange={(e) => setLlmSettings({ ...llmSettings, defaultModel: e.target.value })}
+              >
+                <option value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5</option>
+                <option value="claude-opus-4-1-20250805">Claude Opus 4.1</option>
+                <option value="GPT-5">GPT-5</option>
+                <option value="GPT-5 mini">GPT-5 Mini</option>
+                <option value="GPT-5-Codex">GPT-5 Codex</option>
+                <option value="o3-deep-research">O3 Deep Research</option>
+                <option value="o4-mini-deep-research">O4 Mini Deep Research</option>
+              </select>
+            </div>
+
+            <Button onClick={saveLlmSettings} disabled={saving} className="w-full">
+              {saving ? "Saving..." : "Save API Keys"}
+            </Button>
+          </CardContent>
+        </Card>
+
         {/* Appearance Settings */}
         <Card>
           <CardHeader>

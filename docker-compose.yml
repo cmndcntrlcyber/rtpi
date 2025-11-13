@@ -37,30 +37,51 @@ services:
     networks:
       - rtpi-network
 
-  # Application (Development)
-  app:
+  # RTPI Security Tools Container
+  rtpi-tools:
     build:
       context: .
-      dockerfile: Dockerfile.dev
-    container_name: rtpi-app
-    ports:
-      - "3000:3000"
-      - "5000:5000"
-    environment:
-      NODE_ENV: development
-      DATABASE_URL: postgresql://rtpi:rtpi@postgres:5432/rtpi_main
-      REDIS_URL: redis://redis:6379
-      PORT: 3000
-    volumes:
-      - .:/app
-      - /app/node_modules
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      dockerfile: Dockerfile.tools
+    container_name: rtpi-tools
     networks:
       - rtpi-network
+    volumes:
+      - tool-results:/var/log/rtpi
+      - tool-configs:/opt/tools/config
+      - shared-data:/shared
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "echo", "healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# Application (Development)
+#  app:
+#    build:
+#      context: .
+#      dockerfile: Dockerfile.dev
+#    container_name: rtpi-app
+#    ports:
+#      - "3000:3000"
+#      - "5000:5000"
+#    environment:
+#      NODE_ENV: development
+#      DATABASE_URL: postgresql://rtpi:rtpi@postgres:5432/rtpi_main
+#      REDIS_URL: redis://redis:6379
+#      PORT: 3000
+#    volumes:
+#      - .:/app
+#      - /app/node_modules
+#    depends_on:
+#      postgres:
+#        condition: service_healthy
+#      redis:
+#        condition: service_healthy
+#    networks:
+#      - rtpi-network
 
 networks:
   rtpi-network:
@@ -69,3 +90,6 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  tool-results:
+  tool-configs:
+  shared-data:

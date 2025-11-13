@@ -18,15 +18,33 @@ export default function Operations() {
 
   const handleCreateOperation = async (data: any) => {
     try {
+      console.log("Saving operation:", data);
+      
       if (editingOperation) {
+        console.log("Updating operation:", editingOperation.id);
         await update(editingOperation.id, data);
         setEditingOperation(null);
       } else {
-        await create(data);
+        console.log("Creating new operation");
+        const result = await create(data);
+        console.log("Operation created:", result);
       }
+      
+      console.log("Refetching operations list...");
+      
+      // Add small delay to ensure database has committed
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
       await refetch();
-    } catch (err) {
+      
+      console.log("Operations refetched successfully");
+      console.log("Current operations count:", operations.length);
+      
+      // Don't close form here - let the form handle its own closing
+    } catch (err: any) {
       console.error("Failed to save operation:", err);
+      alert(`Failed to save operation: ${err.message || "Unknown error"}`);
+      throw err; // Re-throw so form can show error
     }
   };
 

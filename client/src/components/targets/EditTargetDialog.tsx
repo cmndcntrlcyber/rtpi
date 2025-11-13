@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Target, Trash2 } from "lucide-react";
+import { Target, Trash2, RotateCcw } from "lucide-react";
 import DynamicFieldList from "@/components/shared/DynamicFieldList";
 import LinkedVulnerabilities from "./LinkedVulnerabilities";
 
@@ -37,6 +37,7 @@ interface EditTargetDialogProps {
   onDelete?: (id: string) => void;
   onViewVulnerabilities?: (targetId: string) => void;
   onAddVulnerability?: (targetId: string) => void;
+  onRunAgentLoop?: (target: any) => void;
 }
 
 export default function EditTargetDialog({
@@ -48,6 +49,7 @@ export default function EditTargetDialog({
   onDelete,
   onViewVulnerabilities,
   onAddVulnerability,
+  onRunAgentLoop,
 }: EditTargetDialogProps) {
   const [formData, setFormData] = useState<TargetData>({
     name: "",
@@ -335,11 +337,24 @@ export default function EditTargetDialog({
 
           {/* Dialog Footer with Actions */}
           <DialogFooter className="flex justify-between items-center">
-            <div className="flex-1">
+            <div className="flex-1 flex gap-2">
               {isEditing && onDelete && (
                 <Button type="button" variant="destructive" onClick={handleDelete}>
                   <Trash2 className="h-4 w-4 mr-1" />
                   Delete
+                </Button>
+              )}
+              {isEditing && onRunAgentLoop && (
+                <Button 
+                  type="button" 
+                  onClick={() => {
+                    onClose();
+                    onRunAgentLoop(target);
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  <RotateCcw className="h-4 w-4 mr-1" />
+                  Run Agent Loop
                 </Button>
               )}
             </div>

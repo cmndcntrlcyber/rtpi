@@ -112,10 +112,41 @@ export default function Targets() {
     }
   };
 
-  const handleScanTarget = (target: any) => {
-    console.log("Scan target:", target);
-    // TODO: Implement scan functionality in future
-    alert(`Scan functionality for ${target.name} will be implemented in future updates`);
+  const handleScanTarget = async (target: any) => {
+    if (!confirm(`Start nmap scan on ${target.name} (${target.value})?\n\nThis will scan all 65535 ports and may take several minutes.`)) {
+      return;
+    }
+
+    try {
+      console.log("Starting scan for target:", target);
+      
+      // Show loading state
+      const loadingAlert = `Scanning ${target.name}...\nThis may take up to 10 minutes for a full port scan.`;
+      alert(loadingAlert);
+
+      // Call scan API
+      const response = await api.post(`/targets/${target.id}/scan`);
+      
+      // Show results
+      const { openPorts, scanDuration, scanOutput } = response;
+      const durationSeconds = (scanDuration / 1000).toFixed(2);
+      
+      alert(
+        `Scan Completed!\n\n` +
+        `Target: ${target.name}\n` +
+        `Duration: ${durationSeconds} seconds\n` +
+        `Open Ports Found: ${openPorts}\n\n` +
+        `Full scan results have been saved to the target metadata.\n` +
+        `Check the target details to view the complete nmap output.`
+      );
+
+      // Refresh targets to show updated data
+      await loadData();
+    } catch (error: any) {
+      console.error("Scan failed:", error);
+      const errorMsg = error.response?.data?.details || error.message || "Unknown error";
+      alert(`Scan failed: ${errorMsg}`);
+    }
   };
 
   const handleViewVulnerabilities = (targetId: string) => {

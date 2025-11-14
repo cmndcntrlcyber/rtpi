@@ -207,7 +207,7 @@ The rtpi-tools container starts automatically with docker-compose:
 docker-compose up -d
 
 # Production
-docker-compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d
 
 # Verify container is running
 docker ps | grep rtpi-tools
@@ -438,20 +438,20 @@ cp .env.example .env
 2. **Build and start services:**
 
 ```bash
-docker-compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d
 ```
 
 3. **Run database migrations:**
 
 ```bash
-docker-compose -f docker-compose.prod.yml exec app npm run db:push
+docker compose -f docker-compose.prod.yml exec app npm run db:push
 ```
 
 4. **Verify deployment:**
 
 ```bash
-docker-compose -f docker-compose.prod.yml ps
-docker-compose -f docker-compose.prod.yml logs
+docker compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml logs
 ```
 
 ### Method 2: Manual Deployment
@@ -594,30 +594,30 @@ volumes:
 
 ```bash
 # Start services
-docker-compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d
 
 # View logs
-docker-compose -f docker-compose.prod.yml logs -f
+docker compose -f docker-compose.prod.yml logs -f
 
 # View specific service logs
-docker-compose -f docker-compose.prod.yml logs -f app
+docker compose -f docker-compose.prod.yml logs -f app
 
 # Restart services
-docker-compose -f docker-compose.prod.yml restart
+docker compose -f docker-compose.prod.yml restart
 
 # Stop services
-docker-compose -f docker-compose.prod.yml down
+docker compose -f docker-compose.prod.yml down
 
 # Stop services and remove volumes (WARNING: deletes data)
-docker-compose -f docker-compose.prod.yml down -v
+docker compose -f docker-compose.prod.yml down -v
 
 # Update application
 git pull
-docker-compose -f docker-compose.prod.yml build --no-cache
-docker-compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml build --no-cache
+docker compose -f docker-compose.prod.yml up -d
 
 # Run database migrations after update
-docker-compose -f docker-compose.prod.yml exec app npm run db:push
+docker compose -f docker-compose.prod.yml exec app npm run db:push
 
 # Database backup
 docker exec rtpi-postgres-prod pg_dump -U rtpi rtpi_main > backup.sql
@@ -810,7 +810,7 @@ Logs are written to stdout/stderr and can be captured:
 
 ```bash
 # Docker logs
-docker-compose -f docker-compose.prod.yml logs -f app
+docker compose -f docker-compose.prod.yml logs -f app
 
 # PM2 logs
 pm2 logs rtpi
@@ -943,8 +943,8 @@ tar -xzf uploads_backup_20250111.tar.gz
 
 ```bash
 # Check PostgreSQL status (use production container names)
-docker-compose -f docker-compose.prod.yml ps postgres
-docker-compose -f docker-compose.prod.yml logs postgres
+docker compose -f docker-compose.prod.yml ps postgres
+docker compose -f docker-compose.prod.yml logs postgres
 
 # Verify connection
 docker exec -it rtpi-postgres-prod psql -U rtpi -d rtpi_main
@@ -953,15 +953,15 @@ docker exec -it rtpi-postgres-prod psql -U rtpi -d rtpi_main
 docker network inspect rtpi-network
 
 # Test connection from app container
-docker-compose -f docker-compose.prod.yml exec app nc -zv postgres 5432
+docker compose -f docker-compose.prod.yml exec app nc -zv postgres 5432
 ```
 
 #### Redis Connection Errors
 
 ```bash
 # Check Redis status
-docker-compose -f docker-compose.prod.yml ps redis
-docker-compose -f docker-compose.prod.yml logs redis
+docker compose -f docker-compose.prod.yml ps redis
+docker compose -f docker-compose.prod.yml logs redis
 
 # Test Redis connection with password
 docker exec -it rtpi-redis-prod redis-cli -a YOUR_REDIS_PASSWORD ping
@@ -969,7 +969,7 @@ docker exec -it rtpi-redis-prod redis-cli -a YOUR_REDIS_PASSWORD ping
 # Should return: PONG
 
 # Test from app container
-docker-compose -f docker-compose.prod.yml exec app nc -zv redis 6379
+docker compose -f docker-compose.prod.yml exec app nc -zv redis 6379
 ```
 
 #### Application Won't Start
@@ -1172,7 +1172,7 @@ npm run db:push
 npm run build
 
 # 6. Restart services
-docker-compose -f docker-compose.prod.yml restart app
+docker compose -f docker-compose.prod.yml restart app
 
 # 7. Verify deployment
 curl http://localhost:3000/api/v1/health-checks
@@ -1223,9 +1223,9 @@ For security vulnerabilities, please follow responsible disclosure:
 - [ ] CORS settings configured for production domain
 
 ### Deployment
-- [ ] Application built: `docker-compose -f docker-compose.prod.yml build`
-- [ ] Services started: `docker-compose -f docker-compose.prod.yml up -d`
-- [ ] Database migrations applied: `docker-compose -f docker-compose.prod.yml exec app npm run db:push`
+- [ ] Application built: `docker compose -f docker-compose.prod.yml build`
+- [ ] Services started: `docker compose -f docker-compose.prod.yml up -d`
+- [ ] Database migrations applied: `docker compose -f docker-compose.prod.yml exec app npm run db:push`
 - [ ] Health endpoints accessible and returning healthy status
 
 ### RTPI-Tools Container

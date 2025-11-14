@@ -3,6 +3,7 @@ import { db } from "../../db";
 import { targets } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
+import { dockerExecutor } from "../../services/docker-executor";
 
 const router = Router();
 
@@ -112,21 +113,82 @@ router.delete("/:id", ensureRole("admin"), async (req, res) => {
   }
 });
 
-// POST /api/v1/targets/:id/scan - Initiate scan
+// POST /api/v1/targets/:id/scan - Initiate nmap scan
 router.post("/:id/scan", ensureRole("admin", "operator"), async (req, res) => {
   const { id } = req.params;
   const user = req.user as any;
 
   try {
-    // TODO: Integrate with scanning tools
-    // For now, just log the action
+    // Get target details
+    const result = await db
+      .select()
+      .from(targets)
+      .where(eq(targets.id, id))
+      .limit(1);
+
+    if (!result || result.length === 0) {
+      return res.status(404).json({ error: "Target not found" });
+    }
+
+    const target = result[0];
+
+    console.log(`[Nmap] Starting scan on target: ${target.name} (${target.value})`);
+
+    // Execute nmap scan with specified arguments
+    const scanResult = await dockerExecutor.exec(
+      "rtpi-tools",
+      ["nmap", "-sV", "-T5", "-v5", "-p1-65535", target.value],
+      { timeout: 600000 } // 10 minutes timeout for full port scan
+    );
+
+    console.log(`[Nmap] Scan completed for ${target.name} in ${scanResult.duration}ms`);
+
+    // Parse scan results for key information
+    const openPorts = (scanResult.stdout.match(/open/gi) || []).length;
+    const scanTimestamp = new Date().toISOString();
+
+    // Store scan results in metadata
+    const currentMetadata = (target.metadata as any) || {};
+    const updatedMetadata = {
+      ...currentMetadata,
+      lastScan: {
+        timestamp: scanTimestamp,
+        duration: scanResult.duration,
+        openPorts,
+        output: scanResult.stdout,
+        command: `nmap -sV -T5 -v5 -p1-65535 ${target.value}`,
+        success: scanResult.exitCode === 0,
+      },
+    };
+
+    // Update target with scan results
+    await db
+      .update(targets)
+      .set({
+        metadata: updatedMetadata,
+        updatedAt: new Date(),
+      })
+      .where(eq(targets.id, id));
+
     await logAudit(user.id, "scan_target", "/targets", id, true, req);
 
-    res.json({ message: "Scan initiated", targetId: id });
+    res.json({
+      message: "Scan completed successfully",
+      targetId: id,
+      scanOutput: scanResult.stdout,
+      scanDuration: scanResult.duration,
+      openPorts,
+      exitCode: scanResult.exitCode,
+    });
   } catch (error) {
     console.error("Scan target error:", error);
+
     await logAudit(user.id, "scan_target", "/targets", id, false, req);
-    res.status(500).json({ error: "Failed to initiate scan" });
+    
+    res.status(500).json({
+      error: "Failed to complete scan",
+      details: error instanceof Error ? error.message : String(error),
+    });
   }
 });
 

@@ -15,6 +15,7 @@ import { useMCPServers } from "@/hooks/useMCPServers";
 import { useTargets } from "@/hooks/useTargets";
 import { useTools } from "@/hooks/useTools";
 import { api } from "@/lib/api";
+import TargetEngagementDialog from "@/components/agents/TargetEngagementDialog";
 import {
   DndContext,
   closestCenter,

@@ -25,14 +25,15 @@ import toolsRoutes from "./api/v1/tools";
 import settingsRoutes from "./api/v1/settings";
 import agentLoopsRoutes from "./api/v1/agent-loops";
 import agentMcpRoutes from "./api/v1/agent-mcp";
+import metasploitRoutes from "./api/v1/metasploit";
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || "http://localhost:5000",
+  origin: process.env.CORS_ORIGIN || "http://0.0.0.0:5000",
   credentials: true,
 }));
 app.use(express.json());
@@ -75,6 +76,7 @@ app.use("/api/v1/tools", toolsRoutes);
 app.use("/api/v1/settings", settingsRoutes);
 app.use("/api/v1/agent-loops", agentLoopsRoutes);
 app.use("/api/v1/agents", agentMcpRoutes);
+app.use("/api/v1/metasploit", metasploitRoutes);
 
 // Root endpoint
 app.get("/api/v1", (req, res) => {
@@ -118,7 +120,7 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 });
 
 // Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`📚 API documentation: http://localhost:${PORT}/api/v1`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
+  console.log(`📚 API documentation: http://0.0.0.0:${PORT}/api/v1`);
 });

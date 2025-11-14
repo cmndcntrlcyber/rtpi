@@ -43,8 +43,7 @@ services:
       context: .
       dockerfile: Dockerfile.tools
     container_name: rtpi-tools
-    networks:
-      - rtpi-network
+    network_mode: "host"
     volumes:
       - tool-results:/var/log/rtpi
       - tool-configs:/opt/tools/config

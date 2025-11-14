@@ -32,14 +32,15 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
-            <img src="/RTPI.png" alt="RTPI Logo" className="h-16 w-16" />
-          </div>
-          <CardTitle>Login to RTPI</CardTitle>
-          <CardDescription>Red Team Portable Infrastructure</CardDescription>
-        </CardHeader>
+      <div className="w-full max-w-md">
+        <div className="flex justify-center mb-2">
+          <img src="/RTPI.png" alt="RTPI Logo" className="w-[100%]" />
+        </div>
+        <Card className="w-full">
+          <CardHeader className="text-center">
+            <CardTitle>Login to RTPI</CardTitle>
+            <CardDescription>Red Team Portable Infrastructure</CardDescription>
+          </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
             {error && (
@@ -114,7 +115,8 @@ export default function Login() {
             </Button>
           </div>
         </CardContent>
-      </Card>
+        </Card>
+      </div>
     </div>
   );
 }

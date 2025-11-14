@@ -154,7 +154,7 @@ The deployment configuration had several critical issues that would have prevent
 1. **Test Development Environment:**
    ```bash
    cp .env.example .env
-   docker-compose up -d
+   docker compose up -d
    npm run db:push
    npm run dev  # Terminal 1
    npm run dev:frontend  # Terminal 2
@@ -162,15 +162,15 @@ The deployment configuration had several critical issues that would have prevent
 
 2. **Test Production Build:**
    ```bash
-   docker-compose -f docker-compose.prod.yml build
-   docker-compose -f docker-compose.prod.yml up -d
-   docker-compose -f docker-compose.prod.yml exec app npm run db:push
+   docker compose -f docker-compose.prod.yml build
+   docker compose -f docker-compose.prod.yml up -d
+   docker compose -f docker-compose.prod.yml exec app npm run db:push
    ```
 
 3. **Verify Services:**
    ```bash
    # Check all containers are running
-   docker-compose -f docker-compose.prod.yml ps
+   docker compose -f docker-compose.prod.yml ps
    
    # Test health endpoints
    curl http://localhost:3000/api/v1/health-checks
@@ -215,25 +215,25 @@ echo "REDIS_PASSWORD=$(openssl rand -base64 32)" >> .env
 ### 3. Rebuild and Deploy
 ```bash
 # Rebuild containers
-docker-compose -f docker-compose.prod.yml build --no-cache
+docker compose -f docker-compose.prod.yml build --no-cache
 
 # Stop old containers
-docker-compose -f docker-compose.prod.yml down
+docker compose -f docker-compose.prod.yml down
 
 # Start new containers
-docker-compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d
 
 # Run migrations
-docker-compose -f docker-compose.prod.yml exec app npm run db:push
+docker compose -f docker-compose.prod.yml exec app npm run db:push
 ```
 
 ### 4. Verify Deployment
 ```bash
 # Check services
-docker-compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml ps
 
 # Check logs
-docker-compose -f docker-compose.prod.yml logs -f
+docker compose -f docker-compose.prod.yml logs -f
 
 # Test application
 curl http://localhost:3000/api/v1/health-checks
@@ -281,8 +281,8 @@ curl http://localhost:3000/api/v1/health-checks
 
 If you encounter issues after applying these fixes:
 
-1. Check container logs: `docker-compose -f docker-compose.prod.yml logs -f`
-2. Verify environment variables: `docker-compose -f docker-compose.prod.yml config`
+1. Check container logs: `docker compose -f docker-compose.prod.yml logs -f`
+2. Verify environment variables: `docker compose -f docker-compose.prod.yml config`
 3. Review the updated [DEPLOYMENT.md](./DEPLOYMENT.md) documentation
 4. Check [Troubleshooting section](./DEPLOYMENT.md#troubleshooting) in deployment guide
 

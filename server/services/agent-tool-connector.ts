@@ -2,6 +2,7 @@ import { db } from "../db";
 import { agents, targets, securityTools, mcpServers } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { dockerExecutor } from "./docker-executor";
+import { metasploitExecutor } from "./metasploit-executor";
 
 /**
  * Generic Agent-Tool Connector

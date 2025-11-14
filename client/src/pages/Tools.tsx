@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Wrench, ExternalLink, Terminal, Globe, Upload } from "lucide-react";
 import { useTools, useUploadToolFile, useDeleteTool } from "@/hooks/useTools";
 import ToolCard from "@/components/tools/ToolCard";
+import MetasploitCard from "@/components/tools/MetasploitCard";
 import ConfigureToolDialog from "@/components/tools/ConfigureToolDialog";
 import { Tool } from "@/services/tools";
 
@@ -144,16 +145,30 @@ export default function Tools() {
             <p className="text-sm text-gray-500">Contact administrator to add security tools</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {tools.map((tool) => (
-              <ToolCard
-                key={tool.id}
-                tool={tool}
-                onConfigure={handleConfigure}
-                onDelete={handleDelete}
-              />
-            ))}
-          </div>
+          <>
+            {/* Metasploit tools get special treatment */}
+            {tools
+              .filter((tool) => tool.name.toLowerCase().includes("metasploit"))
+              .map((tool) => (
+                <div key={tool.id} className="mb-6">
+                  <MetasploitCard tool={tool} />
+                </div>
+              ))}
+
+            {/* Other tools in grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {tools
+                .filter((tool) => !tool.name.toLowerCase().includes("metasploit"))
+                .map((tool) => (
+                  <ToolCard
+                    key={tool.id}
+                    tool={tool}
+                    onConfigure={handleConfigure}
+                    onDelete={handleDelete}
+                  />
+                ))}
+            </div>
+          </>
         )}
       </div>
 

@@ -3,6 +3,7 @@ import { targetsService } from "@/services/targets";
 
 interface Target {
   id: string;
+  name?: string;
   hostname?: string;
   ipAddress?: string;
   domain?: string;

@@ -9,7 +9,7 @@ Unified platform for red team operations, combining attack-node, MCP-Nexus, and 
 npm install
 
 # Start database and Redis services
-docker-compose up -d
+docker compose up -d
 
 # Run database migrations
 npm run db:push

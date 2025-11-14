@@ -2,6 +2,7 @@ import { api } from "@/lib/api";
 
 export interface Target {
   id: string;
+  name?: string;
   hostname?: string;
   ipAddress?: string;
   domain?: string;

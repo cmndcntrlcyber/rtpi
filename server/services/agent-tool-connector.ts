@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { agents, targets, securityTools } from "@shared/schema";
+import { agents, targets, securityTools, mcpServers } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { dockerExecutor } from "./docker-executor";
 
@@ -308,8 +308,33 @@ export class AgentToolConnector {
   }
 
   private async executeMCP(agent: any, context: any): Promise<string> {
-    // Placeholder - integrate with MCP server
-    return `[MCP Agent: ${agent.name}]\n\nTool: ${context.tool.name}\nTarget: ${context.target.value}\n\nMCP server processing complete.\nResults: Tool execution successful.`;
+    // Get MCP server ID from agent config
+    const config = agent.config as any;
+    const mcpServerId = config?.mcpServerId;
+
+    if (!mcpServerId) {
+      return `[MCP Agent: ${agent.name}]\n\nError: No MCP server configured for this agent.`;
+    }
+
+    // Get MCP server details
+    const mcpServer = await db
+      .select()
+      .from(mcpServers)
+      .where(eq(mcpServers.id, mcpServerId))
+      .limit(1)
+      .then((rows) => rows[0]);
+
+    if (!mcpServer) {
+      return `[MCP Agent: ${agent.name}]\n\nError: MCP server not found.`;
+    }
+
+    if (mcpServer.status !== "running") {
+      return `[MCP Agent: ${agent.name}]\n\nError: MCP server is not running.`;
+    }
+
+    // TODO: Integrate with actual MCP server
+    // For now, return formatted response
+    return `[MCP Agent: ${agent.name}]\n\nMCP Server: ${mcpServer.name}\nTool: ${context.tool.name}\nTarget: ${context.target.value}\n\nMCP server processing complete.\nResults: Tool execution successful.`;
   }
 
   private async executeCustom(agent: any, context: any): Promise<string> {

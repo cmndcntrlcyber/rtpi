@@ -13,6 +13,7 @@ import { Bot, Server, Activity, Clock, Plus, RotateCcw, Pause, Target, CheckCirc
 import { useAgents } from "@/hooks/useAgents";
 import { useMCPServers } from "@/hooks/useMCPServers";
 import { useTargets } from "@/hooks/useTargets";
+import { useTools } from "@/hooks/useTools";
 import { api } from "@/lib/api";
 import {
   DndContext,
@@ -79,9 +80,51 @@ function SortableAgentItem({ agent }: { agent: any }) {
   );
 }
 
+// Sortable tool item for drag-drop
+function SortableToolItem({ id, tool, index }: { id: string; tool: any; index: number }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      className="flex items-center p-2 bg-gray-50 border border-gray-200 rounded-lg"
+    >
+      <div className="flex items-center justify-center w-6 h-6 bg-indigo-100 rounded-full text-indigo-600 text-xs font-medium mr-2">
+        {index + 1}
+      </div>
+      <div
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing p-1 mr-2 text-gray-400 hover:text-gray-600"
+      >
+        <GripVertical className="h-4 w-4" />
+      </div>
+      <div className="flex-1">
+        <span className="text-sm font-medium text-gray-900">{tool.name}</span>
+        <span className="text-xs text-gray-500 ml-2">
+          ({tool.category.replace(/_/g, " ")})
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function Agents() {
   const { agents, loading: agentsLoading, refetch: refetchAgents } = useAgents();
   const { servers: mcpServers, loading: serversLoading, refetch: refetchServers } = useMCPServers();
+  const { tools } = useTools();
   
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -104,6 +147,8 @@ export default function Agents() {
       maxLoopIterations: 5,
       loopExitCondition: "functional_poc",
       flowOrder: 0,
+      enabledTools: [] as string[],
+      mcpServerId: "" as string,
     },
     capabilities: [],
   });
@@ -146,6 +191,8 @@ export default function Agents() {
         maxLoopIterations: config.maxLoopIterations || 5,
         loopExitCondition: config.loopExitCondition || "functional_poc",
         flowOrder: config.flowOrder || 0,
+        enabledTools: config.enabledTools || [],
+        mcpServerId: config.mcpServerId || "",
       },
       capabilities: agent.capabilities || [],
     });
@@ -180,6 +227,8 @@ export default function Agents() {
           maxLoopIterations: 5,
           loopExitCondition: "functional_poc",
           flowOrder: 0,
+          enabledTools: [],
+          mcpServerId: "",
         }, 
         capabilities: [] 
       });
@@ -297,6 +346,42 @@ export default function Agents() {
     }
   };
 
+  const handleStartServer = async (id: string) => {
+    try {
+      const response = await fetch(`/api/v1/mcp-servers/${id}/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+
+      if (!response.ok) throw new Error("Failed to start server");
+
+      await refetchServers();
+      alert("MCP server started successfully!");
+    } catch (err) {
+      console.error("Failed to start server:", err);
+      alert("Failed to start MCP server");
+    }
+  };
+
+  const handleStopServer = async (id: string) => {
+    try {
+      const response = await fetch(`/api/v1/mcp-servers/${id}/stop`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+
+      if (!response.ok) throw new Error("Failed to stop server");
+
+      await refetchServers();
+      alert("MCP server stopped successfully!");
+    } catch (err) {
+      console.error("Failed to stop server:", err);
+      alert("Failed to stop MCP server");
+    }
+  };
+
   const stats = {
     aiAgents: agents.length,
     active: agents.filter((a) => a.status === "running").length,
@@ -398,12 +483,37 @@ export default function Agents() {
                         <div className="mb-4 p-3 bg-gray-50 rounded">
                           <h4 className="text-xs font-semibold text-gray-700 mb-2">CAPABILITIES</h4>
                           <p className="text-xs text-gray-600">
-                            {agent.type === "openai" && "Report generation, vulnerability analysis, CVSS scoring, remediation suggestions"}
+                            {agent.type === "openai" && "Advanced reasoning, vulnerability analysis, comprehensive reporting, ethical assessment"}
                             {agent.type === "anthropic" && "Advanced reasoning, vulnerability analysis, comprehensive reporting, ethical assessment"}
                             {agent.type === "mcp_server" && "Tool integration, automated workflows, external service connectivity"}
                             {agent.type === "custom" && "Custom AI processing and analysis"}
                           </p>
                         </div>
+
+                        {/* Tools Enabled Section */}
+                        {config?.enabledTools && config.enabledTools.length > 0 && (
+                          <div className="mb-4 p-3 bg-indigo-50 rounded border-l-4 border-indigo-600">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Zap className="h-4 w-4 text-indigo-600" />
+                              <h4 className="text-xs font-semibold text-gray-700">TOOLS ENABLED</h4>
+                            </div>
+                            <div className="text-xs text-gray-600 space-y-1">
+                              {config.enabledTools.slice(0, 3).map((toolId: string) => {
+                                const tool = tools.find((t) => t.id === toolId);
+                                return tool ? (
+                                  <div key={toolId}>
+                                    • {tool.name} ({tool.category.replace(/_/g, " ")})
+                                  </div>
+                                ) : null;
+                              })}
+                              {config.enabledTools.length > 3 && (
+                                <div className="text-indigo-600 font-medium">
+                                  + {config.enabledTools.length - 3} more tools
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
 
                         {/* Loop Configuration Display */}
                         {config?.loopEnabled && loopPartner && (
@@ -683,6 +793,25 @@ export default function Agents() {
                         Auto-restart enabled
                       </div>
                     )}
+                    <div className="flex gap-2 mt-4">
+                      {server.status === "stopped" && (
+                        <Button
+                          size="sm"
+                          onClick={() => handleStartServer(server.id)}
+                        >
+                          Start Server
+                        </Button>
+                      )}
+                      {server.status === "running" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleStopServer(server.id)}
+                        >
+                          Stop Server
+                        </Button>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               ))}
@@ -785,6 +914,145 @@ export default function Agents() {
                 placeholder="Enter custom prompt to characterize this agent's behavior..."
                 rows={4}
               />
+            </div>
+
+            {/* Tools Enabled Section */}
+            <div className="border-t border-gray-200 pt-4">
+              <div className="flex items-center gap-2 mb-4">
+                <Zap className="h-4 w-4 text-indigo-600" />
+                <h3 className="text-lg font-semibold">Tools Enabled</h3>
+              </div>
+
+              <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-3">
+                {tools.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-2">
+                    No tools available. Please seed the tools database.
+                  </p>
+                ) : (
+                  tools.map((tool) => (
+                    <div key={tool.id} className="flex items-center gap-2 hover:bg-gray-50 p-2 rounded">
+                      <input
+                        type="checkbox"
+                        id={`tool-${tool.id}`}
+                        checked={newAgent.config.enabledTools.includes(tool.id)}
+                        onChange={(e) => {
+                          const enabledTools = e.target.checked
+                            ? [...newAgent.config.enabledTools, tool.id]
+                            : newAgent.config.enabledTools.filter((id) => id !== tool.id);
+                          setNewAgent({
+                            ...newAgent,
+                            config: { ...newAgent.config, enabledTools }
+                          });
+                        }}
+                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                      />
+                      <Label htmlFor={`tool-${tool.id}`} className="flex-1 mb-0 cursor-pointer">
+                        <span className="font-medium">{tool.name}</span>
+                        <span className="text-xs text-gray-500 ml-2">
+                          ({tool.category.replace(/_/g, " ")})
+                        </span>
+                      </Label>
+                    </div>
+                  ))
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Selected: {newAgent.config.enabledTools.length} tool(s)
+              </p>
+
+              {/* Tools Order Section */}
+              {newAgent.config.enabledTools.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-2">Tools Order</h4>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Drag to reorder how the agent will use these tools
+                  </p>
+                  
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={(event: DragEndEvent) => {
+                      const { active, over } = event;
+                      if (over && active.id !== over.id) {
+                        const oldIndex = newAgent.config.enabledTools.indexOf(active.id as string);
+                        const newIndex = newAgent.config.enabledTools.indexOf(over.id as string);
+                        const reordered = arrayMove(newAgent.config.enabledTools, oldIndex, newIndex);
+                        setNewAgent({
+                          ...newAgent,
+                          config: { ...newAgent.config, enabledTools: reordered }
+                        });
+                      }
+                    }}
+                  >
+                    <SortableContext
+                      items={newAgent.config.enabledTools}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="space-y-2">
+                        {newAgent.config.enabledTools.map((toolId, index) => {
+                          const tool = tools.find((t) => t.id === toolId);
+                          if (!tool) return null;
+
+                          return (
+                            <SortableToolItem 
+                              key={toolId}
+                              id={toolId}
+                              tool={tool}
+                              index={index}
+                            />
+                          );
+                        })}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
+
+                  <div className="mt-3 p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+                    <p className="text-xs text-gray-600">
+                      💡 The agent will execute tools in the order shown above (top to bottom)
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* MCP Server Integration Section */}
+            <div className="border-t border-gray-200 pt-4">
+              <div className="flex items-center gap-2 mb-4">
+                <Server className="h-4 w-4 text-purple-600" />
+                <h3 className="text-lg font-semibold">MCP Server Integration</h3>
+              </div>
+
+              <div>
+                <Label htmlFor="mcp-server">Select MCP Server (Optional)</Label>
+                <p className="text-sm text-gray-500 mb-2">
+                  Connect this agent to an MCP server for enhanced capabilities like web search and data extraction
+                </p>
+                <Select
+                  value={newAgent.config.mcpServerId || ""}
+                  onValueChange={(value) => setNewAgent({
+                    ...newAgent,
+                    config: { ...newAgent.config, mcpServerId: value || "" }
+                  })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="No MCP server selected" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {mcpServers
+                      .filter((s) => s.status === "running")
+                      .map((server) => (
+                        <SelectItem key={server.id} value={server.id}>
+                          {server.name} ({server.status})
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                {newAgent.config.mcpServerId && (
+                  <p className="text-xs text-purple-600 mt-2">
+                    ✓ Agent will have access to MCP tools (search, extract, crawl, map)
+                  </p>
+                )}
+              </div>
             </div>
 
             {/* Loop Configuration Section */}

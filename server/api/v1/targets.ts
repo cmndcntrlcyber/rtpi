@@ -68,10 +68,13 @@ router.put("/:id", ensureRole("admin", "operator"), async (req, res) => {
   const user = req.user as any;
 
   try {
+    // Exclude timestamp fields from request body to avoid Date conversion errors
+    const { createdAt, updatedAt, ...updateData } = req.body;
+
     const result = await db
       .update(targets)
       .set({
-        ...req.body,
+        ...updateData,
         updatedAt: new Date(),
       })
       .where(eq(targets.id, id))

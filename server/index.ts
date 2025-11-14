@@ -14,6 +14,7 @@ import authRoutes from "./api/v1/auth";
 import operationsRoutes from "./api/v1/operations";
 import targetsRoutes from "./api/v1/targets";
 import vulnerabilitiesRoutes from "./api/v1/vulnerabilities";
+import vulnerabilityTemplatesRoutes from "./api/v1/vulnerability-templates";
 import agentsRoutes from "./api/v1/agents";
 import devicesRoutes from "./api/v1/devices";
 import mcpServersRoutes from "./api/v1/mcp-servers";
@@ -23,6 +24,7 @@ import reportsRoutes from "./api/v1/reports";
 import toolsRoutes from "./api/v1/tools";
 import settingsRoutes from "./api/v1/settings";
 import agentLoopsRoutes from "./api/v1/agent-loops";
+import agentMcpRoutes from "./api/v1/agent-mcp";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -62,6 +64,7 @@ app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/operations", operationsRoutes);
 app.use("/api/v1/targets", targetsRoutes);
 app.use("/api/v1/vulnerabilities", vulnerabilitiesRoutes);
+app.use("/api/v1/vulnerability-templates", vulnerabilityTemplatesRoutes);
 app.use("/api/v1/agents", agentsRoutes);
 app.use("/api/v1/devices", devicesRoutes);
 app.use("/api/v1/mcp-servers", mcpServersRoutes);
@@ -71,6 +74,7 @@ app.use("/api/v1/reports", reportsRoutes);
 app.use("/api/v1/tools", toolsRoutes);
 app.use("/api/v1/settings", settingsRoutes);
 app.use("/api/v1/agent-loops", agentLoopsRoutes);
+app.use("/api/v1/agents", agentMcpRoutes);
 
 // Root endpoint
 app.get("/api/v1", (req, res) => {

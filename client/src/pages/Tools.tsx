@@ -1,21 +1,23 @@
 import { useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Wrench, ExternalLink, Terminal, Globe, Upload } from "lucide-react";
-import { useTools, useExecuteTool, useLaunchTool, useUploadToolFile } from "@/hooks/useTools";
+import { useTools, useUploadToolFile, useDeleteTool } from "@/hooks/useTools";
+import ToolCard from "@/components/tools/ToolCard";
+import ConfigureToolDialog from "@/components/tools/ConfigureToolDialog";
+import { Tool } from "@/services/tools";
 
 export default function Tools() {
   const { tools, loading, refetch } = useTools();
-  const { execute, executing } = useExecuteTool();
-  const { launch, launching } = useLaunchTool();
   const { upload, uploading } = useUploadToolFile();
+  const { deleteTool } = useDeleteTool();
   
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
-  const [selectedTool, setSelectedTool] = useState<any>(null);
+  const [configureDialogOpen, setConfigureDialogOpen] = useState(false);
+  const [selectedTool, setSelectedTool] = useState<Tool | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const stats = {
@@ -24,20 +26,28 @@ export default function Tools() {
     available: tools.filter((t) => t.status === "available").length,
   };
 
-  const handleLaunchTool = async (tool: any) => {
+  const handleConfigure = (tool: Tool) => {
+    setSelectedTool(tool);
+    setConfigureDialogOpen(true);
+  };
+
+  const handleDelete = async (toolId: string) => {
     try {
-      if (tool.endpoint) {
-        await launch(tool.id);
-      } else {
-        await execute(tool.id);
-        await refetch();
-      }
+      await deleteTool(toolId);
+      alert("Tool deleted successfully");
+      await refetch();
     } catch (err) {
-      console.error("Failed to launch tool:", err);
+      console.error("Failed to delete tool:", err);
+      alert("Failed to delete tool: " + (err instanceof Error ? err.message : "Unknown error"));
     }
   };
 
-  const handleUploadClick = (tool: any) => {
+  const handleSaveConfig = async (toolId: string, targetId: string, params: any) => {
+    // TODO: Implement saving parameters to tool metadata
+    console.log("Saving config:", { toolId, targetId, params });
+  };
+
+  const handleUploadClick = (tool: Tool) => {
     setSelectedTool(tool);
     setUploadDialogOpen(true);
   };
@@ -95,7 +105,7 @@ export default function Tools() {
               <p className="text-sm text-gray-600 mb-4">
                 Access full desktop environments with pre-installed security tools
               </p>
-              <Button onClick={() => window.open("https://kasm.local", "_blank")} disabled={launching}>
+              <Button onClick={() => window.open("https://kasm.local", "_blank")}>
                 <ExternalLink className="h-4 w-4 mr-2" />
                 Launch Kasm
               </Button>
@@ -113,7 +123,7 @@ export default function Tools() {
               <p className="text-sm text-gray-600 mb-4">
                 Manage command and control operations
               </p>
-              <Button onClick={() => window.open("http://localhost:1337", "_blank")} disabled={launching}>
+              <Button onClick={() => window.open("http://localhost:1337", "_blank")}>
                 <ExternalLink className="h-4 w-4 mr-2" />
                 Open Console
               </Button>
@@ -136,73 +146,27 @@ export default function Tools() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {tools.map((tool) => (
-              <Card key={tool.id} className="bg-white">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center">
-                      <div className="w-8 h-8 rounded bg-indigo-100 flex items-center justify-center mr-3">
-                        <Wrench className="h-4 w-4 text-indigo-600" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-gray-900">{tool.name}</h3>
-                        <p className="text-xs text-gray-500">{tool.category}</p>
-                      </div>
-                    </div>
-                    <Badge
-                      variant="secondary"
-                      className={`text-xs ${
-                        tool.status === "running"
-                          ? "bg-green-500/10 text-green-600"
-                          : "bg-gray-500/10 text-gray-600"
-                      }`}
-                    >
-                      {tool.status}
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-gray-600 mb-3">{tool.description}</p>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleLaunchTool(tool)}
-                      disabled={executing || launching}
-                      className="flex-1"
-                    >
-                      {tool.endpoint ? (
-                        <>
-                          <ExternalLink className="h-3 w-3 mr-1" />
-                          Launch
-                        </>
-                      ) : (
-                        <>
-                          <Terminal className="h-3 w-3 mr-1" />
-                          Execute
-                        </>
-                      )}
-                    </Button>
-                    {tool.name.toLowerCase().includes("burp") && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleUploadClick(tool)}
-                        title="Upload Burp Suite JAR"
-                      >
-                        <Upload className="h-3 w-3" />
-                      </Button>
-                    )}
-                  </div>
-                  {tool.version && (
-                    <p className="text-xs text-gray-500 mt-2">Version: {tool.version}</p>
-                  )}
-                  {tool.configPath && (
-                    <p className="text-xs text-green-600 mt-1">✓ Custom file uploaded</p>
-                  )}
-                </CardContent>
-              </Card>
+              <ToolCard
+                key={tool.id}
+                tool={tool}
+                onConfigure={handleConfigure}
+                onDelete={handleDelete}
+              />
             ))}
           </div>
         )}
       </div>
+
+      {/* Configure Dialog */}
+      <ConfigureToolDialog
+        open={configureDialogOpen}
+        tool={selectedTool}
+        onClose={() => {
+          setConfigureDialogOpen(false);
+          setSelectedTool(null);
+        }}
+        onSave={handleSaveConfig}
+      />
 
       {/* Upload Dialog */}
       <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>

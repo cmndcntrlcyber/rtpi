@@ -41,9 +41,25 @@ router.post("/start", async (req, res) => {
   const user = req.user as any;
   const { agentId, targetId, initialInput } = req.body;
 
+  // Validate required fields
   if (!agentId || !targetId || !initialInput) {
     return res.status(400).json({ 
       error: "Missing required fields: agentId, targetId, initialInput" 
+    });
+  }
+
+  // Validate UUID format
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  
+  if (!uuidRegex.test(agentId)) {
+    return res.status(400).json({ 
+      error: "Invalid agentId format. Must be a valid UUID." 
+    });
+  }
+
+  if (!uuidRegex.test(targetId)) {
+    return res.status(400).json({ 
+      error: "Invalid targetId format. Must be a valid UUID." 
     });
   }
 

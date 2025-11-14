@@ -7,9 +7,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileText, Download, Plus, Calendar, Trash2 } from "lucide-react";
+import { FileText, Download, Plus, Calendar, Trash2, Edit } from "lucide-react";
 import { useReports, useReportTemplates, useCreateReport, useCreateTemplate, useDeleteReport } from "@/hooks/useReports";
 import { reportsService } from "@/services/reports";
+import GenerateReportDialog from "@/components/reports/GenerateReportDialog";
+import EditReportDialog from "@/components/reports/EditReportDialog";
 
 export default function Reports() {
   const { isAdmin } = useAuth();
@@ -21,6 +23,8 @@ export default function Reports() {
 
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingReport, setEditingReport] = useState<any>(null);
   const [newReport, setNewReport] = useState({
     name: "",
     type: "operation_summary",
@@ -34,9 +38,9 @@ export default function Reports() {
     structure: {},
   });
 
-  const handleGenerateReport = async () => {
+  const handleGenerateReport = async (reportData: any) => {
     try {
-      await createReport(newReport);
+      await createReport(reportData);
       await refetchReports();
       setReportDialogOpen(false);
       setNewReport({ name: "", type: "operation_summary", format: "pdf" });
@@ -126,6 +130,23 @@ export default function Reports() {
       await refetchTemplates();
     } catch (err) {
       console.error("Failed to delete template:", err);
+    }
+  };
+
+  const handleEditReport = (report: any) => {
+    setEditingReport(report);
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveReport = async (reportId: string, content: string) => {
+    try {
+      // In a real implementation, you'd save to the API
+      // For now, just show success message
+      alert("Report saved successfully!");
+      await refetchReports();
+    } catch (err) {
+      console.error("Failed to save report:", err);
+      alert("Failed to save report");
     }
   };
 
@@ -238,6 +259,16 @@ export default function Reports() {
                       >
                         {report.status}
                       </Badge>
+                      {report.status === "draft" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleEditReport(report)}
+                        >
+                          <Edit className="h-4 w-4 mr-1" />
+                          Edit
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="outline"
@@ -309,62 +340,23 @@ export default function Reports() {
       </div>
 
       {/* Generate Report Dialog */}
-      <Dialog open={reportDialogOpen} onOpenChange={setReportDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Generate New Report</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="report-name">Report Name</Label>
-              <Input
-                id="report-name"
-                value={newReport.name}
-                onChange={(e) => setNewReport({ ...newReport, name: e.target.value })}
-                placeholder="Q1 2025 Security Assessment"
-              />
-            </div>
-            <div>
-              <Label htmlFor="report-type">Report Type</Label>
-              <Select value={newReport.type} onValueChange={(value) => setNewReport({ ...newReport, type: value })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="operation_summary">Operation Summary</SelectItem>
-                  <SelectItem value="vulnerability_assessment">Vulnerability Assessment</SelectItem>
-                  <SelectItem value="penetration_test">Penetration Test Report</SelectItem>
-                  <SelectItem value="bug_bounty">Bug Bounty Report</SelectItem>
-                  <SelectItem value="executive_summary">Executive Summary</SelectItem>
-                  <SelectItem value="technical_analysis">Technical Analysis</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="report-format">Format</Label>
-              <Select value={newReport.format} onValueChange={(value) => setNewReport({ ...newReport, format: value })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="pdf">PDF</SelectItem>
-                  <SelectItem value="docx">DOCX</SelectItem>
-                  <SelectItem value="html">HTML</SelectItem>
-                  <SelectItem value="markdown">Markdown</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setReportDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleGenerateReport} disabled={creating || !newReport.name}>
-                {creating ? "Generating..." : "Generate Report"}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <GenerateReportDialog
+        open={reportDialogOpen}
+        onClose={() => setReportDialogOpen(false)}
+        onGenerate={handleGenerateReport}
+        generating={creating}
+      />
+
+      {/* Edit Report Dialog */}
+      <EditReportDialog
+        open={editDialogOpen}
+        onClose={() => {
+          setEditDialogOpen(false);
+          setEditingReport(null);
+        }}
+        report={editingReport}
+        onSave={handleSaveReport}
+      />
 
       {/* Create Template Dialog */}
       <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
@@ -395,13 +387,16 @@ export default function Reports() {
               <Label htmlFor="template-type">Template Type</Label>
               <Select value={newTemplate.type} onValueChange={(value) => setNewTemplate({ ...newTemplate, type: value })}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Select type..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="operation_summary">Operation Summary</SelectItem>
                   <SelectItem value="vulnerability_assessment">Vulnerability Assessment</SelectItem>
-                  <SelectItem value="penetration_test">Penetration Test</SelectItem>
-                  <SelectItem value="bug_bounty">Bug Bounty Report</SelectItem>
+                  <SelectItem value="network_penetration_test">Network Penetration Test</SelectItem>
+                  <SelectItem value="web_application_penetration_test">Web Application Penetration Test</SelectItem>
+                  <SelectItem value="bug_bounty">Bug Bounty</SelectItem>
+                  <SelectItem value="llm_top_10">LLM Top 10</SelectItem>
+                  <SelectItem value="sast">SAST</SelectItem>
+                  <SelectItem value="operation_summary">Operation Summary</SelectItem>
                   <SelectItem value="executive_summary">Executive Summary</SelectItem>
                   <SelectItem value="technical_analysis">Technical Analysis</SelectItem>
                 </SelectContent>

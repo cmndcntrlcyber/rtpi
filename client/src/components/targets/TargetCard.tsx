@@ -5,14 +5,17 @@ import { Globe, Server, Radio, Edit, Trash2, Scan } from "lucide-react";
 
 interface Target {
   id: string;
-  hostname?: string;
-  ipAddress?: string;
-  domain?: string;
-  port?: number;
-  status: string;
+  name: string;
+  type: string;
+  value: string;
+  description?: string;
+  priority?: number;
+  tags?: string[];
   operationId?: string;
-  notes?: string;
-  lastScanAt?: string;
+  discoveredServices?: any;
+  metadata?: any;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface TargetCardProps {
@@ -38,7 +41,23 @@ export default function TargetCard({ target, onSelect, onEdit, onDelete, onScan 
     }
   };
 
-  const displayName = target.hostname || target.domain || target.ipAddress || "Unknown Target";
+  const getTypeIcon = () => {
+    switch (target.type) {
+      case 'domain':
+        return <Globe className="h-5 w-5" />;
+      case 'network':
+      case 'range':
+        return <Radio className="h-5 w-5" />;
+      default:
+        return <Server className="h-5 w-5" />;
+    }
+  };
+
+  const getBadgeColor = () => {
+    if (target.priority && target.priority >= 4) return "bg-red-500/10 text-red-600";
+    if (target.priority && target.priority >= 3) return "bg-orange-500/10 text-orange-600";
+    return "bg-blue-500/10 text-blue-600";
+  };
 
   return (
     <Card 
@@ -49,46 +68,41 @@ export default function TargetCard({ target, onSelect, onEdit, onDelete, onScan 
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center flex-1">
             <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white mr-3">
-              <Server className="h-5 w-5" />
+              {getTypeIcon()}
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-gray-900 truncate">{displayName}</h3>
-              {target.ipAddress && (
-                <p className="text-sm text-gray-500 flex items-center mt-0.5">
-                  <Radio className="h-3 w-3 mr-1" />
-                  {target.ipAddress}
-                  {target.port && `:${target.port}`}
-                </p>
-              )}
+              <h3 className="font-semibold text-gray-900 truncate">{target.name}</h3>
+              <div className="flex items-center gap-2 mt-0.5">
+                <Badge variant="secondary" className="text-xs">
+                  {target.type}
+                </Badge>
+                {target.priority && (
+                  <Badge variant="secondary" className={`text-xs ${getBadgeColor()}`}>
+                    P{target.priority}
+                  </Badge>
+                )}
+              </div>
             </div>
           </div>
-          <Badge 
-            variant="secondary" 
-            className={`${statusColors[target.status as keyof typeof statusColors]} px-2 py-1 text-xs font-medium ml-2`}
-          >
-            {target.status}
-          </Badge>
         </div>
 
         {/* Target Details */}
         <div className="space-y-2 text-sm mb-3">
-          {target.domain && (
-            <div className="flex items-center text-gray-600">
-              <Globe className="h-4 w-4 mr-2" />
-              <span className="truncate">{target.domain}</span>
-            </div>
-          )}
-          {target.lastScanAt && (
+          <div className="flex items-center text-gray-600">
+            <Radio className="h-3 w-3 mr-2" />
+            <span className="truncate font-mono text-xs">{target.value}</span>
+          </div>
+          {target.updatedAt && (
             <div className="text-xs text-gray-500">
-              Last scan: {new Date(target.lastScanAt).toLocaleDateString()}
+              Updated: {new Date(target.updatedAt).toLocaleDateString()}
             </div>
           )}
         </div>
 
-        {/* Notes if exist */}
-        {target.notes && (
+        {/* Description if exists */}
+        {target.description && (
           <p className="text-sm text-gray-600 mt-3 pt-3 border-t border-gray-100 line-clamp-2">
-            {target.notes}
+            {target.description}
           </p>
         )}
 

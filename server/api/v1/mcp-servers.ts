@@ -3,6 +3,7 @@ import { db } from "../../db";
 import { mcpServers } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
+import { mcpServerManager } from "../../services/mcp-server-manager";
 
 const router = Router();
 
@@ -115,15 +116,18 @@ router.post("/:id/start", ensureRole("admin", "operator"), async (req, res) => {
   const user = req.user as any;
 
   try {
-    // TODO: Integrate with actual MCP server management
+    const success = await mcpServerManager.startServer(id);
+    
+    if (!success) {
+      await logAudit(user.id, "start_mcp_server", "/mcp-servers", id, false, req);
+      return res.status(500).json({ error: "Failed to start server" });
+    }
+
     const result = await db
-      .update(mcpServers)
-      .set({
-        status: "running",
-        uptime: new Date(),
-      })
+      .select()
+      .from(mcpServers)
       .where(eq(mcpServers.id, id))
-      .returning();
+      .limit(1);
 
     await logAudit(user.id, "start_mcp_server", "/mcp-servers", id, true, req);
 
@@ -140,15 +144,18 @@ router.post("/:id/stop", ensureRole("admin", "operator"), async (req, res) => {
   const user = req.user as any;
 
   try {
-    // TODO: Integrate with actual MCP server management
+    const success = await mcpServerManager.stopServer(id);
+    
+    if (!success) {
+      await logAudit(user.id, "stop_mcp_server", "/mcp-servers", id, false, req);
+      return res.status(500).json({ error: "Failed to stop server" });
+    }
+
     const result = await db
-      .update(mcpServers)
-      .set({
-        status: "stopped",
-        pid: null,
-      })
+      .select()
+      .from(mcpServers)
       .where(eq(mcpServers.id, id))
-      .returning();
+      .limit(1);
 
     await logAudit(user.id, "stop_mcp_server", "/mcp-servers", id, true, req);
 
@@ -165,15 +172,18 @@ router.post("/:id/restart", ensureRole("admin", "operator"), async (req, res) =>
   const user = req.user as any;
 
   try {
-    // TODO: Integrate with actual MCP server management
+    const success = await mcpServerManager.restartServer(id);
+    
+    if (!success) {
+      await logAudit(user.id, "restart_mcp_server", "/mcp-servers", id, false, req);
+      return res.status(500).json({ error: "Failed to restart server" });
+    }
+
     const result = await db
-      .update(mcpServers)
-      .set({
-        restartCount: db.$increment(mcpServers.restartCount, 1),
-        uptime: new Date(),
-      })
+      .select()
+      .from(mcpServers)
       .where(eq(mcpServers.id, id))
-      .returning();
+      .limit(1);
 
     await logAudit(user.id, "restart_mcp_server", "/mcp-servers", id, true, req);
 

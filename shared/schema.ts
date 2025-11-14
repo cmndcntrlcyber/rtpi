@@ -129,12 +129,15 @@ export const vulnerabilities = pgTable("vulnerabilities", {
   cweId: text("cwe_id"),
   targetId: uuid("target_id").references(() => targets.id, { onDelete: "cascade" }),
   operationId: uuid("operation_id").references(() => operations.id, { onDelete: "cascade" }),
+  templateId: uuid("template_id").references(() => vulnerabilityTemplates.id),
   proofOfConcept: text("proof_of_concept"),
   remediation: text("remediation"),
   references: json("references").default([]),
   affectedServices: json("affected_services"),
   exploitability: text("exploitability"),
   impact: text("impact"),
+  status: text("status").notNull().default("open"),
+  aiGenerated: json("ai_generated").default({}), // Tracks which fields were AI-generated
   discoveredAt: timestamp("discovered_at").notNull().defaultNow(),
   verifiedAt: timestamp("verified_at"),
   remediatedAt: timestamp("remediated_at"),
@@ -142,12 +145,43 @@ export const vulnerabilities = pgTable("vulnerabilities", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+export const vulnerabilityTemplates = pgTable("vulnerability_templates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  title: text("title").notNull(),
+  category: text("category").notNull(), // "web", "network", "mobile", "api", "cloud"
+  description: text("description").notNull(),
+  severity: severityEnum("severity").notNull(),
+  cvssVector: text("cvss_vector"),
+  cweId: text("cwe_id"),
+  remediationTemplate: text("remediation_template"),
+  pocTemplate: text("poc_template"),
+  impactTemplate: text("impact_template"),
+  exploitabilityTemplate: text("exploitability_template"),
+  tags: json("tags").default([]),
+  references: json("references").default([]),
+  isActive: boolean("is_active").notNull().default(true),
+  usageCount: integer("usage_count").notNull().default(0),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const vulnerabilityVersions = pgTable("vulnerability_versions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  vulnerabilityId: uuid("vulnerability_id").notNull().references(() => vulnerabilities.id, { onDelete: "cascade" }),
+  data: json("data").notNull(),
+  changedBy: uuid("changed_by").references(() => users.id),
+  changeDescription: text("change_description"),
+  changeType: text("change_type"), // "create", "update", "ai_generation"
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const agents = pgTable("agents", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   type: agentTypeEnum("type").notNull(),
   status: agentStatusEnum("status").notNull().default("idle"),
-  config: json("config"),
+  config: json("config"), // Contains: model, systemPrompt, loopEnabled, loopPartnerId, maxLoopIterations, loopExitCondition, flowOrder, enabledTools, mcpServerId
   capabilities: json("capabilities").default([]),
   lastActivity: timestamp("last_activity"),
   tasksCompleted: integer("tasks_completed").notNull().default(0),

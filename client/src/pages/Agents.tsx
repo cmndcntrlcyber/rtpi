@@ -9,13 +9,16 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Bot, Server, Activity, Clock, Plus, RotateCcw, Pause, Target, CheckCircle, AlertTriangle, Zap, GripVertical, ArrowRight } from "lucide-react";
+import { Bot, Server, Activity, Clock, Plus, RotateCcw, Pause, Target, CheckCircle, AlertTriangle, Zap, GripVertical, ArrowRight, X } from "lucide-react";
 import { useAgents } from "@/hooks/useAgents";
 import { useMCPServers } from "@/hooks/useMCPServers";
 import { useTargets } from "@/hooks/useTargets";
 import { useTools } from "@/hooks/useTools";
+import { useWorkflows, type WorkflowDetails } from "@/hooks/useWorkflows";
 import { api } from "@/lib/api";
 import TargetEngagementDialog from "@/components/agents/TargetEngagementDialog";
+import WorkflowProgressCard from "@/components/agents/WorkflowProgressCard";
+import WorkflowDetailsDialog from "@/components/agents/WorkflowDetailsDialog";
 import {
   DndContext,
   closestCenter,
@@ -36,8 +39,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-// Sortable agent item for drag-drop
-function SortableAgentItem({ agent }: { agent: any }) {
+// Sortable agent item for drag-drop with remove button
+function SortableAgentItem({ agent, onRemove }: { agent: any; onRemove: (agentId: string) => void }) {
   const {
     attributes,
     listeners,
@@ -73,9 +76,17 @@ function SortableAgentItem({ agent }: { agent: any }) {
           <h4 className="text-gray-900 font-medium">{agent.name}</h4>
           <p className="text-sm text-gray-500 capitalize">{agent.type} Agent</p>
         </div>
-        <div className="text-sm text-gray-500">
-          Order: {agent.config?.flowOrder || 0}
+        <div className="text-sm text-gray-500 mr-3">
+          Order: {agent.config?.flowOrder >= 0 ? agent.config.flowOrder : 0}
         </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => onRemove(agent.id)}
+          className="hover:bg-red-50 hover:text-red-600"
+        >
+          <X className="h-4 w-4" />
+        </Button>
       </div>
     </div>
   );
@@ -126,6 +137,7 @@ export default function Agents() {
   const { agents, loading: agentsLoading, refetch: refetchAgents } = useAgents();
   const { servers: mcpServers, loading: serversLoading, refetch: refetchServers } = useMCPServers();
   const { tools } = useTools();
+  const { runningWorkflows, workflows, getWorkflowDetails, cancelWorkflow } = useWorkflows();
   
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -136,12 +148,15 @@ export default function Agents() {
   
   const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const [serverDialogOpen, setServerDialogOpen] = useState(false);
+  const [workflowDetailsOpen, setWorkflowDetailsOpen] = useState(false);
+  const [selectedWorkflowDetails, setSelectedWorkflowDetails] = useState<WorkflowDetails | null>(null);
+  const [workflowTasksMap, setWorkflowTasksMap] = useState<Record<string, any[]>>({});
   const [editingAgent, setEditingAgent] = useState<any>(null);
   const [newAgent, setNewAgent] = useState({
     name: "",
     type: "openai" as any,
     config: {
-      model: "gpt-4",
+      model: "gpt-4o",
       systemPrompt: "",
       loopEnabled: false,
       loopPartnerId: "",
@@ -155,6 +170,7 @@ export default function Agents() {
   });
   const [activeLoops, setActiveLoops] = useState<any[]>([]);
   const { targets } = useTargets();
+  const [selectedTargetId, setSelectedTargetId] = useState<string>("");
   const [newServer, setNewServer] = useState({
     name: "",
     command: "",
@@ -185,7 +201,7 @@ export default function Agents() {
       name: agent.name,
       type: agent.type,
       config: {
-        model: config.model || (agent.type === "openai" ? "GPT-5" : "claude-sonnet-4-5-20250929"),
+        model: config.model || (agent.type === "openai" ? "gpt-4o" : "claude-sonnet-4-5-20250929"),
         systemPrompt: config.systemPrompt || "",
         loopEnabled: config.loopEnabled || false,
         loopPartnerId: config.loopPartnerId || "",
@@ -221,7 +237,7 @@ export default function Agents() {
         name: "", 
         type: "openai", 
         config: {
-          model: "GPT-5",
+          model: "gpt-4o",
           systemPrompt: "",
           loopEnabled: false,
           loopPartnerId: "",
@@ -382,6 +398,129 @@ export default function Agents() {
       alert("Failed to stop MCP server");
     }
   };
+
+  // Remove agent from flow (set flowOrder to -1)
+  const handleRemoveFromFlow = async (agentId: string) => {
+    const agent = agents.find((a) => a.id === agentId);
+    if (!agent) return;
+
+    try {
+      await fetch(`/api/v1/agents/${agentId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          config: { ...(agent.config as any), flowOrder: -1, activeInFlow: false }
+        }),
+      });
+
+      await refetchAgents();
+    } catch (err) {
+      console.error("Failed to remove agent from flow:", err);
+      alert("Failed to remove agent from flow");
+    }
+  };
+
+  // Add agent to flow
+  const handleAddToFlow = async (agentId: string) => {
+    const agent = agents.find((a) => a.id === agentId);
+    if (!agent) return;
+
+    // Find highest flowOrder and add 1
+    const activeAgents = agents.filter((a) => {
+      const order = (a.config as any)?.flowOrder;
+      return order !== undefined && order >= 0;
+    });
+    const maxOrder = activeAgents.length > 0
+      ? Math.max(...activeAgents.map((a) => (a.config as any)?.flowOrder || 0))
+      : -1;
+
+    try {
+      await fetch(`/api/v1/agents/${agentId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          config: { ...(agent.config as any), flowOrder: maxOrder + 1, activeInFlow: true }
+        }),
+      });
+
+      await refetchAgents();
+    } catch (err) {
+      console.error("Failed to add agent to flow:", err);
+      alert("Failed to add agent to flow");
+    }
+  };
+
+  // Execute workflow with selected target
+  const handleExecuteWorkflow = async () => {
+    if (!selectedTargetId) {
+      alert("Please select a target first");
+      return;
+    }
+
+    try {
+      const response = await api.post("/agent-workflows/start", {
+        targetId: selectedTargetId,
+        workflowType: "penetration_test"
+      });
+
+      alert(`Workflow started successfully! Workflow ID: ${response.workflow.id}`);
+      console.log("Workflow started:", response);
+    } catch (err) {
+      console.error("Failed to start workflow:", err);
+      alert("Failed to start workflow");
+    }
+  };
+
+  // View workflow details
+  const handleViewWorkflowDetails = async (workflowId: string) => {
+    try {
+      const details = await getWorkflowDetails(workflowId);
+      if (details) {
+        setSelectedWorkflowDetails(details);
+        setWorkflowDetailsOpen(true);
+      }
+    } catch (err) {
+      console.error("Failed to load workflow details:", err);
+      alert("Failed to load workflow details");
+    }
+  };
+
+  // Cancel workflow
+  const handleCancelWorkflow = async (workflowId: string) => {
+    if (!confirm("Are you sure you want to cancel this workflow?")) return;
+
+    try {
+      await cancelWorkflow(workflowId);
+      alert("Workflow cancelled successfully");
+    } catch (err) {
+      console.error("Failed to cancel workflow:", err);
+      alert("Failed to cancel workflow");
+    }
+  };
+
+  // Load tasks for running workflows
+  useEffect(() => {
+    const loadTasksForWorkflows = async () => {
+      const tasksMap: Record<string, any[]> = {};
+      
+      for (const workflow of runningWorkflows) {
+        try {
+          const response = await api.get(`/agent-workflows/${workflow.id}/tasks`);
+          tasksMap[workflow.id] = response.tasks || [];
+        } catch (err) {
+          console.error(`Failed to load tasks for workflow ${workflow.id}:`, err);
+        }
+      }
+      
+      setWorkflowTasksMap(tasksMap);
+    };
+
+    if (runningWorkflows.length > 0) {
+      loadTasksForWorkflows();
+    }
+  }, [runningWorkflows]);
 
   const stats = {
     aiAgents: agents.length,
@@ -582,63 +721,160 @@ export default function Agents() {
               {agents.length > 0 && (
                 <Card className="mt-6 bg-white">
                   <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          <ArrowRight className="h-5 w-5 text-blue-600" />
+                          Agent Flow Order
+                        </CardTitle>
+                        <p className="text-gray-600 text-sm mt-1">
+                          Drag and drop to organize the order that AI agents will communicate with each other
+                        </p>
+                      </div>
+                      
+                      {/* Target Selector & Execute Button */}
+                      <div className="flex flex-col items-end gap-2">
+                        <div className="flex items-center gap-2">
+                          <Target className="h-4 w-4 text-gray-500" />
+                          <Select value={selectedTargetId} onValueChange={setSelectedTargetId}>
+                            <SelectTrigger className="w-48">
+                              <SelectValue placeholder="Select target..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {targets.map((target) => (
+                                <SelectItem key={target.id} value={target.id}>
+                                  {target.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button
+                          onClick={handleExecuteWorkflow}
+                          disabled={!selectedTargetId}
+                          className="w-48 bg-green-600 hover:bg-green-700 text-white"
+                        >
+                          <Zap className="h-4 w-4 mr-2" />
+                          Execute
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {/* Filter agents in flow (flowOrder >= 0) */}
+                    {(() => {
+                      const agentsInFlow = [...agents]
+                        .filter((a) => {
+                          const order = (a.config as any)?.flowOrder;
+                          return order !== undefined && order >= 0;
+                        })
+                        .sort((a, b) => {
+                          const aOrder = (a.config as any)?.flowOrder || 0;
+                          const bOrder = (b.config as any)?.flowOrder || 0;
+                          return aOrder - bOrder;
+                        });
+
+                      const availableAgents = agents.filter((a) => {
+                        const order = (a.config as any)?.flowOrder;
+                        return order === undefined || order < 0;
+                      });
+
+                      return (
+                        <>
+                          <DndContext
+                            sensors={sensors}
+                            collisionDetection={closestCenter}
+                            onDragEnd={handleDragEnd}
+                          >
+                            <SortableContext
+                              items={agentsInFlow.map((agent) => agent.id)}
+                              strategy={verticalListSortingStrategy}
+                            >
+                              <div className="space-y-3">
+                                {agentsInFlow.map((agent, index) => (
+                                  <div key={agent.id} className="flex items-center gap-3">
+                                    <div className="flex items-center justify-center w-8 h-8 bg-blue-100 rounded-full text-blue-600 text-sm font-medium">
+                                      {index + 1}
+                                    </div>
+                                    <SortableAgentItem agent={agent} onRemove={handleRemoveFromFlow} />
+                                    {index < agentsInFlow.length - 1 && (
+                                      <ArrowRight className="h-4 w-4 text-gray-400" />
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </SortableContext>
+                          </DndContext>
+
+                          {/* Add Agent Section */}
+                          {availableAgents.length > 0 && (
+                            <div className="mt-6 p-4 bg-gray-50 border border-dashed border-gray-300 rounded-lg">
+                              <div className="flex items-center gap-3">
+                                <Plus className="h-4 w-4 text-gray-500" />
+                                <Select onValueChange={handleAddToFlow}>
+                                  <SelectTrigger className="flex-1">
+                                    <SelectValue placeholder="Add agent to flow..." />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {availableAgents.map((agent) => (
+                                      <SelectItem key={agent.id} value={agent.id}>
+                                        {agent.name} ({agent.type})
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <p className="text-xs text-gray-500 mt-2">
+                                {availableAgents.length} agent(s) available to add
+                              </p>
+                            </div>
+                          )}
+
+                          {/* How it Works Section */}
+                          {agentsInFlow.length > 1 && (
+                            <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                              <h4 className="text-sm font-medium text-gray-900 mb-2">How Agent Flow Works</h4>
+                              <ul className="text-xs text-gray-600 space-y-1">
+                                <li>• Agents execute in the order shown above (top to bottom)</li>
+                                <li>• Each agent can process and enhance the previous agent's output</li>
+                                <li>• Drag agents up or down to change their execution order</li>
+                                <li>• Click X to remove an agent from the flow</li>
+                                <li>• The final output combines insights from all agents in sequence</li>
+                              </ul>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Active Workflows Section */}
+              {runningWorkflows.length > 0 && (
+                <Card className="mt-6 bg-white">
+                  <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                      <ArrowRight className="h-5 w-5 text-blue-600" />
-                      Agent Flow Order
+                      <Activity className="h-5 w-5 text-blue-600" />
+                      Active Workflows
                     </CardTitle>
-                    <p className="text-gray-600 text-sm">
-                      Drag and drop to organize the order that AI agents will communicate with each other
+                    <p className="text-sm text-gray-600 mt-1">
+                      Real-time monitoring of running workflows with progress tracking
                     </p>
                   </CardHeader>
                   <CardContent>
-                    <DndContext
-                      sensors={sensors}
-                      collisionDetection={closestCenter}
-                      onDragEnd={handleDragEnd}
-                    >
-                      <SortableContext
-                        items={[...agents]
-                          .sort((a, b) => {
-                            const aOrder = (a.config as any)?.flowOrder || 0;
-                            const bOrder = (b.config as any)?.flowOrder || 0;
-                            return aOrder - bOrder;
-                          })
-                          .map((agent) => agent.id)}
-                        strategy={verticalListSortingStrategy}
-                      >
-                        <div className="space-y-3">
-                          {[...agents]
-                            .sort((a, b) => {
-                              const aOrder = (a.config as any)?.flowOrder || 0;
-                              const bOrder = (b.config as any)?.flowOrder || 0;
-                              return aOrder - bOrder;
-                            })
-                            .map((agent, index) => (
-                              <div key={agent.id} className="flex items-center gap-3">
-                                <div className="flex items-center justify-center w-8 h-8 bg-blue-100 rounded-full text-blue-600 text-sm font-medium">
-                                  {index + 1}
-                                </div>
-                                <SortableAgentItem agent={agent} />
-                                {index < agents.length - 1 && (
-                                  <ArrowRight className="h-4 w-4 text-gray-400" />
-                                )}
-                              </div>
-                            ))}
-                        </div>
-                      </SortableContext>
-                    </DndContext>
-
-                    {agents.length > 1 && (
-                      <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                        <h4 className="text-sm font-medium text-gray-900 mb-2">How Agent Flow Works</h4>
-                        <ul className="text-xs text-gray-600 space-y-1">
-                          <li>• Agents execute in the order shown above (top to bottom)</li>
-                          <li>• Each agent can process and enhance the previous agent's output</li>
-                          <li>• Drag agents up or down to change their execution order</li>
-                          <li>• The final output combines insights from all agents in sequence</li>
-                        </ul>
-                      </div>
-                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {runningWorkflows.map((workflow) => (
+                        <WorkflowProgressCard
+                          key={workflow.id}
+                          workflow={workflow}
+                          tasks={workflowTasksMap[workflow.id] || []}
+                          agents={agents}
+                          onCancel={handleCancelWorkflow}
+                          onViewDetails={handleViewWorkflowDetails}
+                        />
+                      ))}
+                    </div>
                   </CardContent>
                 </Card>
               )}
@@ -847,7 +1083,7 @@ export default function Agents() {
                 value={newAgent.type} 
                 onValueChange={(value: any) => {
                   // Set default model based on type
-                  const defaultModel = value === "openai" ? "GPT-5" : 
+                  const defaultModel = value === "openai" ? "gpt-4o" : 
                                       value === "anthropic" ? "claude-sonnet-4-5-20250929" : "";
                   setNewAgent({ 
                     ...newAgent, 
@@ -885,17 +1121,17 @@ export default function Agents() {
                   <SelectContent>
                     {newAgent.type === "openai" && (
                       <>
-                        <SelectItem value="GPT-5">GPT-5</SelectItem>
-                        <SelectItem value="GPT-5 mini">GPT-5 Mini</SelectItem>
-                        <SelectItem value="GPT-5-Codex">GPT-5 Codex</SelectItem>
-                        <SelectItem value="o3-deep-research">O3 Deep Research</SelectItem>
-                        <SelectItem value="o4-mini-deep-research">O4 Mini Deep Research</SelectItem>
+                        <SelectItem value="gpt-4o">GPT-4o (Recommended)</SelectItem>
+                        <SelectItem value="gpt-4o-mini">GPT-4o Mini</SelectItem>
+                        <SelectItem value="o3-deep-research">o3 Deep Research</SelectItem>
+                        <SelectItem value="o4-mini">o4 Mini</SelectItem>
                       </>
                     )}
                     {newAgent.type === "anthropic" && (
                       <>
-                        <SelectItem value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5</SelectItem>
+                        <SelectItem value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5 (Recommended)</SelectItem>
                         <SelectItem value="claude-opus-4-1-20250805">Claude Opus 4.1</SelectItem>
+                        <SelectItem value="claude-sonnet-4-20250514">Claude Sonnet 4</SelectItem>
                       </>
                     )}
                   </SelectContent>
@@ -1200,6 +1436,14 @@ export default function Agents() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Workflow Details Dialog */}
+      <WorkflowDetailsDialog
+        open={workflowDetailsOpen}
+        onOpenChange={setWorkflowDetailsOpen}
+        workflowDetails={selectedWorkflowDetails}
+        agents={agents}
+      />
     </div>
   );
 }

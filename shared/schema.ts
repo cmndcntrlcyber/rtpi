@@ -331,6 +331,9 @@ export const reportTemplates = pgTable("report_templates", {
 // ============================================================================
 
 export const toolStatusEnum = pgEnum("tool_status", ["available", "running", "stopped", "error"]);
+export const workflowStatusEnum = pgEnum("workflow_status", ["pending", "running", "completed", "failed", "cancelled"]);
+export const taskStatusEnum = pgEnum("task_status", ["pending", "in_progress", "completed", "failed", "skipped"]);
+export const taskTypeEnum = pgEnum("task_type", ["analyze", "exploit", "report", "custom"]);
 
 export const securityTools = pgTable("security_tools", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -365,4 +368,55 @@ export const toolUploads = pgTable("tool_uploads", {
   uploadedBy: uuid("uploaded_by").notNull().references(() => users.id),
   metadata: json("metadata"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// ============================================================================
+// AGENT WORKFLOW SYSTEM TABLES (3 tables)
+// ============================================================================
+
+export const agentWorkflows = pgTable("agent_workflows", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  workflowType: text("workflow_type").notNull(), // 'penetration_test', 'vulnerability_scan', etc.
+  targetId: uuid("target_id").references(() => targets.id, { onDelete: "cascade" }),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "cascade" }),
+  currentAgentId: uuid("current_agent_id").references(() => agents.id),
+  currentTaskId: uuid("current_task_id"),
+  status: workflowStatusEnum("status").notNull().default("pending"),
+  progress: integer("progress").notNull().default(0), // 0-100 percentage
+  metadata: json("metadata").default({}),
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const workflowTasks = pgTable("workflow_tasks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workflowId: uuid("workflow_id").notNull().references(() => agentWorkflows.id, { onDelete: "cascade" }),
+  agentId: uuid("agent_id").notNull().references(() => agents.id),
+  taskType: taskTypeEnum("task_type").notNull(),
+  taskName: text("task_name").notNull(),
+  status: taskStatusEnum("status").notNull().default("pending"),
+  sequenceOrder: integer("sequence_order").notNull(), // Order of execution in workflow
+  inputData: json("input_data").default({}),
+  outputData: json("output_data").default({}),
+  errorMessage: text("error_message"),
+  retryCount: integer("retry_count").notNull().default(0),
+  maxRetries: integer("max_retries").notNull().default(3),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const workflowLogs = pgTable("workflow_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workflowId: uuid("workflow_id").notNull().references(() => agentWorkflows.id, { onDelete: "cascade" }),
+  taskId: uuid("task_id").references(() => workflowTasks.id, { onDelete: "cascade" }),
+  level: text("level").notNull(), // 'info', 'warning', 'error', 'debug'
+  message: text("message").notNull(),
+  context: json("context").default({}),
+  timestamp: timestamp("timestamp").notNull().defaultNow(),
 });

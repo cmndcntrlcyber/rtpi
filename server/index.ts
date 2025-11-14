@@ -25,6 +25,7 @@ import toolsRoutes from "./api/v1/tools";
 import settingsRoutes from "./api/v1/settings";
 import agentLoopsRoutes from "./api/v1/agent-loops";
 import agentMcpRoutes from "./api/v1/agent-mcp";
+import agentWorkflowsRoutes from "./api/v1/agent-workflows";
 import metasploitRoutes from "./api/v1/metasploit";
 
 const app = express();
@@ -76,6 +77,7 @@ app.use("/api/v1/tools", toolsRoutes);
 app.use("/api/v1/settings", settingsRoutes);
 app.use("/api/v1/agent-loops", agentLoopsRoutes);
 app.use("/api/v1/agents", agentMcpRoutes);
+app.use("/api/v1/agent-workflows", agentWorkflowsRoutes);
 app.use("/api/v1/metasploit", metasploitRoutes);
 
 // Root endpoint
@@ -98,6 +100,8 @@ app.get("/api/v1", (req, res) => {
       tools: "/api/v1/tools",
       settings: "/api/v1/settings",
       agentLoops: "/api/v1/agent-loops",
+      agentWorkflows: "/api/v1/agent-workflows",
+      metasploit: "/api/v1/metasploit",
     },
   });
 });

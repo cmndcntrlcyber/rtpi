@@ -24,6 +24,7 @@ import MarkdownEditor from "@/components/markdown/MarkdownEditor";
 import DynamicFieldList from "@/components/shared/DynamicFieldList";
 import QuestionResponseTable, { QuestionResponseRow } from "@/components/shared/QuestionResponseTable";
 import LinkedTargets from "./LinkedTargets";
+import CompletedWorkflows from "./CompletedWorkflows";
 
 interface OperationFormData {
   name: string;
@@ -413,9 +414,9 @@ export default function OperationForm({
             </TabsContent>
           </Tabs>
 
-          {/* Linked Targets Section (only for existing operations) */}
+          {/* Linked Targets & Workflows Section (only for existing operations) */}
           {isEditing && (initialData as any)?.id && (
-            <div className="mt-6">
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
               <LinkedTargets
                 operationId={(initialData as any).id}
                 onViewAll={() => {
@@ -428,6 +429,10 @@ export default function OperationForm({
                     onAddTarget((initialData as any).id);
                   }
                 }}
+              />
+              
+              <CompletedWorkflows
+                operationId={(initialData as any).id}
               />
             </div>
           )}

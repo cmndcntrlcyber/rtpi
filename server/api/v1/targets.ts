@@ -135,9 +135,10 @@ router.post("/:id/scan", ensureRole("admin", "operator"), async (req, res) => {
     console.log(`[Nmap] Starting scan on target: ${target.name} (${target.value})`);
 
     // Execute nmap scan with specified arguments
+    // Using sudo for raw socket access and -Pn to skip host discovery
     const scanResult = await dockerExecutor.exec(
       "rtpi-tools",
-      ["nmap", "-sV", "-T5", "-v5", "-p1-65535", target.value],
+      ["sudo", "nmap", "-Pn", "-sV", "-T5", "-v5", "-p1-65535", target.value],
       { timeout: 600000 } // 10 minutes timeout for full port scan
     );
 
@@ -156,7 +157,7 @@ router.post("/:id/scan", ensureRole("admin", "operator"), async (req, res) => {
         duration: scanResult.duration,
         openPorts,
         output: scanResult.stdout,
-        command: `nmap -sV -T5 -v5 -p1-65535 ${target.value}`,
+        command: `sudo nmap -Pn -sV -T5 -v5 -p1-65535 ${target.value}`,
         success: scanResult.exitCode === 0,
       },
     };

@@ -63,3 +63,32 @@ npm run format           # Format code with Prettier
 ## License
 
 MIT License - See LICENSE file for details
+
+# Demo Images
+## Operations Management
+<img width="1894" height="865" alt="image" src="https://github.com/user-attachments/assets/58cd1d9f-1bbb-44f5-a532-962aa9ba2c6b" />
+
+## Target Management
+<img width="1894" height="701" alt="image" src="https://github.com/user-attachments/assets/0d1b3f43-faeb-4dfc-8abd-9fa263b273ef" />
+
+## AI Provider Integration
+<img width="1894" height="886" alt="image" src="https://github.com/user-attachments/assets/29c598dd-db9d-4631-8b79-115942568954" />
+
+## Dynamic Agent Configuration
+<img width="1894" height="886" alt="image" src="https://github.com/user-attachments/assets/e42b6e53-8786-42ee-a1d5-03f17e4c6dfb" />
+
+## Agent Workflow
+<img width="980" height="668" alt="image" src="https://github.com/user-attachments/assets/a8ef8f02-0f5f-4d33-9620-7ded1d1e454e" />
+
+## Agentic Report Production
+<img width="980" height="668" alt="image" src="https://github.com/user-attachments/assets/d112c365-b994-4c95-a5ba-10b33391bee9" />
+
+## Dynamic Tool Management
+<img width="1894" height="886" alt="image" src="https://github.com/user-attachments/assets/6bfa969e-a4b0-49cd-acf8-a304607988e0" />
+
+## Tool Workflows
+<img width="1894" height="886" alt="image" src="https://github.com/user-attachments/assets/af335a70-53be-4e2a-b44c-3d30945496e2" />
+
+## Logic Monitoring
+<img width="992" height="865" alt="image" src="https://github.com/user-attachments/assets/9a683d9a-afed-477f-b3ee-09038bab88b7" />
+

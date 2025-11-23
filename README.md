@@ -1,3 +1,5 @@
+<img width="2048" height="2048" alt="image" src="https://github.com/user-attachments/assets/b93f59d5-7f06-43ad-b0f7-4f0255f4f695" />
+
 # Red Team Portable Infrastructure (RTPI)
 
 Unified platform for red team operations, combining attack-node, MCP-Nexus, and pen_attack-node capabilities.

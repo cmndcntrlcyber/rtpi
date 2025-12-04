@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import OperationList from "@/components/operations/OperationList";
 import OperationForm from "@/components/operations/OperationForm";
 import { useOperations, useCreateOperation, useUpdateOperation, useDeleteOperation } from "@/hooks/useOperations";
+import { api } from "@/lib/api";
 
 export default function Operations() {
   const [, navigate] = useLocation();
@@ -15,6 +16,7 @@ export default function Operations() {
   
   const [formOpen, setFormOpen] = useState(false);
   const [editingOperation, setEditingOperation] = useState<any>(null);
+  const [operationsWithWorkflows, setOperationsWithWorkflows] = useState<any[]>([]);
 
   const handleCreateOperation = async (data: any) => {
     try {
@@ -86,6 +88,47 @@ export default function Operations() {
     console.log("Selected operation:", operation);
   };
 
+  // Fetch latest workflow for each operation
+  useEffect(() => {
+    enrichOperationsWithWorkflows();
+  }, [operations]);
+
+  const enrichOperationsWithWorkflows = async () => {
+    if (!operations || operations.length === 0) {
+      setOperationsWithWorkflows([]);
+      return;
+    }
+
+    try {
+      // Fetch all workflows
+      const response = await api.get<{ workflows: any[] }>("/agent-workflows");
+      const workflows = response.workflows || [];
+
+      // For each operation, find the most recent completed workflow
+      const enriched = operations.map((op) => {
+        const opWorkflows = workflows
+          .filter((w) => w.operationId === op.id && w.status === "completed")
+          .sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
+
+        const latestWorkflow = opWorkflows[0];
+
+        return {
+          ...op,
+          latestWorkflow: latestWorkflow?.name || undefined,
+          latestWorkflowId: latestWorkflow?.id || undefined,
+          latestWorkflowStatus: latestWorkflow?.status || undefined,
+          latestWorkflowDate: latestWorkflow?.completedAt || undefined,
+        };
+      });
+
+      setOperationsWithWorkflows(enriched);
+    } catch (error) {
+      console.error("Failed to fetch workflows for operations:", error);
+      // Fallback to operations without workflow data
+      setOperationsWithWorkflows(operations);
+    }
+  };
+
   // Calculate stats from operations
   const stats = {
     total: operations.length,
@@ -136,7 +179,7 @@ export default function Operations() {
 
       {/* Operations List */}
       <OperationList
-        operations={operations}
+        operations={operationsWithWorkflows.length > 0 ? operationsWithWorkflows : operations}
         loading={loading}
         onSelect={handleSelectOperation}
         onEdit={handleEditOperation}

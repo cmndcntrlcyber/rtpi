@@ -35,6 +35,13 @@ function generateReportContent(reportData: any, template?: any): string {
   const { name, type, format } = reportData;
   const date = new Date().toLocaleString();
 
+  // Check if AI-generated content exists (from Technical Writer agent)
+  if (reportData.content?.markdown) {
+    // Use the AI-generated markdown content directly
+    return reportData.content.markdown;
+  }
+
+  // Fallback to template-based generation if no AI content
   let content = `# ${name}\n\n`;
   content += `**Report Type:** ${type}\n\n`;
   content += `**Format:** ${format}\n\n`;

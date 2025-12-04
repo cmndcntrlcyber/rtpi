@@ -208,6 +208,45 @@ router.post("/:id/cancel", ensureRole("admin", "operator"), async (req, res) => 
 });
 
 /**
+ * DELETE /api/v1/agent-workflows/:id
+ * Delete a workflow and its associated tasks and logs
+ */
+router.delete("/:id", ensureRole("admin", "operator"), async (req, res) => {
+  const { id } = req.params;
+  const user = req.user as any;
+
+  try {
+    // Check if workflow exists
+    const workflow = await db
+      .select()
+      .from(agentWorkflows)
+      .where(eq(agentWorkflows.id, id))
+      .limit(1)
+      .then((rows) => rows[0]);
+
+    if (!workflow) {
+      return res.status(404).json({ error: "Workflow not found" });
+    }
+
+    // Delete workflow (cascade will handle tasks and logs)
+    await db.delete(agentWorkflows).where(eq(agentWorkflows.id, id));
+
+    await logAudit(user.id, "delete_agent_workflow", "/agent-workflows", id, true, req);
+
+    res.json({
+      success: true,
+      message: "Workflow deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete workflow error:", error);
+    
+    await logAudit(user.id, "delete_agent_workflow", "/agent-workflows", id, false, req);
+
+    res.status(500).json({ error: "Failed to delete workflow" });
+  }
+});
+
+/**
  * GET /api/v1/agent-workflows/target/:targetId/latest
  * Get latest workflow for a target
  */

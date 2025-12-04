@@ -182,6 +182,38 @@ router.delete("/templates/:id", ensureRole("admin"), async (req, res) => {
   }
 });
 
+// GET /api/v1/reports/workflow/:workflowId - Get report by workflow ID
+router.get("/workflow/:workflowId", async (req, res) => {
+  const { workflowId } = req.params;
+
+  try {
+    // Get all reports and filter by workflowId in content
+    const allReports = await db.select().from(reports);
+    
+    // Filter reports that have this workflowId in their content
+    const matchingReports = allReports.filter(
+      (report) => report.content && 
+      typeof report.content === 'object' && 
+      'workflowId' in report.content &&
+      (report.content as any).workflowId === workflowId
+    );
+
+    if (!matchingReports || matchingReports.length === 0) {
+      return res.status(404).json({ error: "No report found for this workflow" });
+    }
+
+    // Return the most recent report if multiple exist
+    const report = matchingReports.sort((a, b) => 
+      new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime()
+    )[0];
+
+    res.json({ report });
+  } catch (error) {
+    console.error("Get report by workflow error:", error);
+    res.status(500).json({ error: "Failed to get report for workflow" });
+  }
+});
+
 // GET /api/v1/reports/:id/download - Download report file
 router.get("/:id/download", async (req, res) => {
   const { id } = req.params;

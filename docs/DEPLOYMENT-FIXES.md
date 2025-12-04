@@ -85,17 +85,18 @@ The deployment configuration had several critical issues that would have prevent
 ### 4. package.json Script Issues ✅
 
 **Problems:**
-1. **Deprecated Drizzle commands**
-   - `drizzle-kit generate:pg` (deprecated in 0.20.0+)
-   - `drizzle-kit push:pg` (deprecated in 0.20.0+)
+1. **Incorrect Drizzle commands**
+   - Scripts were using new-style syntax (`drizzle-kit push`) 
+   - But installed version (0.20.18) still requires old-style syntax (`push:pg`)
 
 2. **Missing production start script**
    - No `start` script for PM2 or production deployment
 
 **Solutions:**
-1. Updated to current Drizzle Kit syntax:
-   - `drizzle-kit generate`
-   - `drizzle-kit push`
+1. Updated to correct Drizzle Kit syntax for v0.20.18:
+   - `drizzle-kit generate:pg` (with :pg suffix)
+   - `drizzle-kit push:pg` (with :pg suffix)
+   - Note: Newer versions (0.30.0+) use simplified syntax without :pg suffix
 
 2. Added production start script:
    - `"start": "node --import tsx server/index.ts"`
@@ -251,7 +252,7 @@ curl http://localhost:3000/api/v1/health-checks
 | App Port | Not exposed | Port 3000 exposed |
 | Nginx Volume | `./dist/client` | `./dist` |
 | Dockerfile CMD | `--loader tsx` | `--import tsx` |
-| Drizzle Scripts | `generate:pg`, `push:pg` | `generate`, `push` |
+| Drizzle Scripts | `generate`, `push` (incorrect) | `generate:pg`, `push:pg` (v0.20.18) |
 | Drizzle Config | `driver: "pg"` | `dialect: "postgresql"` |
 | Production Script | Missing | Added `start` script |
 

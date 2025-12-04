@@ -4,14 +4,15 @@ import { redisClient } from "../auth/session";
 // Rate limiter using Redis for distributed rate limiting
 export const apiLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 100, // 100 requests per minute per IP
+  max: 250, // 250 requests per minute per IP (increased for workflow polling)
   message: "Too many requests from this IP, please try again later",
   standardHeaders: true,
   legacyHeaders: false,
   // Use Redis for distributed rate limiting (optional, falls back to memory)
   skip: (req) => {
-    // Skip rate limiting for health checks
-    return req.path === "/api/v1/health";
+    // Skip rate limiting for health checks and authenticated workflow monitoring
+    return req.path === "/api/v1/health" || 
+           (req.path.includes("/agent-workflows") && req.isAuthenticated?.());
   },
 });
 

@@ -137,7 +137,7 @@ export default function Agents() {
   const { agents, loading: agentsLoading, refetch: refetchAgents } = useAgents();
   const { servers: mcpServers, loading: serversLoading, refetch: refetchServers } = useMCPServers();
   const { tools } = useTools();
-  const { runningWorkflows, workflows, getWorkflowDetails, cancelWorkflow } = useWorkflows();
+  const { runningWorkflows, allNonRunning, workflows, getWorkflowDetails, cancelWorkflow } = useWorkflows();
   
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -500,12 +500,21 @@ export default function Agents() {
     }
   };
 
-  // Load tasks for running workflows
+  // Load tasks for running workflows with controlled polling
   useEffect(() => {
     const loadTasksForWorkflows = async () => {
+      // Only poll for actively running workflows (not completed/failed/cancelled)
+      const activeWorkflows = runningWorkflows.filter(
+        w => w.status === 'running' || w.status === 'pending'
+      );
+
+      if (activeWorkflows.length === 0) {
+        return;
+      }
+
       const tasksMap: Record<string, any[]> = {};
       
-      for (const workflow of runningWorkflows) {
+      for (const workflow of activeWorkflows) {
         try {
           const response = await api.get(`/agent-workflows/${workflow.id}/tasks`);
           tasksMap[workflow.id] = response.tasks || [];
@@ -514,13 +523,24 @@ export default function Agents() {
         }
       }
       
-      setWorkflowTasksMap(tasksMap);
+      setWorkflowTasksMap(prevMap => ({ ...prevMap, ...tasksMap }));
     };
 
+    // Initial load
     if (runningWorkflows.length > 0) {
       loadTasksForWorkflows();
     }
-  }, [runningWorkflows]);
+
+    // Set up polling interval (every 5 seconds)
+    const pollInterval = setInterval(() => {
+      if (runningWorkflows.some(w => w.status === 'running' || w.status === 'pending')) {
+        loadTasksForWorkflows();
+      }
+    }, 5000);
+
+    // Cleanup interval on unmount or when dependencies change
+    return () => clearInterval(pollInterval);
+  }, [runningWorkflows.length]); // Only re-run when count changes, not array reference
 
   const stats = {
     aiAgents: agents.length,
@@ -874,6 +894,69 @@ export default function Agents() {
                           onViewDetails={handleViewWorkflowDetails}
                         />
                       ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Workflow History Section */}
+              {allNonRunning.length > 0 && (
+                <Card className="mt-6 bg-white">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Clock className="h-5 w-5 text-gray-600" />
+                      Workflow History
+                    </CardTitle>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Completed and failed workflows
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {allNonRunning.slice(0, 5).map((workflow) => (
+                        <div
+                          key={workflow.id}
+                          className="p-3 bg-gray-50 rounded border border-gray-200 hover:bg-gray-100 transition-colors"
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex-1">
+                              <h4 className="text-sm font-medium text-gray-900">
+                                {workflow.name}
+                              </h4>
+                              <p className="text-xs text-gray-500">
+                                {workflow.completedAt 
+                                  ? new Date(workflow.completedAt).toLocaleString()
+                                  : new Date(workflow.createdAt).toLocaleString()}
+                              </p>
+                            </div>
+                            <Badge
+                              variant="secondary"
+                              className={`${
+                                workflow.status === "completed"
+                                  ? "bg-green-500/10 text-green-600"
+                                  : workflow.status === "failed"
+                                  ? "bg-red-500/10 text-red-600"
+                                  : "bg-gray-500/10 text-gray-600"
+                              }`}
+                            >
+                              {workflow.status.toUpperCase()}
+                            </Badge>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleViewWorkflowDetails(workflow.id)}
+                            className="w-full text-xs"
+                          >
+                            View Details
+                          </Button>
+                        </div>
+                      ))}
+                      {allNonRunning.length > 5 && (
+                        <p className="text-xs text-gray-500 text-center italic">
+                          + {allNonRunning.length - 5} more workflows
+                        </p>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

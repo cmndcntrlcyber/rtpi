@@ -11,6 +11,7 @@ import {
 import { eq, and, asc } from "drizzle-orm";
 import { agentToolConnector } from "./agent-tool-connector";
 import { metasploitExecutor } from "./metasploit-executor";
+import { generateMarkdownReport } from "./report-generator";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 
@@ -173,6 +174,7 @@ export class AgentWorkflowOrchestrator {
         .orderBy(asc(workflowTasks.sequenceOrder));
 
       let previousOutput: any = null;
+      let previousAgentId: string | null = null;
 
       for (const task of tasks) {
         try {
@@ -205,9 +207,26 @@ export class AgentWorkflowOrchestrator {
 
           // Merge previous output into current task input
           const taskInput = {
-            ...task.inputData,
+            ...(task.inputData as any),
             previousOutput,
           };
+
+          // Log handoff if there was a previous agent
+          if (previousOutput && previousAgentId) {
+            await this.log(
+              workflowId,
+              task.id,
+              "info",
+              `Received handoff from previous agent`,
+              {
+                previousAgentId,
+                currentAgentId: task.agentId,
+                dataKeys: Object.keys(previousOutput),
+                hasExecutionPlan: !!previousOutput.plan,
+                hasExploitationResults: !!previousOutput.attempts,
+              }
+            );
+          }
 
           // Execute task based on type and agent
           const agent = await db
@@ -221,13 +240,13 @@ export class AgentWorkflowOrchestrator {
 
           switch (task.taskType) {
             case "analyze":
-              output = await this.executeOperationLead(agent, taskInput);
+              output = await this.executeOperationLead(agent, taskInput, workflowId, task.id);
               break;
             case "exploit":
-              output = await this.executeSeniorCyberOperator(agent, taskInput);
+              output = await this.executeSeniorCyberOperator(agent, taskInput, workflowId, task.id);
               break;
             case "report":
-              output = await this.executeTechnicalWriter(agent, { ...taskInput, workflowId });
+              output = await this.executeTechnicalWriter(agent, { ...taskInput, workflowId }, workflowId, task.id);
               break;
             default:
               throw new Error(`Unknown task type: ${task.taskType}`);
@@ -253,6 +272,7 @@ export class AgentWorkflowOrchestrator {
 
           // Store output for next task
           previousOutput = output;
+          previousAgentId = task.agentId;
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error);
           
@@ -310,7 +330,12 @@ export class AgentWorkflowOrchestrator {
   /**
    * Operation Lead: Analyze target and create execution plan
    */
-  private async executeOperationLead(agent: any, input: any): Promise<any> {
+  private async executeOperationLead(
+    agent: any,
+    input: any,
+    workflowId: string,
+    taskId: string
+  ): Promise<any> {
     const targetId = input.targetId;
     const services = input.discoveredServices || [];
     const metadata = input.metadata || {};
@@ -331,18 +356,57 @@ export class AgentWorkflowOrchestrator {
         .map((s: any) => `${s.service} ${s.version || ""}`.trim())
         .filter((q: string) => q.length > 0);
 
+      await this.log(
+        workflowId,
+        taskId,
+        "info",
+        `Starting vulnerability research with SearchSploit`,
+        { queriesCount: searchQueries.length }
+      );
+
       // Execute SearchSploit for each service
       for (const query of searchQueries.slice(0, 3)) {
         try {
+          await this.log(
+            workflowId,
+            taskId,
+            "info",
+            `SearchSploit query: "${query}"`,
+            { tool: "SearchSploit", query }
+          );
+
           const result = await agentToolConnector.execute(
             agent.id,
             searchSploitTool.id,
             targetId,
             `query="${query}"`
           );
+          
           searchResults += `\n\n=== SearchSploit: ${query} ===\n${result}`;
+
+          await this.log(
+            workflowId,
+            taskId,
+            "info",
+            `SearchSploit completed for: "${query}"`,
+            { 
+              tool: "SearchSploit",
+              query,
+              resultLength: result.length,
+              hasResults: result.length > 100
+            }
+          );
         } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
           console.error(`SearchSploit error for ${query}:`, error);
+          
+          await this.log(
+            workflowId,
+            taskId,
+            "error",
+            `SearchSploit failed for: "${query}"`,
+            { tool: "SearchSploit", query, error: errorMsg }
+          );
         }
       }
     }
@@ -351,6 +415,17 @@ export class AgentWorkflowOrchestrator {
     if (!this.openai) {
       throw new Error("OpenAI API key not configured");
     }
+
+    await this.log(
+      workflowId,
+      taskId,
+      "info",
+      `Analyzing target and creating execution plan`,
+      { 
+        model: (agent.config as any)?.model || "gpt-4o",
+        targetValue: input.targetValue
+      }
+    );
 
     const prompt = this.buildOperationLeadPrompt(
       input.targetValue,
@@ -377,6 +452,18 @@ export class AgentWorkflowOrchestrator {
     // Parse execution plan from response
     const executionPlan = this.parseExecutionPlan(response);
 
+    await this.log(
+      workflowId,
+      taskId,
+      "info",
+      `Execution plan created`,
+      {
+        modulesCount: executionPlan.modules?.length || 0,
+        vulnerabilitiesCount: executionPlan.vulnerabilities?.length || 0,
+        hasStrategy: !!executionPlan.strategy
+      }
+    );
+
     return {
       type: "execution_plan",
       plan: executionPlan,
@@ -394,7 +481,12 @@ export class AgentWorkflowOrchestrator {
   /**
    * Senior Cyber Operator: Execute Metasploit modules iteratively
    */
-  private async executeSeniorCyberOperator(agent: any, input: any): Promise<any> {
+  private async executeSeniorCyberOperator(
+    agent: any,
+    input: any,
+    workflowId: string,
+    taskId: string
+  ): Promise<any> {
     const executionPlan = input.previousOutput?.plan;
     
     if (!executionPlan) {
@@ -436,9 +528,37 @@ export class AgentWorkflowOrchestrator {
     const maxAttempts = 5;
     let successfulExploit = false;
 
+    const modulesToExecute = Math.min(executionPlan.modules?.length || 0, maxAttempts);
+
+    await this.log(
+      workflowId,
+      taskId,
+      "info",
+      `Starting exploitation attempts`,
+      {
+        modulesPlanned: executionPlan.modules?.length || 0,
+        modulesToExecute,
+        targetValue: target.value
+      }
+    );
+
     // Execute modules from plan
-    for (let i = 0; i < Math.min(executionPlan.modules?.length || 0, maxAttempts); i++) {
+    for (let i = 0; i < modulesToExecute; i++) {
       const module = executionPlan.modules[i];
+
+      await this.log(
+        workflowId,
+        taskId,
+        "info",
+        `Executing module ${i + 1}/${modulesToExecute}: ${module.type}/${module.path}`,
+        {
+          module: module.path,
+          type: module.type,
+          priority: module.priority,
+          reasoning: module.reasoning,
+          progress: Math.round(((i + 1) / modulesToExecute) * 100)
+        }
+      );
 
       try {
         const result = await metasploitExecutor.execute(
@@ -458,6 +578,21 @@ export class AgentWorkflowOrchestrator {
           timestamp: new Date().toISOString(),
         });
 
+        await this.log(
+          workflowId,
+          taskId,
+          result.success ? "info" : "warning",
+          `Module execution ${result.success ? "succeeded" : "failed"}: ${module.type}/${module.path}`,
+          {
+            module: module.path,
+            success: result.success,
+            exitCode: result.exitCode,
+            duration: result.duration,
+            outputLength: result.output?.length || 0,
+            hasOutput: !!result.output
+          }
+        );
+
         // Analyze result with Claude Sonnet 4.5
         if (this.anthropic) {
           const analysis = await this.analyzeExploitationResult(
@@ -466,8 +601,32 @@ export class AgentWorkflowOrchestrator {
             attempts
           );
 
+          await this.log(
+            workflowId,
+            taskId,
+            "info",
+            `AI analysis: ${analysis.success ? "Exploitation successful" : "Continue testing"}`,
+            {
+              analysisSuccess: analysis.success,
+              reasoning: analysis.reasoning
+            }
+          );
+
           if (analysis.success) {
             successfulExploit = true;
+            
+            await this.log(
+              workflowId,
+              taskId,
+              "info",
+              `Successful exploitation achieved`,
+              {
+                module: module.path,
+                attempt: i + 1,
+                totalAttempts: attempts.length
+              }
+            );
+            
             break;
           }
         } else {
@@ -477,18 +636,55 @@ export class AgentWorkflowOrchestrator {
             result.output.includes("meterpreter")
           ) {
             successfulExploit = true;
+            
+            await this.log(
+              workflowId,
+              taskId,
+              "info",
+              `Successful exploitation detected (pattern match)`,
+              {
+                module: module.path,
+                attempt: i + 1
+              }
+            );
+            
             break;
           }
         }
       } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        
         attempts.push({
           module: `${module.type}/${module.path}`,
           success: false,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMsg,
           timestamp: new Date().toISOString(),
         });
+
+        await this.log(
+          workflowId,
+          taskId,
+          "error",
+          `Module execution error: ${module.type}/${module.path}`,
+          {
+            module: module.path,
+            error: errorMsg
+          }
+        );
       }
     }
+
+    await this.log(
+      workflowId,
+      taskId,
+      "info",
+      `Exploitation phase completed`,
+      {
+        totalAttempts: attempts.length,
+        successfulExploits: attempts.filter(a => a.success).length,
+        overallSuccess: successfulExploit
+      }
+    );
 
     return {
       type: "exploitation_results",
@@ -502,9 +698,13 @@ export class AgentWorkflowOrchestrator {
   /**
    * Technical Writer: Generate penetration test report
    */
-  private async executeTechnicalWriter(agent: any, input: any): Promise<any> {
+  private async executeTechnicalWriter(
+    agent: any,
+    input: any,
+    workflowId: string,
+    taskId: string
+  ): Promise<any> {
     const exploitationResults = input.previousOutput;
-    const workflowId = input.workflowId;
 
     if (!exploitationResults) {
       throw new Error("No exploitation results received from Senior Cyber Operator");
@@ -513,6 +713,19 @@ export class AgentWorkflowOrchestrator {
     if (!this.openai) {
       throw new Error("OpenAI API key not configured");
     }
+
+    await this.log(
+      workflowId,
+      taskId,
+      "info",
+      `Generating penetration test report`,
+      {
+        model: (agent.config as any)?.model || "gpt-4o",
+        targetValue: exploitationResults.targetValue,
+        successfulExploitation: exploitationResults.success,
+        attemptsCount: exploitationResults.attempts?.length || 0
+      }
+    );
 
     const prompt = this.buildReportPrompt(exploitationResults);
 
@@ -531,6 +744,17 @@ export class AgentWorkflowOrchestrator {
 
     const reportContent = completion.choices[0]?.message?.content || "";
 
+    await this.log(
+      workflowId,
+      taskId,
+      "info",
+      `Report generated successfully`,
+      {
+        reportLength: reportContent.length,
+        hasContent: reportContent.length > 0
+      }
+    );
+
     // Get workflow details for operationId and createdBy
     const workflow = await db
       .select()
@@ -539,7 +763,7 @@ export class AgentWorkflowOrchestrator {
       .limit(1)
       .then((rows) => rows[0]);
 
-    // Auto-create report in database
+    // Auto-create report in database with actual file
     if (workflow && reportContent) {
       try {
         const target = await db
@@ -549,12 +773,13 @@ export class AgentWorkflowOrchestrator {
           .limit(1)
           .then((rows) => rows[0]);
 
-        await db.insert(reports).values({
-          name: `Penetration Test - ${target?.name || "Target"}`,
+        const reportName = `Penetration Test - ${target?.name || "Target"}`;
+
+        // Generate the markdown file on disk
+        const fileData = await generateMarkdownReport({
+          name: reportName,
           type: "network_penetration_test",
-          status: "completed",
           format: "markdown",
-          operationId: workflow.operationId,
           content: {
             markdown: reportContent,
             workflowId: workflow.id,
@@ -568,11 +793,57 @@ export class AgentWorkflowOrchestrator {
               completedAt: new Date().toISOString(),
             },
           },
+        });
+
+        // Insert report with file path
+        await db.insert(reports).values({
+          name: reportName,
+          type: "network_penetration_test",
+          status: "completed",
+          format: "markdown",
+          operationId: workflow.operationId || null,
+          content: {
+            markdown: reportContent,
+            workflowId: workflow.id,
+            target: {
+              id: exploitationResults.targetId,
+              value: exploitationResults.targetValue,
+            },
+            executionSummary: {
+              success: exploitationResults.success,
+              attempts: exploitationResults.attempts?.length || 0,
+              completedAt: new Date().toISOString(),
+            },
+          },
+          filePath: fileData.filePath,
+          fileSize: fileData.fileSize,
           generatedBy: workflow.createdBy,
         });
 
-        console.log(`Auto-created report for workflow ${workflow.id}`);
+        await this.log(
+          workflowId,
+          taskId,
+          "info",
+          `Report saved to database and file system`,
+          {
+            filePath: fileData.filePath,
+            fileSize: fileData.fileSize,
+            reportName
+          }
+        );
+
+        console.log(`Auto-created report for workflow ${workflow.id} with file: ${fileData.filePath}`);
       } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        
+        await this.log(
+          workflowId,
+          taskId,
+          "error",
+          `Failed to save report to database`,
+          { error: errorMsg }
+        );
+        
         console.error("Failed to auto-create report:", error);
         // Don't throw - report creation failure shouldn't fail the workflow
       }

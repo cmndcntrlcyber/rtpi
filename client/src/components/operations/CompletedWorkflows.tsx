@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Activity, Eye, CheckCircle, XCircle, Clock } from "lucide-react";
+import { Activity, Eye, CheckCircle, XCircle, Clock, Download, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 
 interface CompletedWorkflowsProps {
@@ -16,6 +16,9 @@ export default function CompletedWorkflows({
 }: CompletedWorkflowsProps) {
   const [workflows, setWorkflows] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [workflowReports, setWorkflowReports] = useState<Record<string, any>>({});
+  const [downloading, setDownloading] = useState<Record<string, boolean>>({});
+  const [deleting, setDeleting] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (operationId) {
@@ -34,10 +37,105 @@ export default function CompletedWorkflows({
         (w) => w.operationId === operationId
       );
       setWorkflows(filtered);
+      
+      // Load reports for completed workflows
+      await loadReportsForWorkflows(filtered);
     } catch (error) {
       console.error("Failed to load workflows:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadReportsForWorkflows = async (workflowList: any[]) => {
+    const reportsMap: Record<string, any> = {};
+    
+    // Only fetch reports for completed workflows
+    const completedWorkflows = workflowList.filter(w => w.status === "completed");
+    
+    for (const workflow of completedWorkflows) {
+      try {
+        const response = await api.get<{ report: any }>(`/reports/workflow/${workflow.id}`);
+        if (response.report) {
+          reportsMap[workflow.id] = response.report;
+        }
+      } catch (error) {
+        // Report doesn't exist for this workflow, which is fine
+        console.debug(`No report found for workflow ${workflow.id}`);
+      }
+    }
+    
+    setWorkflowReports(reportsMap);
+  };
+
+  const handleDownloadReport = async (workflowId: string) => {
+    const report = workflowReports[workflowId];
+    if (!report) return;
+
+    setDownloading(prev => ({ ...prev, [workflowId]: true }));
+    
+    try {
+      const response = await fetch(`/api/v1/reports/${report.id}/download`, {
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Download failed');
+      }
+
+      // Get filename from Content-Disposition header or use default
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `${report.name}.md`;
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+
+      // Create blob and download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error("Failed to download report:", error);
+      alert("Failed to download report. Please try again.");
+    } finally {
+      setDownloading(prev => ({ ...prev, [workflowId]: false }));
+    }
+  };
+
+  const handleDeleteWorkflow = async (workflowId: string, workflowName: string) => {
+    // Confirm deletion
+    if (!confirm(`Are you sure you want to delete "${workflowName}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    setDeleting(prev => ({ ...prev, [workflowId]: true }));
+    
+    try {
+      await api.delete(`/agent-workflows/${workflowId}`);
+      
+      // Remove from local state
+      setWorkflows(prev => prev.filter(w => w.id !== workflowId));
+      
+      // Remove report from state if it exists
+      setWorkflowReports(prev => {
+        const newReports = { ...prev };
+        delete newReports[workflowId];
+        return newReports;
+      });
+    } catch (error) {
+      console.error("Failed to delete workflow:", error);
+      alert("Failed to delete workflow. Please try again.");
+    } finally {
+      setDeleting(prev => ({ ...prev, [workflowId]: false }));
     }
   };
 
@@ -97,7 +195,7 @@ export default function CompletedWorkflows({
                 key={workflow.id}
                 className="p-3 bg-gray-50 rounded border border-gray-200 hover:bg-gray-100 transition-colors"
               >
-                <div className="flex items-start justify-between mb-2">
+                <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="flex-1 min-w-0">
                     <h4 className="text-sm font-medium text-gray-900 truncate">
                       {workflow.name}
@@ -106,7 +204,37 @@ export default function CompletedWorkflows({
                       {new Date(workflow.createdAt).toLocaleString()}
                     </p>
                   </div>
-                  {getStatusBadge(workflow.status)}
+                  <div className="flex flex-col items-end gap-2">
+                    <div className="flex items-center gap-2">
+                      {/* Download button - only for completed workflows with reports */}
+                      {workflow.status === "completed" && workflowReports[workflow.id] && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDownloadReport(workflow.id)}
+                          disabled={downloading[workflow.id]}
+                          className="h-7 px-2"
+                          title="Download Report"
+                        >
+                          <Download className="h-3 w-3" />
+                        </Button>
+                      )}
+                      {getStatusBadge(workflow.status)}
+                    </div>
+                    {/* Delete button underneath status badge */}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDeleteWorkflow(workflow.id, workflow.name)}
+                      disabled={deleting[workflow.id]}
+                      className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                      title="Delete Workflow"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Progress Info */}

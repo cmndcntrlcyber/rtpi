@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, Users, Target, AlertCircle, Clock, Edit, Trash2 } from "lucide-react";
+import { Calendar, Users, Target, AlertCircle, Clock, Edit, Trash2, Download, CheckCircle } from "lucide-react";
+import { api } from "@/lib/api";
 
 interface Operation {
   id: string;
@@ -14,6 +16,10 @@ interface Operation {
   type?: string;
   targets?: number;
   findings?: number;
+  latestWorkflow?: string;
+  latestWorkflowId?: string;
+  latestWorkflowStatus?: string;
+  latestWorkflowDate?: string;
 }
 
 interface OperationCardProps {
@@ -21,6 +27,7 @@ interface OperationCardProps {
   onSelect?: (operation: Operation) => void;
   onEdit?: (operation: Operation) => void;
   onDelete?: (operation: Operation) => void;
+  onWorkflowsChange?: () => void;
 }
 
 const statusColors = {
@@ -31,10 +38,97 @@ const statusColors = {
   failed: "bg-red-500/10 text-red-400"
 };
 
-export default function OperationCard({ operation, onSelect, onEdit, onDelete }: OperationCardProps) {
+export default function OperationCard({ operation, onSelect, onEdit, onDelete, onWorkflowsChange }: OperationCardProps) {
+  const [workflowReport, setWorkflowReport] = useState<any>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // Fetch report for latest workflow if it exists
+  useState(() => {
+    const loadWorkflowReport = async () => {
+      if (operation.latestWorkflowId && operation.latestWorkflowStatus === "completed") {
+        try {
+          const response = await api.get<{ report: any }>(`/reports/workflow/${operation.latestWorkflowId}`);
+          if (response.report) {
+            setWorkflowReport(response.report);
+          }
+        } catch (error) {
+          console.debug(`No report found for workflow ${operation.latestWorkflowId}`);
+        }
+      }
+    };
+    loadWorkflowReport();
+  });
+
   const handleClick = () => {
     if (onSelect) {
       onSelect(operation);
+    }
+  };
+
+  const handleDownloadReport = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!workflowReport) return;
+
+    setDownloading(true);
+    
+    try {
+      const response = await fetch(`/api/v1/reports/${workflowReport.id}/download`, {
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Download failed');
+      }
+
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `${workflowReport.name}.md`;
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error("Failed to download report:", error);
+      alert("Failed to download report. Please try again.");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleDeleteWorkflow = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!operation.latestWorkflowId) return;
+
+    if (!confirm(`Are you sure you want to delete "${operation.latestWorkflow}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    setDeleting(true);
+    
+    try {
+      await api.delete(`/agent-workflows/${operation.latestWorkflowId}`);
+      
+      // Notify parent to refresh
+      if (onWorkflowsChange) {
+        onWorkflowsChange();
+      }
+    } catch (error) {
+      console.error("Failed to delete workflow:", error);
+      alert("Failed to delete workflow. Please try again.");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -118,6 +212,62 @@ export default function OperationCard({ operation, onSelect, onEdit, onDelete }:
             </div>
           )}
         </div>
+
+        {/* Latest Workflow if exists */}
+        {operation.latestWorkflow && (
+          <div className="mt-3 p-3 bg-blue-50 rounded border border-blue-100">
+            <p className="text-xs text-blue-600 font-medium mb-2">Latest Workflow</p>
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-blue-900 font-medium truncate">{operation.latestWorkflow}</p>
+                {operation.latestWorkflowDate && (
+                  <p className="text-xs text-blue-700/70 mt-1">
+                    {new Date(operation.latestWorkflowDate).toLocaleString()}
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-col items-end gap-2">
+                <div className="flex items-center gap-2">
+                  {/* Download button - only if workflow has report */}
+                  {operation.latestWorkflowStatus === "completed" && workflowReport && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleDownloadReport}
+                      disabled={downloading}
+                      className="h-7 px-2 bg-white"
+                      title="Download Report"
+                    >
+                      <Download className="h-3 w-3" />
+                    </Button>
+                  )}
+                  {/* Status badge */}
+                  {operation.latestWorkflowStatus === "completed" && (
+                    <Badge variant="secondary" className="bg-green-500/10 text-green-600 flex items-center gap-1">
+                      <CheckCircle className="h-3 w-3" />
+                      COMPLETED
+                    </Badge>
+                  )}
+                </div>
+                {/* Delete button underneath */}
+                {operation.latestWorkflowId && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDeleteWorkflow}
+                    disabled={deleting}
+                    className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-50 bg-white"
+                    title="Delete Workflow"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Description if exists */}
         {operation.description && (

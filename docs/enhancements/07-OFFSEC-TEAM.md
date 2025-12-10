@@ -33,6 +33,8 @@ This document details the integration of offsec-team components as an internal *
 - ✅ R&D workflow page operational
 - ✅ No conflicts with existing RTPI functionality
 - ✅ Advanced offensive capabilities available
+- ✅ One complete POC from Reverse Engineering to Compiled binary & exe written in Rust
+
 
 ---
 
@@ -246,7 +248,82 @@ const empireAgent = {
 - Vulnerability matching
 - Security advisory aggregation
 
-#### 5. **Research Agent**
+#### 5. **Maldev Agent**
+**Purpose:** Binary Analysis & Exploitation R&D  
+**Capabilities:**
+- Reverse engineering
+- ROP (Return-Oriented Programming) development
+- Proof-of-concept creation
+- Prioritizes Rust-based development; converts other codebases to Rust
+
+**Tool Repositories (44 total):**
+
+**Reverse Engineering (17 repos):**
+- mcp-windbg, x64dbgMCP, jaegis-RAVERSE
+- oss-fuzz-gen, winafl, Jackalope
+- objdiff, ACEshark, sl0ppy-UEFIScan
+- COM-Fuzzer, docker-binaryexploitation
+- GhidraMCP, BinaryAnalysisMCPs
+- xgadget, rhabdomancer, Aplos, wtf
+
+**ROP Development (8 repos):**
+- Obfusk8, RustChain, Ropdump
+- rop-tool, ropium, ROPgadget
+- p0tools, jopcall
+
+**Proof-of-concept (8 repos):**
+- Shellcode-IDE, packer, PadZip-Evader
+- ditto, Umbrella, OneNote-SVG-AutoRun-Bypass
+- DarkLnk, hypervinject-poc
+
+**Rust-Based Development (11 repos):**
+- TamperETW, SHAPESHIFTER, SharpCall
+- SysWhispers, SharpSploit, rustclr
+- windows_reflective_loader, NSecSoftBYOVD
+- ARM64-ReflectiveDLLInjection, C_To_Shellcode_NG
+- SharpBypassUAC
+
+#### 6. **Azure-AD Agent**
+**Purpose:** Azure & Active Directory Attack Research  
+**Capabilities:**
+- EntraID abuse techniques
+- Active Directory enumeration
+- Privilege escalation research
+- Persistence mechanisms
+- Lateral movement techniques
+- Prioritizes Rust & C++ development
+
+**Tool Repositories (28 total):**
+
+**EntraID Abuse (5 repos):**
+- EntraMFACheck, linWinPwn
+- AADInternals, AADInternals-Endpoints
+- EntraOps
+
+**(A)AD Initial Access (2 repos):**
+- Chrome-App-Bound-Encryption-Decryption
+- ScubaGear
+
+**(A)AD Enumeration (5 repos):**
+- ShareHound, BloodHound-MCP-AI
+- NetworkHound, RustHound-CE
+- linWinPwn
+
+**(A)AD Privesc (3 repos):**
+- Dumpert, DonPwner, linWinPwn
+
+**(A)AD Persistence (3 repos):**
+- Titanis, Dumpert, linWinPwn
+
+**(A)AD Lateral Movement (3 repos):**
+- rpc2efs, Titanis, linWinPwn
+
+**Rust & C++ Development (7 repos):**
+- PowerChell, offensive-powershell
+- OFFSEC-PowerShell, Invisi-Shell
+- DSInternals, BYOSI, PowerHouse
+
+#### 7. **Research Agent**
 **Purpose:** General R&D and experimentation  
 **Capabilities:**
 - Tool testing
@@ -261,11 +338,13 @@ const empireAgent = {
 -- Just add new agent records with type="custom"
 
 INSERT INTO agents (name, type, status, config) VALUES
-('Burp Suite Orchestrator', 'custom', 'idle', '{"toolSettings": {...}}'),
-('Empire C2 Manager', 'custom', 'idle', '{"toolSettings": {...}}'),
-('Advanced Fuzzing Agent', 'custom', 'idle', '{"capabilities": [...]}'),
-('Framework Security Agent', 'custom', 'idle', '{"capabilities": [...]}'),
-('Research Agent', 'custom', 'idle', '{"capabilities": [...]}');
+('Burp Suite Orchestrator', 'custom', 'idle', '{"toolSettings": {"burpApiUrl": "...", "burpApiKey": "..."}}'),
+('Empire C2 Manager', 'custom', 'idle', '{"toolSettings": {"empireUrl": "...", "empireToken": "..."}}'),
+('Advanced Fuzzing Agent', 'custom', 'idle', '{"capabilities": ["ffuf", "wordlist_management", "parameter_discovery"]}'),
+('Framework Security Agent', 'custom', 'idle', '{"capabilities": ["tech_stack_detection", "framework_analysis"]}'),
+('Maldev Agent', 'custom', 'idle', '{"capabilities": ["reverse_engineering", "rop_development", "rust_development"], "repositories": 44, "primaryLanguage": "rust"}'),
+('Azure-AD Agent', 'custom', 'idle', '{"capabilities": ["entra_id_abuse", "ad_enumeration", "lateral_movement"], "repositories": 28, "primaryLanguages": ["rust", "cpp"]}'),
+('Research Agent', 'custom', 'idle', '{"capabilities": ["tool_testing", "poc_creation", "knowledge_curation"]}');
 ```
 
 ### Implementation Checklist
@@ -670,6 +749,8 @@ CREATE TABLE rd_experiments (
 - [ ] Tool invocation from R&D agents
 - [ ] Workflow orchestration
 - [ ] Database operations
+- [ ] **Maldev Agent Rust toolchain integration**
+- [ ] **Compilation of Rust POC binaries**
 
 **Target Coverage:** 70%
 
@@ -677,8 +758,27 @@ CREATE TABLE rd_experiments (
 - [ ] Complete R&D workflow
 - [ ] Agent collaboration
 - [ ] Project lifecycle
+- [ ] **End-to-end Rust POC workflow:**
+  - [ ] Reverse engineering with WinDBG/x64dbg/Ghidra
+  - [ ] ROP chain development
+  - [ ] Shellcode generation
+  - [ ] Rust compilation to binary
+  - [ ] Executable testing (Windows PE & Linux ELF)
 
 **Target Coverage:** 60%
+
+### Maldev-Specific Tests (NEW)
+- [ ] Reverse engineering tools functional (WinDBG MCP, x64dbg MCP, Ghidra MCP)
+- [ ] ROP chain generators working (RustChain, ROPgadget, Ropdump)
+- [ ] Shellcode IDE integration
+- [ ] Rust toolchain installed and configured
+- [ ] Compilation to Windows PE executable
+- [ ] Compilation to Linux ELF binary
+- [ ] Cross-compilation capabilities
+- [ ] Binary analysis tools functional
+- [ ] **Complete POC workflow: Analysis → Development → Compilation → Testing**
+
+**Target Coverage:** 80% (critical for Maldev functionality)
 
 ---
 
@@ -707,10 +807,12 @@ CREATE TABLE rd_experiments (
 ## Success Metrics
 
 ### Functional Requirements
-- [ ] 5+ R&D agents registered and operational
-- [ ] 10+ tools from offsec-team integrated
+- [ ] **7 R&D agents registered and operational** (Burp, Empire, Fuzzing, Framework, Maldev, Azure-AD, Research)
+- [ ] 10+ core tools from offsec-team integrated
+- [ ] 72+ specialized tool repositories integrated (Maldev: 44, Azure-AD: 28)
 - [ ] Research project tracking working
 - [ ] No conflicts with existing RTPI features
+- [ ] **Maldev Agent successfully compiles Rust POC to binary**
 
 ### Performance Requirements
 - [ ] Agent operations same as existing agents

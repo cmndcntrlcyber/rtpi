@@ -269,11 +269,18 @@ Global search and advanced filtering capabilities across all entities.
 Enable bulk actions on multiple items simultaneously (operations, targets, vulnerabilities, etc.).
 
 ### Supported Operations
-**[TO BE FILLED]**
 
-- Bulk delete
+**Pages with Bulk Delete:**
+- **Reports** - Select multiple reports and delete in one action (PRIORITY: HIGH)
+- Operations - Bulk status change, delete
+- Targets - Bulk delete, tag assignment, operation assignment
+- Vulnerabilities - Bulk status change, delete, export
+- Agents - Bulk enable/disable, configuration
+
+**Bulk Actions:**
+- Bulk delete (with confirmation)
 - Bulk status change
-- Bulk export
+- Bulk export (CSV, JSON, PDF)
 - Bulk tag assignment
 - Bulk operation assignment
 
@@ -289,6 +296,37 @@ Enable bulk actions on multiple items simultaneously (operations, targets, vulne
 │ 2 items selected                                                │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+### Reports Page Bulk Delete (HIGH PRIORITY)
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Reports                                                          │
+├─────────────────────────────────────────────────────────────────┤
+│ ☐ [Select All]                           [Delete Selected] [▼] │
+├─────────────────────────────────────────────────────────────────┤
+│ ☑ Penetration Test - C3S-Consulting                            │
+│   network_penetration_test • MARKDOWN • 11/22/2025              │
+│   [Download] [Delete]                                           │
+├─────────────────────────────────────────────────────────────────┤
+│ ☑ Penetration Test - Home Network                              │
+│   network_penetration_test • MARKDOWN • 11/22/2025              │
+│   [Download] [Delete]                                           │
+├─────────────────────────────────────────────────────────────────┤
+│ ☐ Penetration Test - Win-7-Blue                                 │
+│   network_penetration_test • MARKDOWN • 11/15/2025              │
+│   [Download] [Delete]                                           │
+│                                                                  │
+│ 2 items selected        [Cancel] [Delete 2 Reports →]          │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Features:**
+- Checkbox selection per report
+- Select/Deselect all toggle
+- Bulk delete button (only visible when items selected)
+- Confirmation dialog before deletion
+- Progress indicator for bulk operations
+- Success/error notifications
 
 ### Implementation Checklist
 - [ ] Add checkbox selection mode

@@ -354,6 +354,230 @@ None
 
 ---
 
+## Bug #6: Metasploit UI Limitations & Architecture
+
+### Status: 🔴 Critical
+
+### Description
+The current Metasploit integration uses a dropdown-based UI (Target, Module Selection, Exploit, Payload, Encoder, etc.) which is inadequate for experienced penetration testers and limits flexibility. Additionally, there's no workspace management for customer data segmentation or API bindings for agent automation.
+
+### Symptoms
+- Dropdown-based interface not intuitive
+- Limited to pre-defined workflows
+- No direct msfconsole access
+- No programmatic API for agents
+- No customer data isolation
+- Cannot leverage full Metasploit capabilities
+
+### Root Cause
+**[TO BE FILLED]**
+- UI designed for simplicity, not power users
+- No WebSocket terminal integration
+- Missing RPC/REST API wrapper
+- No Metasploit workspace management
+- No operation-to-workspace mapping
+
+### Affected Files
+- `client/src/pages/Tools.tsx` - Current dropdown UI
+- `server/services/metasploit-executor.ts` - Current executor
+- `server/api/v1/metasploit.ts` - Current API
+
+### Proposed Fix
+
+#### Part A: Embedded Terminal (HIGH PRIORITY)
+```typescript
+// Replace dropdown UI with embedded terminal
+// client/src/components/tools/MetasploitTerminal.tsx
+
+import { Terminal } from 'xterm';
+import { FitAddon } from 'xterm-addon-fit';
+
+const MetasploitTerminal = ({ operationId }) => {
+  const terminalRef = useRef(null);
+  const ws = useRef(null);
+  
+  useEffect(() => {
+    // Create xterm.js terminal
+    const terminal = new Terminal({
+      cursorBlink: true,
+      fontSize: 14,
+      theme: { background: '#1e1e1e' }
+    });
+    
+    // Connect to WebSocket for container I/O
+    ws.current = new WebSocket(`ws://localhost:3001/api/v1/metasploit/ws/${operationId}`);
+    
+    ws.current.onmessage = (event) => {
+      terminal.write(event.data);
+    };
+    
+    terminal.onData((data) => {
+      ws.current.send(data);
+    });
+    
+    terminal.open(terminalRef.current);
+    
+    return () => {
+      ws.current.close();
+      terminal.dispose();
+    };
+  }, [operationId]);
+  
+  return <div ref={terminalRef} className="terminal-container" />;
+};
+```
+
+#### Part B: API Bindings for Agents (HIGH PRIORITY)
+```typescript
+// server/services/metasploit-api-wrapper.ts
+
+class MetasploitAPIWrapper {
+  // RPC/REST API for agent programmatic access
+  
+  async executeCommand(workspaceId: string, command: string): Promise<CommandResult> {
+    // Execute command in workspace-scoped msfconsole
+    // Return structured results
+  }
+  
+  async runModule(workspaceId: string, module: ModuleConfig): Promise<ModuleResult> {
+    // use [module_path]
+    // set RHOSTS, LHOST, etc.
+    // run/exploit
+    // Parse and return results
+  }
+  
+  async getHosts(workspaceId: string): Promise<Host[]> {
+    // Query workspace database: hosts
+  }
+  
+  async getServices(workspaceId: string, hostId?: string): Promise<Service[]> {
+    // Query workspace database: services
+  }
+  
+  async getVulns(workspaceId: string): Promise<Vulnerability[]> {
+    // Query workspace database: vulns
+  }
+  
+  async getCreds(workspaceId: string): Promise<Credential[]> {
+    // Query workspace database: creds
+  }
+  
+  async getLoot(workspaceId: string): Promise<Loot[]> {
+    // Query workspace database: loot
+  }
+}
+```
+
+#### Part C: Workspace Management (CRITICAL)
+```typescript
+// server/services/metasploit-workspace-manager.ts
+
+class MetasploitWorkspaceManager {
+  // Map RTPI operations to Metasploit workspaces
+  // Ensures customer data isolation
+  
+  async createWorkspaceForOperation(operationId: string): Promise<string> {
+    const workspaceName = `rtpi_op_${operationId}`;
+    
+    // Execute in msfconsole:
+    // workspace -a ${workspaceName}
+    
+    return workspaceName;
+  }
+  
+  async switchWorkspace(workspaceName: string): Promise<void> {
+    // workspace ${workspaceName}
+  }
+  
+  async deleteWorkspace(workspaceName: string, exportFirst: boolean = true): Promise<void> {
+    if (exportFirst) {
+      // db_export -f xml /backups/${workspaceName}.xml
+    }
+    // workspace -d ${workspaceName}
+  }
+  
+  async exportWorkspace(workspaceName: string): Promise<string> {
+    // db_export -f xml /path/to/export.xml
+    // Returns file path
+  }
+  
+  async isolateCustomerData(customerId: string): Promise<Workspace[]> {
+    // List all workspaces for a customer
+    // Enforce access control
+  }
+}
+```
+
+### Customer Data Segmentation Architecture
+```
+┌────────────────────────────────────────────────────────────┐
+│                    RTPI Application Layer                   │
+│  ┌──────────────┐                  ┌──────────────┐        │
+│  │ Operation A  │                  │ Operation B  │        │
+│  │ Customer 1   │                  │ Customer 2   │        │
+│  └──────┬───────┘                  └──────┬───────┘        │
+└─────────┼──────────────────────────────────┼───────────────┘
+          │                                  │
+┌─────────▼──────────────────────────────────▼───────────────┐
+│         Metasploit Workspace Manager                        │
+│  ┌────────────────────┐      ┌────────────────────┐        │
+│  │ workspace rtpi_op_1│      │ workspace rtpi_op_2│        │
+│  │ (Customer 1 only)  │      │ (Customer 2 only)  │        │
+│  └────────────────────┘      └────────────────────┘        │
+└─────────────────────────────────────────────────────────────┘
+          │                                  │
+┌─────────▼──────────────────────────────────▼───────────────┐
+│              PostgreSQL Database                            │
+│  - Hosts scoped to workspace                                │
+│  - Services scoped to workspace                             │
+│  - Vulns scoped to workspace                                │
+│  - Creds scoped to workspace                                │
+│  - Loot scoped to workspace                                 │
+│  - Complete isolation between customers                     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Workspace Lifecycle
+```typescript
+// When operation created:
+1. Create Metasploit workspace: workspace -a rtpi_op_{operation_id}
+2. Switch to workspace: workspace rtpi_op_{operation_id}
+3. All scans auto-saved to workspace
+
+// During operation:
+4. UI terminal connects to workspace
+5. Agents use API scoped to workspace
+6. Complete data isolation
+
+// When operation completed:
+7. Export workspace: db_export -f xml /backups/rtpi_op_{operation_id}.xml
+8. Archive in RTPI database
+9. Delete workspace: workspace -d rtpi_op_{operation_id}
+```
+
+### Testing Checklist
+- [ ] Embedded terminal displays msfconsole
+- [ ] WebSocket connection established
+- [ ] Terminal I/O working (commands → output)
+- [ ] Workspace created per operation
+- [ ] Data isolated between operations
+- [ ] API bindings work for agents
+- [ ] Agents can query hosts, services, vulns
+- [ ] Workspace export/import functional
+- [ ] Multi-user concurrent access
+- [ ] Session management working
+
+### Dependencies
+- xterm.js library for terminal
+- WebSocket support in Express
+- Docker container with Metasploit
+- PostgreSQL database for workspaces
+
+### Estimated Effort
+5-7 days
+
+---
+
 ## Enhancement: Scan History System
 
 ### Status: 🟡 High Priority

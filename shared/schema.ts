@@ -21,6 +21,10 @@ export const severityEnum = pgEnum("severity", ["critical", "high", "medium", "l
 export const agentTypeEnum = pgEnum("agent_type", ["openai", "anthropic", "mcp_server", "custom"]);
 export const agentStatusEnum = pgEnum("agent_status", ["idle", "running", "error", "stopped"]);
 export const containerStatusEnum = pgEnum("container_status", ["running", "stopped", "paused", "restarting", "dead"]);
+export const assetTypeEnum = pgEnum("asset_type", ["host", "domain", "ip", "network", "url"]);
+export const discoveryMethodEnum = pgEnum("discovery_method", ["bbot", "nuclei", "nmap", "manual"]);
+export const assetStatusEnum = pgEnum("asset_status", ["active", "down", "unreachable"]);
+export const scanStatusEnum = pgEnum("scan_status", ["pending", "running", "completed", "failed", "cancelled"]);
 
 // ============================================================================
 // AUTHENTICATION & USER MANAGEMENT TABLES (5 tables)
@@ -419,4 +423,87 @@ export const workflowLogs = pgTable("workflow_logs", {
   message: text("message").notNull(),
   context: json("context").default({}),
   timestamp: timestamp("timestamp").notNull().defaultNow(),
+});
+
+// ============================================================================
+// SURFACE ASSESSMENT TABLES (5 tables)
+// ============================================================================
+
+export const surfaceAssessments = pgTable("surface_assessments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  operationId: uuid("operation_id").notNull().references(() => operations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  status: text("status").notNull().default("active"),
+  totalAssets: integer("total_assets").notNull().default(0),
+  totalServices: integer("total_services").notNull().default(0),
+  totalVulnerabilities: integer("total_vulnerabilities").notNull().default(0),
+  lastScanAt: timestamp("last_scan_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const discoveredAssets = pgTable("discovered_assets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  surfaceAssessmentId: uuid("surface_assessment_id").references(() => surfaceAssessments.id, { onDelete: "cascade" }),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "cascade" }),
+  type: assetTypeEnum("type").notNull(),
+  value: text("value").notNull(), // IP, domain, URL
+  hostname: text("hostname"),
+  ipAddress: text("ip_address"),
+  status: assetStatusEnum("status").notNull().default("active"),
+  discoveryMethod: discoveryMethodEnum("discovery_method").notNull(),
+  operatingSystem: text("operating_system"),
+  tags: json("tags").default([]),
+  metadata: json("metadata").default({}),
+  discoveredAt: timestamp("discovered_at").notNull().defaultNow(),
+  lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const discoveredServices = pgTable("discovered_services", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  assetId: uuid("asset_id").notNull().references(() => discoveredAssets.id, { onDelete: "cascade" }),
+  name: text("name").notNull(), // HTTP, SSH, FTP, etc.
+  port: integer("port").notNull(),
+  protocol: text("protocol").notNull().default("tcp"), // tcp, udp
+  version: text("version"),
+  banner: text("banner"),
+  state: text("state").notNull().default("open"), // open, filtered, closed
+  discoveryMethod: discoveryMethodEnum("discovery_method").notNull(),
+  metadata: json("metadata").default({}),
+  discoveredAt: timestamp("discovered_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const axScanResults = pgTable("ax_scan_results", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "cascade" }),
+  toolName: text("tool_name").notNull(), // bbot, nuclei, xsstrike, etc.
+  status: scanStatusEnum("status").notNull().default("pending"),
+  targets: json("targets").notNull(), // Array of target URLs/IPs
+  config: json("config").default({}),
+  results: json("results").default({}),
+  assetsFound: integer("assets_found").default(0),
+  servicesFound: integer("services_found").default(0),
+  vulnerabilitiesFound: integer("vulnerabilities_found").default(0),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  duration: integer("duration"), // seconds
+  errorMessage: text("error_message"),
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const axModuleConfigs = pgTable("ax_module_configs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  moduleName: text("module_name").notNull().unique(),
+  enabled: boolean("enabled").notNull().default(true),
+  config: json("config").notNull().default({}),
+  credentials: json("credentials").default({}), // Encrypted API keys, etc.
+  rateLimit: integer("rate_limit"),
+  timeout: integer("timeout").default(1800000), // 30 min default
+  lastUsed: timestamp("last_used"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

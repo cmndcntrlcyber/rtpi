@@ -112,6 +112,18 @@ export default function OperationForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
+  // FIX BUG #1 CONTINUED: Helper to format ISO datetime to yyyy-MM-dd for date inputs
+  const formatDateForInput = (isoDate: string | undefined): string => {
+    if (!isoDate) return "";
+    try {
+      const date = new Date(isoDate);
+      if (isNaN(date.getTime())) return "";
+      return date.toISOString().split('T')[0]; // Returns yyyy-MM-dd
+    } catch {
+      return "";
+    }
+  };
+
   const resetForm = () => {
     setFormData({
       name: "",
@@ -143,8 +155,9 @@ export default function OperationForm({
         name: initialData.name || "",
         description: initialData.description || "",
         status: initialData.status || "planning",
-        startDate: initialData.startDate || "",
-        endDate: initialData.endDate || "",
+        // FIX BUG #1 CONTINUED: Convert ISO datetime to yyyy-MM-dd format for date inputs
+        startDate: formatDateForInput(initialData.startDate),
+        endDate: formatDateForInput(initialData.endDate),
         objectives: initialData.objectives || "",
         scope: initialData.scope || "",
         // Load table data from metadata (where it's actually stored)
@@ -198,12 +211,13 @@ export default function OperationForm({
       if (formData.objectives) submitData.objectives = formData.objectives;
       if (formData.scope) submitData.scope = formData.scope;
       
-      // Convert date strings to proper Date objects with time component
+      // FIX BUG #1: Send ISO strings instead of Date objects
+      // JSON.stringify will properly serialize these, avoiding "toISOString is not a function" errors
       if (formData.startDate) {
-        submitData.startDate = new Date(formData.startDate + 'T00:00:00.000Z');
+        submitData.startDate = `${formData.startDate}T00:00:00.000Z`;
       }
       if (formData.endDate) {
-        submitData.endDate = new Date(formData.endDate + 'T23:59:59.999Z');
+        submitData.endDate = `${formData.endDate}T23:59:59.999Z`;
       }
       
       // Add metadata last

@@ -12,6 +12,7 @@ import {
   User,
   ListTodo,
   Users,
+  BarChart3,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -23,6 +24,7 @@ const navItems = [
   { path: "/operations", label: "Operations", icon: ListTodo },
   { path: "/targets", label: "Targets", icon: Target },
   { path: "/vulnerabilities", label: "Vulnerabilities", icon: AlertTriangle },
+  { path: "/surface-assessment", label: "Surface Assessment", icon: BarChart3 },
   { path: "/agents", label: "Agents", icon: Bot },
   { path: "/infrastructure", label: "Infrastructure", icon: Server },
   { path: "/tools", label: "Tools", icon: Wrench },

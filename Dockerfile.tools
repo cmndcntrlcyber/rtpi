@@ -45,6 +45,18 @@ RUN pip3 install --no-cache-dir \
     pwntools pycryptodome cryptography requests pyOpenSSL \
     impacket bloodhound
 
+# Install BBOT (attack surface reconnaissance)
+RUN pipx install bbot \
+    && pipx ensurepath
+
+# Install Nuclei (vulnerability scanner)
+RUN wget -q https://github.com/projectdiscovery/nuclei/releases/latest/download/nuclei_3.3.7_linux_amd64.zip \
+    && unzip nuclei_3.3.7_linux_amd64.zip -d /tmp \
+    && mv /tmp/nuclei /usr/local/bin/nuclei \
+    && chmod +x /usr/local/bin/nuclei \
+    && rm nuclei_3.3.7_linux_amd64.zip \
+    && nuclei -update-templates -silent || true
+
 # Install Metasploit Framework
 RUN curl https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb > msfinstall \
     && chmod 755 msfinstall \
@@ -73,6 +85,8 @@ set -e
 
 echo "🔧 RTPI-PEN Security Tools Container Ready"
 echo "Available tools:"
+echo "  - BBOT: bbot (attack surface reconnaissance)"
+echo "  - Nuclei: nuclei (vulnerability scanner)"
 echo "  - Metasploit Framework: msfconsole"
 echo "  - Nmap: nmap"
 echo "  - Hashcat: hashcat"

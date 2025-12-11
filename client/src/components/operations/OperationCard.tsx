@@ -2,6 +2,13 @@ import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Calendar, Users, Target, AlertCircle, Clock, Edit, Trash2, Download, CheckCircle } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -10,8 +17,8 @@ interface Operation {
   name: string;
   description?: string;
   status: string;
-  startedAt: string;
-  completedAt?: string;
+  startDate?: string;  // FIX BUG #2: Correct field name to match database
+  endDate?: string;    // FIX BUG #2: Correct field name to match database
   createdBy: string;
   type?: string;
   targets?: number;
@@ -28,6 +35,7 @@ interface OperationCardProps {
   onEdit?: (operation: Operation) => void;
   onDelete?: (operation: Operation) => void;
   onWorkflowsChange?: () => void;
+  onStatusChange?: (operationId: string, newStatus: string) => Promise<void>; // FIX BUG #2: Inline status change
 }
 
 const statusColors = {
@@ -38,10 +46,39 @@ const statusColors = {
   failed: "bg-red-500/10 text-red-400"
 };
 
-export default function OperationCard({ operation, onSelect, onEdit, onDelete, onWorkflowsChange }: OperationCardProps) {
+export default function OperationCard({ operation, onSelect, onEdit, onDelete, onWorkflowsChange, onStatusChange }: OperationCardProps) {
   const [workflowReport, setWorkflowReport] = useState<any>(null);
   const [downloading, setDownloading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+
+  // FIX BUG #2: Handle status changes with confirmation for destructive actions
+  const handleStatusChange = async (newStatus: string) => {
+    // Confirmation for destructive actions
+    if (newStatus === "cancelled" || newStatus === "completed") {
+      const action = newStatus === "cancelled" ? "cancel" : "complete";
+      if (!confirm(`Are you sure you want to ${action} this operation?`)) {
+        return;
+      }
+    }
+
+    if (!onStatusChange) return;
+
+    setUpdatingStatus(true);
+    try {
+      await onStatusChange(operation.id, newStatus);
+      
+      // Trigger refresh
+      if (onWorkflowsChange) {
+        onWorkflowsChange();
+      }
+    } catch (error) {
+      console.error("Failed to update status:", error);
+      alert("Failed to update operation status. Please try again.");
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
 
   // Fetch report for latest workflow if it exists
   useState(() => {
@@ -142,9 +179,22 @@ export default function OperationCard({ operation, onSelect, onEdit, onDelete, o
     return colors[index];
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  // FIX BUG #2: Safe date formatting with null/undefined handling
+  const formatDate = (dateString: string | null | undefined): string => {
+    if (!dateString) return "Not set";
+    
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return "Invalid date";
+      
+      return date.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        year: 'numeric' 
+      });
+    } catch {
+      return "Invalid date";
+    }
   };
 
   return (
@@ -166,24 +216,71 @@ export default function OperationCard({ operation, onSelect, onEdit, onDelete, o
               </p>
             </div>
           </div>
-          <Badge 
-            variant="secondary" 
-            className={`${statusColors[operation.status as keyof typeof statusColors]} px-2 py-1 text-xs font-medium`}
-          >
-            {operation.status}
-          </Badge>
+          {/* FIX BUG #2: Inline status dropdown or static badge */}
+          {onStatusChange ? (
+            <div onClick={(e) => e.stopPropagation()}>
+              <Select
+                value={operation.status}
+                onValueChange={handleStatusChange}
+                disabled={updatingStatus}
+              >
+                <SelectTrigger className="w-32 h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="planning">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-blue-500" />
+                      Planning
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="active">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-green-500" />
+                      Active
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="paused">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-yellow-500" />
+                      Paused
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="completed">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-gray-500" />
+                      Completed
+                    </span>
+                  </SelectItem>
+                  <SelectItem value="cancelled">
+                    <span className="flex items-center gap-2 text-red-600">
+                      <span className="w-2 h-2 rounded-full bg-red-500" />
+                      Cancelled
+                    </span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <Badge 
+              variant="secondary" 
+              className={`${statusColors[operation.status as keyof typeof statusColors]} px-2 py-1 text-xs font-medium`}
+            >
+              {operation.status}
+            </Badge>
+          )}
         </div>
         
         <div className="grid grid-cols-2 gap-4 text-sm mb-3">
           <div className="flex items-center text-gray-600">
             <Calendar className="h-4 w-4 mr-2" />
-            <span>{formatDate(operation.startedAt)}</span>
+            <span>{formatDate(operation.startDate)}</span>
           </div>
           <div className="flex items-center text-gray-600">
-            {operation.completedAt ? (
+            {operation.endDate ? (
               <>
                 <Clock className="h-4 w-4 mr-2" />
-                <span>Ended {formatDate(operation.completedAt)}</span>
+                <span>Ended {formatDate(operation.endDate)}</span>
               </>
             ) : (
               <>

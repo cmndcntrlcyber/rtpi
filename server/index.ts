@@ -27,6 +27,7 @@ import agentLoopsRoutes from "./api/v1/agent-loops";
 import agentMcpRoutes from "./api/v1/agent-mcp";
 import agentWorkflowsRoutes from "./api/v1/agent-workflows";
 import metasploitRoutes from "./api/v1/metasploit";
+import surfaceAssessmentRoutes from "./api/v1/surface-assessment";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -79,6 +80,7 @@ app.use("/api/v1/agent-loops", agentLoopsRoutes);
 app.use("/api/v1/agents", agentMcpRoutes);
 app.use("/api/v1/agent-workflows", agentWorkflowsRoutes);
 app.use("/api/v1/metasploit", metasploitRoutes);
+app.use("/api/v1/surface-assessment", surfaceAssessmentRoutes);
 
 // Root endpoint
 app.get("/api/v1", (req, res) => {
@@ -124,7 +126,12 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 });
 
 // Start server
-app.listen(PORT, "0.0.0.0", () => {
+const server = app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
   console.log(`📚 API documentation: http://0.0.0.0:${PORT}/api/v1`);
 });
+
+// FIX BUG #4: Initialize WebSocket manager for real-time scan progress
+import { initializeScanWebSocketManager } from "./services/scan-websocket-manager";
+initializeScanWebSocketManager(server);
+console.log(`🔌 WebSocket server ready for scan streaming`);

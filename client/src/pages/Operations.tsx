@@ -65,6 +65,19 @@ export default function Operations() {
     }
   };
 
+  // FIX BUG #2: Handle inline status changes
+  const handleStatusChange = async (operationId: string, newStatus: string) => {
+    try {
+      await api.patch(`/operations/${operationId}/status`, { status: newStatus });
+      await refetch();
+      // Re-enrich with workflows after status change
+      await enrichOperationsWithWorkflows();
+    } catch (err) {
+      console.error("Failed to update operation status:", err);
+      throw err; // Re-throw for component error handling
+    }
+  };
+
   const handleViewTargets = (operationId: string) => {
     // Navigate to targets page
     // TODO: Add filtering support in targets page
@@ -184,6 +197,8 @@ export default function Operations() {
         onSelect={handleSelectOperation}
         onEdit={handleEditOperation}
         onDelete={handleDeleteClick}
+        onStatusChange={handleStatusChange}
+        onWorkflowsChange={enrichOperationsWithWorkflows}
       />
 
       {/* Create/Edit Form Dialog */}

@@ -3,11 +3,25 @@ import { db } from "../../db";
 import { operations } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
+import { z } from "zod";
 
 const router = Router();
 
 // Apply authentication to all routes
 router.use(ensureAuthenticated);
+
+// FIX BUG #1: Validation schema for operation data
+// Validates and transforms date strings to Date objects safely
+const operationSchema = z.object({
+  name: z.string().min(1, "Operation name is required"),
+  description: z.string().optional(),
+  status: z.enum(["planning", "active", "paused", "completed", "cancelled"]),
+  startDate: z.string().datetime().optional().transform(val => val ? new Date(val) : undefined),
+  endDate: z.string().datetime().optional().transform(val => val ? new Date(val) : undefined),
+  objectives: z.string().optional(),
+  scope: z.string().optional(),
+  metadata: z.any().optional(),
+});
 
 // GET /api/v1/operations - List all operations
 router.get("/", async (req, res) => {
@@ -47,10 +61,13 @@ router.post("/", ensureRole("admin", "operator"), async (req, res) => {
   const user = req.user as any;
 
   try {
+    // FIX BUG #1: Validate and parse input with proper date transformation
+    const validated = operationSchema.parse(req.body);
+
     const operation = await db
       .insert(operations)
       .values({
-        ...req.body,
+        ...validated,
         ownerId: user.id,
       })
       .returning();
@@ -60,6 +77,15 @@ router.post("/", ensureRole("admin", "operator"), async (req, res) => {
     res.status(201).json({ operation: operation[0] });
   } catch (error) {
     console.error("Create operation error:", error);
+    
+    // Better error messages for validation errors
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ 
+        error: "Validation failed", 
+        details: error.errors 
+      });
+    }
+    
     await logAudit(user.id, "create_operation", "/operations", null, false, req);
     res.status(500).json({ error: "Failed to create operation" });
   }
@@ -71,10 +97,13 @@ router.put("/:id", ensureRole("admin", "operator"), async (req, res) => {
   const user = req.user as any;
 
   try {
+    // FIX BUG #1: Validate and parse input (partial schema for updates)
+    const validated = operationSchema.partial().parse(req.body);
+
     const result = await db
       .update(operations)
       .set({
-        ...req.body,
+        ...validated,
         updatedAt: new Date(),
       })
       .where(eq(operations.id, id))
@@ -89,6 +118,14 @@ router.put("/:id", ensureRole("admin", "operator"), async (req, res) => {
     res.json({ operation: result[0] });
   } catch (error) {
     console.error("Update operation error:", error);
+    
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ 
+        error: "Validation failed", 
+        details: error.errors 
+      });
+    }
+    
     await logAudit(user.id, "update_operation", "/operations", id, false, req);
     res.status(500).json({ error: "Failed to update operation" });
   }
@@ -167,6 +204,63 @@ router.post("/:id/complete", ensureRole("admin", "operator"), async (req, res) =
     console.error("Complete operation error:", error);
     await logAudit(user.id, "complete_operation", "/operations", id, false, req);
     res.status(500).json({ error: "Failed to complete operation" });
+  }
+});
+
+// FIX BUG #2: PATCH /api/v1/operations/:id/status - Quick status update
+router.patch("/:id/status", ensureRole("admin", "operator"), async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  const user = req.user as any;
+
+  // Validate status
+  const validStatuses = ["planning", "active", "paused", "completed", "cancelled"];
+  if (!status || !validStatuses.includes(status)) {
+    return res.status(400).json({ 
+      error: "Invalid status", 
+      validStatuses 
+    });
+  }
+
+  try {
+    // Get current operation to check dates
+    const existing = await db
+      .select()
+      .from(operations)
+      .where(eq(operations.id, id))
+      .limit(1);
+
+    if (!existing || existing.length === 0) {
+      return res.status(404).json({ error: "Operation not found" });
+    }
+
+    const updates: any = {
+      status,
+      updatedAt: new Date(),
+    };
+
+    // Auto-set dates based on status transitions
+    if (status === "active" && !existing[0].startDate) {
+      updates.startDate = new Date();
+    }
+    
+    if (status === "completed" || status === "cancelled") {
+      updates.endDate = new Date();
+    }
+
+    const result = await db
+      .update(operations)
+      .set(updates)
+      .where(eq(operations.id, id))
+      .returning();
+
+    await logAudit(user.id, "update_operation_status", "/operations", id, true, req);
+
+    res.json({ operation: result[0] });
+  } catch (error) {
+    console.error("Update operation status error:", error);
+    await logAudit(user.id, "update_operation_status", "/operations", id, false, req);
+    res.status(500).json({ error: "Failed to update operation status" });
   }
 });
 

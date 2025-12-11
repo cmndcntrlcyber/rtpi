@@ -23,13 +23,14 @@ export default function CvssCalculator({ value, onChange }: CvssCalculatorProps)
   const [score, setScore] = useState<number>(0);
   const [vector, setVector] = useState<string>("");
 
-  // Initialize from existing vector
+  // FIX BUG #5: Initialize from existing vector - include 'value' in dependency array
+  // This ensures the calculator re-initializes when editing different vulnerabilities
   useEffect(() => {
     if (value && value.startsWith("CVSS:3.")) {
       const parsed = parseVectorCvss3(value);
       setMetrics(parsed);
     }
-  }, []);
+  }, [value]);
 
   // Recalculate when metrics change
   useEffect(() => {

@@ -4,6 +4,9 @@ import { targets } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import { dockerExecutor } from "../../services/docker-executor";
+import { TargetSanitizer, type TargetType } from "../../../shared/utils/target-sanitizer";
+import { ScanTimeoutCalculator } from "../../../shared/utils/scan-timeout-calculator";
+import { scanWebSocketManager } from "../../services/scan-websocket-manager";
 
 const router = Router();
 
@@ -132,14 +135,51 @@ router.post("/:id/scan", ensureRole("admin", "operator"), async (req, res) => {
 
     const target = result[0];
 
-    console.log(`[Nmap] Starting scan on target: ${target.name} (${target.value})`);
+    // FIX BUG #3: Sanitize target value based on type for nmap compatibility
+    const sanitizationResult = TargetSanitizer.sanitizeForNmap(
+      target.type as TargetType,
+      target.value
+    );
 
-    // Execute nmap scan with specified arguments
+    // Log sanitization warnings
+    if (sanitizationResult.warnings && sanitizationResult.warnings.length > 0) {
+      console.log(`[Nmap] Sanitization warnings for ${target.name}:`, sanitizationResult.warnings);
+    }
+
+    // Validate sanitization result
+    if (!sanitizationResult.isValid) {
+      console.error(`[Nmap] Invalid target value: ${sanitizationResult.errorMessage}`);
+      return res.status(400).json({
+        error: "Invalid target value",
+        details: sanitizationResult.errorMessage,
+        originalValue: sanitizationResult.originalValue
+      });
+    }
+
+    // FIX BUG #4: Calculate appropriate timeout based on target type and size
+    const timeoutCalc = ScanTimeoutCalculator.calculateTimeout(
+      target.type as TargetType,
+      target.value
+    );
+
+    // Log timeout calculation details
+    console.log(`[Nmap] Starting scan on target: ${target.name}`);
+    console.log(`[Nmap] Original value: ${sanitizationResult.originalValue}`);
+    console.log(`[Nmap] Sanitized for nmap: ${sanitizationResult.nmapTarget}`);
+    console.log(`[Nmap] Host count estimate: ${timeoutCalc.hostCount.toLocaleString()}`);
+    console.log(`[Nmap] Estimated duration: ${ScanTimeoutCalculator.formatDuration(timeoutCalc.estimatedDuration)}`);
+    console.log(`[Nmap] Timeout set to: ${ScanTimeoutCalculator.formatDuration(timeoutCalc.timeout)}`);
+    
+    if (timeoutCalc.warning) {
+      console.warn(`[Nmap] ${timeoutCalc.warning}`);
+    }
+
+    // Execute nmap scan with SANITIZED target value and DYNAMIC timeout
     // Using sudo for raw socket access and -Pn to skip host discovery
     const scanResult = await dockerExecutor.exec(
       "rtpi-tools",
-      ["sudo", "nmap", "-Pn", "-sV", "-T5", "-v5", "-p1-65535", target.value],
-      { timeout: 600000 } // 10 minutes timeout for full port scan
+      ["sudo", "nmap", "-Pn", "-sV", "-T5", "-v5", "-p1-65535", sanitizationResult.nmapTarget],
+      { timeout: timeoutCalc.timeout } // FIX BUG #4: Dynamic timeout based on target size
     );
 
     console.log(`[Nmap] Scan completed for ${target.name} in ${scanResult.duration}ms`);
@@ -148,7 +188,7 @@ router.post("/:id/scan", ensureRole("admin", "operator"), async (req, res) => {
     const openPorts = (scanResult.stdout.match(/open/gi) || []).length;
     const scanTimestamp = new Date().toISOString();
 
-    // Store scan results in metadata
+    // Store scan results in metadata (including sanitization info)
     const currentMetadata = (target.metadata as any) || {};
     const updatedMetadata = {
       ...currentMetadata,
@@ -157,8 +197,14 @@ router.post("/:id/scan", ensureRole("admin", "operator"), async (req, res) => {
         duration: scanResult.duration,
         openPorts,
         output: scanResult.stdout,
-        command: `sudo nmap -Pn -sV -T5 -v5 -p1-65535 ${target.value}`,
+        command: `sudo nmap -Pn -sV -T5 -v5 -p1-65535 ${sanitizationResult.nmapTarget}`,
         success: scanResult.exitCode === 0,
+        // BUG #3 FIX: Include sanitization details for transparency
+        sanitization: {
+          originalValue: sanitizationResult.originalValue,
+          sanitizedValue: sanitizationResult.sanitized,
+          warnings: sanitizationResult.warnings || [],
+        },
       },
     };
 

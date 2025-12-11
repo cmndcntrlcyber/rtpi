@@ -5,8 +5,8 @@ interface Operation {
   name: string;
   description?: string;
   status: string;
-  startedAt: string;
-  completedAt?: string;
+  startDate?: string;  // FIX BUG #2: Match database field names
+  endDate?: string;    // FIX BUG #2: Match database field names
   createdBy: string;
   type?: string;
   targets?: number;
@@ -19,9 +19,11 @@ interface OperationListProps {
   onSelect?: (operation: Operation) => void;
   onEdit?: (operation: Operation) => void;
   onDelete?: (operation: Operation) => void;
+  onStatusChange?: (operationId: string, newStatus: string) => Promise<void>; // FIX BUG #2
+  onWorkflowsChange?: () => void; // FIX BUG #2
 }
 
-export default function OperationList({ operations, loading, onSelect, onEdit, onDelete }: OperationListProps) {
+export default function OperationList({ operations, loading, onSelect, onEdit, onDelete, onStatusChange, onWorkflowsChange }: OperationListProps) {
   if (loading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -69,6 +71,8 @@ export default function OperationList({ operations, loading, onSelect, onEdit, o
           onSelect={onSelect}
           onEdit={onEdit}
           onDelete={onDelete}
+          onStatusChange={onStatusChange}
+          onWorkflowsChange={onWorkflowsChange}
         />
       ))}
     </div>

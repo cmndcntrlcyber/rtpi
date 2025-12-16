@@ -495,8 +495,8 @@ router.post('/:operationId/scan/bbot', async (req, res) => {
     // Parse config
     const bbotOptions = {
       preset: config?.preset || 'subdomain-enum',
-      modules: config?.modules ? config.modules.split(',').map((m: string) => m.trim()) : [],
-      flags: config?.flags ? config.flags.split(',').map((f: string) => f.trim()) : ['safe'],
+      modules: config?.modules ? config.modules.split(',').map((m: string) => m.trim()).filter(Boolean) : [],
+      flags: config?.flags ? config.flags.split(',').map((f: string) => f.trim()).filter(Boolean) : [],
       args: config?.args ? config.args.split(',').map((a: string) => a.trim()).filter(Boolean) : [],
       noDeps: true,
     };

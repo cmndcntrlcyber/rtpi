@@ -265,3 +265,33 @@ npm run dev
 
 **Last Updated:** December 10, 2025 09:19 AM CST  
 **Next Review:** After completing Overview Dashboard implementation
+
+# Focus Chain List for Task 1765376265012
+
+<!-- Edit this markdown file to update your focus chain list -->
+<!-- Use the format: - [ ] for incomplete items and - [x] for completed items -->
+
+- [x] Read and understand the Surface Assessment enhancement requirements
+- [x] Explore current codebase structure
+- [x] Design implementation plan
+- [x] Present plan to user for approval
+- [x] Phase 1: Foundation & Database Schema
+- [x] Phase 2: Frontend Page Structure
+- [x] Phase 3: Overview Dashboard Implementation
+- [x] Phase 4: Backend API Endpoints (5 endpoints)
+- [x] Phase 5: Enhanced Vulnerabilities Tab
+- [x] Phase 6: Assets & Services Tabs
+- [x] Phase 7: Activity Timeline Tab
+- [x] Phase 8: Scan Configuration Tab
+- [x] Phase 9: BBOT Executor Service
+- [x] Phase 10: BBOT Scan API Endpoint
+- [x] Phase 11: Integrate BBOT into rtpi-tools container
+- [x] Phase 12: Add --allow-deadly support (args interface)
+- [x] Phase 13: Fix auto-confirm (-y flag) and verbosity (-v flag)
+- [x] Phase 14: Remove "safe" placeholder default
+- [ ] Debug: "safe" still appearing in scan commands (browser cache issue?)
+- [ ] FUTURE: Nuclei integration
+- [ ] FUTURE: WebSocket real-time updates
+- [ ] FUTURE: Automated testing
+
+<!-- Save this file and the focus chain list will be updated in the task -->

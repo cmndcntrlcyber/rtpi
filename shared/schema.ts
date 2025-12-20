@@ -507,3 +507,239 @@ export const axModuleConfigs = pgTable("ax_module_configs", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+// ============================================================================
+// TOOL FRAMEWORK TABLES (6 tables)
+// Enhancement: Standardized tool configuration, GitHub auto-installer, testing
+// ============================================================================
+
+export const toolCategoryEnum = pgEnum("tool_category", [
+  "reconnaissance",
+  "scanning",
+  "exploitation",
+  "post-exploitation",
+  "wireless",
+  "web-application",
+  "password-cracking",
+  "forensics",
+  "social-engineering",
+  "reporting",
+  "other",
+]);
+
+export const parameterTypeEnum = pgEnum("parameter_type", [
+  "string",
+  "number",
+  "boolean",
+  "array",
+  "file",
+  "ip-address",
+  "cidr",
+  "url",
+  "port",
+  "enum",
+]);
+
+export const installMethodEnum = pgEnum("install_method", [
+  "apt",
+  "pip",
+  "npm",
+  "go-install",
+  "cargo",
+  "docker",
+  "github-binary",
+  "github-source",
+  "manual",
+]);
+
+export const outputFormatEnum = pgEnum("output_format", [
+  "json",
+  "xml",
+  "csv",
+  "text",
+  "nmap-xml",
+  "custom",
+]);
+
+export const toolExecutionStatusEnum = pgEnum("tool_execution_status", [
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "timeout",
+  "cancelled",
+]);
+
+export const installStatusEnum = pgEnum("install_status", [
+  "pending",
+  "installing",
+  "installed",
+  "failed",
+  "updating",
+]);
+
+export const toolRegistry = pgTable("tool_registry", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  toolId: text("tool_id").unique().notNull(), // Short identifier (e.g., 'nmap', 'metasploit')
+  name: text("name").notNull(),
+  version: text("version"),
+  category: toolCategoryEnum("category").notNull(),
+  description: text("description"),
+
+  // Installation
+  installMethod: installMethodEnum("install_method").notNull(),
+  installCommand: text("install_command"),
+  dockerImage: text("docker_image"),
+  githubUrl: text("github_url"),
+  binaryPath: text("binary_path").notNull(),
+
+  // Configuration (full ToolConfiguration as JSONB)
+  config: json("config").notNull().default({}),
+
+  // Status
+  installStatus: installStatusEnum("install_status").notNull().default("pending"),
+  installLog: text("install_log"),
+  validationStatus: text("validation_status"), // 'validated', 'pending', 'failed'
+  lastValidated: timestamp("last_validated"),
+
+  // Metadata
+  tags: json("tags").default([]),
+  notes: text("notes"),
+  homepage: text("homepage"),
+  documentation: text("documentation"),
+
+  // Timestamps
+  installedAt: timestamp("installed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const toolParameters = pgTable("tool_parameters", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  toolId: uuid("tool_id").notNull().references(() => toolRegistry.id, { onDelete: "cascade" }),
+
+  // Parameter definition
+  parameterName: text("parameter_name").notNull(),
+  parameterType: parameterTypeEnum("parameter_type").notNull(),
+  description: text("description").notNull(),
+  required: boolean("required").notNull().default(false),
+  defaultValue: text("default_value"),
+
+  // Validation
+  validationRegex: text("validation_regex"),
+  enumValues: json("enum_values").default([]),
+
+  // UI hints
+  placeholder: text("placeholder"),
+  helpText: text("help_text"),
+  displayOrder: integer("display_order").default(0),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const toolExecutions = pgTable("tool_executions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  toolId: uuid("tool_id").notNull().references(() => toolRegistry.id, { onDelete: "cascade" }),
+
+  // Context
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "cascade" }),
+  targetId: uuid("target_id").references(() => targets.id, { onDelete: "set null" }),
+  agentId: uuid("agent_id").references(() => agents.id, { onDelete: "set null" }),
+
+  // Execution details
+  command: text("command").notNull(),
+  parameters: json("parameters").default({}),
+  status: toolExecutionStatusEnum("status").notNull().default("pending"),
+
+  // Results
+  exitCode: integer("exit_code"),
+  stdout: text("stdout"),
+  stderr: text("stderr"),
+  parsedOutput: json("parsed_output"),
+
+  // Performance
+  startTime: timestamp("start_time"),
+  endTime: timestamp("end_time"),
+  durationMs: integer("duration_ms"),
+  timeoutMs: integer("timeout_ms").default(300000), // 5 minutes default
+
+  // Metadata
+  errorMessage: text("error_message"),
+  metadata: json("metadata").default({}),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const toolOutputParsers = pgTable("tool_output_parsers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  toolId: uuid("tool_id").notNull().references(() => toolRegistry.id, { onDelete: "cascade" }),
+
+  // Parser configuration
+  parserName: text("parser_name").notNull(),
+  parserType: text("parser_type").notNull(), // 'json', 'xml', 'regex', 'custom'
+  outputFormat: outputFormatEnum("output_format").notNull(),
+
+  // Parser implementation
+  parserCode: text("parser_code"), // JavaScript/TypeScript parser function
+  regexPatterns: json("regex_patterns").default({}),
+  jsonPaths: json("json_paths").default({}),
+  xmlPaths: json("xml_paths").default({}),
+
+  // Metadata
+  description: text("description"),
+  exampleInput: text("example_input"),
+  exampleOutput: json("example_output"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const githubToolInstallations = pgTable("github_tool_installations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  githubUrl: text("github_url").notNull(),
+  toolId: uuid("tool_id").references(() => toolRegistry.id, { onDelete: "cascade" }),
+
+  // Analysis results
+  repoName: text("repo_name"),
+  detectedLanguage: text("detected_language"),
+  detectedDependencies: json("detected_dependencies").default([]),
+  suggestedInstallMethod: installMethodEnum("suggested_install_method"),
+
+  // Build artifacts
+  dockerfileGenerated: text("dockerfile_generated"),
+  buildScriptGenerated: text("build_script_generated"),
+
+  // Installation tracking
+  installStatus: installStatusEnum("install_status").notNull().default("pending"),
+  buildLog: text("build_log"),
+  errorMessage: text("error_message"),
+
+  // Timestamps
+  analyzedAt: timestamp("analyzed_at"),
+  installedAt: timestamp("installed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const toolTestResults = pgTable("tool_test_results", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  toolId: uuid("tool_id").notNull().references(() => toolRegistry.id, { onDelete: "cascade" }),
+
+  // Test configuration
+  testType: text("test_type").notNull(), // 'syntax', 'execution', 'output-parsing'
+  testCommand: text("test_command"),
+  expectedExitCode: integer("expected_exit_code"),
+  expectedOutput: text("expected_output"),
+
+  // Test results
+  passed: boolean("passed").notNull(),
+  actualExitCode: integer("actual_exit_code"),
+  actualOutput: text("actual_output"),
+  errorMessage: text("error_message"),
+  executionTimeMs: integer("execution_time_ms"),
+
+  // Metadata
+  testedBy: uuid("tested_by").references(() => users.id, { onDelete: "set null" }),
+  testedAt: timestamp("tested_at").notNull().defaultNow(),
+});

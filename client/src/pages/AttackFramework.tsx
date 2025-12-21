@@ -8,6 +8,7 @@ import StixImportDialog from "@/components/attack/StixImportDialog";
 import GroupsTable from "@/components/attack/GroupsTable";
 import SoftwareTable from "@/components/attack/SoftwareTable";
 import MitigationsTable from "@/components/attack/MitigationsTable";
+import CoverageMatrix from "@/components/attack/CoverageMatrix";
 
 interface AttackStats {
   techniques: number;
@@ -186,20 +187,7 @@ export default function AttackFramework() {
         </TabsContent>
 
         <TabsContent value="coverage" className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-lg font-semibold">Technique Coverage Matrix</h3>
-            <div className="text-sm text-muted-foreground">
-              Operation technique mapping
-            </div>
-          </div>
-
-          <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-            <Database className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500 font-medium">No coverage data</p>
-            <p className="text-sm text-gray-400 mt-2">
-              Map operations to ATT&CK techniques to track coverage
-            </p>
-          </div>
+          <CoverageMatrix />
         </TabsContent>
       </Tabs>
     </div>

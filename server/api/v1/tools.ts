@@ -9,6 +9,43 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 
+// Import new tool framework services
+import {
+  registerTool,
+  getToolById as getNewToolById,
+  getToolByToolId,
+  listTools as listNewTools,
+  updateTool as updateNewTool,
+  deleteTool as deleteNewTool,
+  getToolParameters,
+  getToolExecutionHistory,
+  getToolStatistics,
+  searchTools,
+  getInstalledTools,
+  getValidatedTools,
+  exportToolConfiguration,
+} from "../../services/tool-registry-manager";
+import {
+  executeTool as executeNewTool,
+  getExecutionResult,
+  cancelExecution,
+  getRunningExecutionsCount,
+} from "../../services/tool-executor";
+import {
+  runAllTests,
+  quickHealthCheck,
+  batchHealthCheck,
+  validateToolConfiguration as validateConfig,
+  getTestCoverage,
+} from "../../services/tool-tester";
+import {
+  analyzeGitHubRepository,
+  installToolFromGitHub,
+  getInstallationStatus,
+} from "../../services/github-tool-installer";
+import { outputParserManager } from "../../services/output-parser-manager";
+import type { ToolConfiguration } from "../../../shared/types/tool-config";
+
 const router = Router();
 
 // Apply authentication to all routes
@@ -442,6 +479,262 @@ router.delete("/:id", ensureRole("admin"), async (req, res) => {
     console.error("Delete tool error:", error);
     await logAudit(user.id, "delete_tool", "/tools", id, false, req);
     res.status(500).json({ error: "Failed to delete tool" });
+  }
+});
+
+// ============================================================================
+// NEW TOOL FRAMEWORK ENDPOINTS (Tool Registry)
+// ============================================================================
+
+/**
+ * GET /api/v1/tools/registry - List all tools from new framework
+ */
+router.get("/registry", async (req, res) => {
+  try {
+    const {
+      category,
+      installStatus,
+      validationStatus,
+      search,
+      tags,
+      installed,
+      validated,
+    } = req.query;
+
+    let tools;
+
+    if (installed === 'true') {
+      tools = await getInstalledTools();
+    } else if (validated === 'true') {
+      tools = await getValidatedTools();
+    } else if (search) {
+      tools = await searchTools(search as string);
+    } else {
+      tools = await listNewTools({
+        category: category as string,
+        installStatus: installStatus as string,
+        validationStatus: validationStatus as string,
+        search: search as string,
+        tags: tags ? (tags as string).split(',') : undefined,
+      });
+    }
+
+    res.json({
+      tools,
+      count: tools.length,
+    });
+  } catch (error: any) {
+    console.error('Failed to list tools from registry:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/v1/tools/registry/:id - Get tool from new framework
+ */
+router.get("/registry/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const tool = await getNewToolById(id);
+
+    if (!tool) {
+      return res.status(404).json({ error: 'Tool not found' });
+    }
+
+    const statistics = await getToolStatistics(id);
+    const testCoverage = await getTestCoverage(id);
+
+    res.json({
+      tool,
+      statistics,
+      testCoverage,
+    });
+  } catch (error: any) {
+    console.error('Failed to get tool from registry:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/v1/tools/registry - Register new tool
+ */
+router.post("/registry", ensureRole("admin"), async (req, res) => {
+  const user = req.user as any;
+
+  try {
+    const config: ToolConfiguration = req.body;
+
+    const validation = await validateConfig(config);
+    if (!validation.valid) {
+      return res.status(400).json({
+        error: 'Invalid tool configuration',
+        errors: validation.errors,
+      });
+    }
+
+    const toolId = await registerTool(config, user.id);
+    const tool = await getNewToolById(toolId);
+
+    await logAudit(user.id, "register_tool", "/tools/registry", toolId, true, req);
+
+    res.status(201).json({
+      message: 'Tool registered successfully',
+      tool,
+    });
+  } catch (error: any) {
+    console.error('Failed to register tool:', error);
+    await logAudit(user.id, "register_tool", "/tools/registry", null, false, req);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/v1/tools/registry/:id/execute - Execute tool from new framework
+ */
+router.post("/registry/:id/execute", ensureRole("admin", "operator"), async (req, res) => {
+  const user = req.user as any;
+
+  try {
+    const { id } = req.params;
+    const { parameters, targetId, operationId, agentId, timeout } = req.body;
+
+    const tool = await getNewToolById(id);
+    if (!tool) {
+      return res.status(404).json({ error: 'Tool not found' });
+    }
+
+    const result = await executeNewTool({
+      toolId: tool.toolId,
+      parameters,
+      userId: user.id,
+      targetId,
+      operationId,
+      agentId,
+      timeout,
+    });
+
+    await logAudit(user.id, "execute_tool", "/tools/registry", id, true, req);
+
+    res.json({
+      success: true,
+      result,
+    });
+  } catch (error: any) {
+    console.error('Failed to execute tool:', error);
+    await logAudit(user.id, "execute_tool", "/tools/registry", req.params.id, false, req);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/v1/tools/registry/:id/test - Run tests for a tool
+ */
+router.post("/registry/:id/test", ensureRole("admin"), async (req, res) => {
+  const user = req.user as any;
+
+  try {
+    const { id } = req.params;
+    const results = await runAllTests(id, user.id);
+
+    const allPassed = results.every(r => r.passed);
+
+    res.json({
+      success: allPassed,
+      results,
+    });
+  } catch (error: any) {
+    console.error('Failed to run tests:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/v1/tools/registry/:id/health - Health check for a tool
+ */
+router.get("/registry/:id/health", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const healthy = await quickHealthCheck(id);
+
+    res.json({
+      healthy,
+      status: healthy ? 'operational' : 'unavailable',
+    });
+  } catch (error: any) {
+    console.error('Failed to check health:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/v1/tools/install-from-github - Install tool from GitHub
+ */
+router.post("/install-from-github", ensureRole("admin"), async (req, res) => {
+  const user = req.user as any;
+
+  try {
+    const { githubUrl, toolConfig } = req.body;
+
+    if (!githubUrl) {
+      return res.status(400).json({ error: 'GitHub URL is required' });
+    }
+
+    const result = await installToolFromGitHub(githubUrl, toolConfig, user.id);
+
+    await logAudit(user.id, "install_github_tool", "/tools", null, true, req);
+
+    res.json({
+      message: 'Tool installation started',
+      installationId: result.installationId,
+      toolId: result.toolId,
+      status: result.status,
+    });
+  } catch (error: any) {
+    console.error('Failed to install from GitHub:', error);
+    await logAudit(user.id, "install_github_tool", "/tools", null, false, req);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/v1/tools/analyze-github - Analyze GitHub repository
+ */
+router.post("/analyze-github", ensureRole("admin"), async (req, res) => {
+  try {
+    const { githubUrl } = req.body;
+
+    if (!githubUrl) {
+      return res.status(400).json({ error: 'GitHub URL is required' });
+    }
+
+    const analysis = await analyzeGitHubRepository(githubUrl);
+
+    res.json({
+      message: 'Repository analyzed successfully',
+      analysis,
+    });
+  } catch (error: any) {
+    console.error('Failed to analyze repository:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/v1/tools/executions/:executionId - Get execution result
+ */
+router.get("/executions/:executionId", async (req, res) => {
+  try {
+    const { executionId } = req.params;
+    const execution = await getExecutionResult(executionId);
+
+    if (!execution) {
+      return res.status(404).json({ error: 'Execution not found' });
+    }
+
+    res.json({ execution });
+  } catch (error: any) {
+    console.error('Failed to get execution:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

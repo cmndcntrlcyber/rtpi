@@ -1,8 +1,11 @@
 import { db } from "../db";
-import { agents, targets, securityTools, mcpServers } from "@shared/schema";
+import { agents, targets, securityTools, mcpServers, toolRegistry } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { dockerExecutor } from "./docker-executor";
 import { metasploitExecutor } from "./metasploit-executor";
+import { getToolByToolId, getToolById } from "./tool-registry-manager";
+import { executeTool } from "./tool-executor";
+import type { ToolConfiguration } from "../../shared/types/tool-config";
 
 /**
  * Generic Agent-Tool Connector
@@ -30,13 +33,19 @@ export class AgentToolConnector {
       throw new Error(`Agent ${agentId} not found`);
     }
 
-    // Get tool configuration
-    const tool = await db
-      .select()
-      .from(securityTools)
-      .where(eq(securityTools.id, toolId))
-      .limit(1)
-      .then((rows) => rows[0]);
+    // Try new tool registry first, fallback to legacy securityTools
+    let tool = await getToolById(toolId);
+    let isNewFramework = !!tool;
+
+    if (!tool) {
+      // Fallback to legacy security tools table
+      tool = await db
+        .select()
+        .from(securityTools)
+        .where(eq(securityTools.id, toolId))
+        .limit(1)
+        .then((rows) => rows[0]);
+    }
 
     if (!tool) {
       throw new Error(`Tool ${toolId} not found`);
@@ -54,8 +63,98 @@ export class AgentToolConnector {
       throw new Error(`Target ${targetId} not found`);
     }
 
-    // Execute based on agent type
-    return await this.executeAgentWithTool(agent, tool, target, input);
+    // Execute based on whether using new framework or legacy
+    if (isNewFramework && tool.installStatus === 'installed') {
+      return await this.executeWithNewFramework(agent, tool, target, input);
+    } else {
+      return await this.executeAgentWithTool(agent, tool, target, input);
+    }
+  }
+
+  /**
+   * Execute tool using new tool framework
+   */
+  private async executeWithNewFramework(
+    agent: any,
+    tool: any,
+    target: any,
+    input: string
+  ): Promise<string> {
+    try {
+      const config = tool.config as ToolConfiguration;
+
+      // Parse input parameters
+      const parameters = this.parseInputParameters(input, {});
+
+      // Add target to parameters if not already present
+      if (!parameters.target && target) {
+        parameters.target = target.value;
+      }
+
+      // Execute tool using tool-executor service
+      const result = await executeTool({
+        toolId: config.toolId,
+        parameters,
+        targetId: target.id,
+        agentId: agent.id,
+        userId: agent.createdBy || 'system',
+        timeout: config.defaultTimeout || 300000,
+        saveOutput: true,
+        parseOutput: true,
+      });
+
+      // Format response for agent
+      return this.formatNewFrameworkResponse(agent, config, target, result);
+    } catch (error: any) {
+      return `[Agent: ${agent.name}]\n[Tool: ${tool.name}]\n[Target: ${target.value}]\n\nError: ${error.message}`;
+    }
+  }
+
+  /**
+   * Format response from new framework execution
+   */
+  private formatNewFrameworkResponse(
+    agent: any,
+    config: ToolConfiguration,
+    target: any,
+    result: any
+  ): string {
+    const lines = [
+      `[Agent: ${agent.name}]`,
+      `[Tool: ${config.name}]`,
+      `[Target: ${target.value}]`,
+      `[Status: ${result.status === 'completed' ? 'SUCCESS' : 'FAILED'}]`,
+      `[Duration: ${result.duration}ms]`,
+      '',
+    ];
+
+    // Include parsed output if available
+    if (result.parsedOutput) {
+      lines.push('=== Parsed Results ===');
+      lines.push(JSON.stringify(result.parsedOutput, null, 2));
+      lines.push('');
+    }
+
+    // Include raw output
+    if (result.stdout) {
+      lines.push('=== Output ===');
+      lines.push(result.stdout);
+      lines.push('');
+    }
+
+    if (result.stderr) {
+      lines.push('=== Errors ===');
+      lines.push(result.stderr);
+      lines.push('');
+    }
+
+    if (result.error) {
+      lines.push('=== Error ===');
+      lines.push(result.error);
+      lines.push('');
+    }
+
+    return lines.join('\n');
   }
 
   private async executeAgentWithTool(

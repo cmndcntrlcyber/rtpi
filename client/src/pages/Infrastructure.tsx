@@ -1,5 +1,6 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ContainerCard from "@/components/infrastructure/ContainerCard";
+import EmpireTab from "@/components/empire/EmpireTab";
 
 export default function Infrastructure() {
   // Mock data for containers
@@ -118,6 +119,7 @@ export default function Infrastructure() {
           <TabsTrigger value="containers">Containers</TabsTrigger>
           <TabsTrigger value="devices">Devices</TabsTrigger>
           <TabsTrigger value="health">Health Checks</TabsTrigger>
+          <TabsTrigger value="empire">Empire C2</TabsTrigger>
         </TabsList>
 
         <TabsContent value="containers" className="space-y-4">
@@ -167,6 +169,10 @@ export default function Infrastructure() {
               </div>
             ))}
           </div>
+        </TabsContent>
+
+        <TabsContent value="empire" className="space-y-4">
+          <EmpireTab />
         </TabsContent>
       </Tabs>
     </div>

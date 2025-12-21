@@ -5,6 +5,9 @@ import { useToast } from "@/hooks/use-toast";
 import TechniquesTable from "@/components/attack/TechniquesTable";
 import TacticsGrid from "@/components/attack/TacticsGrid";
 import StixImportDialog from "@/components/attack/StixImportDialog";
+import GroupsTable from "@/components/attack/GroupsTable";
+import SoftwareTable from "@/components/attack/SoftwareTable";
+import MitigationsTable from "@/components/attack/MitigationsTable";
 
 interface AttackStats {
   techniques: number;
@@ -171,54 +174,15 @@ export default function AttackFramework() {
         </TabsContent>
 
         <TabsContent value="groups" className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-lg font-semibold">Threat Actor Groups</h3>
-            <div className="text-sm text-muted-foreground">
-              Showing 0 groups
-            </div>
-          </div>
-
-          <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-            <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500 font-medium">No threat groups loaded</p>
-            <p className="text-sm text-gray-400 mt-2">
-              Known threat actor groups tracked by MITRE ATT&CK
-            </p>
-          </div>
+          <GroupsTable />
         </TabsContent>
 
         <TabsContent value="software" className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-lg font-semibold">Malware & Tools</h3>
-            <div className="text-sm text-muted-foreground">
-              Showing 0 software
-            </div>
-          </div>
-
-          <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-            <Wrench className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500 font-medium">No software loaded</p>
-            <p className="text-sm text-gray-400 mt-2">
-              Malware and tools used by threat actors
-            </p>
-          </div>
+          <SoftwareTable />
         </TabsContent>
 
         <TabsContent value="mitigations" className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-lg font-semibold">Security Mitigations</h3>
-            <div className="text-sm text-muted-foreground">
-              Showing 0 mitigations
-            </div>
-          </div>
-
-          <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-            <ShieldCheck className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500 font-medium">No mitigations loaded</p>
-            <p className="text-sm text-gray-400 mt-2">
-              Security controls to prevent or detect techniques
-            </p>
-          </div>
+          <MitigationsTable />
         </TabsContent>
 
         <TabsContent value="coverage" className="space-y-4">

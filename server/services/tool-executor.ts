@@ -14,6 +14,7 @@ import type {
 } from '../../shared/types/tool-config';
 import { getToolByToolId, getToolOutputParser } from './tool-registry-manager';
 import { validateToolExecutionRequest } from '../validation/tool-config-schema';
+import { outputParserManager } from './output-parser-manager';
 
 // Maximum concurrent tool executions
 const MAX_CONCURRENT_EXECUTIONS = parseInt(
@@ -95,10 +96,19 @@ export async function executeTool(
     // Parse output if requested and parser is available
     let parsedOutput = null;
     if (request.parseOutput !== false) {
-      const parser = await getToolOutputParser(tool.id);
-      if (parser) {
+      const parserConfig = await getToolOutputParser(tool.id);
+      if (parserConfig) {
         try {
-          parsedOutput = await parseOutput(result.stdout, parser);
+          const parseResult = await outputParserManager.parseOutput(
+            result.stdout,
+            parserConfig
+          );
+
+          if (parseResult.success) {
+            parsedOutput = parseResult.parsed;
+          } else {
+            console.warn(`Failed to parse output:`, parseResult.errors);
+          }
         } catch (parseError: any) {
           console.warn(`Failed to parse output: ${parseError.message}`);
         }
@@ -330,109 +340,6 @@ function runCommand(
   });
 }
 
-/**
- * Parse tool output using configured parser
- */
-async function parseOutput(output: string, parser: any): Promise<any> {
-  const { parserType, parserCode, regexPatterns, jsonPaths, xmlPaths } = parser;
-
-  switch (parserType) {
-    case 'json':
-      return parseJsonOutput(output, jsonPaths);
-
-    case 'xml':
-      return parseXmlOutput(output, xmlPaths);
-
-    case 'regex':
-      return parseRegexOutput(output, regexPatterns);
-
-    case 'custom':
-      return parseCustomOutput(output, parserCode);
-
-    default:
-      throw new Error(`Unknown parser type: ${parserType}`);
-  }
-}
-
-/**
- * Parse JSON output
- */
-function parseJsonOutput(output: string, jsonPaths?: any): any {
-  try {
-    const parsed = JSON.parse(output);
-
-    if (!jsonPaths) {
-      return parsed;
-    }
-
-    // Extract specific paths
-    const result: any = {};
-    for (const [key, path] of Object.entries(jsonPaths)) {
-      result[key] = getJsonPath(parsed, path as string);
-    }
-
-    return result;
-  } catch (error: any) {
-    throw new Error(`Failed to parse JSON output: ${error.message}`);
-  }
-}
-
-/**
- * Get value from JSON path (simple dot notation)
- */
-function getJsonPath(obj: any, path: string): any {
-  const parts = path.split('.');
-  let current = obj;
-
-  for (const part of parts) {
-    if (current === null || current === undefined) {
-      return null;
-    }
-    current = current[part];
-  }
-
-  return current;
-}
-
-/**
- * Parse XML output (basic implementation)
- */
-function parseXmlOutput(output: string, xmlPaths?: any): any {
-  // For now, return raw XML
-  // TODO: Implement proper XML parsing with xpath if needed
-  return { raw: output };
-}
-
-/**
- * Parse output using regex patterns
- */
-function parseRegexOutput(output: string, regexPatterns: any): any {
-  const result: any = {};
-
-  for (const [key, pattern] of Object.entries(regexPatterns)) {
-    const regex = new RegExp(pattern as string, 'gm');
-    const matches = [...output.matchAll(regex)];
-
-    if (matches.length > 0) {
-      result[key] = matches.map(m => m[1] || m[0]);
-    }
-  }
-
-  return result;
-}
-
-/**
- * Parse output using custom JavaScript parser
- */
-function parseCustomOutput(output: string, parserCode: string): any {
-  try {
-    // Create a safe execution context
-    const fn = new Function('output', parserCode);
-    return fn(output);
-  } catch (error: any) {
-    throw new Error(`Custom parser execution failed: ${error.message}`);
-  }
-}
 
 /**
  * Update execution status

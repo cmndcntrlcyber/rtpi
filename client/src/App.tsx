@@ -15,6 +15,7 @@ import Settings from "@/pages/Settings";
 import Profile from "@/pages/Profile";
 import Users from "@/pages/Users";
 import SurfaceAssessment from "@/pages/SurfaceAssessment";
+import AttackFramework from "@/pages/AttackFramework";
 import Login from "@/pages/Login";
 
 function AppContent() {
@@ -53,6 +54,7 @@ function AppContent() {
         <Route path="/targets" component={Targets} />
         <Route path="/vulnerabilities" component={Vulnerabilities} />
         <Route path="/surface-assessment" component={SurfaceAssessment} />
+        <Route path="/attack" component={AttackFramework} />
         <Route path="/agents" component={Agents} />
         <Route path="/infrastructure" component={Infrastructure} />
         <Route path="/tools" component={Tools} />

@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
 import {
   LayoutDashboard,
   Target,
@@ -15,10 +16,14 @@ import {
   BarChart3,
   Package,
   Shield,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 interface SidebarProps {
   isOpen: boolean;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
 const navItems = [
@@ -41,24 +46,54 @@ const adminNavItems = [
   { path: "/users", label: "User Management", icon: Users },
 ];
 
-export default function Sidebar({ isOpen }: SidebarProps) {
+export default function Sidebar({ isOpen, isCollapsed, onToggleCollapse }: SidebarProps) {
   const [location] = useLocation();
   const { isAdmin } = useAuth();
 
   if (!isOpen) return null;
 
   return (
-    <aside className="w-64 bg-background border-r border-border fixed left-0 top-16 bottom-0 overflow-y-auto z-10">
-      <div className="p-4 border-b border-border">
-        <div className="flex items-center gap-3">
-          <img src="/RTPI.png" alt="RTPI" className="h-10 w-10" />
-          <div>
-            <h2 className="font-bold text-foreground">RTPI</h2>
-            <p className="text-xs text-muted-foreground">Red Team Platform</p>
+    <aside
+      className={`bg-background border-r border-border fixed left-0 top-16 bottom-0 overflow-y-auto z-10 transition-all duration-300 ${
+        isCollapsed ? "w-20" : "w-64"
+      }`}
+    >
+      {/* Header */}
+      <div className="p-4 border-b border-border flex items-center justify-between">
+        {!isCollapsed ? (
+          <div className="flex items-center gap-3">
+            <img src="/RTPI.png" alt="RTPI" className="h-10 w-10" />
+            <div>
+              <h2 className="font-bold text-foreground">RTPI</h2>
+              <p className="text-xs text-muted-foreground">Red Team Platform</p>
+            </div>
           </div>
-        </div>
+        ) : (
+          <img src="/RTPI.png" alt="RTPI" className="h-10 w-10 mx-auto" />
+        )}
       </div>
 
+      {/* Collapse/Expand Button */}
+      <div className="p-2 border-b border-border">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onToggleCollapse}
+          className="w-full justify-center"
+          title={isCollapsed ? "Expand sidebar (Ctrl+B)" : "Collapse sidebar (Ctrl+B)"}
+        >
+          {isCollapsed ? (
+            <ChevronRight className="h-4 w-4" />
+          ) : (
+            <>
+              <ChevronLeft className="h-4 w-4 mr-2" />
+              <span className="text-xs">Collapse</span>
+            </>
+          )}
+        </Button>
+      </div>
+
+      {/* Navigation */}
       <nav className="p-4 space-y-1">
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -72,21 +107,24 @@ export default function Sidebar({ isOpen }: SidebarProps) {
                 isActive
                   ? "bg-primary/10 text-primary font-medium"
                   : "text-foreground hover:bg-secondary"
-              }`}
+              } ${isCollapsed ? "justify-center" : ""}`}
+              title={isCollapsed ? item.label : undefined}
             >
-              <Icon className="w-5 h-5" />
-              <span>{item.label}</span>
+              <Icon className="w-5 h-5 flex-shrink-0" />
+              {!isCollapsed && <span>{item.label}</span>}
             </Link>
           );
         })}
 
         {isAdmin() && (
           <>
-            <div className="pt-4 pb-2 px-4">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Administration
-              </p>
-            </div>
+            {!isCollapsed && (
+              <div className="pt-4 pb-2 px-4">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Administration
+                </p>
+              </div>
+            )}
             {adminNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = location === item.path;
@@ -99,10 +137,11 @@ export default function Sidebar({ isOpen }: SidebarProps) {
                     isActive
                       ? "bg-primary/10 text-primary font-medium"
                       : "text-foreground hover:bg-secondary"
-                  }`}
+                  } ${isCollapsed ? "justify-center" : ""}`}
+                  title={isCollapsed ? item.label : undefined}
                 >
-                  <Icon className="w-5 h-5" />
-                  <span>{item.label}</span>
+                  <Icon className="w-5 h-5 flex-shrink-0" />
+                  {!isCollapsed && <span>{item.label}</span>}
                 </Link>
               );
             })}

@@ -28,6 +28,8 @@ import agentMcpRoutes from "./api/v1/agent-mcp";
 import agentWorkflowsRoutes from "./api/v1/agent-workflows";
 import metasploitRoutes from "./api/v1/metasploit";
 import surfaceAssessmentRoutes from "./api/v1/surface-assessment";
+import usersRoutes from "./api/v1/users";
+import empireRoutes from "./api/v1/empire";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -81,6 +83,8 @@ app.use("/api/v1/agents", agentMcpRoutes);
 app.use("/api/v1/agent-workflows", agentWorkflowsRoutes);
 app.use("/api/v1/metasploit", metasploitRoutes);
 app.use("/api/v1/surface-assessment", surfaceAssessmentRoutes);
+app.use("/api/v1/users", usersRoutes);
+app.use("/api/v1/empire", empireRoutes);
 
 // Root endpoint
 app.get("/api/v1", (req, res) => {
@@ -104,6 +108,7 @@ app.get("/api/v1", (req, res) => {
       agentLoops: "/api/v1/agent-loops",
       agentWorkflows: "/api/v1/agent-workflows",
       metasploit: "/api/v1/metasploit",
+      empire: "/api/v1/empire",
     },
   });
 });

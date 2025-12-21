@@ -14,6 +14,7 @@ import {
   Users,
   BarChart3,
   Package,
+  Shield,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -26,6 +27,7 @@ const navItems = [
   { path: "/targets", label: "Targets", icon: Target },
   { path: "/vulnerabilities", label: "Vulnerabilities", icon: AlertTriangle },
   { path: "/surface-assessment", label: "Surface Assessment", icon: BarChart3 },
+  { path: "/attack", label: "ATT&CK Framework", icon: Shield },
   { path: "/agents", label: "Agents", icon: Bot },
   { path: "/infrastructure", label: "Infrastructure", icon: Server },
   { path: "/tools", label: "Tools", icon: Wrench },

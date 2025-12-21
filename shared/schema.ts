@@ -26,6 +26,29 @@ export const discoveryMethodEnum = pgEnum("discovery_method", ["bbot", "nuclei",
 export const assetStatusEnum = pgEnum("asset_status", ["active", "down", "unreachable"]);
 export const scanStatusEnum = pgEnum("scan_status", ["pending", "running", "completed", "failed", "cancelled"]);
 
+// Empire C2 enums
+export const empireListenerTypeEnum = pgEnum("empire_listener_type", [
+  "http",
+  "https",
+  "http_foreign",
+  "http_hop",
+  "http_mapi",
+  "onedrive",
+  "redirector",
+]);
+export const empireAgentStatusEnum = pgEnum("empire_agent_status", [
+  "active",
+  "pending",
+  "lost",
+  "killed",
+]);
+export const empireTaskStatusEnum = pgEnum("empire_task_status", [
+  "queued",
+  "sent",
+  "completed",
+  "error",
+]);
+
 // ============================================================================
 // AUTHENTICATION & USER MANAGEMENT TABLES (5 tables)
 // ============================================================================
@@ -742,4 +765,206 @@ export const toolTestResults = pgTable("tool_test_results", {
   // Metadata
   testedBy: uuid("tested_by").references(() => users.id, { onDelete: "set null" }),
   testedAt: timestamp("tested_at").notNull().defaultNow(),
+});
+
+// ============================================================================
+// EMPIRE C2 INTEGRATION TABLES (9 tables)
+// ============================================================================
+
+export const empireServers = pgTable("empire_servers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  host: text("host").notNull(),
+  port: integer("port").notNull().default(1337),
+  restApiUrl: text("rest_api_url").notNull(),
+  restApiPort: integer("rest_api_port").notNull().default(1337),
+  socketioUrl: text("socketio_url"),
+  socketioPort: integer("socketio_port"),
+  adminUsername: text("admin_username").notNull().default("empireadmin"),
+  adminPasswordHash: text("admin_password_hash").notNull(),
+  apiToken: text("api_token"),
+  certificatePath: text("certificate_path"),
+  isActive: boolean("is_active").default(true),
+  version: text("version"),
+  status: text("status").default("disconnected"),
+  lastHeartbeat: timestamp("last_heartbeat"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  metadata: json("metadata").default({}),
+});
+
+export const empireUserTokens = pgTable("empire_user_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  serverId: uuid("server_id").notNull().references(() => empireServers.id, { onDelete: "cascade" }),
+  permanentToken: text("permanent_token").notNull(),
+  temporaryToken: text("temporary_token"),
+  tokenExpiresAt: timestamp("token_expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  lastUsed: timestamp("last_used"),
+});
+
+export const empireListeners = pgTable("empire_listeners", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  serverId: uuid("server_id").notNull().references(() => empireServers.id, { onDelete: "cascade" }),
+  empireListenerId: text("empire_listener_id").notNull(),
+  name: text("name").notNull(),
+  listenerType: empireListenerTypeEnum("listener_type").notNull(),
+  listenerCategory: text("listener_category"),
+  host: text("host").notNull(),
+  port: integer("port").notNull(),
+  certPath: text("cert_path"),
+  stagingKey: text("staging_key"),
+  defaultDelay: integer("default_delay").default(5),
+  defaultJitter: integer("default_jitter").default(0),
+  defaultLostLimit: integer("default_lost_limit").default(60),
+  killDate: text("kill_date"),
+  workingHours: text("working_hours"),
+  redirectTarget: text("redirect_target"),
+  proxyUrl: text("proxy_url"),
+  proxyUsername: text("proxy_username"),
+  proxyPassword: text("proxy_password"),
+  userAgent: text("user_agent"),
+  headers: text("headers"),
+  cookie: text("cookie"),
+  isActive: boolean("is_active").default(true),
+  status: text("status").default("stopped"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdBy: uuid("created_by").references(() => users.id),
+  config: json("config").default({}),
+});
+
+export const empireStagers = pgTable("empire_stagers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  serverId: uuid("server_id").notNull().references(() => empireServers.id, { onDelete: "cascade" }),
+  listenerId: uuid("listener_id").references(() => empireListeners.id, { onDelete: "set null" }),
+  stagerName: text("stager_name").notNull(),
+  stagerType: text("stager_type").notNull(),
+  language: text("language").notNull(),
+  outputFile: text("output_file"),
+  base64Output: text("base64_output"),
+  listenerName: text("listener_name"),
+  userAgent: text("user_agent"),
+  proxyUrl: text("proxy_url"),
+  proxyCredentials: text("proxy_credentials"),
+  binpath: text("binpath"),
+  obfuscate: boolean("obfuscate").default(false),
+  obfuscationCommand: text("obfuscation_command"),
+  bypassAmsi: boolean("bypass_amsi").default(true),
+  bypassUac: boolean("bypass_uac").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  createdBy: uuid("created_by").references(() => users.id),
+  config: json("config").default({}),
+});
+
+export const empireAgents = pgTable("empire_agents", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  serverId: uuid("server_id").notNull().references(() => empireServers.id, { onDelete: "cascade" }),
+  listenerId: uuid("listener_id").references(() => empireListeners.id, { onDelete: "set null" }),
+  targetId: uuid("target_id").references(() => targets.id, { onDelete: "set null" }),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "set null" }),
+  empireAgentId: text("empire_agent_id").notNull(),
+  sessionId: text("session_id").notNull(),
+  name: text("name").notNull(),
+  hostname: text("hostname"),
+  internalIp: text("internal_ip"),
+  externalIp: text("external_ip"),
+  username: text("username"),
+  highIntegrity: boolean("high_integrity").default(false),
+  processName: text("process_name"),
+  processId: integer("process_id"),
+  language: text("language"),
+  languageVersion: text("language_version"),
+  osDetails: text("os_details"),
+  architecture: text("architecture"),
+  domain: text("domain"),
+  status: empireAgentStatusEnum("status").default("pending"),
+  checkinTime: timestamp("checkin_time"),
+  lastseenTime: timestamp("lastseen_time"),
+  delay: integer("delay").default(5),
+  jitter: integer("jitter").default(0),
+  lostLimit: integer("lost_limit").default(60),
+  killDate: text("kill_date"),
+  workingHours: text("working_hours"),
+  sessionKey: text("session_key"),
+  nonce: text("nonce"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  metadata: json("metadata").default({}),
+});
+
+export const empireTasks = pgTable("empire_tasks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  serverId: uuid("server_id").notNull().references(() => empireServers.id, { onDelete: "cascade" }),
+  agentId: uuid("agent_id").notNull().references(() => empireAgents.id, { onDelete: "cascade" }),
+  empireTaskId: text("empire_task_id"),
+  taskName: text("task_name").notNull(),
+  moduleName: text("module_name"),
+  command: text("command").notNull(),
+  parameters: json("parameters").default({}),
+  status: empireTaskStatusEnum("status").default("queued"),
+  results: text("results"),
+  userOutput: text("user_output"),
+  agentOutput: text("agent_output"),
+  errorMessage: text("error_message"),
+  queuedAt: timestamp("queued_at").defaultNow(),
+  sentAt: timestamp("sent_at"),
+  completedAt: timestamp("completed_at"),
+  createdBy: uuid("created_by").references(() => users.id),
+  metadata: json("metadata").default({}),
+});
+
+export const empireModules = pgTable("empire_modules", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  serverId: uuid("server_id").notNull().references(() => empireServers.id, { onDelete: "cascade" }),
+  moduleName: text("module_name").notNull(),
+  modulePath: text("module_path").notNull(),
+  language: text("language").notNull(),
+  category: text("category"),
+  description: text("description"),
+  background: boolean("background").default(false),
+  outputExtension: text("output_extension"),
+  needsAdmin: boolean("needs_admin").default(false),
+  opsecSafe: boolean("opsec_safe").default(true),
+  software: text("software"),
+  options: json("options").default({}),
+  comments: text("comments"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const empireCredentials = pgTable("empire_credentials", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  serverId: uuid("server_id").notNull().references(() => empireServers.id, { onDelete: "cascade" }),
+  agentId: uuid("agent_id").references(() => empireAgents.id, { onDelete: "set null" }),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "set null" }),
+  empireCredentialId: text("empire_credential_id"),
+  credType: text("cred_type").notNull(),
+  domain: text("domain"),
+  username: text("username").notNull(),
+  password: text("password"),
+  ntlmHash: text("ntlm_hash"),
+  sha256Hash: text("sha256_hash"),
+  host: text("host"),
+  os: text("os"),
+  sid: text("sid"),
+  notes: text("notes"),
+  harvestedAt: timestamp("harvested_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+  metadata: json("metadata").default({}),
+});
+
+export const empireEvents = pgTable("empire_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  serverId: uuid("server_id").notNull().references(() => empireServers.id, { onDelete: "cascade" }),
+  agentId: uuid("agent_id").references(() => empireAgents.id, { onDelete: "set null" }),
+  eventType: text("event_type").notNull(),
+  eventName: text("event_name").notNull(),
+  message: text("message"),
+  username: text("username"),
+  timestamp: timestamp("timestamp").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  eventData: json("event_data").default({}),
 });

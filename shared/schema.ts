@@ -49,6 +49,31 @@ export const empireTaskStatusEnum = pgEnum("empire_task_status", [
   "error",
 ]);
 
+// ATT&CK enums
+export const attackObjectTypeEnum = pgEnum("attack_object_type", [
+  "technique",
+  "tactic",
+  "group",
+  "software",
+  "mitigation",
+  "data-source",
+  "campaign",
+]);
+export const attackPlatformEnum = pgEnum("attack_platform", [
+  "Windows",
+  "macOS",
+  "Linux",
+  "Cloud",
+  "Network",
+  "Containers",
+  "IaaS",
+  "SaaS",
+  "Office 365",
+  "Azure AD",
+  "Google Workspace",
+  "PRE",
+]);
+
 // ============================================================================
 // AUTHENTICATION & USER MANAGEMENT TABLES (5 tables)
 // ============================================================================
@@ -967,4 +992,196 @@ export const empireEvents = pgTable("empire_events", {
   timestamp: timestamp("timestamp").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   eventData: json("event_data").default({}),
+});
+
+// ============================================================================
+// MITRE ATT&CK INTEGRATION TABLES (10 tables)
+// ============================================================================
+
+export const attackTactics = pgTable("attack_tactics", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  attackId: text("attack_id").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  shortName: text("short_name"),
+  xMitreShortname: text("x_mitre_shortname"),
+  stixId: text("stix_id").unique(),
+  created: timestamp("created"),
+  modified: timestamp("modified"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  metadata: json("metadata").default({}),
+});
+
+export const attackTechniques = pgTable("attack_techniques", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  attackId: text("attack_id").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  isSubtechnique: boolean("is_subtechnique").default(false),
+  parentTechniqueId: uuid("parent_technique_id").references((): any => attackTechniques.id, { onDelete: "set null" }),
+  stixId: text("stix_id").unique(),
+  killChainPhases: text("kill_chain_phases").array(),
+  platforms: attackPlatformEnum("platforms").array(),
+  permissionsRequired: text("permissions_required").array(),
+  effectivePermissions: text("effective_permissions").array(),
+  defenseBypassed: text("defense_bypassed").array(),
+  dataSources: text("data_sources").array(),
+  detection: text("detection"),
+  version: text("version"),
+  created: timestamp("created"),
+  modified: timestamp("modified"),
+  deprecated: boolean("deprecated").default(false),
+  revoked: boolean("revoked").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  metadata: json("metadata").default({}),
+  externalReferences: json("external_references").default([]),
+  xMitreVersion: text("x_mitre_version"),
+  xMitreDetection: text("x_mitre_detection"),
+  xMitreDataSources: text("x_mitre_data_sources").array(),
+  xMitreContributors: text("x_mitre_contributors").array(),
+  xMitrePlatforms: text("x_mitre_platforms").array(),
+  xMitreIsSubtechnique: boolean("x_mitre_is_subtechnique").default(false),
+  xMitreImpactType: text("x_mitre_impact_type").array(),
+});
+
+export const attackGroups = pgTable("attack_groups", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  attackId: text("attack_id").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  aliases: text("aliases").array(),
+  stixId: text("stix_id").unique(),
+  version: text("version"),
+  created: timestamp("created"),
+  modified: timestamp("modified"),
+  deprecated: boolean("deprecated").default(false),
+  revoked: boolean("revoked").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  metadata: json("metadata").default({}),
+  externalReferences: json("external_references").default([]),
+  xMitreVersion: text("x_mitre_version"),
+  xMitreContributors: text("x_mitre_contributors").array(),
+});
+
+export const attackSoftware = pgTable("attack_software", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  attackId: text("attack_id").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  softwareType: text("software_type"),
+  aliases: text("aliases").array(),
+  platforms: attackPlatformEnum("platforms").array(),
+  stixId: text("stix_id").unique(),
+  version: text("version"),
+  created: timestamp("created"),
+  modified: timestamp("modified"),
+  deprecated: boolean("deprecated").default(false),
+  revoked: boolean("revoked").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  metadata: json("metadata").default({}),
+  externalReferences: json("external_references").default([]),
+  xMitreVersion: text("x_mitre_version"),
+  xMitreContributors: text("x_mitre_contributors").array(),
+  xMitrePlatforms: text("x_mitre_platforms").array(),
+});
+
+export const attackMitigations = pgTable("attack_mitigations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  attackId: text("attack_id").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  stixId: text("stix_id").unique(),
+  version: text("version"),
+  created: timestamp("created"),
+  modified: timestamp("modified"),
+  deprecated: boolean("deprecated").default(false),
+  revoked: boolean("revoked").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  metadata: json("metadata").default({}),
+  externalReferences: json("external_references").default([]),
+  xMitreVersion: text("x_mitre_version"),
+});
+
+export const attackDataSources = pgTable("attack_data_sources", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  attackId: text("attack_id").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  stixId: text("stix_id").unique(),
+  platforms: attackPlatformEnum("platforms").array(),
+  collectionLayers: text("collection_layers").array(),
+  dataComponents: json("data_components").default([]),
+  version: text("version"),
+  created: timestamp("created"),
+  modified: timestamp("modified"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  metadata: json("metadata").default({}),
+  externalReferences: json("external_references").default([]),
+  xMitreVersion: text("x_mitre_version"),
+});
+
+export const attackCampaigns = pgTable("attack_campaigns", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  attackId: text("attack_id").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  aliases: text("aliases").array(),
+  firstSeen: timestamp("first_seen"),
+  lastSeen: timestamp("last_seen"),
+  stixId: text("stix_id").unique(),
+  version: text("version"),
+  created: timestamp("created"),
+  modified: timestamp("modified"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  metadata: json("metadata").default({}),
+  externalReferences: json("external_references").default([]),
+  xMitreVersion: text("x_mitre_version"),
+  xMitreFirstSeenCitation: text("x_mitre_first_seen_citation"),
+  xMitreLastSeenCitation: text("x_mitre_last_seen_citation"),
+});
+
+export const attackRelationships = pgTable("attack_relationships", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  stixId: text("stix_id").unique(),
+  relationshipType: text("relationship_type").notNull(),
+  sourceType: attackObjectTypeEnum("source_type").notNull(),
+  sourceRef: text("source_ref").notNull(),
+  targetType: attackObjectTypeEnum("target_type").notNull(),
+  targetRef: text("target_ref").notNull(),
+  description: text("description"),
+  created: timestamp("created"),
+  modified: timestamp("modified"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  metadata: json("metadata").default({}),
+});
+
+export const operationAttackMapping = pgTable("operation_attack_mapping", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  operationId: uuid("operation_id").notNull().references(() => operations.id, { onDelete: "cascade" }),
+  techniqueId: uuid("technique_id").notNull().references(() => attackTechniques.id, { onDelete: "cascade" }),
+  tacticId: uuid("tactic_id").references(() => attackTactics.id, { onDelete: "set null" }),
+  status: text("status").default("planned"),
+  coveragePercentage: integer("coverage_percentage").default(0),
+  evidenceText: text("evidence_text"),
+  notes: text("notes"),
+  executedAt: timestamp("executed_at"),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  metadata: json("metadata").default({}),
+});
+
+export const attackTechniqueTactics = pgTable("attack_technique_tactics", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  techniqueId: uuid("technique_id").notNull().references(() => attackTechniques.id, { onDelete: "cascade" }),
+  tacticId: uuid("tactic_id").notNull().references(() => attackTactics.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow(),
 });

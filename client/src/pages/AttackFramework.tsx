@@ -1,27 +1,83 @@
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Shield, Target, Users, Wrench, ShieldCheck, Database } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import TechniquesTable from "@/components/attack/TechniquesTable";
+import TacticsGrid from "@/components/attack/TacticsGrid";
+import StixImportDialog from "@/components/attack/StixImportDialog";
+
+interface AttackStats {
+  techniques: number;
+  subtechniques: number;
+  tactics: number;
+  groups: number;
+  software: number;
+  mitigations: number;
+  dataSources: number;
+  campaigns: number;
+}
 
 export default function AttackFramework() {
-  // Stats for the overview
-  const stats = {
+  const [stats, setStats] = useState<AttackStats>({
     techniques: 0,
+    subtechniques: 0,
     tactics: 0,
     groups: 0,
     software: 0,
     mitigations: 0,
-    coverage: 0,
+    dataSources: 0,
+    campaigns: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+
+  const fetchStats = async () => {
+    try {
+      const response = await fetch("/api/v1/attack/stats", {
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setStats(data);
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to fetch ATT&CK statistics",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Failed to fetch stats:", error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch ATT&CK statistics",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  const totalTechniques = stats.techniques + stats.subtechniques;
 
   return (
     <div className="p-8">
-      <div className="flex items-center gap-3 mb-8">
-        <Shield className="h-8 w-8 text-primary" />
-        <div>
-          <h1 className="text-3xl font-bold">MITRE ATT&CK Framework</h1>
-          <p className="text-muted-foreground mt-1">
-            Adversary tactics, techniques, and knowledge base
-          </p>
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-3">
+          <Shield className="h-8 w-8 text-primary" />
+          <div>
+            <h1 className="text-3xl font-bold">MITRE ATT&CK Framework</h1>
+            <p className="text-muted-foreground mt-1">
+              Adversary tactics, techniques, and knowledge base
+            </p>
+          </div>
         </div>
+        <StixImportDialog />
       </div>
 
       {/* Stats Cards */}
@@ -31,8 +87,12 @@ export default function AttackFramework() {
             <Target className="h-5 w-5 text-blue-600" />
             <h3 className="text-sm font-medium text-gray-500">Techniques</h3>
           </div>
-          <p className="text-3xl font-bold text-gray-900">{stats.techniques}</p>
-          <p className="text-xs text-gray-500 mt-1">Enterprise ATT&CK</p>
+          <p className="text-3xl font-bold text-gray-900">
+            {loading ? "..." : totalTechniques.toLocaleString()}
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            {stats.techniques} base + {stats.subtechniques} sub
+          </p>
         </div>
 
         <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
@@ -40,7 +100,9 @@ export default function AttackFramework() {
             <Shield className="h-5 w-5 text-purple-600" />
             <h3 className="text-sm font-medium text-gray-500">Tactics</h3>
           </div>
-          <p className="text-3xl font-bold text-gray-900">{stats.tactics}</p>
+          <p className="text-3xl font-bold text-gray-900">
+            {loading ? "..." : stats.tactics}
+          </p>
           <p className="text-xs text-gray-500 mt-1">Kill chain phases</p>
         </div>
 
@@ -49,7 +111,9 @@ export default function AttackFramework() {
             <Users className="h-5 w-5 text-red-600" />
             <h3 className="text-sm font-medium text-gray-500">Groups</h3>
           </div>
-          <p className="text-3xl font-bold text-gray-900">{stats.groups}</p>
+          <p className="text-3xl font-bold text-gray-900">
+            {loading ? "..." : stats.groups}
+          </p>
           <p className="text-xs text-gray-500 mt-1">Threat actors</p>
         </div>
 
@@ -58,7 +122,9 @@ export default function AttackFramework() {
             <Wrench className="h-5 w-5 text-orange-600" />
             <h3 className="text-sm font-medium text-gray-500">Software</h3>
           </div>
-          <p className="text-3xl font-bold text-gray-900">{stats.software}</p>
+          <p className="text-3xl font-bold text-gray-900">
+            {loading ? "..." : stats.software}
+          </p>
           <p className="text-xs text-gray-500 mt-1">Malware & tools</p>
         </div>
 
@@ -67,17 +133,21 @@ export default function AttackFramework() {
             <ShieldCheck className="h-5 w-5 text-green-600" />
             <h3 className="text-sm font-medium text-gray-500">Mitigations</h3>
           </div>
-          <p className="text-3xl font-bold text-gray-900">{stats.mitigations}</p>
+          <p className="text-3xl font-bold text-gray-900">
+            {loading ? "..." : stats.mitigations}
+          </p>
           <p className="text-xs text-gray-500 mt-1">Countermeasures</p>
         </div>
 
         <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
           <div className="flex items-center gap-2 mb-2">
             <Database className="h-5 w-5 text-indigo-600" />
-            <h3 className="text-sm font-medium text-gray-500">Coverage</h3>
+            <h3 className="text-sm font-medium text-gray-500">Data Sources</h3>
           </div>
-          <p className="text-3xl font-bold text-gray-900">{stats.coverage}%</p>
-          <p className="text-xs text-gray-500 mt-1">Operation mapping</p>
+          <p className="text-3xl font-bold text-gray-900">
+            {loading ? "..." : stats.dataSources}
+          </p>
+          <p className="text-xs text-gray-500 mt-1">Detection sources</p>
         </div>
       </div>
 
@@ -93,37 +163,11 @@ export default function AttackFramework() {
         </TabsList>
 
         <TabsContent value="techniques" className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-lg font-semibold">ATT&CK Techniques</h3>
-            <div className="text-sm text-muted-foreground">
-              Showing 0 techniques
-            </div>
-          </div>
-
-          <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-            <Target className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500 font-medium">No techniques loaded</p>
-            <p className="text-sm text-gray-400 mt-2">
-              Import STIX data from MITRE ATT&CK to populate techniques
-            </p>
-          </div>
+          <TechniquesTable />
         </TabsContent>
 
         <TabsContent value="tactics" className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-lg font-semibold">ATT&CK Tactics</h3>
-            <div className="text-sm text-muted-foreground">
-              Showing 0 tactics
-            </div>
-          </div>
-
-          <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-            <Shield className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-500 font-medium">No tactics loaded</p>
-            <p className="text-sm text-gray-400 mt-2">
-              Tactics represent the "why" of an ATT&CK technique
-            </p>
-          </div>
+          <TacticsGrid />
         </TabsContent>
 
         <TabsContent value="groups" className="space-y-4">

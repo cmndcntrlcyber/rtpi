@@ -57,6 +57,45 @@ services:
       timeout: 10s
       retries: 3
 
+  # PowerShell Empire C2 Server
+  empire-server:
+    image: bcsecurity/empire:latest
+    container_name: rtpi-empire
+    ports:
+      - "1337:1337"     # Empire REST API
+      - "5001:5001"     # Empire Web UI (optional)
+      - "8080-8100:8080-8100"  # Dynamic listener ports
+    environment:
+      # Database connection (shared PostgreSQL)
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: rtpi_main
+      POSTGRES_USER: rtpi
+      POSTGRES_PASSWORD: rtpi
+      # Empire configuration
+      EMPIRE_USERNAME: empireadmin
+      EMPIRE_PASSWORD: ${EMPIRE_PASSWORD:-ChangeMeNow123!}
+      RESTPORT: 1337
+      # Optional: Enable SocketIO for real-time events
+      SOCKETIO_ENABLED: "true"
+      SOCKETIO_PORT: 5002
+    volumes:
+      - empire-data:/opt/Empire/data
+      - empire-downloads:/opt/Empire/downloads
+      - shared-data:/shared
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1337/api/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
 # Application (Development)
 #  app:
 #    build:
@@ -92,3 +131,5 @@ volumes:
   tool-results:
   tool-configs:
   shared-data:
+  empire-data:
+  empire-downloads:

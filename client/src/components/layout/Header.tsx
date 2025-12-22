@@ -24,7 +24,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
   };
 
   return (
-    <header className="bg-white border-b border-gray-200 h-16 fixed top-0 left-0 right-0 z-10">
+    <header className="bg-background border-b border-border h-16 fixed top-0 left-0 right-0 z-10">
       <div className="h-full px-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button
@@ -37,17 +37,17 @@ export default function Header({ onMenuClick }: HeaderProps) {
           </Button>
           <div className="flex items-center gap-2">
             <img src="/RTPI.png" alt="RTPI" className="h-8 w-8" />
-            <h1 className="text-xl font-bold text-gray-900">RTPI</h1>
+            <h1 className="text-xl font-bold text-foreground">RTPI</h1>
           </div>
-          <span className="text-sm text-gray-500 hidden sm:inline">
+          <span className="text-sm text-muted-foreground hidden sm:inline">
             Red Team Portable Infrastructure
           </span>
         </div>
 
         <div className="flex items-center gap-2">
           <div className="hidden sm:flex items-center gap-2 mr-2">
-            <span className="text-sm text-gray-600">{user?.username}</span>
-            <span className="text-xs text-gray-500 capitalize bg-gray-100 px-2 py-1 rounded">
+            <span className="text-sm text-foreground">{user?.username}</span>
+            <span className="text-xs text-muted-foreground capitalize bg-secondary px-2 py-1 rounded">
               {user?.role}
             </span>
           </div>

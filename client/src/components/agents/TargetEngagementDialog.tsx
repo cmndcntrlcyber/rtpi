@@ -143,7 +143,7 @@ export default function TargetEngagementDialog({
             Target Engagement - {agent?.name}
           </DialogTitle>
           <p className="text-sm text-gray-500 mt-2">
-            Select targets and tools to engage, then click "Engage" to start tool execution
+            Select targets and tools to engage, then click &quot;Engage&quot; to start tool execution
           </p>
         </DialogHeader>
 

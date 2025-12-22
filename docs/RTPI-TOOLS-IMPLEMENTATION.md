@@ -26,7 +26,7 @@ User/Agent → API → Agent-Tool Connector → Docker Executor → rtpi-tools C
 
 ```bash
 # Build the Docker image
-docker-compose build rtpi-tools
+docker compose build rtpi-tools
 
 # Or build directly
 docker build -f Dockerfile.tools -t rtpi-tools .
@@ -36,7 +36,7 @@ docker build -f Dockerfile.tools -t rtpi-tools .
 
 ```bash
 # Start PostgreSQL, Redis, and rtpi-tools
-docker-compose up -d
+docker compose up -d
 
 # Verify rtpi-tools is running
 docker ps | grep rtpi-tools
@@ -353,7 +353,7 @@ docker ps -a | grep rtpi-tools
 docker logs rtpi-tools
 
 # Restart container
-docker-compose restart rtpi-tools
+docker compose restart rtpi-tools
 ```
 
 ### Tool Execution Fails
@@ -419,8 +419,8 @@ RUN apt-get install -y newtool
 2. Rebuild container:
 
 ```bash
-docker-compose build rtpi-tools
-docker-compose up -d
+docker compose build rtpi-tools
+docker compose up -d
 ```
 
 ## Files Modified/Created

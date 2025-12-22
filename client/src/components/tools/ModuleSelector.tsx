@@ -57,7 +57,6 @@ export default function ModuleSelector({
                     {category.replace(/_/g, " ")}
                   </SelectLabel>
                   {typeModules[category].map((modulePath: string) => {
-                    const fullPath = `${category}/${modulePath.split("/").slice(1).join("/")}`;
                     const displayName = modulePath.split("/").pop() || modulePath;
                     
                     return (

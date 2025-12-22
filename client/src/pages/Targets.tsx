@@ -128,7 +128,7 @@ export default function Targets() {
       const response = await api.post(`/targets/${target.id}/scan`);
       
       // Show results
-      const { openPorts, scanDuration, scanOutput } = response;
+      const { openPorts, scanDuration } = response;
       const durationSeconds = (scanDuration / 1000).toFixed(2);
       
       alert(
@@ -149,14 +149,14 @@ export default function Targets() {
     }
   };
 
-  const handleViewVulnerabilities = (targetId: string) => {
+  const handleViewVulnerabilities = (_targetId: string) => {
     // Navigate to vulnerabilities page
     // TODO: Add filtering support in vulnerabilities page
     setEditDialogOpen(false);
     navigate("/vulnerabilities");
   };
 
-  const handleAddVulnerability = (targetId: string) => {
+  const handleAddVulnerability = (_targetId: string) => {
     // This would ideally open the vulnerability dialog with targetId pre-filled
     // For now, navigate to vulnerabilities page
     setEditDialogOpen(false);

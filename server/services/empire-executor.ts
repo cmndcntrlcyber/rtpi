@@ -182,7 +182,7 @@ class EmpireExecutor {
    */
   private async getUserToken(serverId: string, userId: string): Promise<string> {
     // Check if user already has a token
-    let tokenRecord = await db.query.empireUserTokens.findFirst({
+    const tokenRecord = await db.query.empireUserTokens.findFirst({
       where: and(
         eq(empireUserTokens.serverId, serverId),
         eq(empireUserTokens.userId, userId)

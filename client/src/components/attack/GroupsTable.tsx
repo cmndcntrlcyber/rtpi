@@ -11,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, ExternalLink, RefreshCw, Users } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 
 interface Group {
   id: string;
@@ -29,7 +28,6 @@ export default function GroupsTable() {
   const [filteredGroups, setFilteredGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const { toast } = useToast();
 
   const fetchGroups = async () => {
     setLoading(true);
@@ -43,19 +41,10 @@ export default function GroupsTable() {
         setGroups(data);
         setFilteredGroups(data);
       } else {
-        toast({
-          title: "Error",
-          description: "Failed to fetch threat groups",
-          variant: "destructive",
-        });
+        console.error("Failed to fetch threat groups");
       }
     } catch (error) {
       console.error("Failed to fetch groups:", error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch threat groups",
-        variant: "destructive",
-      });
     } finally {
       setLoading(false);
     }

@@ -57,15 +57,15 @@ async function fetchTools(filters?: {
 }
 
 export default function ToolRegistry() {
-  const [categoryFilter, setCategoryFilter] = useState<string>('');
-  const [installStatusFilter, setInstallStatusFilter] = useState<string>('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [installStatusFilter, setInstallStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['tool-registry', categoryFilter, installStatusFilter, searchQuery],
     queryFn: () => fetchTools({
-      category: categoryFilter || undefined,
-      installStatus: installStatusFilter || undefined,
+      category: categoryFilter && categoryFilter !== 'all' ? categoryFilter : undefined,
+      installStatus: installStatusFilter && installStatusFilter !== 'all' ? installStatusFilter : undefined,
       search: searchQuery || undefined,
     }),
   });
@@ -152,7 +152,7 @@ export default function ToolRegistry() {
                 <SelectValue placeholder="Category" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Categories</SelectItem>
+                <SelectItem value="all">All Categories</SelectItem>
                 <SelectItem value="reconnaissance">Reconnaissance</SelectItem>
                 <SelectItem value="exploitation">Exploitation</SelectItem>
                 <SelectItem value="post-exploitation">Post-Exploitation</SelectItem>
@@ -165,7 +165,7 @@ export default function ToolRegistry() {
                 <SelectValue placeholder="Install Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Status</SelectItem>
+                <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="installed">Installed</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
                 <SelectItem value="failed">Failed</SelectItem>
@@ -175,8 +175,8 @@ export default function ToolRegistry() {
             <Button
               variant="outline"
               onClick={() => {
-                setCategoryFilter('');
-                setInstallStatusFilter('');
+                setCategoryFilter('all');
+                setInstallStatusFilter('all');
                 setSearchQuery('');
               }}
             >

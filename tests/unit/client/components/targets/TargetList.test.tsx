@@ -6,23 +6,27 @@ describe('TargetList Component', () => {
   const mockTargets = [
     {
       id: '1',
-      hostname: 'server-1',
-      ipAddress: '192.168.1.100',
-      status: 'active',
+      name: 'server-1.example.com',
+      type: 'host',
+      value: '192.168.1.100',
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
     },
     {
       id: '2',
-      hostname: 'server-2',
-      ipAddress: '192.168.1.101',
-      status: 'scanning',
+      name: 'server-2.example.com',
+      type: 'host',
+      value: '192.168.1.101',
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
     },
   ];
 
   describe('Rendering with Data', () => {
     it('should render all targets', () => {
       render(<TargetList targets={mockTargets} />);
-      expect(screen.getByText('server-1')).toBeInTheDocument();
-      expect(screen.getByText('server-2')).toBeInTheDocument();
+      expect(screen.getByText('server-1.example.com')).toBeInTheDocument();
+      expect(screen.getByText('server-2.example.com')).toBeInTheDocument();
     });
 
     it('should render in grid layout', () => {
@@ -53,7 +57,7 @@ describe('TargetList Component', () => {
 
     it('should not display targets when loading', () => {
       render(<TargetList targets={mockTargets} loading={true} />);
-      expect(screen.queryByText('server-1')).not.toBeInTheDocument();
+      expect(screen.queryByText('server-1.example.com')).not.toBeInTheDocument();
     });
   });
 
@@ -61,7 +65,7 @@ describe('TargetList Component', () => {
     it('should pass onSelect handler to target cards', () => {
       const onSelect = vi.fn();
       render(<TargetList targets={mockTargets} onSelect={onSelect} />);
-      expect(screen.getByText('server-1')).toBeInTheDocument();
+      expect(screen.getByText('server-1.example.com')).toBeInTheDocument();
     });
 
     it('should pass onScan handler to target cards', () => {

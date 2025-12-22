@@ -11,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, ExternalLink, RefreshCw } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 
 interface Technique {
   id: string;
@@ -32,7 +31,6 @@ export default function TechniquesTable() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filter, setFilter] = useState<"all" | "techniques" | "subtechniques">("techniques");
-  const { toast } = useToast();
 
   const fetchTechniques = async () => {
     setLoading(true);
@@ -49,19 +47,10 @@ export default function TechniquesTable() {
         setTechniques(data);
         setFilteredTechniques(data);
       } else {
-        toast({
-          title: "Error",
-          description: "Failed to fetch techniques",
-          variant: "destructive",
-        });
+        console.error("Failed to fetch techniques");
       }
     } catch (error) {
       console.error("Failed to fetch techniques:", error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch techniques",
-        variant: "destructive",
-      });
     } finally {
       setLoading(false);
     }

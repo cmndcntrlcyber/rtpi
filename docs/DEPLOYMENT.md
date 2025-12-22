@@ -186,7 +186,7 @@ The rtpi-tools container includes:
 
 ```bash
 # From project root
-docker-compose build rtpi-tools
+docker compose build rtpi-tools
 
 # Or build directly
 docker build -f Dockerfile.tools -t rtpi-tools .
@@ -204,7 +204,7 @@ The rtpi-tools container starts automatically with docker-compose:
 
 ```bash
 # Development
-docker-compose up -d
+docker compose up -d
 
 # Production
 docker compose -f docker-compose.prod.yml up -d
@@ -320,8 +320,8 @@ curl http://localhost:3000/api/v1/containers/rtpi-tools/status
 docker logs rtpi-tools
 
 # Rebuild container
-docker-compose build --no-cache rtpi-tools
-docker-compose up -d rtpi-tools
+docker compose build --no-cache rtpi-tools
+docker compose up -d rtpi-tools
 ```
 
 **Tools not found:**
@@ -374,7 +374,7 @@ cp .env.example .env
 4. **Start services with Docker Compose:**
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 5. **Run database migrations:**
@@ -408,13 +408,13 @@ Use the development Docker Compose configuration:
 
 ```bash
 # Start all services
-docker-compose up -d
+docker compose up -d
 
 # View logs
-docker-compose logs -f app
+docker compose logs -f app
 
 # Stop services
-docker-compose down
+docker compose down
 ```
 
 ---
@@ -681,7 +681,7 @@ npm run db:studio
 npm run db:push
 
 # Or run from within the app container
-docker-compose exec app npm run db:push
+docker compose exec app npm run db:push
 ```
 
 ### Database Connection Pooling
@@ -976,10 +976,10 @@ docker compose -f docker-compose.prod.yml exec app nc -zv redis 6379
 
 ```bash
 # Check logs
-docker-compose logs app
+docker compose logs app
 
 # Verify environment variables
-docker-compose config
+docker compose config
 
 # Check port availability
 sudo netstat -tlnp | grep 3000
@@ -1190,7 +1190,7 @@ curl http://localhost:3000/api/v1/health-checks
 
 ### Getting Help
 
-- Check logs first: `docker-compose logs`
+- Check logs first: `docker compose logs`
 - Review this troubleshooting guide
 - Check GitHub issues
 - Contact system administrator

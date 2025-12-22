@@ -138,7 +138,7 @@ export default function Reports() {
     setEditDialogOpen(true);
   };
 
-  const handleSaveReport = async (reportId: string, content: string) => {
+  const handleSaveReport = async (_reportId: string, _content: string) => {
     try {
       // In a real implementation, you'd save to the API
       // For now, just show success message

@@ -96,8 +96,15 @@ router.get("/", async (req, res) => {
 });
 
 // GET /api/v1/tools/:id - Get tool details
-router.get("/:id", async (req, res) => {
+// NOTE: Must come AFTER specific routes like /registry, /categories, /executions, etc.
+// to avoid matching those as :id parameters
+router.get("/:id", async (req, res, next) => {
   const { id } = req.params;
+
+  // Skip if this looks like a special route (not a UUID) - let next handler deal with it
+  if (!id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+    return next();
+  }
 
   try {
     const result = await db

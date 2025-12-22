@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Wrench, ExternalLink, Terminal, Globe, Upload } from "lucide-react";
+import { Wrench, ExternalLink, Terminal, Globe } from "lucide-react";
 import { useTools, useUploadToolFile, useDeleteTool } from "@/hooks/useTools";
 import ToolCard from "@/components/tools/ToolCard";
 import MetasploitCard from "@/components/tools/MetasploitCard";
@@ -48,10 +48,6 @@ export default function Tools() {
     console.log("Saving config:", { toolId, targetId, params });
   };
 
-  const handleUploadClick = (tool: Tool) => {
-    setSelectedTool(tool);
-    setUploadDialogOpen(true);
-  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

@@ -6,6 +6,13 @@ import { db } from '../../../../server/db';
 
 // Mock dependencies
 vi.mock('../../../../server/db');
+vi.mock('../../../../server/services/mcp-server-manager', () => ({
+  mcpServerManager: {
+    startServer: vi.fn().mockResolvedValue(true),
+    stopServer: vi.fn().mockResolvedValue(true),
+    restartServer: vi.fn().mockResolvedValue(true),
+  },
+}));
 vi.mock('../../../../server/auth/middleware', () => ({
   ensureAuthenticated: (req: any, res: any, next: any) => {
     if (req.user) {
@@ -290,16 +297,16 @@ describe('MCP Servers API', () => {
 
   describe('POST /api/v1/mcp-servers/:id/start', () => {
     it('should start MCP server', async () => {
-      const startedServer = { 
-        id: '123', 
+      const startedServer = {
+        id: '123',
         status: 'running',
         uptime: new Date(),
       };
 
-      vi.mocked(db.update).mockReturnValue({
-        set: vi.fn().mockReturnValue({
+      vi.mocked(db.select).mockReturnValue({
+        from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
-            returning: vi.fn().mockResolvedValue([startedServer]),
+            limit: vi.fn().mockResolvedValue([startedServer]),
           }),
         }),
       } as any);
@@ -323,11 +330,11 @@ describe('MCP Servers API', () => {
       app2.use('/api/v1/mcp-servers', mcpServersRouter);
 
       const startedServer = { id: '123', status: 'running' };
-      
-      vi.mocked(db.update).mockReturnValue({
-        set: vi.fn().mockReturnValue({
+
+      vi.mocked(db.select).mockReturnValue({
+        from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
-            returning: vi.fn().mockResolvedValue([startedServer]),
+            limit: vi.fn().mockResolvedValue([startedServer]),
           }),
         }),
       } as any);
@@ -339,10 +346,10 @@ describe('MCP Servers API', () => {
     });
 
     it('should handle start errors', async () => {
-      vi.mocked(db.update).mockReturnValue({
-        set: vi.fn().mockReturnValue({
+      vi.mocked(db.select).mockReturnValue({
+        from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
-            returning: vi.fn().mockRejectedValue(new Error('Start failed')),
+            limit: vi.fn().mockRejectedValue(new Error('Start failed')),
           }),
         }),
       } as any);
@@ -357,16 +364,16 @@ describe('MCP Servers API', () => {
 
   describe('POST /api/v1/mcp-servers/:id/stop', () => {
     it('should stop MCP server', async () => {
-      const stoppedServer = { 
-        id: '123', 
+      const stoppedServer = {
+        id: '123',
         status: 'stopped',
         pid: null,
       };
 
-      vi.mocked(db.update).mockReturnValue({
-        set: vi.fn().mockReturnValue({
+      vi.mocked(db.select).mockReturnValue({
+        from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
-            returning: vi.fn().mockResolvedValue([stoppedServer]),
+            limit: vi.fn().mockResolvedValue([stoppedServer]),
           }),
         }),
       } as any);
@@ -390,11 +397,11 @@ describe('MCP Servers API', () => {
       app2.use('/api/v1/mcp-servers', mcpServersRouter);
 
       const stoppedServer = { id: '123', status: 'stopped' };
-      
-      vi.mocked(db.update).mockReturnValue({
-        set: vi.fn().mockReturnValue({
+
+      vi.mocked(db.select).mockReturnValue({
+        from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
-            returning: vi.fn().mockResolvedValue([stoppedServer]),
+            limit: vi.fn().mockResolvedValue([stoppedServer]),
           }),
         }),
       } as any);
@@ -406,10 +413,10 @@ describe('MCP Servers API', () => {
     });
 
     it('should handle stop errors', async () => {
-      vi.mocked(db.update).mockReturnValue({
-        set: vi.fn().mockReturnValue({
+      vi.mocked(db.select).mockReturnValue({
+        from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
-            returning: vi.fn().mockRejectedValue(new Error('Stop failed')),
+            limit: vi.fn().mockRejectedValue(new Error('Stop failed')),
           }),
         }),
       } as any);
@@ -424,19 +431,16 @@ describe('MCP Servers API', () => {
 
   describe('POST /api/v1/mcp-servers/:id/restart', () => {
     it('should restart MCP server', async () => {
-      const restartedServer = { 
-        id: '123', 
+      const restartedServer = {
+        id: '123',
         restartCount: 1,
         uptime: new Date(),
       };
 
-      // Mock db.$increment
-      (db as any).$increment = vi.fn(() => ({ restartCount: 1 }));
-
-      vi.mocked(db.update).mockReturnValue({
-        set: vi.fn().mockReturnValue({
+      vi.mocked(db.select).mockReturnValue({
+        from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
-            returning: vi.fn().mockResolvedValue([restartedServer]),
+            limit: vi.fn().mockResolvedValue([restartedServer]),
           }),
         }),
       } as any);
@@ -459,14 +463,11 @@ describe('MCP Servers API', () => {
       app2.use('/api/v1/mcp-servers', mcpServersRouter);
 
       const restartedServer = { id: '123', restartCount: 1 };
-      
-      // Mock db.$increment
-      (db as any).$increment = vi.fn(() => ({ restartCount: 1 }));
-      
-      vi.mocked(db.update).mockReturnValue({
-        set: vi.fn().mockReturnValue({
+
+      vi.mocked(db.select).mockReturnValue({
+        from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
-            returning: vi.fn().mockResolvedValue([restartedServer]),
+            limit: vi.fn().mockResolvedValue([restartedServer]),
           }),
         }),
       } as any);
@@ -478,13 +479,10 @@ describe('MCP Servers API', () => {
     });
 
     it('should handle restart errors', async () => {
-      // Mock db.$increment
-      (db as any).$increment = vi.fn(() => ({ restartCount: 1 }));
-      
-      vi.mocked(db.update).mockReturnValue({
-        set: vi.fn().mockReturnValue({
+      vi.mocked(db.select).mockReturnValue({
+        from: vi.fn().mockReturnValue({
           where: vi.fn().mockReturnValue({
-            returning: vi.fn().mockRejectedValue(new Error('Restart failed')),
+            limit: vi.fn().mockRejectedValue(new Error('Restart failed')),
           }),
         }),
       } as any);

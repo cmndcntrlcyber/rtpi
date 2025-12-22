@@ -9,8 +9,8 @@ describe('OperationCard Component', () => {
     name: 'Test Operation',
     description: 'Test operation description',
     status: 'active',
-    startedAt: '2024-01-01T00:00:00Z',
-    completedAt: '2024-01-15T00:00:00Z',
+    startDate: '2024-01-01T12:00:00Z',
+    endDate: '2024-01-15T12:00:00Z',
     createdBy: 'John Doe',
     type: 'penetration-test',
     targets: 5,
@@ -82,20 +82,20 @@ describe('OperationCard Component', () => {
   describe('Date Formatting', () => {
     it('should display start date', () => {
       const { container } = render(<OperationCard operation={mockOperation} />);
-      // The formatDate function converts UTC to local time (America/Chicago UTC-6)
-      // 2024-01-01T00:00:00Z becomes Dec 31, 2023 in local time
-      expect(container.textContent).toContain('Dec 31, 2023');
+      // The formatDate function formats the date based on the system locale
+      // We check for the presence of date components rather than exact format
+      expect(container.textContent).toMatch(/Jan(uary)?\s+1,\s+2024/);
     });
 
     it('should display end date when operation is completed', () => {
       const { container } = render(<OperationCard operation={mockOperation} />);
       expect(container.textContent).toContain('Ended');
-      // 2024-01-15T00:00:00Z becomes Jan 14, 2024 in local time
-      expect(container.textContent).toContain('Jan 14, 2024');
+      // Check for date components
+      expect(container.textContent).toMatch(/Jan(uary)?\s+15,\s+2024/);
     });
 
     it('should display "In progress" when no completion date', () => {
-      const activeOp = { ...mockOperation, completedAt: undefined };
+      const activeOp = { ...mockOperation, endDate: undefined };
       render(<OperationCard operation={activeOp} />);
       expect(screen.getByText('In progress')).toBeInTheDocument();
     });

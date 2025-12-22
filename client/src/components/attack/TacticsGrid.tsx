@@ -3,7 +3,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Shield, ExternalLink, RefreshCw } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 
 interface Tactic {
   id: string;
@@ -17,7 +16,6 @@ interface Tactic {
 export default function TacticsGrid() {
   const [tactics, setTactics] = useState<Tactic[]>([]);
   const [loading, setLoading] = useState(true);
-  const { toast } = useToast();
 
   const fetchTactics = async () => {
     setLoading(true);
@@ -30,19 +28,10 @@ export default function TacticsGrid() {
         const data = await response.json();
         setTactics(data);
       } else {
-        toast({
-          title: "Error",
-          description: "Failed to fetch tactics",
-          variant: "destructive",
-        });
+        console.error("Failed to fetch tactics");
       }
     } catch (error) {
       console.error("Failed to fetch tactics:", error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch tactics",
-        variant: "destructive",
-      });
     } finally {
       setLoading(false);
     }

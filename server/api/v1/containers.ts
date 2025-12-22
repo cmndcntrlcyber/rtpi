@@ -11,7 +11,7 @@ const router = Router();
 router.use(ensureAuthenticated);
 
 // GET /api/v1/containers - List all containers
-router.get("/", async (req, res) => {
+router.get("/", async (_req, res) => {
   try {
     const allContainers = await db.select().from(containers);
     res.json({ containers: allContainers });
@@ -111,13 +111,13 @@ router.delete("/:id", ensureRole("admin"), async (req, res) => {
 });
 
 // GET /api/v1/containers/rtpi-tools/status - Get rtpi-tools container status
-router.get("/rtpi-tools/status", async (req, res) => {
+router.get("/rtpi-tools/status", async (_req, res) => {
   try {
     const status = await dockerExecutor.getContainerStatus("rtpi-tools");
     res.json({ status });
   } catch (error) {
     console.error("Get rtpi-tools status error:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Failed to get container status",
       details: error instanceof Error ? error.message : String(error)
     });
@@ -159,13 +159,13 @@ router.get("/rtpi-tools/logs", async (req, res) => {
 });
 
 // GET /api/v1/containers/docker/list - List all Docker containers
-router.get("/docker/list", async (req, res) => {
+router.get("/docker/list", async (_req, res) => {
   try {
     const containersList = await dockerExecutor.listContainers();
     res.json({ containers: containersList });
   } catch (error) {
     console.error("List Docker containers error:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: "Failed to list Docker containers",
       details: error instanceof Error ? error.message : String(error)
     });

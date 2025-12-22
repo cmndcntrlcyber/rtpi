@@ -17,7 +17,6 @@ export default function LinkedVulnerabilities({
   onAddNew,
 }: LinkedVulnerabilitiesProps) {
   const [vulnerabilities, setVulnerabilities] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (targetId) {
@@ -27,8 +26,7 @@ export default function LinkedVulnerabilities({
 
   const loadVulnerabilities = async () => {
     if (!targetId) return;
-    
-    setLoading(true);
+
     try {
       const response = await api.get<{ vulnerabilities: any[] }>("/vulnerabilities");
       // Filter vulnerabilities for this target
@@ -38,8 +36,6 @@ export default function LinkedVulnerabilities({
       setVulnerabilities(filtered);
     } catch (error) {
       console.error("Failed to load vulnerabilities:", error);
-    } finally {
-      setLoading(false);
     }
   };
 

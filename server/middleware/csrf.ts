@@ -14,7 +14,9 @@ export function generateCsrfToken(req: Request): string {
   // Clean up old tokens (basic cleanup, in production use Redis with TTL)
   if (csrfTokens.size > 1000) {
     const firstKey = csrfTokens.keys().next().value;
-    csrfTokens.delete(firstKey);
+    if (firstKey !== undefined) {
+      csrfTokens.delete(firstKey);
+    }
   }
   
   return token;

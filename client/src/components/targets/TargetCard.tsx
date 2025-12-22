@@ -26,14 +26,6 @@ interface TargetCardProps {
   onScan?: (target: Target) => void;
 }
 
-const statusColors = {
-  active: "bg-green-500/10 text-green-400",
-  inactive: "bg-gray-500/10 text-gray-400",
-  scanning: "bg-blue-500/10 text-blue-400",
-  vulnerable: "bg-red-500/10 text-red-400",
-  secured: "bg-green-500/10 text-green-400",
-};
-
 export default function TargetCard({ target, onSelect, onEdit, onDelete, onScan }: TargetCardProps) {
   const handleClick = () => {
     if (onSelect) {

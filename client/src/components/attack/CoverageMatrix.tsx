@@ -4,7 +4,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Database, RefreshCw, Target, CheckCircle2, Circle, AlertCircle } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 
 interface Operation {
   id: string;
@@ -46,7 +45,6 @@ export default function CoverageMatrix() {
   const [coverage, setCoverage] = useState<CoverageMapping[]>([]);
   const [stats, setStats] = useState<CoverageStats | null>(null);
   const [loading, setLoading] = useState(false);
-  const { toast } = useToast();
 
   const fetchOperations = async () => {
     try {
@@ -95,19 +93,10 @@ export default function CoverageMatrix() {
           coveragePercentage: avgCoverage,
         });
       } else {
-        toast({
-          title: "Error",
-          description: "Failed to fetch coverage data",
-          variant: "destructive",
-        });
+        console.error("Failed to fetch coverage data");
       }
     } catch (error) {
       console.error("Failed to fetch coverage:", error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch coverage data",
-        variant: "destructive",
-      });
     } finally {
       setLoading(false);
     }

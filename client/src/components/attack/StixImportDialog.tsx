@@ -10,7 +10,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Upload, FileJson, CheckCircle2, AlertCircle } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 
 interface ImportStats {
   tactics: number;
@@ -31,7 +30,6 @@ export default function StixImportDialog() {
   const [progress, setProgress] = useState(0);
   const [stats, setStats] = useState<ImportStats | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { toast } = useToast();
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -84,18 +82,9 @@ export default function StixImportDialog() {
       const result = await response.json();
       setProgress(100);
       setStats(result.stats);
-
-      toast({
-        title: "Import Successful",
-        description: `Imported ${result.stats.techniques + result.stats.subtechniques} techniques, ${result.stats.tactics} tactics, and more`,
-      });
     } catch (err: any) {
       setError(err.message);
-      toast({
-        title: "Import Failed",
-        description: err.message,
-        variant: "destructive",
-      });
+      console.error("Import failed:", err.message);
     } finally {
       setImporting(false);
     }

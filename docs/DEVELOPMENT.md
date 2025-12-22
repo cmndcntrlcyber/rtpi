@@ -10,7 +10,7 @@
 
 1. Clone the repository
 2. Install dependencies: `npm install`
-3. Start services: `docker-compose up -d`
+3. Start services: `docker compose up -d`
 4. Run migrations: `npm run db:push`
 5. Start development servers (requires two terminals):
    - Terminal 1: `npm run dev` (backend API)
@@ -40,9 +40,9 @@
 
 ## Docker Commands
 
-- `docker-compose up -d` - Start all services
-- `docker-compose down` - Stop all services
-- `docker-compose logs -f` - View logs
+- `docker compose up -d` - Start all services
+- `docker compose down` - Stop all services
+- `docker compose logs -f` - View logs
 
 ## Database Commands
 

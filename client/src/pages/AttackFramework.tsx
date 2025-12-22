@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Shield, Target, Users, Wrench, ShieldCheck, Database } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 import TechniquesTable from "@/components/attack/TechniquesTable";
 import TacticsGrid from "@/components/attack/TacticsGrid";
 import StixImportDialog from "@/components/attack/StixImportDialog";
@@ -33,7 +32,6 @@ export default function AttackFramework() {
     campaigns: 0,
   });
   const [loading, setLoading] = useState(true);
-  const { toast } = useToast();
 
   const fetchStats = async () => {
     try {
@@ -45,19 +43,10 @@ export default function AttackFramework() {
         const data = await response.json();
         setStats(data);
       } else {
-        toast({
-          title: "Error",
-          description: "Failed to fetch ATT&CK statistics",
-          variant: "destructive",
-        });
+        console.error("Failed to fetch ATT&CK statistics");
       }
     } catch (error) {
       console.error("Failed to fetch stats:", error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch ATT&CK statistics",
-        variant: "destructive",
-      });
     } finally {
       setLoading(false);
     }

@@ -19,7 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ListTodo, FileText, Shield, Trash2, Target } from "lucide-react";
+import { ListTodo, Trash2 } from "lucide-react";
 import MarkdownEditor from "@/components/markdown/MarkdownEditor";
 import DynamicFieldList from "@/components/shared/DynamicFieldList";
 import QuestionResponseTable, { QuestionResponseRow } from "@/components/shared/QuestionResponseTable";
@@ -95,7 +95,6 @@ export default function OperationForm({
   onViewTargets,
   onAddTarget,
 }: OperationFormProps) {
-  const { user } = useAuth();
   const [formData, setFormData] = useState<OperationFormData>({
     name: "",
     description: "",

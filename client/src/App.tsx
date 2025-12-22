@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Route, Switch } from "wouter";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import MainLayout from "@/components/layout/MainLayout";
 import Dashboard from "@/pages/Dashboard";
@@ -17,6 +18,8 @@ import Users from "@/pages/Users";
 import SurfaceAssessment from "@/pages/SurfaceAssessment";
 import AttackFramework from "@/pages/AttackFramework";
 import Login from "@/pages/Login";
+
+const queryClient = new QueryClient();
 
 function AppContent() {
   const { user, loading } = useAuth();
@@ -66,7 +69,7 @@ function AppContent() {
         <Route>
           <div className="p-8">
             <h1 className="text-3xl font-bold mb-4">404 - Page Not Found</h1>
-            <p className="text-muted-foreground">The page you're looking for doesn't exist.</p>
+            <p className="text-muted-foreground">The page you&apos;re looking for doesn&apos;t exist.</p>
           </div>
         </Route>
       </Switch>
@@ -76,8 +79,10 @@ function AppContent() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </QueryClientProvider>
   );
 }

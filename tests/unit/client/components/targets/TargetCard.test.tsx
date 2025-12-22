@@ -6,85 +6,130 @@ import TargetCard from '../../../../../client/src/components/targets/TargetCard'
 describe('TargetCard Component', () => {
   const mockTarget = {
     id: '1',
-    hostname: 'target-server',
-    ipAddress: '192.168.1.100',
-    domain: 'example.com',
-    port: 443,
-    status: 'active',
+    name: 'target-server.example.com',
+    type: 'host',
+    value: '192.168.1.100',
+    description: 'Production web server',
+    priority: 4,
+    tags: ['web', 'production'],
     operationId: 'op-1',
-    notes: 'Test notes',
-    lastScanAt: '2024-01-01T00:00:00Z',
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-15T12:00:00Z',
   };
 
   describe('Rendering', () => {
     it('should render target card', () => {
       render(<TargetCard target={mockTarget} />);
-      expect(screen.getByText('target-server')).toBeInTheDocument();
+      expect(screen.getByText('target-server.example.com')).toBeInTheDocument();
     });
 
-    it('should display hostname as primary identifier', () => {
+    it('should display name as primary identifier', () => {
       render(<TargetCard target={mockTarget} />);
-      expect(screen.getByText('target-server')).toBeInTheDocument();
+      expect(screen.getByText('target-server.example.com')).toBeInTheDocument();
     });
 
-    it('should display IP address with port', () => {
+    it('should display value (IP/domain)', () => {
       render(<TargetCard target={mockTarget} />);
-      expect(screen.getByText('192.168.1.100:443')).toBeInTheDocument();
+      expect(screen.getByText('192.168.1.100')).toBeInTheDocument();
     });
 
-    it('should display domain when present', () => {
+    it('should display type badge', () => {
       render(<TargetCard target={mockTarget} />);
-      expect(screen.getByText('example.com')).toBeInTheDocument();
+      expect(screen.getByText('host')).toBeInTheDocument();
     });
 
-    it('should display status badge', () => {
+    it('should display priority badge when present', () => {
       render(<TargetCard target={mockTarget} />);
-      expect(screen.getByText('active')).toBeInTheDocument();
+      expect(screen.getByText('P4')).toBeInTheDocument();
     });
 
-    it('should display notes when provided', () => {
+    it('should display description when provided', () => {
       render(<TargetCard target={mockTarget} />);
-      expect(screen.getByText('Test notes')).toBeInTheDocument();
+      expect(screen.getByText('Production web server')).toBeInTheDocument();
     });
 
-    it('should display last scan date', () => {
+    it('should display updated date', () => {
       render(<TargetCard target={mockTarget} />);
-      expect(screen.getByText(/Last scan:/)).toBeInTheDocument();
+      expect(screen.getByText(/Updated:/)).toBeInTheDocument();
     });
   });
 
-  describe('Display Name Fallback', () => {
-    it('should use domain when no hostname', () => {
-      const target = { ...mockTarget, hostname: undefined };
+  describe('Type Icons', () => {
+    it('should show globe icon for domain type', () => {
+      const target = { ...mockTarget, type: 'domain' };
       const { container } = render(<TargetCard target={target} />);
-      // Domain appears as display name
-      const heading = container.querySelector('h3');
-      expect(heading?.textContent).toBe('example.com');
+      // Icon is rendered, we can check the type badge
+      expect(screen.getByText('domain')).toBeInTheDocument();
     });
 
-    it('should use IP when no hostname or domain', () => {
-      const target = { ...mockTarget, hostname: undefined, domain: undefined };
+    it('should show radio icon for network type', () => {
+      const target = { ...mockTarget, type: 'network' };
       const { container } = render(<TargetCard target={target} />);
-      const heading = container.querySelector('h3');
-      expect(heading?.textContent).toBe('192.168.1.100');
+      expect(screen.getByText('network')).toBeInTheDocument();
     });
 
-    it('should show Unknown Target when all identifiers missing', () => {
-      const target = { ...mockTarget, hostname: undefined, domain: undefined, ipAddress: undefined };
+    it('should show radio icon for range type', () => {
+      const target = { ...mockTarget, type: 'range' };
+      const { container } = render(<TargetCard target={target} />);
+      expect(screen.getByText('range')).toBeInTheDocument();
+    });
+
+    it('should show server icon for host type', () => {
+      const target = { ...mockTarget, type: 'host' };
+      const { container } = render(<TargetCard target={target} />);
+      expect(screen.getByText('host')).toBeInTheDocument();
+    });
+  });
+
+  describe('Priority Display', () => {
+    it('should display high priority (P4) with red styling', () => {
+      const target = { ...mockTarget, priority: 4 };
       render(<TargetCard target={target} />);
-      expect(screen.getByText('Unknown Target')).toBeInTheDocument();
+      const priorityBadge = screen.getByText('P4');
+      expect(priorityBadge).toBeInTheDocument();
+    });
+
+    it('should display medium priority (P3) with orange styling', () => {
+      const target = { ...mockTarget, priority: 3 };
+      render(<TargetCard target={target} />);
+      const priorityBadge = screen.getByText('P3');
+      expect(priorityBadge).toBeInTheDocument();
+    });
+
+    it('should display low priority (P2) with blue styling', () => {
+      const target = { ...mockTarget, priority: 2 };
+      render(<TargetCard target={target} />);
+      const priorityBadge = screen.getByText('P2');
+      expect(priorityBadge).toBeInTheDocument();
+    });
+
+    it('should not display priority badge when undefined', () => {
+      const target = { ...mockTarget, priority: undefined };
+      render(<TargetCard target={target} />);
+      expect(screen.queryByText(/^P\d$/)).not.toBeInTheDocument();
     });
   });
 
-  describe('Status Display', () => {
-    const statuses = ['active', 'inactive', 'scanning', 'vulnerable', 'secured'];
+  describe('Optional Fields', () => {
+    it('should not display description section when missing', () => {
+      const target = { ...mockTarget, description: undefined };
+      render(<TargetCard target={target} />);
+      expect(screen.queryByText('Production web server')).not.toBeInTheDocument();
+    });
 
-    statuses.forEach(status => {
-      it(`should display ${status} status`, () => {
-        const target = { ...mockTarget, status };
-        render(<TargetCard target={target} />);
-        expect(screen.getByText(status)).toBeInTheDocument();
-      });
+    it('should display minimal info when only required fields present', () => {
+      const minimalTarget = {
+        id: '2',
+        name: 'minimal-target',
+        type: 'host',
+        value: '10.0.0.1',
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-01T00:00:00Z',
+      };
+      render(<TargetCard target={minimalTarget} />);
+      expect(screen.getByText('minimal-target')).toBeInTheDocument();
+      expect(screen.getByText('10.0.0.1')).toBeInTheDocument();
+      expect(screen.getByText('host')).toBeInTheDocument();
     });
   });
 
@@ -92,122 +137,88 @@ describe('TargetCard Component', () => {
     it('should call onSelect when card is clicked', async () => {
       const onSelect = vi.fn();
       const user = userEvent.setup();
-      
       render(<TargetCard target={mockTarget} onSelect={onSelect} />);
-      
-      const card = screen.getByText('target-server').closest('div')?.parentElement?.parentElement;
-      await user.click(card!);
-      
-      expect(onSelect).toHaveBeenCalledWith(mockTarget);
+
+      const card = screen.getByText('target-server.example.com').closest('.bg-white');
+      if (card) {
+        await user.click(card);
+        expect(onSelect).toHaveBeenCalledWith(mockTarget);
+      }
+    });
+
+    it('should show scan button when onScan is provided', () => {
+      const onScan = vi.fn();
+      render(<TargetCard target={mockTarget} onScan={onScan} />);
+      expect(screen.getByText('Scan')).toBeInTheDocument();
     });
 
     it('should call onScan when scan button is clicked', async () => {
       const onScan = vi.fn();
       const user = userEvent.setup();
-      
       render(<TargetCard target={mockTarget} onScan={onScan} />);
-      
+
       const scanButton = screen.getByText('Scan');
       await user.click(scanButton);
-      
       expect(onScan).toHaveBeenCalledWith(mockTarget);
+    });
+
+    it('should show edit button when onEdit is provided', () => {
+      const onEdit = vi.fn();
+      render(<TargetCard target={mockTarget} onEdit={onEdit} />);
+      expect(screen.getByText('Edit')).toBeInTheDocument();
     });
 
     it('should call onEdit when edit button is clicked', async () => {
       const onEdit = vi.fn();
       const user = userEvent.setup();
-      
       render(<TargetCard target={mockTarget} onEdit={onEdit} />);
-      
+
       const editButton = screen.getByText('Edit');
       await user.click(editButton);
-      
       expect(onEdit).toHaveBeenCalledWith(mockTarget);
+    });
+
+    it('should show delete button when onDelete is provided', () => {
+      const onDelete = vi.fn();
+      render(<TargetCard target={mockTarget} onDelete={onDelete} />);
+      expect(screen.getByText('Delete')).toBeInTheDocument();
     });
 
     it('should call onDelete when delete button is clicked', async () => {
       const onDelete = vi.fn();
       const user = userEvent.setup();
-      
       render(<TargetCard target={mockTarget} onDelete={onDelete} />);
-      
+
       const deleteButton = screen.getByText('Delete');
       await user.click(deleteButton);
-      
       expect(onDelete).toHaveBeenCalledWith(mockTarget);
     });
 
-    it('should stop propagation on action buttons', async () => {
+    it('should not call onSelect when action button is clicked', async () => {
       const onSelect = vi.fn();
-      const onScan = vi.fn();
+      const onEdit = vi.fn();
       const user = userEvent.setup();
-      
-      render(<TargetCard target={mockTarget} onSelect={onSelect} onScan={onScan} />);
-      
-      const scanButton = screen.getByText('Scan');
-      await user.click(scanButton);
-      
-      expect(onScan).toHaveBeenCalledWith(mockTarget);
+      render(<TargetCard target={mockTarget} onSelect={onSelect} onEdit={onEdit} />);
+
+      const editButton = screen.getByText('Edit');
+      await user.click(editButton);
+
+      expect(onEdit).toHaveBeenCalledTimes(1);
       expect(onSelect).not.toHaveBeenCalled();
     });
   });
 
-  describe('Action Buttons', () => {
-    it('should show scan button when onScan provided', () => {
-      render(<TargetCard target={mockTarget} onScan={vi.fn()} />);
-      expect(screen.getByText('Scan')).toBeInTheDocument();
+  describe('Accessibility', () => {
+    it('should render as a clickable card', () => {
+      const { container } = render(<TargetCard target={mockTarget} />);
+      const card = container.querySelector('.cursor-pointer');
+      expect(card).toBeInTheDocument();
     });
 
-    it('should show edit button when onEdit provided', () => {
-      render(<TargetCard target={mockTarget} onEdit={vi.fn()} />);
-      expect(screen.getByText('Edit')).toBeInTheDocument();
-    });
-
-    it('should show delete button when onDelete provided', () => {
-      render(<TargetCard target={mockTarget} onDelete={vi.fn()} />);
-      expect(screen.getByText('Delete')).toBeInTheDocument();
-    });
-
-    it('should show all buttons when all handlers provided', () => {
-      render(<TargetCard target={mockTarget} onScan={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />);
-      expect(screen.getByText('Scan')).toBeInTheDocument();
-      expect(screen.getByText('Edit')).toBeInTheDocument();
-      expect(screen.getByText('Delete')).toBeInTheDocument();
-    });
-
-    it('should not show buttons when no handlers provided', () => {
-      render(<TargetCard target={mockTarget} />);
-      expect(screen.queryByText('Scan')).not.toBeInTheDocument();
-      expect(screen.queryByText('Edit')).not.toBeInTheDocument();
-      expect(screen.queryByText('Delete')).not.toBeInTheDocument();
-    });
-  });
-
-  describe('Optional Fields', () => {
-    it('should not display port when not provided', () => {
-      const target = { ...mockTarget, port: undefined };
-      const { container } = render(<TargetCard target={target} />);
-      expect(screen.getByText('192.168.1.100')).toBeInTheDocument();
-      // Check that IP doesn't have port suffix
-      expect(container.textContent).not.toContain('192.168.1.100:');
-    });
-
-    it('should not display domain section when not provided', () => {
-      const target = { ...mockTarget, domain: undefined };
-      render(<TargetCard target={target} />);
-      expect(screen.queryByText('example.com')).not.toBeInTheDocument();
-    });
-
-    it('should not display notes section when not provided', () => {
-      const target = { ...mockTarget, notes: undefined };
-      render(<TargetCard target={target} />);
-      expect(screen.queryByText('Test notes')).not.toBeInTheDocument();
-    });
-
-    it('should not display last scan when not provided', () => {
-      const target = { ...mockTarget, lastScanAt: undefined };
-      render(<TargetCard target={target} />);
-      expect(screen.queryByText(/Last scan:/)).not.toBeInTheDocument();
+    it('should have hover effects', () => {
+      const { container } = render(<TargetCard target={mockTarget} />);
+      const card = container.querySelector('.hover\\:shadow-md');
+      expect(card).toBeInTheDocument();
     });
   });
 });

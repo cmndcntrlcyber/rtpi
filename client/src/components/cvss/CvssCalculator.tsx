@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -19,31 +19,52 @@ interface CvssCalculatorProps {
 }
 
 export default function CvssCalculator({ value, onChange }: CvssCalculatorProps) {
-  const [metrics, setMetrics] = useState<CvssMetricsValue>(getDefaultMetrics());
-  const [score, setScore] = useState<number>(0);
-  const [vector, setVector] = useState<string>("");
-
-  // FIX BUG #5: Initialize from existing vector - include 'value' in dependency array
-  // This ensures the calculator re-initializes when editing different vulnerabilities
-  useEffect(() => {
+  // Initialize metrics from prop value or defaults
+  const initialMetrics = useMemo(() => {
     if (value && value.startsWith("CVSS:3.")) {
-      const parsed = parseVectorCvss3(value);
-      setMetrics(parsed);
+      return parseVectorCvss3(value);
+    }
+    return getDefaultMetrics();
+  }, [value]);
+
+  const [metrics, setMetrics] = useState<CvssMetricsValue>(initialMetrics);
+
+  // Track previous value to avoid unnecessary updates
+  const prevValueRef = useRef<string | undefined>(value);
+
+  // Sync metrics with external value prop changes
+  // This is a legitimate use of setState in useEffect for prop synchronization
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => {
+    // Only update if value actually changed to prevent cascading renders
+    if (value !== prevValueRef.current) {
+      prevValueRef.current = value;
+      if (value && value.startsWith("CVSS:3.")) {
+        const parsed = parseVectorCvss3(value);
+        setMetrics(parsed);
+      } else if (!value) {
+        // Reset to defaults if value is cleared
+        setMetrics(getDefaultMetrics());
+      }
     }
   }, [value]);
 
-  // Recalculate when metrics change
+  // Calculate derived values using useMemo to avoid unnecessary recalculations
+  const vector = useMemo(() => stringifyVectorCvss31(metrics), [metrics]);
+  const score = useMemo(() => calculateScoreCvss31(vector) || 0, [vector]);
+
+  // Track previous values to prevent unnecessary onChange calls
+  const prevVectorRef = useRef<string>("");
+  const prevScoreRef = useRef<number>(0);
+
+  // Notify parent of changes only when vector/score actually change
   useEffect(() => {
-    const newVector = stringifyVectorCvss31(metrics);
-    const newScore = calculateScoreCvss31(newVector) || 0;
-    
-    setVector(newVector);
-    setScore(newScore);
-    
-    if (onChange) {
-      onChange(newVector, newScore);
+    if (onChange && (vector !== prevVectorRef.current || score !== prevScoreRef.current)) {
+      prevVectorRef.current = vector;
+      prevScoreRef.current = score;
+      onChange(vector, score);
     }
-  }, [metrics, onChange]);
+  }, [vector, score, onChange]);
 
   const updateMetric = (metricId: string, value: string) => {
     setMetrics((prev) => ({

@@ -1,9 +1,9 @@
 # RTPI Enhancement Master Tracker
 
-**Last Updated:** 2025-12-21 (Day 6 - Major Progress on ATT&CK, Empire, and UI!)
-**Overall Progress:** 82/260 (31.5%)
+**Last Updated:** 2025-12-21 (Day 6 - ATT&CK Integration Reaches 50%!)
+**Overall Progress:** 84/260 (32.3%)
 **Current Sprint:** Week 1-2 - Foundation & Beta Enhancements
-**Active Enhancements:** ATT&CK Integration (45%), Empire C2 (40%), UI/UX (13%)
+**Active Enhancements:** ATT&CK Integration (50%), Empire C2 (40%), UI/UX (13%)
 
 ---
 
@@ -16,7 +16,7 @@
 - ✅ **Collapsible Sidebar** - Full keyboard shortcut support
 
 ### Active Development
-- 🔄 **ATT&CK Integration** - 45% complete (18/40 items) - Building out tabs and API
+- 🔄 **ATT&CK Integration** - 50% complete (20/40 items) - Interactive features complete
 - 🔄 **Empire C2** - 40% complete (14/35 items) - API bridge in progress
 - 🔄 **UI/UX Improvements** - 13% complete (4/30 items) - Sidebar complete
 
@@ -33,14 +33,14 @@
 | Metric | Value |
 |--------|-------|
 | Total Items | 260 |
-| Completed | 82 |
-| In Progress | 21 |
+| Completed | 84 |
+| In Progress | 19 |
 | Blocked | 0 |
 | Remaining | 157 |
-| Completion % | 31.5% |
+| Completion % | 32.3% |
 | Days Elapsed | 6 |
-| Avg Items/Day | 13.7 |
-| Projected Completion | 2026-01-02 |
+| Avg Items/Day | 14.0 |
+| Projected Completion | 2026-01-01 |
 
 ---
 
@@ -122,13 +122,13 @@
 
 **Document:** `docs/enhancements/03-ATTCK-INTEGRATION.md`
 **Priority:** 🟡 Tier 2 - Beta Enhancement
-**Status:** 🔄 In Progress (45% - 18/40 items)
+**Status:** 🔄 In Progress (50% - 20/40 items)
 **Timeline:** Week 1-2 (Days 6-15) - Ahead of schedule!
 **Owner:** Claude
 **Target:** 2025-01-15
 **Started:** 2025-12-21
 
-### Progress: 18/40 (45%)
+### Progress: 20/40 (50%)
 
 #### Phase 1: Page Structure & Navigation ✅ (6/6) - COMPLETE
 - [x] #ATK-01: Create /attack route `client/src/App.tsx` ✅ 2025-12-21
@@ -138,14 +138,14 @@
 - [x] #ATK-05: Add stats display and context selector ✅ 2025-12-21
 - [x] #ATK-06: Set up ATT&CK state management with API integration ✅ 2025-12-21
 
-#### Phase 2: Navigator Tab - Matrix Visualization 🔄 (3/7) - 43% COMPLETE
+#### Phase 2: Navigator Tab - Matrix Visualization 🔄 (5/7) - 71% COMPLETE
 - [x] #ATK-07: Build TacticsGrid component `client/src/components/attack/TacticsGrid.tsx` ✅ 2025-12-21
 - [x] #ATK-08: Build TechniquesTable component `client/src/components/attack/TechniquesTable.tsx` ✅ 2025-12-21
 - [x] #ATK-09: Build CoverageMatrix visualization component ✅ 2025-12-21
 - [ ] #ATK-10: Add sub-technique expansion
 - [ ] #ATK-11: Implement coverage heatmap overlay (partial - matrix exists)
-- [ ] #ATK-12: Create technique detail modal
-- [ ] #ATK-13: Add export to ATT&CK Navigator JSON
+- [x] #ATK-12: Create TechniqueDetailDialog with tabbed interface ✅ 2025-12-21
+- [x] #ATK-13: Add export to ATT&CK Navigator JSON with layer file generation ✅ 2025-12-21
 
 #### Phase 3: Database Schema ✅ (5/5) - COMPLETE
 - [x] #ATK-14: Create migration 0012_add_attack_integration.sql `db/migrations/` ✅ 2025-12-21
@@ -587,7 +587,23 @@
 
 ## Recent Completions (Last 7 Days)
 
-### 2025-12-21 - Major Progress Across Multiple Enhancements! 🚀
+### 2025-12-21 (Evening) - ATT&CK Integration Reaches 50%! 🎯
+
+#### ATT&CK Integration Phase 2 Updates (2 new items completed)
+- **#ATK-12**: TechniqueDetailDialog component created
+  - Tabbed interface with 4 tabs: Overview, Platforms, Tactics, Metadata
+  - Shows comprehensive technique information
+  - Integrated into TechniquesTable with Info button
+- **#ATK-13**: Export to ATT&CK Navigator JSON
+  - Full layer file generation compatible with MITRE ATT&CK Navigator
+  - Exports filtered and searched techniques
+  - Includes metadata, color coding, and platform filters
+  - Downloads as JSON file for import
+- **Test fixtures**: Added sample STIX bundle for testing parser
+
+**Progress Update**: ATT&CK Integration now at 20/40 items (50% complete)
+
+### 2025-12-21 (Afternoon) - Major Progress Across Multiple Enhancements! 🚀
 
 #### ATT&CK Integration (18 items completed)
 - **Phase 1 Complete**: Full page structure with 6-tab system
@@ -634,13 +650,13 @@
 | Date | Milestone | Status | Items |
 |------|-----------|--------|-------|
 | ~~2025-12-30~~ ✅ | Tool Framework Core Complete | DONE | 25/25 items |
-| 2025-12-28 | ATT&CK Integration Phase 1-3 Complete | 🔄 IN PROGRESS (45%) | 18/40 items |
+| 2025-12-28 | ATT&CK Integration Phase 1-3 Complete | 🔄 IN PROGRESS (50%) | 20/40 items |
 | 2025-12-30 | Empire C2 Phase 1-2 Complete | 🔄 IN PROGRESS (40%) | 14/35 items |
-| 2026-01-05 | ATT&CK & Empire C2 Complete | ON TRACK | 75 items total |
+| 2026-01-05 | ATT&CK & Empire C2 Complete | ON TRACK | 77 items total |
 | 2026-01-10 | UI/UX Improvements Complete | STARTED (13%) | 4/30 items |
 | 2026-01-20 | Kasm Workspaces Deployed | NOT STARTED | 0/45 items |
-| 2026-01-25 | All Tier 2 Enhancements Complete | ON TRACK | 82/215 items (38%) |
-| 2026-02-01 | Beta Launch Ready | AHEAD OF SCHEDULE | 82/260 items (31.5%) |
+| 2026-01-25 | All Tier 2 Enhancements Complete | ON TRACK | 84/215 items (39%) |
+| 2026-01-01 | Beta Launch Ready | AHEAD OF SCHEDULE | 84/260 items (32.3%) |
 
 ---
 
@@ -658,7 +674,16 @@
 
 ## Change Log
 
-### 2025-12-21 (Evening Update)
+### 2025-12-21 (Late Evening) - ATT&CK Integration Interactive Features
+- 🎯 **ATT&CK Integration reaches 50%!** - 20/40 items complete
+- ✅ Completed #ATK-12: TechniqueDetailDialog with 4-tab interface
+- ✅ Completed #ATK-13: Export to ATT&CK Navigator JSON
+- 📦 Added sample STIX bundle test fixture
+- Updated overall progress: 84/260 items (32.3%)
+- Average velocity: 14.0 items/day
+- Projected completion: 2026-01-01 (35 days ahead!)
+
+### 2025-12-21 (Afternoon Update)
 - 🚀 **Major Multi-Enhancement Progress!** - 57 new items completed
 - ✅ **ATT&CK Integration**: 18/40 items (45%) - Phase 1 & 3 complete, API routes live
 - ✅ **Empire C2 Integration**: 14/35 items (40%) - Phase 1 complete, Phase 2 in progress

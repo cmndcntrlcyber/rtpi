@@ -1,10 +1,13 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Plus } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import EmpireServerCard from "./EmpireServerCard";
 import EmpireListenersTable from "./EmpireListenersTable";
 import EmpireAgentsTable from "./EmpireAgentsTable";
+import AddServerDialog from "./AddServerDialog";
+import CreateListenerDialog from "./CreateListenerDialog";
+import ExecuteTaskDialog from "./ExecuteTaskDialog";
 
 interface EmpireServer {
   id: string;
@@ -24,6 +27,8 @@ export default function EmpireTab() {
   const [agents, setAgents] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
+  const [executeTaskOpen, setExecuteTaskOpen] = useState(false);
+  const [selectedAgentName, setSelectedAgentName] = useState<string>("");
 
   // Fetch Empire servers
   const fetchServers = async () => {
@@ -186,9 +191,10 @@ export default function EmpireTab() {
     }
   };
 
-  // Placeholder for execute command
+  // Open execute task dialog
   const handleExecuteCommand = (agentName: string) => {
-      console.error("Operation completed");
+    setSelectedAgentName(agentName);
+    setExecuteTaskOpen(true);
   };
 
   useEffect(() => {
@@ -248,6 +254,10 @@ export default function EmpireTab() {
         </TabsList>
 
         <TabsContent value="servers" className="space-y-4">
+          <div className="flex justify-end mb-4">
+            <AddServerDialog onServerAdded={fetchServers} />
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {servers.map((server) => (
               <EmpireServerCard
@@ -265,10 +275,9 @@ export default function EmpireTab() {
               <p className="text-sm text-gray-400 mt-2">
                 Add an Empire server to start managing C2 operations
               </p>
-              <Button className="mt-4" size="sm">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Server
-              </Button>
+              <div className="mt-4">
+                <AddServerDialog onServerAdded={fetchServers} />
+              </div>
             </div>
           )}
         </TabsContent>
@@ -286,10 +295,10 @@ export default function EmpireTab() {
                 <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
                 Refresh
               </Button>
-              <Button size="sm">
-                <Plus className="h-4 w-4 mr-2" />
-                Create Listener
-              </Button>
+              <CreateListenerDialog
+                serverId={selectedServerId}
+                onListenerCreated={() => selectedServerId && fetchListeners(selectedServerId)}
+              />
             </div>
           </div>
 
@@ -329,6 +338,14 @@ export default function EmpireTab() {
           />
         </TabsContent>
       </Tabs>
+
+      {/* Execute Task Dialog */}
+      <ExecuteTaskDialog
+        open={executeTaskOpen}
+        onOpenChange={setExecuteTaskOpen}
+        serverId={selectedServerId}
+        agentName={selectedAgentName}
+      />
     </div>
   );
 }

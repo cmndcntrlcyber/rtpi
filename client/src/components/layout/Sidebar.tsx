@@ -16,6 +16,7 @@ import {
   BarChart3,
   Package,
   Shield,
+  Crown,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -34,6 +35,7 @@ const navItems = [
   { path: "/surface-assessment", label: "Surface Assessment", icon: BarChart3 },
   { path: "/attack", label: "ATT&CK Framework", icon: Shield },
   { path: "/agents", label: "Agents", icon: Bot },
+  { path: "/empire", label: "Empire C2", icon: Crown },
   { path: "/infrastructure", label: "Infrastructure", icon: Server },
   { path: "/tools", label: "Tools", icon: Wrench },
   { path: "/tool-registry", label: "Tool Registry", icon: Package },

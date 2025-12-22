@@ -15,7 +15,7 @@ import {
   attackRelationships,
   attackTechniqueTactics,
 } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 /**
  * STIX 2.1 Bundle interface
@@ -612,41 +612,41 @@ export async function getImportStatistics(): Promise<{
   relationships: number;
 }> {
   const [tacticsCount] = await db
-    .select({ count: db.$count(attackTactics.id) })
+    .select({ count: sql<number>`count(*)` })
     .from(attackTactics);
 
   const [techniquesCount] = await db
-    .select({ count: db.$count(attackTechniques.id) })
+    .select({ count: sql<number>`count(*)` })
     .from(attackTechniques)
     .where(eq(attackTechniques.isSubtechnique, false));
 
   const [subtechniquesCount] = await db
-    .select({ count: db.$count(attackTechniques.id) })
+    .select({ count: sql<number>`count(*)` })
     .from(attackTechniques)
     .where(eq(attackTechniques.isSubtechnique, true));
 
   const [groupsCount] = await db
-    .select({ count: db.$count(attackGroups.id) })
+    .select({ count: sql<number>`count(*)` })
     .from(attackGroups);
 
   const [softwareCount] = await db
-    .select({ count: db.$count(attackSoftware.id) })
+    .select({ count: sql<number>`count(*)` })
     .from(attackSoftware);
 
   const [mitigationsCount] = await db
-    .select({ count: db.$count(attackMitigations.id) })
+    .select({ count: sql<number>`count(*)` })
     .from(attackMitigations);
 
   const [dataSourcesCount] = await db
-    .select({ count: db.$count(attackDataSources.id) })
+    .select({ count: sql<number>`count(*)` })
     .from(attackDataSources);
 
   const [campaignsCount] = await db
-    .select({ count: db.$count(attackCampaigns.id) })
+    .select({ count: sql<number>`count(*)` })
     .from(attackCampaigns);
 
   const [relationshipsCount] = await db
-    .select({ count: db.$count(attackRelationships.id) })
+    .select({ count: sql<number>`count(*)` })
     .from(attackRelationships);
 
   return {

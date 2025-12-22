@@ -8,7 +8,7 @@ const router = Router();
 router.use(ensureAuthenticated);
 
 // GET /api/v1/agent-loops - List active loops
-router.get("/", async (req, res) => {
+router.get("/", async (_req, res) => {
   try {
     const loops = agentLoopService.getActiveLoops();
     res.json({ loops });

@@ -17,7 +17,7 @@ export async function generateMarkdownReport(
   const filePath = path.join(UPLOAD_DIR, filename);
 
   // Generate markdown content based on report type
-  let content = generateReportContent(reportData, template);
+  const content = generateReportContent(reportData, template);
 
   // Write file to disk
   await fs.writeFile(filePath, content, "utf-8");

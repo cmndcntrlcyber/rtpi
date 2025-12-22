@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import crypto from 'crypto';
 import { generateCsrfToken, validateCsrfToken, attachCsrfToken } from '../../../../server/middleware/csrf';
-import type { Request, Response, NextFunction } from 'express';
+import type { Request, Response } from 'express';
 
 describe('CSRF Middleware', () => {
   let mockReq: any;

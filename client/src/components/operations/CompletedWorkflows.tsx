@@ -15,7 +15,6 @@ export default function CompletedWorkflows({
   onViewDetails,
 }: CompletedWorkflowsProps) {
   const [workflows, setWorkflows] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
   const [workflowReports, setWorkflowReports] = useState<Record<string, any>>({});
   const [downloading, setDownloading] = useState<Record<string, boolean>>({});
   const [deleting, setDeleting] = useState<Record<string, boolean>>({});
@@ -28,8 +27,7 @@ export default function CompletedWorkflows({
 
   const loadWorkflows = async () => {
     if (!operationId) return;
-    
-    setLoading(true);
+
     try {
       const response = await api.get<{ workflows: any[] }>("/agent-workflows");
       // Filter workflows for this operation
@@ -37,13 +35,11 @@ export default function CompletedWorkflows({
         (w) => w.operationId === operationId
       );
       setWorkflows(filtered);
-      
+
       // Load reports for completed workflows
       await loadReportsForWorkflows(filtered);
     } catch (error) {
       console.error("Failed to load workflows:", error);
-    } finally {
-      setLoading(false);
     }
   };
 

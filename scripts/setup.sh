@@ -22,7 +22,7 @@ npm install
 
 # Start Docker services
 echo "🐳 Starting Docker services..."
-docker-compose up -d postgres redis
+docker compose up -d postgres redis
 
 # Wait for services
 echo "⏳ Waiting for services to be ready..."

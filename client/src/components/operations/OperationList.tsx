@@ -28,10 +28,10 @@ export default function OperationList({ operations, loading, onSelect, onEdit, o
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {[1, 2, 3, 4, 5, 6].map((i) => (
-          <div key={i} className="bg-white rounded-lg p-6 border border-gray-200 animate-pulse">
-            <div className="h-4 bg-gray-200 rounded w-3/4 mb-4"></div>
-            <div className="h-3 bg-gray-200 rounded w-1/2 mb-2"></div>
-            <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+          <div key={i} className="bg-card rounded-lg p-6 border border-border animate-pulse">
+            <div className="h-4 bg-secondary rounded w-3/4 mb-4"></div>
+            <div className="h-3 bg-secondary rounded w-1/2 mb-2"></div>
+            <div className="h-3 bg-secondary rounded w-2/3"></div>
           </div>
         ))}
       </div>
@@ -40,8 +40,8 @@ export default function OperationList({ operations, loading, onSelect, onEdit, o
 
   if (!operations || operations.length === 0) {
     return (
-      <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-        <div className="mx-auto w-24 h-24 mb-4 text-gray-300">
+      <div className="text-center py-12 bg-card rounded-lg border border-border">
+        <div className="mx-auto w-24 h-24 mb-4 text-muted-foreground">
           <svg
             className="w-full h-full"
             fill="none"
@@ -56,8 +56,8 @@ export default function OperationList({ operations, loading, onSelect, onEdit, o
             />
           </svg>
         </div>
-        <h3 className="text-lg font-medium text-gray-900 mb-2">No operations found</h3>
-        <p className="text-gray-500 mb-4">Get started by creating your first operation</p>
+        <h3 className="text-lg font-medium text-foreground mb-2">No operations found</h3>
+        <p className="text-muted-foreground mb-4">Get started by creating your first operation</p>
       </div>
     );
   }

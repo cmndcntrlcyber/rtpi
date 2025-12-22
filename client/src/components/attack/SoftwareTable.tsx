@@ -11,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, ExternalLink, RefreshCw, Wrench } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 
 interface Software {
   id: string;
@@ -31,7 +30,6 @@ export default function SoftwareTable() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filter, setFilter] = useState<"all" | "malware" | "tool">("all");
-  const { toast } = useToast();
 
   const fetchSoftware = async () => {
     setLoading(true);
@@ -45,19 +43,10 @@ export default function SoftwareTable() {
         setSoftware(data);
         setFilteredSoftware(data);
       } else {
-        toast({
-          title: "Error",
-          description: "Failed to fetch software",
-          variant: "destructive",
-        });
+        console.error("Failed to fetch software");
       }
     } catch (error) {
       console.error("Failed to fetch software:", error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch software",
-        variant: "destructive",
-      });
     } finally {
       setLoading(false);
     }

@@ -1,9 +1,8 @@
 import { Router } from "express";
 import passport from "passport";
 import bcrypt from "bcrypt";
-import crypto from "crypto";
 import { db } from "../../db";
-import { users, apiKeys, passwordHistory } from "@shared/schema";
+import { users, passwordHistory } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { ensureAuthenticated, logAudit } from "../../auth/middleware";
 import { authLimiter, passwordChangeLimiter } from "../../middleware/rate-limit";
@@ -11,6 +10,44 @@ import { generateCsrfToken } from "../../middleware/csrf";
 import { isOAuthAvailable } from "../../auth/strategies/google";
 
 const router = Router();
+
+// Seed test user (development only)
+if (process.env.NODE_ENV !== "production") {
+  router.post("/seed-test-user", async (req, res) => {
+    try {
+      const hashedPassword = await bcrypt.hash("testpass123", 10);
+
+      const result = await db.insert(users).values({
+        username: "testuser",
+        email: "test@example.com",
+        passwordHash: hashedPassword,
+        role: "admin",
+        authMethod: "local",
+        twoFactorEnabled: false,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }).returning();
+
+      return res.json({
+        success: true,
+        message: "Test user created",
+        user: {
+          id: result[0].id,
+          username: result[0].username,
+          email: result[0].email,
+        }
+      });
+    } catch (error: any) {
+      // User might already exist
+      if (error.message.includes("unique constraint")) {
+        return res.json({ success: true, message: "Test user already exists" });
+      }
+      console.error("Error creating test user:", error);
+      return res.status(500).json({ error: "Failed to create test user" });
+    }
+  });
+}
 
 // Get CSRF token
 router.get("/csrf-token", (req, res) => {
@@ -68,15 +105,15 @@ if (isOAuthAvailable) {
   );
 } else {
   // Return helpful error message when OAuth is not configured
-  router.get("/google", (req, res) => {
-    res.status(503).json({ 
+  router.get("/google", (_req, res) => {
+    res.status(503).json({
       error: "Google OAuth is not configured",
       message: "Please configure GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in environment variables"
     });
   });
 
-  router.get("/google/callback", (req, res) => {
-    res.status(503).json({ 
+  router.get("/google/callback", (_req, res) => {
+    res.status(503).json({
       error: "Google OAuth is not configured",
       message: "Please configure GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in environment variables"
     });

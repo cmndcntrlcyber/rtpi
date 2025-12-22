@@ -25,21 +25,14 @@ export default function TopVulnerableAssetsTable({ assets, onViewAll }: TopVulne
 
   const getSeverityBadge = (count: number, severity: 'critical' | 'high' | 'medium' | 'low') => {
     if (count === 0) return null;
-    
-    const variants: Record<string, 'destructive' | 'default' | 'secondary' | 'outline'> = {
-      critical: 'destructive',
-      high: 'destructive',
-      medium: 'default',
-      low: 'secondary'
-    };
-    
+
     const colors: Record<string, string> = {
       critical: 'bg-red-600 hover:bg-red-700',
       high: 'bg-orange-600 hover:bg-orange-700',
       medium: 'bg-yellow-600 hover:bg-yellow-700',
       low: 'bg-green-600 hover:bg-green-700'
     };
-    
+
     return (
       <Badge className={`${colors[severity]} text-white`}>
         {count}

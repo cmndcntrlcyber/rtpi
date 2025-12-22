@@ -13,7 +13,7 @@ export default function Settings() {
     openaiApiKey: "",
     anthropicApiKey: "",
     tavilyApiKey: "",
-    defaultModel: "GPT-5",
+    defaultModel: "claude-sonnet-4-5-20250929",
   });
   const [showOpenAI, setShowOpenAI] = useState(false);
   const [showAnthropic, setShowAnthropic] = useState(false);
@@ -40,7 +40,7 @@ export default function Settings() {
           openaiApiKey: response.settings.openaiApiKey || "",
           anthropicApiKey: response.settings.anthropicApiKey || "",
           tavilyApiKey: response.settings.tavilyApiKey || "",
-          defaultModel: response.settings.defaultModel || "GPT-5",
+          defaultModel: response.settings.defaultModel || "claude-sonnet-4-5-20250929",
         });
       }
     } catch (error) {
@@ -85,88 +85,93 @@ export default function Settings() {
               AI & LLM Configuration
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="openai-key">OpenAI API Key</Label>
-              <div className="relative">
-                <Input
-                  id="openai-key"
-                  type={showOpenAI ? "text" : "password"}
-                  value={llmSettings.openaiApiKey}
-                  onChange={(e) => setLlmSettings({ ...llmSettings, openaiApiKey: e.target.value })}
-                  placeholder="sk-..."
-                />
-                <button
-                  type="button"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                  onClick={() => setShowOpenAI(!showOpenAI)}
-                >
-                  {showOpenAI ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+          <CardContent>
+            <form onSubmit={(e) => { e.preventDefault(); saveLlmSettings(); }} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="openai-key">OpenAI API Key</Label>
+                <div className="relative">
+                  <Input
+                    id="openai-key"
+                    type={showOpenAI ? "text" : "password"}
+                    value={llmSettings.openaiApiKey}
+                    onChange={(e) => setLlmSettings({ ...llmSettings, openaiApiKey: e.target.value })}
+                    placeholder="sk-..."
+                    autoComplete="off"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    onClick={() => setShowOpenAI(!showOpenAI)}
+                  >
+                    {showOpenAI ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="anthropic-key">Anthropic API Key</Label>
-              <div className="relative">
-                <Input
-                  id="anthropic-key"
-                  type={showAnthropic ? "text" : "password"}
-                  value={llmSettings.anthropicApiKey}
-                  onChange={(e) => setLlmSettings({ ...llmSettings, anthropicApiKey: e.target.value })}
-                  placeholder="sk-ant-..."
-                />
-                <button
-                  type="button"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                  onClick={() => setShowAnthropic(!showAnthropic)}
-                >
-                  {showAnthropic ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+              <div className="space-y-2">
+                <Label htmlFor="anthropic-key">Anthropic API Key</Label>
+                <div className="relative">
+                  <Input
+                    id="anthropic-key"
+                    type={showAnthropic ? "text" : "password"}
+                    value={llmSettings.anthropicApiKey}
+                    onChange={(e) => setLlmSettings({ ...llmSettings, anthropicApiKey: e.target.value })}
+                    placeholder="sk-ant-..."
+                    autoComplete="off"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    onClick={() => setShowAnthropic(!showAnthropic)}
+                  >
+                    {showAnthropic ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="tavily-key">Tavily API Key</Label>
-              <div className="relative">
-                <Input
-                  id="tavily-key"
-                  type={showTavily ? "text" : "password"}
-                  value={llmSettings.tavilyApiKey}
-                  onChange={(e) => setLlmSettings({ ...llmSettings, tavilyApiKey: e.target.value })}
-                  placeholder="tvly-..."
-                />
-                <button
-                  type="button"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                  onClick={() => setShowTavily(!showTavily)}
-                >
-                  {showTavily ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+              <div className="space-y-2">
+                <Label htmlFor="tavily-key">Tavily API Key</Label>
+                <div className="relative">
+                  <Input
+                    id="tavily-key"
+                    type={showTavily ? "text" : "password"}
+                    value={llmSettings.tavilyApiKey}
+                    onChange={(e) => setLlmSettings({ ...llmSettings, tavilyApiKey: e.target.value })}
+                    placeholder="tvly-..."
+                    autoComplete="off"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    onClick={() => setShowTavily(!showTavily)}
+                  >
+                    {showTavily ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="default-model">Default Model</Label>
-              <select
-                id="default-model"
-                className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
-                value={llmSettings.defaultModel}
-                onChange={(e) => setLlmSettings({ ...llmSettings, defaultModel: e.target.value })}
-              >
-                <option value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5</option>
-                <option value="claude-opus-4-1-20250805">Claude Opus 4.1</option>
-                <option value="GPT-5">GPT-5</option>
-                <option value="GPT-5 mini">GPT-5 Mini</option>
-                <option value="GPT-5-Codex">GPT-5 Codex</option>
-                <option value="o3-deep-research">O3 Deep Research</option>
-                <option value="o4-mini-deep-research">O4 Mini Deep Research</option>
-              </select>
-            </div>
+              <div className="space-y-2">
+                <Label htmlFor="default-model">Default Model</Label>
+                <select
+                  id="default-model"
+                  className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                  value={llmSettings.defaultModel}
+                  onChange={(e) => setLlmSettings({ ...llmSettings, defaultModel: e.target.value })}
+                >
+                  <option value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5</option>
+                  <option value="claude-opus-4-5-20251101">Claude Opus 4.5</option>
+                  <option value="claude-3-5-sonnet-20241022">Claude Sonnet 3.5</option>
+                  <option value="gpt-4o">GPT-4o</option>
+                  <option value="gpt-4o-mini">GPT-4o Mini</option>
+                  <option value="o1">O1</option>
+                  <option value="o1-mini">O1 Mini</option>
+                </select>
+              </div>
 
-            <Button onClick={saveLlmSettings} disabled={saving} className="w-full">
-              {saving ? "Saving..." : "Save API Keys"}
-            </Button>
+              <Button type="submit" disabled={saving} className="w-full">
+                {saving ? "Saving..." : "Save API Keys"}
+              </Button>
+            </form>
           </CardContent>
         </Card>
 

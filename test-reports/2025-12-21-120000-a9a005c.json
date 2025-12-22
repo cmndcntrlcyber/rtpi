@@ -1,0 +1,237 @@
+{
+  "status": "partial",
+  "timestamp": "2025-12-21T12:00:00-06:00",
+  "commit": {
+    "sha": "a9a005c43a6216bd1ef9913e51dc1fec1ae03f81",
+    "author": "Claude Sonnet 4.5",
+    "message": "feat(ui): Add collapsible sidebar with Ctrl+B keyboard shortcut"
+  },
+  "testResults": {
+    "unit": {
+      "passed": 549,
+      "failed": 31,
+      "duration": "49.51s",
+      "suites": {
+        "total": 29,
+        "passed": 23,
+        "failed": 6
+      },
+      "passRate": "94.6%"
+    },
+    "e2e": {
+      "passed": 0,
+      "failed": 0,
+      "duration": "0s",
+      "skipped": true,
+      "reason": "Requires running application server (frontend port 5000, backend port 3001)"
+    },
+    "lint": {
+      "errors": 94,
+      "warnings": 705,
+      "autoFixable": 6
+    }
+  },
+  "coverage": {
+    "percentage": 30,
+    "trend": "down",
+    "note": "New code has significantly lower coverage than existing baseline. Estimated 30% based on test file ratio.",
+    "gaps": [
+      "ATT&CK API routes (0% coverage)",
+      "Empire C2 executor (0% coverage)",
+      "Empire C2 API routes (0% coverage)",
+      "Tool Registry Manager (0% coverage)",
+      "Tool Executor (0% coverage)",
+      "GitHub Tool Installer (0% coverage)",
+      "Output Parser Manager (0% coverage)",
+      "All UI components for new features (0% coverage)"
+    ]
+  },
+  "failures": [
+    {
+      "suite": "tests/unit/server/api/mcp-servers.test.ts",
+      "test": "POST /api/v1/mcp-servers/:id/start - should start MCP server",
+      "error": "expected 500 to be 200 // Object.is equality",
+      "trace": "MCP server lifecycle management broken - start endpoint returning 500 status",
+      "severity": "HIGH",
+      "impact": "Agent orchestration functionality broken"
+    },
+    {
+      "suite": "tests/unit/server/api/mcp-servers.test.ts",
+      "test": "POST /api/v1/mcp-servers/:id/stop - should stop MCP server",
+      "error": "expected { message: 'Server stopped' } to have property \"server\"",
+      "trace": "Response structure mismatch",
+      "severity": "HIGH",
+      "impact": "MCP server stop functionality broken"
+    },
+    {
+      "suite": "tests/unit/server/api/mcp-servers.test.ts",
+      "test": "POST /api/v1/mcp-servers/:id/restart - should restart MCP server",
+      "error": "expected 500 to be 200 // Object.is equality",
+      "trace": "Restart endpoint failing",
+      "severity": "HIGH",
+      "impact": "MCP server restart functionality broken"
+    },
+    {
+      "suite": "tests/unit/server/api/targets.test.ts",
+      "test": "POST /api/v1/targets/:id/scan - should initiate target scan",
+      "error": "expected 404 to be 200 // Object.is equality",
+      "trace": "Target scan endpoint not properly wired",
+      "severity": "MEDIUM",
+      "impact": "Target scanning functionality broken"
+    },
+    {
+      "suite": "tests/unit/client/components/targets/TargetCard.test.tsx",
+      "test": "Multiple rendering tests",
+      "error": "Text content not matching expected values",
+      "trace": "17 tests failing - component structure changed",
+      "severity": "MEDIUM",
+      "impact": "Target card UI component may not render correctly"
+    },
+    {
+      "suite": "tests/unit/client/components/targets/TargetList.test.tsx",
+      "test": "Multiple rendering tests",
+      "error": "Cannot find target names in rendered output",
+      "trace": "3 tests failing - component structure changed",
+      "severity": "MEDIUM",
+      "impact": "Target list display broken"
+    },
+    {
+      "suite": "tests/unit/client/components/operations/OperationCard.test.tsx",
+      "test": "Date formatting tests",
+      "error": "Date display not showing expected format",
+      "trace": "2 tests failing - date formatting issue",
+      "severity": "LOW",
+      "impact": "Cosmetic date display issue"
+    }
+  ],
+  "deploymentReady": false,
+  "deploymentBlockers": [
+    {
+      "category": "Security",
+      "issue": "Tool Executor has no security tests",
+      "risk": "Command injection vulnerabilities undetected",
+      "severity": "CRITICAL",
+      "file": "server/services/tool-executor.ts"
+    },
+    {
+      "category": "Security",
+      "issue": "Empire C2 authentication not tested",
+      "risk": "C2 authentication bypass or token leakage",
+      "severity": "CRITICAL",
+      "file": "server/services/empire-executor.ts"
+    },
+    {
+      "category": "Functionality",
+      "issue": "MCP server lifecycle broken",
+      "risk": "Agent orchestration completely broken",
+      "severity": "HIGH",
+      "file": "server/api/v1/mcp-servers.ts"
+    }
+  ],
+  "reportPath": "/home/cmndcntrl/rtpi/test-reports/2025-12-21-120000-a9a005c.md",
+  "recommendations": [
+    "CRITICAL: Create security tests for tool-executor.ts to prevent command injection",
+    "CRITICAL: Create security tests for empire-executor.ts authentication flows",
+    "CRITICAL: Fix MCP server lifecycle tests (6 failing tests)",
+    "HIGH: Run database migrations with 'npm run db:push' to verify schema changes",
+    "HIGH: Fix React Hooks violations in CvssCalculator.tsx (setState in useEffect)",
+    "HIGH: Create integration tests for ATT&CK API routes (11 endpoints untested)",
+    "HIGH: Create integration tests for Empire C2 API routes (30+ endpoints untested)",
+    "MEDIUM: Fix UI component test failures (20 tests failing for Target components)",
+    "MEDIUM: Run 'npm run lint:fix' to auto-fix 6 linting errors",
+    "MEDIUM: Add missing React Hook dependencies in 8 components",
+    "MEDIUM: Create tests for github-tool-installer.ts (619 lines of untested code)",
+    "LOW: Improve test coverage from 30% to 70%+ for new code",
+    "LOW: Replace 705 'any' type usages with proper TypeScript types",
+    "DEPLOYMENT: DO NOT enable ATT&CK Framework in production until API tests created",
+    "DEPLOYMENT: DO NOT enable Empire C2 in production until security tests pass",
+    "DEPLOYMENT: DO NOT enable Tool Framework in production until executor is validated"
+  ],
+  "codeChangesSummary": {
+    "commits": 20,
+    "filesChanged": 45,
+    "insertions": 12973,
+    "deletions": 61,
+    "features": [
+      {
+        "name": "ATT&CK Framework Integration",
+        "commits": 7,
+        "files": [
+          "server/services/stix-parser.ts",
+          "server/api/v1/attack.ts",
+          "client/src/components/attack/*.tsx (7 components)",
+          "db/migrations/0012_add_attack_integration.sql"
+        ],
+        "testCoverage": "15%",
+        "status": "Partially tested - parser only"
+      },
+      {
+        "name": "Empire C2 Integration",
+        "commits": 5,
+        "files": [
+          "server/services/empire-executor.ts",
+          "server/api/v1/empire.ts",
+          "client/src/components/empire/*.tsx (4 components)",
+          "db/migrations/0015_add_empire_integration.sql"
+        ],
+        "testCoverage": "0%",
+        "status": "Untested - SECURITY RISK"
+      },
+      {
+        "name": "Tool Framework",
+        "commits": 5,
+        "files": [
+          "server/services/tool-tester.ts",
+          "server/services/tool-registry-manager.ts",
+          "server/services/tool-executor.ts",
+          "server/services/github-tool-installer.ts",
+          "server/services/output-parser-manager.ts",
+          "server/api/v1/tools.ts",
+          "migrations/0011_add_tool_framework.sql"
+        ],
+        "testCoverage": "20%",
+        "status": "Tool tester fully tested, executor/installer untested"
+      },
+      {
+        "name": "UI Improvements",
+        "commits": 1,
+        "files": [
+          "client/src/components/layout/Sidebar.tsx",
+          "client/src/components/layout/MainLayout.tsx"
+        ],
+        "testCoverage": "0%",
+        "status": "Feature complete, not tested"
+      }
+    ]
+  },
+  "infrastructureStatus": {
+    "docker": {
+      "postgres": "healthy",
+      "redis": "healthy",
+      "empire": "not verified"
+    },
+    "database": {
+      "migrationsApplied": false,
+      "schemaValidated": false,
+      "recommendation": "Run 'npm run db:push' before integration testing"
+    }
+  },
+  "nextSteps": {
+    "immediate": [
+      "Fix 3 deployment blockers (8-16 hours estimated)",
+      "Run database migrations and verify schema integrity",
+      "Fix MCP server lifecycle tests"
+    ],
+    "shortTerm": [
+      "Create security tests for Empire and Tool Executor (16-24 hours)",
+      "Fix UI component test failures (4-8 hours)",
+      "Run E2E tests in staging environment"
+    ],
+    "longTerm": [
+      "Improve test coverage to 70%+ across all new features",
+      "Replace 'any' types with proper TypeScript types",
+      "Setup automated E2E testing in CI pipeline"
+    ],
+    "estimatedTimeToProduction": "30-50 development hours"
+  }
+}

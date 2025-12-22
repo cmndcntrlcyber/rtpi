@@ -2,14 +2,17 @@ import TargetCard from "./TargetCard";
 
 interface Target {
   id: string;
-  hostname?: string;
-  ipAddress?: string;
-  domain?: string;
-  port?: number;
-  status: string;
+  name: string;
+  type: string;
+  value: string;
+  description?: string;
+  priority?: number;
+  tags?: string[];
   operationId?: string;
-  notes?: string;
-  lastScanAt?: string;
+  discoveredServices?: any;
+  metadata?: any;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface TargetListProps {

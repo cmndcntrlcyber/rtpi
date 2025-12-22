@@ -8,11 +8,11 @@ router.use(ensureAuthenticated);
 router.use(ensureRole("admin"));
 
 // In-memory storage for LLM settings (can be moved to database later)
-let llmSettings = {
+const llmSettings = {
   openaiApiKey: process.env.OPENAI_API_KEY || "",
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || "",
   tavilyApiKey: process.env.TAVILY_API_KEY || "",
-  defaultModel: process.env.DEFAULT_MODEL || "GPT-5",
+  defaultModel: process.env.DEFAULT_MODEL || "claude-sonnet-4-5-20250929",
 };
 
 // GET /api/v1/settings/llm - Get LLM settings

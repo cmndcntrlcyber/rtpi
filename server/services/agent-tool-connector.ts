@@ -35,7 +35,7 @@ export class AgentToolConnector {
 
     // Try new tool registry first, fallback to legacy securityTools
     let tool = await getToolById(toolId);
-    let isNewFramework = !!tool;
+    const isNewFramework = !!tool;
 
     if (!tool) {
       // Fallback to legacy security tools table

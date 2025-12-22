@@ -4,7 +4,7 @@ set -e
 echo "🚀 Starting RTPI development environment..."
 
 # Start Docker services
-docker-compose up -d postgres redis
+docker compose up -d postgres redis
 
 # Wait for services
 sleep 5

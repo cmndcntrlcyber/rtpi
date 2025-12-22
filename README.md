@@ -16,6 +16,9 @@ docker compose up -d
 # Run database migrations
 npm run db:push
 
+# Create default admin user (REQUIRED for first-time setup)
+npx tsx scripts/create-admin.ts
+
 # Start development servers (requires two terminals)
 
 # Terminal 1: Start backend API server
@@ -24,6 +27,12 @@ npm run dev
 # Terminal 2: Start frontend UI server
 npm run dev:frontend
 ```
+
+**Default Admin Credentials:**
+- Username: `admin`
+- Password: `Admin123!@` (configured in `.env` as `DEFAULT_ADMIN_PASSWORD`)
+
+> ⚠️ **Security Note:** Change the default admin password after first login!
 
 **Access the application:**
 - Frontend UI: http://localhost:5000 (or 5001 if 5000 is busy)
@@ -93,4 +102,3 @@ MIT License - See LICENSE file for details
 
 ## Logic Monitoring
 <img width="992" height="865" alt="image" src="https://github.com/user-attachments/assets/9a683d9a-afed-477f-b3ee-09038bab88b7" />
-

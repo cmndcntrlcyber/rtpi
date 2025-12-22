@@ -16,7 +16,6 @@ import { useTargets } from "@/hooks/useTargets";
 import { useTools } from "@/hooks/useTools";
 import { useWorkflows, type WorkflowDetails } from "@/hooks/useWorkflows";
 import { api } from "@/lib/api";
-import TargetEngagementDialog from "@/components/agents/TargetEngagementDialog";
 import WorkflowProgressCard from "@/components/agents/WorkflowProgressCard";
 import WorkflowDetailsDialog from "@/components/agents/WorkflowDetailsDialog";
 import {
@@ -137,7 +136,7 @@ export default function Agents() {
   const { agents, loading: agentsLoading, refetch: refetchAgents } = useAgents();
   const { servers: mcpServers, loading: serversLoading, refetch: refetchServers } = useMCPServers();
   const { tools } = useTools();
-  const { runningWorkflows, allNonRunning, workflows, getWorkflowDetails, cancelWorkflow } = useWorkflows();
+  const { runningWorkflows, allNonRunning, getWorkflowDetails, cancelWorkflow } = useWorkflows();
   
   const sensors = useSensors(
     useSensor(PointerSensor),

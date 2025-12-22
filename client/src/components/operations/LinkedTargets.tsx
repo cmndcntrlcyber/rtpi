@@ -17,7 +17,6 @@ export default function LinkedTargets({
   onAddNew,
 }: LinkedTargetsProps) {
   const [targets, setTargets] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (operationId) {
@@ -27,8 +26,7 @@ export default function LinkedTargets({
 
   const loadTargets = async () => {
     if (!operationId) return;
-    
-    setLoading(true);
+
     try {
       const response = await api.get<{ targets: any[] }>("/targets");
       // Filter targets for this operation
@@ -38,8 +36,6 @@ export default function LinkedTargets({
       setTargets(filtered);
     } catch (error) {
       console.error("Failed to load targets:", error);
-    } finally {
-      setLoading(false);
     }
   };
 

@@ -1,4 +1,4 @@
-import { Server, Network, AlertTriangle, Globe, TrendingUp, TrendingDown } from 'lucide-react';
+import { Server, Network, AlertTriangle, Globe } from 'lucide-react';
 
 interface SummaryStatsCardProps {
   stats: {

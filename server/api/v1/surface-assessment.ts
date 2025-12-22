@@ -227,7 +227,7 @@ router.get('/:operationId/assets', async (req, res) => {
     const { operationId } = req.params;
     const { search, page = '1', limit = '50' } = req.query;
 
-    let query = db
+    const query = db
       .select({
         id: discoveredAssets.id,
         value: discoveredAssets.value,

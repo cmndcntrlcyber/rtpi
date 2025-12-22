@@ -11,8 +11,8 @@ export default function Operations() {
   const [, navigate] = useLocation();
   const { operations, loading, refetch } = useOperations();
   const { create, creating } = useCreateOperation();
-  const { update, updating } = useUpdateOperation();
-  const { delete: deleteOp, deleting } = useDeleteOperation();
+  const { update } = useUpdateOperation();
+  const { delete: deleteOp } = useDeleteOperation();
   
   const [formOpen, setFormOpen] = useState(false);
   const [editingOperation, setEditingOperation] = useState<any>(null);
@@ -78,14 +78,14 @@ export default function Operations() {
     }
   };
 
-  const handleViewTargets = (operationId: string) => {
+  const handleViewTargets = (_operationId: string) => {
     // Navigate to targets page
     // TODO: Add filtering support in targets page
     setFormOpen(false);
     navigate("/targets");
   };
 
-  const handleAddTarget = (operationId: string) => {
+  const handleAddTarget = (_operationId: string) => {
     // Navigate to targets page to add new target
     setFormOpen(false);
     navigate("/targets");
@@ -167,26 +167,26 @@ export default function Operations() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">
             Total Operations
           </h3>
-          <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
+          <p className="text-3xl font-bold text-foreground">{stats.total}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Active</h3>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Active</h3>
           <p className="text-3xl font-bold text-green-600">{stats.active}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Planning</h3>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Planning</h3>
           <p className="text-3xl font-bold text-blue-600">{stats.planning}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Completed</h3>
-          <p className="text-3xl font-bold text-gray-600">{stats.completed}</p>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Completed</h3>
+          <p className="text-3xl font-bold text-muted-foreground">{stats.completed}</p>
         </div>
       </div>
 

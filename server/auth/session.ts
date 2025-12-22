@@ -10,8 +10,11 @@ const redisClient = createClient({
 redisClient.on("error", (err) => console.error("Redis Client Error:", err));
 redisClient.on("connect", () => console.log("✅ Redis connected for sessions"));
 
-// Connect to Redis
-await redisClient.connect();
+// Connect to Redis asynchronously (non-blocking)
+redisClient.connect().catch((err) => {
+  console.error("Failed to connect to Redis:", err);
+  process.exit(1);
+});
 
 // Configure session middleware
 export const sessionMiddleware = session({

@@ -12,7 +12,7 @@ router.use(ensureAuthenticated);
 // POST /api/v1/agents/:agentId/mcp-call - Call MCP server tool from agent
 router.post("/:agentId/mcp-call", ensureRole("admin", "operator"), async (req, res) => {
   const { agentId } = req.params;
-  const { toolName, arguments: toolArgs } = req.body;
+  const { toolName } = req.body;
   const user = req.user as any;
 
   try {

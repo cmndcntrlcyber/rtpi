@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { Play, Clock, CheckCircle, XCircle, Settings } from 'lucide-react';
+import { Play, Clock, CheckCircle, XCircle } from 'lucide-react';
 
 interface ScanConfigTabProps {
   operationId: string;
@@ -67,7 +67,7 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
       setLoading(true);
       const targetList = targets.split('\n').map(t => t.trim()).filter(Boolean);
       
-      const response = await api.post(`/surface-assessment/${operationId}/scan/bbot`, {
+      await api.post(`/surface-assessment/${operationId}/scan/bbot`, {
         targets: targetList,
         config: {
           preset: bbotConfig.preset,

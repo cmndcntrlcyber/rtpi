@@ -10,7 +10,7 @@ RUN mkdir -p /opt/tools /var/log/rtpi
 
 # Add external repositories
 RUN apt-get update && apt-get install -y \
-    curl wget gnupg lsb-release ca-certificates software-properties-common \
+    curl wget unzip gnupg lsb-release ca-certificates software-properties-common \
     && rm -rf /var/lib/apt/lists/*
 
 # Add Microsoft PowerShell repository
@@ -46,15 +46,17 @@ RUN pip3 install --no-cache-dir \
     impacket bloodhound
 
 # Install BBOT (attack surface reconnaissance)
-RUN pipx install bbot \
-    && pipx ensurepath
+# Install globally using pip3 instead of pipx to make it available system-wide
+RUN pip3 install --no-cache-dir bbot
 
 # Install Nuclei (vulnerability scanner)
-RUN wget -q https://github.com/projectdiscovery/nuclei/releases/latest/download/nuclei_3.3.7_linux_amd64.zip \
-    && unzip nuclei_3.3.7_linux_amd64.zip -d /tmp \
+# Download latest release dynamically
+RUN NUCLEI_VERSION=$(curl -s https://api.github.com/repos/projectdiscovery/nuclei/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | sed 's/v//') \
+    && wget -q "https://github.com/projectdiscovery/nuclei/releases/download/v${NUCLEI_VERSION}/nuclei_${NUCLEI_VERSION}_linux_amd64.zip" \
+    && unzip "nuclei_${NUCLEI_VERSION}_linux_amd64.zip" -d /tmp \
     && mv /tmp/nuclei /usr/local/bin/nuclei \
     && chmod +x /usr/local/bin/nuclei \
-    && rm nuclei_3.3.7_linux_amd64.zip \
+    && rm "nuclei_${NUCLEI_VERSION}_linux_amd64.zip" \
     && nuclei -update-templates -silent || true
 
 # Install Metasploit Framework
@@ -71,7 +73,8 @@ RUN cd /opt/tools && \
     git clone https://github.com/offensive-security/exploitdb.git && \
     ln -sf /opt/tools/exploitdb/searchsploit /usr/local/bin/searchsploit
 
-# Copy custom tools
+# Copy custom tools (from project root tools/ directory)
+# This copies any custom security tools into the container
 COPY tools/ /opt/tools/custom/
 
 # Create a non-root user for running tools

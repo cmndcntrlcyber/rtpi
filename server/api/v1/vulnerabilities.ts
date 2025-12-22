@@ -130,7 +130,7 @@ router.post("/:id/ai-generate-field", ensureRole("admin", "operator"), async (re
     }
 
     // Get additional context if needed
-    let enrichedContext = {
+    const enrichedContext = {
       ...context,
       cveId: vuln.cveId || context.cveId,
       cweId: vuln.cweId || context.cweId,

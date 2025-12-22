@@ -597,7 +597,7 @@ npm run test:empire-schema
 
 ### Overview
 
-Empire C2 will be deployed as a Docker container using the official BC Security image. This section provides complete docker-compose configuration, environment setup, and deployment procedures.
+Empire C2 will be deployed as a Docker container using the official BC Security image. This section provides complete docker compose configuration, environment setup, and deployment procedures.
 
 ### Empire C2 Container Architecture
 

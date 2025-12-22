@@ -10,7 +10,7 @@ const router = Router();
 router.use(ensureAuthenticated);
 
 // GET /api/v1/agents - List all agents
-router.get("/", async (req, res) => {
+router.get("/", async (_req, res) => {
   try {
     const allAgents = await db.select().from(agents);
     res.json({ agents: allAgents });

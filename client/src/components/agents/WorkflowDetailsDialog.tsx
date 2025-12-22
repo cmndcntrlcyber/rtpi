@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -13,7 +12,6 @@ import {
   XCircle,
   Clock,
   Activity,
-  FileText,
   Loader2,
   Circle,
 } from "lucide-react";

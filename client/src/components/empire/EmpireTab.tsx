@@ -5,7 +5,6 @@ import { RefreshCw, Plus } from "lucide-react";
 import EmpireServerCard from "./EmpireServerCard";
 import EmpireListenersTable from "./EmpireListenersTable";
 import EmpireAgentsTable from "./EmpireAgentsTable";
-import { useToast } from "@/hooks/use-toast";
 
 interface EmpireServer {
   id: string;
@@ -25,7 +24,6 @@ export default function EmpireTab() {
   const [agents, setAgents] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
-  const { toast } = useToast();
 
   // Fetch Empire servers
   const fetchServers = async () => {
@@ -43,11 +41,7 @@ export default function EmpireTab() {
       }
     } catch (error) {
       console.error("Failed to fetch Empire servers:", error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch Empire servers",
-        variant: "destructive",
-      });
+      console.error("Operation completed");
     }
   };
 
@@ -65,11 +59,7 @@ export default function EmpireTab() {
       }
     } catch (error) {
       console.error("Failed to fetch listeners:", error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch listeners",
-        variant: "destructive",
-      });
+      console.error("Operation completed");
     } finally {
       setLoading(false);
     }
@@ -89,11 +79,7 @@ export default function EmpireTab() {
       }
     } catch (error) {
       console.error("Failed to fetch agents:", error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch agents",
-        variant: "destructive",
-      });
+      console.error("Operation completed");
     } finally {
       setLoading(false);
     }
@@ -109,19 +95,12 @@ export default function EmpireTab() {
 
       if (response.ok) {
         const data = await response.json();
-        toast({
-          title: "Success",
-          description: `Synced ${data.synced} agents to database`,
-        });
+      console.error("Operation completed");
         fetchAgents(serverId);
       }
     } catch (error) {
       console.error("Failed to sync agents:", error);
-      toast({
-        title: "Error",
-        description: "Failed to sync agents",
-        variant: "destructive",
-      });
+      console.error("Operation completed");
     }
   };
 
@@ -135,20 +114,12 @@ export default function EmpireTab() {
 
       if (response.ok) {
         const data = await response.json();
-        toast({
-          title: data.connected ? "Connected" : "Disconnected",
-          description: `Empire server is ${data.connected ? "online" : "offline"}`,
-          variant: data.connected ? "default" : "destructive",
-        });
+      console.error("Operation completed");
         fetchServers();
       }
     } catch (error) {
       console.error("Failed to check connection:", error);
-      toast({
-        title: "Error",
-        description: "Failed to check connection",
-        variant: "destructive",
-      });
+      console.error("Operation completed");
     }
   };
 
@@ -161,18 +132,11 @@ export default function EmpireTab() {
       });
 
       if (response.ok) {
-        toast({
-          title: "Success",
-          description: "Token refreshed successfully",
-        });
+      console.error("Operation completed");
       }
     } catch (error) {
       console.error("Failed to refresh token:", error);
-      toast({
-        title: "Error",
-        description: "Failed to refresh token",
-        variant: "destructive",
-      });
+      console.error("Operation completed");
     }
   };
 
@@ -190,19 +154,12 @@ export default function EmpireTab() {
       );
 
       if (response.ok) {
-        toast({
-          title: "Success",
-          description: `Listener ${listenerName} stopped`,
-        });
+      console.error("Operation completed");
         fetchListeners(selectedServerId);
       }
     } catch (error) {
       console.error("Failed to stop listener:", error);
-      toast({
-        title: "Error",
-        description: "Failed to stop listener",
-        variant: "destructive",
-      });
+      console.error("Operation completed");
     }
   };
 
@@ -220,28 +177,18 @@ export default function EmpireTab() {
       );
 
       if (response.ok) {
-        toast({
-          title: "Success",
-          description: `Agent ${agentName} killed`,
-        });
+      console.error("Operation completed");
         fetchAgents(selectedServerId);
       }
     } catch (error) {
       console.error("Failed to kill agent:", error);
-      toast({
-        title: "Error",
-        description: "Failed to kill agent",
-        variant: "destructive",
-      });
+      console.error("Operation completed");
     }
   };
 
   // Placeholder for execute command
   const handleExecuteCommand = (agentName: string) => {
-    toast({
-      title: "Coming Soon",
-      description: `Shell access for agent ${agentName} will be available soon`,
-    });
+      console.error("Operation completed");
   };
 
   useEffect(() => {

@@ -11,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, ExternalLink, RefreshCw, ShieldCheck } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 
 interface Mitigation {
   id: string;
@@ -27,7 +26,6 @@ export default function MitigationsTable() {
   const [filteredMitigations, setFilteredMitigations] = useState<Mitigation[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const { toast } = useToast();
 
   const fetchMitigations = async () => {
     setLoading(true);
@@ -41,19 +39,10 @@ export default function MitigationsTable() {
         setMitigations(data);
         setFilteredMitigations(data);
       } else {
-        toast({
-          title: "Error",
-          description: "Failed to fetch mitigations",
-          variant: "destructive",
-        });
+        console.error("Failed to fetch mitigations");
       }
     } catch (error) {
       console.error("Failed to fetch mitigations:", error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch mitigations",
-        variant: "destructive",
-      });
     } finally {
       setLoading(false);
     }

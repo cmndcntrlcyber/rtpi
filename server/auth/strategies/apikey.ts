@@ -13,7 +13,7 @@ passport.use(
       const apiKey = req.headers["x-api-key"] as string;
 
       if (!apiKey) {
-        return done(null, false, { message: "API key required" });
+        return done(null, false);
       }
 
       // Hash the provided API key
@@ -33,17 +33,17 @@ passport.use(
       const record = result[0];
 
       if (!record) {
-        return done(null, false, { message: "Invalid API key" });
+        return done(null, false);
       }
 
       // Check if API key has expired
       if (record.apiKey.expiresAt && record.apiKey.expiresAt < new Date()) {
-        return done(null, false, { message: "API key expired" });
+        return done(null, false);
       }
 
       // Check if user is active
       if (!record.user.isActive) {
-        return done(null, false, { message: "User account is disabled" });
+        return done(null, false);
       }
 
       // Update last used timestamp

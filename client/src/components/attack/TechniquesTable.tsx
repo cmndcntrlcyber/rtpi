@@ -10,7 +10,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, ExternalLink, RefreshCw } from "lucide-react";
+import { Search, ExternalLink, RefreshCw, Info, Download } from "lucide-react";
+import TechniqueDetailDialog from "./TechniqueDetailDialog";
+import { exportToNavigator } from "@/utils/attack-navigator-export";
 
 interface Technique {
   id: string;
@@ -23,6 +25,10 @@ interface Technique {
   revoked: boolean;
   killChainPhases: string[] | null;
   dataSources: string[] | null;
+  url?: string | null;
+  version?: string | null;
+  created?: string | null;
+  modified?: string | null;
 }
 
 export default function TechniquesTable() {
@@ -31,6 +37,8 @@ export default function TechniquesTable() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filter, setFilter] = useState<"all" | "techniques" | "subtechniques">("techniques");
+  const [selectedTechnique, setSelectedTechnique] = useState<Technique | null>(null);
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
 
   const fetchTechniques = async () => {
     setLoading(true);
@@ -74,6 +82,25 @@ export default function TechniquesTable() {
     );
     setFilteredTechniques(filtered);
   }, [searchTerm, techniques]);
+
+  const handleViewDetails = (technique: Technique) => {
+    setSelectedTechnique(technique);
+    setDetailDialogOpen(true);
+  };
+
+  const handleExportToNavigator = () => {
+    const filterLabel =
+      filter === "techniques"
+        ? "Techniques Only"
+        : filter === "subtechniques"
+        ? "Sub-techniques Only"
+        : "All Techniques";
+
+    exportToNavigator(filteredTechniques, {
+      layerName: `RTPI ${filterLabel}${searchTerm ? ` - Search: ${searchTerm}` : ""}`,
+      description: `Exported from RTPI on ${new Date().toLocaleDateString()}. Contains ${filteredTechniques.length} techniques.`,
+    });
+  };
 
   if (loading) {
     return (
@@ -136,6 +163,16 @@ export default function TechniquesTable() {
         <Button size="sm" variant="outline" onClick={fetchTechniques}>
           <RefreshCw className="h-4 w-4 mr-2" />
           Refresh
+        </Button>
+
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleExportToNavigator}
+          disabled={filteredTechniques.length === 0}
+        >
+          <Download className="h-4 w-4 mr-2" />
+          Export to Navigator
         </Button>
       </div>
 
@@ -233,18 +270,29 @@ export default function TechniquesTable() {
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        window.open(
-                          `https://attack.mitre.org/techniques/${technique.attackId}/`,
-                          "_blank"
-                        )
-                      }
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </Button>
+                    <div className="flex gap-1 justify-end">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleViewDetails(technique)}
+                        title="View details"
+                      >
+                        <Info className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          window.open(
+                            `https://attack.mitre.org/techniques/${technique.attackId}/`,
+                            "_blank"
+                          )
+                        }
+                        title="View on MITRE ATT&CK"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -252,6 +300,13 @@ export default function TechniquesTable() {
           </Table>
         </div>
       </div>
+
+      {/* Technique Detail Dialog */}
+      <TechniqueDetailDialog
+        technique={selectedTechnique}
+        open={detailDialogOpen}
+        onOpenChange={setDetailDialogOpen}
+      />
     </div>
   );
 }

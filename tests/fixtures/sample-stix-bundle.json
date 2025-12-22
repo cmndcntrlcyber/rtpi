@@ -1,0 +1,160 @@
+{
+  "type": "bundle",
+  "id": "bundle--test-rtpi-sample",
+  "spec_version": "2.1",
+  "objects": [
+    {
+      "type": "x-mitre-tactic",
+      "id": "x-mitre-tactic--test-initial-access",
+      "created": "2024-01-01T00:00:00.000Z",
+      "modified": "2024-01-01T00:00:00.000Z",
+      "name": "Initial Access",
+      "description": "The adversary is trying to get into your network.",
+      "x_mitre_shortname": "initial-access",
+      "x_mitre_version": "1.0",
+      "external_references": [
+        {
+          "source_name": "mitre-attack",
+          "external_id": "TA0001",
+          "url": "https://attack.mitre.org/tactics/TA0001"
+        }
+      ]
+    },
+    {
+      "type": "attack-pattern",
+      "id": "attack-pattern--test-phishing",
+      "created": "2024-01-01T00:00:00.000Z",
+      "modified": "2024-01-01T00:00:00.000Z",
+      "name": "Phishing",
+      "description": "Adversaries may send phishing messages to gain access to victim systems.",
+      "kill_chain_phases": [
+        {
+          "kill_chain_name": "mitre-attack",
+          "phase_name": "initial-access"
+        }
+      ],
+      "x_mitre_platforms": ["Linux", "macOS", "Windows"],
+      "x_mitre_data_sources": ["Application Log: Application Log Content", "Network Traffic: Network Traffic Content"],
+      "x_mitre_is_subtechnique": false,
+      "x_mitre_version": "2.3",
+      "x_mitre_detection": "Network intrusion detection systems and email gateways can be used to detect phishing.",
+      "external_references": [
+        {
+          "source_name": "mitre-attack",
+          "external_id": "T1566",
+          "url": "https://attack.mitre.org/techniques/T1566"
+        }
+      ]
+    },
+    {
+      "type": "attack-pattern",
+      "id": "attack-pattern--test-spearphishing-attachment",
+      "created": "2024-01-01T00:00:00.000Z",
+      "modified": "2024-01-01T00:00:00.000Z",
+      "name": "Spearphishing Attachment",
+      "description": "Adversaries may send spearphishing emails with a malicious attachment in an attempt to gain access.",
+      "kill_chain_phases": [
+        {
+          "kill_chain_name": "mitre-attack",
+          "phase_name": "initial-access"
+        }
+      ],
+      "x_mitre_platforms": ["macOS", "Windows"],
+      "x_mitre_data_sources": ["Application Log: Application Log Content", "File: File Creation"],
+      "x_mitre_is_subtechnique": true,
+      "x_mitre_version": "2.3",
+      "external_references": [
+        {
+          "source_name": "mitre-attack",
+          "external_id": "T1566.001",
+          "url": "https://attack.mitre.org/techniques/T1566/001"
+        }
+      ]
+    },
+    {
+      "type": "intrusion-set",
+      "id": "intrusion-set--test-apt1",
+      "created": "2024-01-01T00:00:00.000Z",
+      "modified": "2024-01-01T00:00:00.000Z",
+      "name": "APT1",
+      "description": "APT1 is a Chinese threat group that has been attributed to the 2nd Bureau of the People's Liberation Army (PLA) General Staff Department's (GSD) 3rd Department.",
+      "aliases": ["APT1", "Comment Crew", "Comment Group"],
+      "external_references": [
+        {
+          "source_name": "mitre-attack",
+          "external_id": "G0006",
+          "url": "https://attack.mitre.org/groups/G0006"
+        }
+      ]
+    },
+    {
+      "type": "malware",
+      "id": "malware--test-poison-ivy",
+      "created": "2024-01-01T00:00:00.000Z",
+      "modified": "2024-01-01T00:00:00.000Z",
+      "name": "Poison Ivy",
+      "description": "Poison Ivy is a popular remote access tool (RAT) that has been used by multiple groups.",
+      "x_mitre_platforms": ["Windows"],
+      "x_mitre_aliases": ["Poison Ivy", "Backdoor.Poisonivy"],
+      "x_mitre_version": "1.3",
+      "is_family": true,
+      "external_references": [
+        {
+          "source_name": "mitre-attack",
+          "external_id": "S0012",
+          "url": "https://attack.mitre.org/software/S0012"
+        }
+      ]
+    },
+    {
+      "type": "course-of-action",
+      "id": "course-of-action--test-user-training",
+      "created": "2024-01-01T00:00:00.000Z",
+      "modified": "2024-01-01T00:00:00.000Z",
+      "name": "User Training",
+      "description": "Train users to be aware of access or manipulation attempts by an adversary to reduce the risk.",
+      "x_mitre_version": "1.0",
+      "external_references": [
+        {
+          "source_name": "mitre-attack",
+          "external_id": "M1017",
+          "url": "https://attack.mitre.org/mitigations/M1017"
+        }
+      ]
+    },
+    {
+      "type": "x-mitre-data-source",
+      "id": "x-mitre-data-source--test-application-log",
+      "created": "2024-01-01T00:00:00.000Z",
+      "modified": "2024-01-01T00:00:00.000Z",
+      "name": "Application Log",
+      "description": "Events collected by third-party services such as mail servers, web applications, or other appliances.",
+      "x_mitre_version": "1.0",
+      "x_mitre_platforms": ["Linux", "macOS", "Windows", "Network"],
+      "external_references": [
+        {
+          "source_name": "mitre-attack",
+          "external_id": "DS0015",
+          "url": "https://attack.mitre.org/datasources/DS0015"
+        }
+      ]
+    },
+    {
+      "type": "campaign",
+      "id": "campaign--test-operation-aurora",
+      "created": "2024-01-01T00:00:00.000Z",
+      "modified": "2024-01-01T00:00:00.000Z",
+      "name": "Operation Aurora",
+      "description": "Operation Aurora was a series of cyber attacks performed against major companies.",
+      "first_seen": "2009-12-01T00:00:00.000Z",
+      "last_seen": "2010-01-01T00:00:00.000Z",
+      "external_references": [
+        {
+          "source_name": "mitre-attack",
+          "external_id": "C0001",
+          "url": "https://attack.mitre.org/campaigns/C0001"
+        }
+      ]
+    }
+  ]
+}

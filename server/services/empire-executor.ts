@@ -7,11 +7,12 @@ import {
   empireStagers,
   empireAgents,
   empireTasks,
-  empireModules,
+
   empireCredentials,
-  empireEvents,
+
 } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
+import { decrypt } from "../utils/encryption";
 
 /**
  * PowerShell Empire C2 Executor
@@ -132,7 +133,6 @@ export interface TaskCreateOptions {
 
 class EmpireExecutor {
   private apiClients = new Map<string, AxiosInstance>();
-  private executionLocks = new Map<string, boolean>();
 
   /**
    * Get or create an API client for a specific Empire server and user
@@ -216,7 +216,7 @@ class EmpireExecutor {
 
     const loginResponse = await loginClient.post<EmpireLoginResponse>("/api/admin/login", {
       username: server.adminUsername,
-      password: server.adminPasswordHash, // Note: In production, this should be decrypted
+      password: decrypt(server.adminPasswordHash), // Decrypt password for Empire API authentication
     });
 
     const token = loginResponse.data.token;

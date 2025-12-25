@@ -4,16 +4,13 @@ import {
   empireServers,
   empireUserTokens,
   empireListeners,
-  empireStagers,
   empireAgents,
   empireTasks,
-  empireModules,
   empireCredentials,
-  empireEvents,
 } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { empireExecutor } from "../../services/empire-executor";
-import bcrypt from "bcrypt";
+import { encrypt } from "../../utils/encryption";
 
 const router = Router();
 
@@ -22,7 +19,7 @@ const router = Router();
  */
 
 // List all Empire servers
-router.get("/servers", async (req, res) => {
+router.get("/servers", async (_req, res) => {
   try {
     const servers = await db.query.empireServers.findMany({
       orderBy: [desc(empireServers.createdAt)],
@@ -78,8 +75,9 @@ router.post("/servers", async (req, res) => {
       certificatePath,
     } = req.body;
 
-    // Hash the admin password
-    const passwordHash = await bcrypt.hash(adminPassword, 10);
+    // Encrypt the admin password (AES-256-GCM)
+    // Unlike bcrypt, this can be decrypted for Empire API authentication
+    const encryptedPassword = encrypt(adminPassword);
 
     const [server] = await db
       .insert(empireServers)
@@ -92,7 +90,7 @@ router.post("/servers", async (req, res) => {
         socketioUrl: socketioUrl || null,
         socketioPort: socketioPort || null,
         adminUsername: adminUsername || "empireadmin",
-        adminPasswordHash: passwordHash,
+        adminPasswordHash: encryptedPassword,
         certificatePath: certificatePath || null,
         isActive: true,
         status: "disconnected",
@@ -124,7 +122,7 @@ router.patch("/servers/:id", async (req, res) => {
     if (req.body.isActive !== undefined) updates.isActive = req.body.isActive;
 
     if (req.body.adminPassword) {
-      updates.adminPasswordHash = await bcrypt.hash(req.body.adminPassword, 10);
+      updates.adminPasswordHash = encrypt(req.body.adminPassword);
     }
 
     updates.updatedAt = new Date();
@@ -209,7 +207,7 @@ router.get("/tokens", async (req, res) => {
     const sanitized = tokens.map((t) => ({
       id: t.id,
       serverId: t.serverId,
-      serverName: t.server?.name,
+      serverName: (t.server as any)?.name,
       lastUsed: t.lastUsed,
       createdAt: t.createdAt,
       hasToken: !!t.permanentToken,

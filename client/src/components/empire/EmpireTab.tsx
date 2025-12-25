@@ -5,6 +5,7 @@ import { RefreshCw } from "lucide-react";
 import EmpireServerCard from "./EmpireServerCard";
 import EmpireListenersTable from "./EmpireListenersTable";
 import EmpireAgentsTable from "./EmpireAgentsTable";
+import EmpireCredentialsTable from "./EmpireCredentialsTable";
 import AddServerDialog from "./AddServerDialog";
 import CreateListenerDialog from "./CreateListenerDialog";
 import ExecuteTaskDialog from "./ExecuteTaskDialog";
@@ -25,6 +26,7 @@ export default function EmpireTab() {
   const [servers, setServers] = useState<EmpireServer[]>([]);
   const [listeners, setListeners] = useState<any[]>([]);
   const [agents, setAgents] = useState<any[]>([]);
+  const [credentials, setCredentials] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
   const [executeTaskOpen, setExecuteTaskOpen] = useState(false);
@@ -99,12 +101,51 @@ export default function EmpireTab() {
       });
 
       if (response.ok) {
-        const data = await response.json();
+        await response.json();
       console.error("Operation completed");
         fetchAgents(serverId);
       }
     } catch (error) {
       console.error("Failed to sync agents:", error);
+      console.error("Operation completed");
+    }
+  };
+
+  // Fetch credentials from database
+  const fetchCredentials = async (serverId: string) => {
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/v1/empire/servers/${serverId}/db/credentials`, {
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCredentials(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch credentials:", error);
+      console.error("Operation completed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Sync credentials to database
+  const syncCredentials = async (serverId: string) => {
+    try {
+      const response = await fetch(`/api/v1/empire/servers/${serverId}/credentials/sync`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        await response.json();
+      console.error("Operation completed");
+        fetchCredentials(serverId);
+      }
+    } catch (error) {
+      console.error("Failed to sync credentials:", error);
       console.error("Operation completed");
     }
   };
@@ -118,7 +159,7 @@ export default function EmpireTab() {
       });
 
       if (response.ok) {
-        const data = await response.json();
+        await response.json();
       console.error("Operation completed");
         fetchServers();
       }
@@ -205,6 +246,7 @@ export default function EmpireTab() {
     if (selectedServerId) {
       fetchListeners(selectedServerId);
       fetchAgents(selectedServerId);
+      fetchCredentials(selectedServerId);
     }
   }, [selectedServerId]);
 
@@ -251,6 +293,7 @@ export default function EmpireTab() {
           <TabsTrigger value="servers">Servers</TabsTrigger>
           <TabsTrigger value="listeners">Listeners</TabsTrigger>
           <TabsTrigger value="agents">Agents</TabsTrigger>
+          <TabsTrigger value="credentials">Credentials</TabsTrigger>
         </TabsList>
 
         <TabsContent value="servers" className="space-y-4">
@@ -336,6 +379,32 @@ export default function EmpireTab() {
             onExecuteCommand={handleExecuteCommand}
             onKillAgent={handleKillAgent}
           />
+        </TabsContent>
+
+        <TabsContent value="credentials" className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h3 className="text-lg font-semibold">Harvested Credentials</h3>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => selectedServerId && fetchCredentials(selectedServerId)}
+                disabled={loading}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => selectedServerId && syncCredentials(selectedServerId)}
+              >
+                Sync from Empire
+              </Button>
+            </div>
+          </div>
+
+          <EmpireCredentialsTable credentials={credentials} />
         </TabsContent>
       </Tabs>
 

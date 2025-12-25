@@ -1,16 +1,20 @@
 import { db } from "../db";
-import { 
-  agentWorkflows, 
-  workflowTasks, 
-  workflowLogs, 
-  agents, 
-  targets, 
+import {
+  agentWorkflows,
+  workflowTasks,
+  workflowLogs,
+  agents,
+  targets,
   securityTools,
-  reports 
+  reports,
+  empireServers,
+  empireAgents,
+  empireModules
 } from "@shared/schema";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 import { agentToolConnector } from "./agent-tool-connector";
 import { metasploitExecutor } from "./metasploit-executor";
+import { empireExecutor } from "./empire-executor";
 import { generateMarkdownReport } from "./report-generator";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
@@ -340,6 +344,9 @@ export class AgentWorkflowOrchestrator {
     const services = input.discoveredServices || [];
     const metadata = input.metadata || {};
 
+    // Check for available Empire C2 infrastructure
+    const empireInfo = await this.getEmpireInfrastructure(workflowId, taskId);
+
     // Get SearchSploit tool
     const searchSploitTool = await db
       .select()
@@ -431,7 +438,8 @@ export class AgentWorkflowOrchestrator {
       input.targetValue,
       services,
       metadata,
-      searchResults
+      searchResults,
+      empireInfo
     );
 
     const completion = await this.openai.chat.completions.create({
@@ -470,6 +478,7 @@ export class AgentWorkflowOrchestrator {
       rawResponse: response,
       searchResults,
       services,
+      empireInfo,
       metadata: {
         ...metadata,
         targetId: input.targetId, // Pass the UUID through metadata
@@ -528,23 +537,24 @@ export class AgentWorkflowOrchestrator {
     const maxAttempts = 5;
     let successfulExploit = false;
 
-    const modulesToExecute = Math.min(executionPlan.modules?.length || 0, maxAttempts);
+    const modulesToExecute = Math.min(executionPlan.metasploitModules?.length || 0, maxAttempts);
 
     await this.log(
       workflowId,
       taskId,
       "info",
-      `Starting exploitation attempts`,
+      `Starting Metasploit exploitation attempts`,
       {
-        modulesPlanned: executionPlan.modules?.length || 0,
+        modulesPlanned: executionPlan.metasploitModules?.length || 0,
         modulesToExecute,
+        empireTasksPlanned: executionPlan.empireTasks?.length || 0,
         targetValue: target.value
       }
     );
 
-    // Execute modules from plan
+    // Execute Metasploit modules from plan
     for (let i = 0; i < modulesToExecute; i++) {
-      const module = executionPlan.modules[i];
+      const module = executionPlan.metasploitModules[i];
 
       await this.log(
         workflowId,
@@ -678,7 +688,7 @@ export class AgentWorkflowOrchestrator {
       workflowId,
       taskId,
       "info",
-      `Exploitation phase completed`,
+      `Metasploit exploitation phase completed`,
       {
         totalAttempts: attempts.length,
         successfulExploits: attempts.filter(a => a.success).length,
@@ -686,10 +696,19 @@ export class AgentWorkflowOrchestrator {
       }
     );
 
+    // Execute Empire C2 tasks if present
+    const empireResults = await this.executeEmpireTasks(
+      executionPlan.empireTasks || [],
+      input.previousOutput?.empireInfo,
+      workflowId,
+      taskId
+    );
+
     return {
       type: "exploitation_results",
-      success: successfulExploit,
+      success: successfulExploit || empireResults.success,
       attempts,
+      empireResults,
       targetId: target.id,
       targetValue: target.value,
     };
@@ -864,8 +883,31 @@ export class AgentWorkflowOrchestrator {
     targetValue: string,
     services: any[],
     metadata: any,
-    searchResults: string
+    searchResults: string,
+    empireInfo: any
   ): string {
+    // Build Empire infrastructure section
+    let empireSection = "";
+    if (empireInfo.available) {
+      empireSection = `
+
+**Empire C2 Infrastructure Available:**
+- Servers: ${empireInfo.servers.length}
+- Active Agents: ${empireInfo.agents.length}
+${empireInfo.agents.length > 0 ? `
+**Available Empire Agents:**
+${empireInfo.agents.slice(0, 5).map((a: any) => `- ${a.name} (${a.hostname}) - ${a.username}@${a.internalIp} - ${a.language} ${a.highIntegrity ? '[HIGH INTEGRITY]' : ''}`).join("\n")}
+${empireInfo.agents.length > 5 ? `... and ${empireInfo.agents.length - 5} more` : ''}
+` : ''}
+${empireInfo.modules.length > 0 ? `
+**Sample Empire Modules Available:**
+${empireInfo.modules.slice(0, 10).map((m: any) => `- ${m.name} (${m.category}): ${m.description}`).join("\n")}
+${empireInfo.modules.length > 10 ? `... and ${empireInfo.modules.length - 10} more modules` : ''}
+` : ''}
+
+**Note:** You can use existing Empire agents for post-exploitation or choose Metasploit for initial access.`;
+    }
+
     return `You are analyzing target "${targetValue}" for penetration testing.
 
 **Target Information:**
@@ -878,14 +920,15 @@ ${services.map((s) => `- Port ${s.port}/${s.protocol}: ${s.service} ${s.version 
 
 **SearchSploit Results:**
 ${searchResults || "No exploit database results available"}
+${empireSection}
 
-**Task:** Create a detailed execution plan for exploiting this target using Metasploit.
+**Task:** Create a detailed execution plan for exploiting this target. You can use Metasploit for exploitation and/or Empire C2 agents for post-exploitation tasks.
 
 Provide your response in the following JSON format:
 {
   "targetId": "${targetValue}",
   "vulnerabilities": ["list of identified vulnerabilities"],
-  "modules": [
+  "metasploitModules": [
     {
       "priority": 1,
       "type": "exploit or auxiliary",
@@ -898,8 +941,24 @@ Provide your response in the following JSON format:
       "reasoning": "why this module"
     }
   ],
-  "strategy": "overall exploitation strategy"
-}`;
+  "empireTasks": [
+    {
+      "priority": 2,
+      "agentName": "agent name from available agents",
+      "taskType": "shell or module",
+      "command": "command to execute or module name",
+      "parameters": {},
+      "reasoning": "why this task"
+    }
+  ],
+  "strategy": "overall exploitation and post-exploitation strategy"
+}
+
+**Important:**
+- Use "metasploitModules" for initial access and exploitation
+- Use "empireTasks" for post-exploitation on existing agents (lateral movement, privilege escalation, credential harvesting)
+- Both arrays can be empty if not applicable
+- Empire tasks should only be used if agents are available`;
   }
 
   /**
@@ -910,7 +969,19 @@ Provide your response in the following JSON format:
       // Try to extract JSON from response
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
+        const parsed = JSON.parse(jsonMatch[0]);
+
+        // Normalize format: support both old "modules" and new "metasploitModules"
+        if (parsed.modules && !parsed.metasploitModules) {
+          parsed.metasploitModules = parsed.modules;
+        }
+
+        // Ensure empireTasks exists
+        if (!parsed.empireTasks) {
+          parsed.empireTasks = [];
+        }
+
+        return parsed;
       }
     } catch (error) {
       console.error("Failed to parse execution plan:", error);
@@ -920,7 +991,8 @@ Provide your response in the following JSON format:
     return {
       targetId: "",
       vulnerabilities: [],
-      modules: [],
+      metasploitModules: [],
+      empireTasks: [],
       strategy: response,
     };
   }
@@ -977,12 +1049,43 @@ Respond with JSON: {"success": true/false, "reasoning": "brief explanation"}`;
    * Build prompt for Technical Writer
    */
   private buildReportPrompt(exploitationResults: any): string {
+    // Build Empire section if results exist
+    let empireSection = "";
+    if (exploitationResults.empireResults && exploitationResults.empireResults.tasks?.length > 0) {
+      empireSection = `
+
+**Empire C2 Post-Exploitation:**
+${exploitationResults.empireResults.tasks
+  .map(
+    (t: any, i: number) =>
+      `${i + 1}. ${t.task} (Agent: ${t.agentName}) - ${t.success ? "SUCCESS" : "FAILED"}`
+  )
+  .join("\n")}
+
+**Empire Task Details:**
+${exploitationResults.empireResults.tasks
+  .map(
+    (t: any) =>
+      `\n### ${t.task} on ${t.agentName}\n${t.output || t.error || "No output"}`
+  )
+  .join("\n")}
+
+${exploitationResults.empireResults.credentials?.length > 0 ? `
+**Credentials Harvested:** ${exploitationResults.empireResults.credentials.length}
+${exploitationResults.empireResults.credentials
+  .slice(0, 10)
+  .map((c: any) => `- ${c.username} (${c.credType})`)
+  .join("\n")}
+${exploitationResults.empireResults.credentials.length > 10 ? `... and ${exploitationResults.empireResults.credentials.length - 10} more` : ''}
+` : ''}`;
+    }
+
     return `Create a professional Network Penetration Test report based on these findings:
 
 **Target:** ${exploitationResults.targetValue}
-**Success:** ${exploitationResults.success ? "Yes" : "No"}
+**Overall Success:** ${exploitationResults.success ? "Yes" : "No"}
 
-**Exploitation Attempts:**
+**Metasploit Exploitation Attempts:**
 ${exploitationResults.attempts
   .map(
     (a: any, i: number) =>
@@ -990,20 +1093,25 @@ ${exploitationResults.attempts
   )
   .join("\n")}
 
-**Detailed Output:**
+**Metasploit Detailed Output:**
 ${exploitationResults.attempts
   .map(
     (a: any) =>
       `\n### ${a.module}\n${a.output || a.error || "No output"}`
   )
   .join("\n")}
+${empireSection}
 
-Create a report with:
+Create a comprehensive penetration test report with:
 1. Executive Summary
-2. Technical Details
+2. Technical Details (include both Metasploit and Empire C2 operations)
 3. Findings and Vulnerabilities
-4. Recommendations
-5. Conclusion
+4. Post-Exploitation Activities (if Empire was used)
+5. Credentials Obtained (if any)
+6. Recommendations
+7. Conclusion
+
+**Note:** Include Empire C2 post-exploitation activities in a dedicated section if they were performed.
 
 Format in markdown.`;
   }
@@ -1064,6 +1172,258 @@ Format in markdown.`;
       tasks,
       logs,
     };
+  }
+
+  /**
+   * Execute Empire C2 tasks from execution plan
+   */
+  private async executeEmpireTasks(
+    empireTasks: any[],
+    empireInfo: any,
+    workflowId: string,
+    taskId: string
+  ): Promise<any> {
+    if (!empireTasks || empireTasks.length === 0) {
+      await this.log(
+        workflowId,
+        taskId,
+        "info",
+        "No Empire tasks to execute"
+      );
+      return { success: false, tasks: [], credentials: [] };
+    }
+
+    if (!empireInfo || !empireInfo.available) {
+      await this.log(
+        workflowId,
+        taskId,
+        "warning",
+        "Empire tasks planned but no Empire infrastructure available"
+      );
+      return { success: false, tasks: [], credentials: [] };
+    }
+
+    await this.log(
+      workflowId,
+      taskId,
+      "info",
+      `Starting Empire C2 post-exploitation tasks`,
+      { tasksPlanned: empireTasks.length }
+    );
+
+    const taskResults: any[] = [];
+    let successfulTasks = 0;
+
+    // Get first available Empire server
+    const server = empireInfo.servers[0];
+    if (!server) {
+      await this.log(workflowId, taskId, "error", "No Empire server available");
+      return { success: false, tasks: [], credentials: [] };
+    }
+
+    // Execute each Empire task
+    for (let i = 0; i < Math.min(empireTasks.length, 10); i++) {
+      const task = empireTasks[i];
+
+      await this.log(
+        workflowId,
+        taskId,
+        "info",
+        `Executing Empire task ${i + 1}/${empireTasks.length}: ${task.taskType} on ${task.agentName}`,
+        {
+          agentName: task.agentName,
+          taskType: task.taskType,
+          reasoning: task.reasoning
+        }
+      );
+
+      try {
+        let result;
+
+        if (task.taskType === "shell") {
+          // Execute shell command
+          result = await empireExecutor.executeTask(
+            server.id,
+            'system', // TODO: Get actual user ID from context
+            task.agentName,
+            task.command
+          );
+        } else if (task.taskType === "module") {
+          // Execute Empire module
+          result = await empireExecutor.executeModule(
+            server.id,
+            'system',
+            task.agentName,
+            task.command, // Module name
+            task.parameters || {}
+          );
+        } else {
+          throw new Error(`Unknown Empire task type: ${task.taskType}`);
+        }
+
+        const taskSuccess = result.success && !result.error;
+        if (taskSuccess) {
+          successfulTasks++;
+        }
+
+        taskResults.push({
+          task: `${task.taskType}: ${task.command}`,
+          agentName: task.agentName,
+          success: taskSuccess,
+          output: result.data || result.output,
+          error: result.error,
+          timestamp: new Date().toISOString(),
+        });
+
+        await this.log(
+          workflowId,
+          taskId,
+          taskSuccess ? "info" : "warning",
+          `Empire task ${taskSuccess ? "succeeded" : "failed"}: ${task.taskType} on ${task.agentName}`,
+          {
+            task: task.command,
+            success: taskSuccess,
+            hasOutput: !!(result.data || result.output)
+          }
+        );
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+
+        taskResults.push({
+          task: `${task.taskType}: ${task.command}`,
+          agentName: task.agentName,
+          success: false,
+          error: errorMsg,
+          timestamp: new Date().toISOString(),
+        });
+
+        await this.log(
+          workflowId,
+          taskId,
+          "error",
+          `Empire task execution error: ${task.command}`,
+          {
+            agentName: task.agentName,
+            error: errorMsg
+          }
+        );
+      }
+    }
+
+    // Fetch credentials harvested during execution
+    let credentials: any[] = [];
+    try {
+      const credsResult = await empireExecutor.syncCredentials(server.id, 'system');
+      if (credsResult.success && credsResult.data) {
+        credentials = credsResult.data;
+      }
+    } catch (error) {
+      console.error("Failed to fetch Empire credentials:", error);
+    }
+
+    await this.log(
+      workflowId,
+      taskId,
+      "info",
+      `Empire C2 tasks completed`,
+      {
+        totalTasks: taskResults.length,
+        successfulTasks,
+        credentialsHarvested: credentials.length
+      }
+    );
+
+    return {
+      success: successfulTasks > 0,
+      tasks: taskResults,
+      credentials,
+    };
+  }
+
+  /**
+   * Get available Empire C2 infrastructure
+   */
+  private async getEmpireInfrastructure(workflowId: string, taskId: string): Promise<any> {
+    try {
+      // Get connected Empire servers
+      const servers = await db
+        .select()
+        .from(empireServers)
+        .where(eq(empireServers.status, "connected"));
+
+      if (servers.length === 0) {
+        await this.log(
+          workflowId,
+          taskId,
+          "info",
+          "No Empire C2 servers available"
+        );
+        return { available: false, servers: [], agents: [], modules: [] };
+      }
+
+      await this.log(
+        workflowId,
+        taskId,
+        "info",
+        `Found ${servers.length} connected Empire server(s)`,
+        { serverCount: servers.length }
+      );
+
+      // Get active agents from Empire
+      const agents = await db
+        .select()
+        .from(empireAgents)
+        .where(eq(empireAgents.checkin_time, empireAgents.checkin_time)); // Get all agents
+
+      // Get available modules (sample for context)
+      const modules = await db
+        .select()
+        .from(empireModules)
+        .limit(50); // Limit to avoid overwhelming the prompt
+
+      await this.log(
+        workflowId,
+        taskId,
+        "info",
+        `Empire infrastructure: ${agents.length} agent(s), ${modules.length} module(s)`,
+        { agentCount: agents.length, moduleCount: modules.length }
+      );
+
+      return {
+        available: true,
+        servers: servers.map(s => ({
+          id: s.id,
+          name: s.name,
+          url: s.restApiUrl
+        })),
+        agents: agents.map(a => ({
+          id: a.id,
+          name: a.name,
+          hostname: a.hostname,
+          internalIp: a.internal_ip,
+          externalIp: a.external_ip,
+          username: a.username,
+          highIntegrity: a.high_integrity,
+          os: a.os_details,
+          language: a.language
+        })),
+        modules: modules.map(m => ({
+          name: m.name,
+          category: m.category,
+          description: m.description
+        }))
+      };
+    } catch (error) {
+      console.error("Failed to get Empire infrastructure:", error);
+      await this.log(
+        workflowId,
+        taskId,
+        "error",
+        "Failed to query Empire infrastructure",
+        { error: error instanceof Error ? error.message : String(error) }
+      );
+      return { available: false, servers: [], agents: [], modules: [] };
+    }
   }
 
   /**

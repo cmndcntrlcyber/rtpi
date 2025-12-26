@@ -1,6 +1,7 @@
-import { Menu, User, LogOut } from "lucide-react";
+import { Menu, User, LogOut, Keyboard } from "lucide-react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { useKeyboardShortcutsContext } from "@/contexts/KeyboardShortcutsContext";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 
@@ -10,6 +11,7 @@ interface HeaderProps {
 
 export default function Header({ onMenuClick }: HeaderProps) {
   const { user, logout } = useAuth();
+  const { setShowHelp } = useKeyboardShortcutsContext();
   const [, navigate] = useLocation();
 
   const handleLogout = async () => {
@@ -53,6 +55,15 @@ export default function Header({ onMenuClick }: HeaderProps) {
               {user?.role}
             </span>
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setShowHelp(true)}
+            title="Keyboard shortcuts (?)"
+            className="h-9 w-9 sm:h-10 sm:w-10"
+          >
+            <Keyboard className="h-4 w-4 sm:h-5 sm:w-5" />
+          </Button>
           <ThemeToggle />
           <Button
             variant="ghost"

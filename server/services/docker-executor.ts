@@ -96,7 +96,6 @@ export class DockerExecutor {
         duration: completedAt.getTime() - startedAt.getTime(),
       };
     } catch (error) {
-      const completedAt = new Date();
       throw new Error(
         `Execution failed: ${error instanceof Error ? error.message : String(error)}`
       );
@@ -176,7 +175,6 @@ export class DockerExecutor {
     
     const fs = await import("fs");
     const tar = await import("tar-stream");
-    const path = await import("path");
 
     // Get file as tar stream
     const stream = await container.getArchive({ path: containerPath });
@@ -185,7 +183,7 @@ export class DockerExecutor {
     const extract = tar.extract();
     
     return new Promise((resolve, reject) => {
-      extract.on("entry", (header, entryStream, next) => {
+      extract.on("entry", (_header, entryStream, next) => {
         const writeStream = fs.createWriteStream(localPath);
         entryStream.pipe(writeStream);
         entryStream.on("end", next);

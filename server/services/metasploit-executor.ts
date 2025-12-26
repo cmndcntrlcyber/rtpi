@@ -1,7 +1,7 @@
 import { dockerExecutor } from "./docker-executor";
 import { db } from "../db";
 import { securityTools } from "@shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 /**
  * Metasploit Module Executor
@@ -298,9 +298,8 @@ class MetasploitExecutor {
    */
   selectModuleForTarget(
     targetData: any,
-    availableModules: any
+    _availableModules: any
   ): MetasploitModule | null {
-    const targetType = targetData.type;
     const services = targetData.discoveredServices || [];
     const metadata = targetData.metadata || {};
 

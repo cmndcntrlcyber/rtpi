@@ -13,7 +13,7 @@ const router = Router();
 
 // Seed test user (development only)
 if (process.env.NODE_ENV !== "production") {
-  router.post("/seed-test-user", async (req, res) => {
+  router.post("/seed-test-user", async (_req, res) => {
     try {
       const hashedPassword = await bcrypt.hash("testpass123", 10);
 
@@ -23,7 +23,6 @@ if (process.env.NODE_ENV !== "production") {
         passwordHash: hashedPassword,
         role: "admin",
         authMethod: "local",
-        twoFactorEnabled: false,
         isActive: true,
         createdAt: new Date(),
         updatedAt: new Date(),

@@ -1,11 +1,9 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import session from 'express-session';
 import passport from 'passport';
 import authRouter from '../../../../server/api/v1/auth';
-import { db } from '../../../../server/db';
-import { users, passwordHistory } from '../../../../shared/schema';
 import bcrypt from 'bcrypt';
 
 // Mock dependencies
@@ -64,18 +62,6 @@ describe('Auth API', () => {
 
   describe('GET /me', () => {
     it('should return current user when authenticated', async () => {
-      const mockUser = {
-        id: '123',
-        username: 'testuser',
-        email: 'test@example.com',
-        role: 'user',
-        authMethod: 'local',
-        isActive: true,
-        mustChangePassword: false,
-        lastLogin: new Date(),
-        createdAt: new Date(),
-      };
-
       const agent = request.agent(app);
       
       // Mock authentication

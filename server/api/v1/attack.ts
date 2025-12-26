@@ -24,7 +24,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 /**
  * Get ATT&CK statistics
  */
-router.get("/stats", async (req, res) => {
+router.get("/stats", async (_req, res) => {
   try {
     const stats = await getImportStatistics();
     res.json(stats);
@@ -94,7 +94,7 @@ router.post("/import/json", async (req, res) => {
 /**
  * List all tactics
  */
-router.get("/tactics", async (req, res) => {
+router.get("/tactics", async (_req, res) => {
   try {
     const tactics = await db.query.attackTactics.findMany({
       orderBy: [desc(attackTactics.createdAt)],
@@ -132,7 +132,7 @@ router.get("/tactics/:id", async (req, res) => {
  */
 router.get("/techniques", async (req, res) => {
   try {
-    const { subtechniques } = req.query;
+    const { subtechniques, hierarchical } = req.query;
 
     let techniques;
     if (subtechniques === "only") {
@@ -149,6 +149,29 @@ router.get("/techniques", async (req, res) => {
       techniques = await db.query.attackTechniques.findMany({
         orderBy: [desc(attackTechniques.createdAt)],
       });
+    }
+
+    // If hierarchical view is requested, group sub-techniques under parent techniques
+    if (hierarchical === "true" && subtechniques !== "only") {
+      // Get all parent techniques (non-sub-techniques)
+      const parentTechniques = techniques.filter((t: any) => !t.isSubtechnique);
+
+      // For each parent technique, find and attach its sub-techniques
+      const hierarchicalTechniques = await Promise.all(
+        parentTechniques.map(async (parent: any) => {
+          const subs = await db.query.attackTechniques.findMany({
+            where: eq(attackTechniques.parentTechniqueId, parent.id),
+            orderBy: [desc(attackTechniques.attackId)],
+          });
+
+          return {
+            ...parent,
+            subtechniques: subs,
+          };
+        })
+      );
+
+      return res.json(hierarchicalTechniques);
     }
 
     res.json(techniques);
@@ -198,7 +221,7 @@ router.get("/techniques/:id", async (req, res) => {
 /**
  * List all groups
  */
-router.get("/groups", async (req, res) => {
+router.get("/groups", async (_req, res) => {
   try {
     const groups = await db.query.attackGroups.findMany({
       orderBy: [desc(attackGroups.createdAt)],
@@ -234,7 +257,7 @@ router.get("/groups/:id", async (req, res) => {
 /**
  * List all software
  */
-router.get("/software", async (req, res) => {
+router.get("/software", async (_req, res) => {
   try {
     const software = await db.query.attackSoftware.findMany({
       orderBy: [desc(attackSoftware.createdAt)],
@@ -270,7 +293,7 @@ router.get("/software/:id", async (req, res) => {
 /**
  * List all mitigations
  */
-router.get("/mitigations", async (req, res) => {
+router.get("/mitigations", async (_req, res) => {
   try {
     const mitigations = await db.query.attackMitigations.findMany({
       orderBy: [desc(attackMitigations.createdAt)],
@@ -306,7 +329,7 @@ router.get("/mitigations/:id", async (req, res) => {
 /**
  * List all data sources
  */
-router.get("/data-sources", async (req, res) => {
+router.get("/data-sources", async (_req, res) => {
   try {
     const dataSources = await db.query.attackDataSources.findMany({
       orderBy: [desc(attackDataSources.createdAt)],
@@ -322,7 +345,7 @@ router.get("/data-sources", async (req, res) => {
 /**
  * List all campaigns
  */
-router.get("/campaigns", async (req, res) => {
+router.get("/campaigns", async (_req, res) => {
   try {
     const campaigns = await db.query.attackCampaigns.findMany({
       orderBy: [desc(attackCampaigns.createdAt)],

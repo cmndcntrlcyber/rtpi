@@ -10,7 +10,7 @@ const router = Router();
 router.use(ensureAuthenticated);
 
 // GET /api/v1/health-checks - List all health checks
-router.get("/", async (req, res) => {
+router.get("/", async (_req, res) => {
   try {
     const allChecks = await db.select().from(healthChecks);
     res.json({ healthChecks: allChecks });

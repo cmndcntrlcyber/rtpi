@@ -31,7 +31,7 @@ export async function generateMarkdownReport(
   };
 }
 
-function generateReportContent(reportData: any, template?: any): string {
+function generateReportContent(reportData: any, _template?: any): string {
   const { name, type, format } = reportData;
   const date = new Date().toLocaleString();
 
@@ -72,7 +72,7 @@ function generateReportContent(reportData: any, template?: any): string {
   return content;
 }
 
-function generateBugBountyReport(data: any): string {
+function generateBugBountyReport(_data: any): string {
   return `## Executive Summary
 
 This bug bounty report documents security vulnerabilities discovered during testing.
@@ -127,7 +127,7 @@ The discovered vulnerabilities could potentially impact:
 `;
 }
 
-function generateVulnerabilityReport(data: any): string {
+function generateVulnerabilityReport(_data: any): string {
   return `## Vulnerability Assessment Summary
 
 This report provides an overview of identified security vulnerabilities.
@@ -249,7 +249,7 @@ Next steps and recommendations based on operation results.
 `;
 }
 
-function generateExecutiveSummary(data: any): string {
+function generateExecutiveSummary(_data: any): string {
   return `## Executive Summary
 
 ### Overview

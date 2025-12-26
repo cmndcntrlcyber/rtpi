@@ -1,5 +1,4 @@
 import rateLimit from "express-rate-limit";
-import { redisClient } from "../auth/session";
 
 // Rate limiter using Redis for distributed rate limiting
 export const apiLimiter = rateLimit({

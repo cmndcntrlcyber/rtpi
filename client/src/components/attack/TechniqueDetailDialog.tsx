@@ -9,23 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ExternalLink, Shield, Target, Database, BookOpen } from "lucide-react";
-
-interface Technique {
-  id: string;
-  attackId: string;
-  name: string;
-  description: string;
-  isSubtechnique: boolean;
-  platforms: string[] | null;
-  deprecated: boolean;
-  revoked: boolean;
-  killChainPhases: string[] | null;
-  dataSources: string[] | null;
-  url: string | null;
-  version: string | null;
-  created: string | null;
-  modified: string | null;
-}
+import type { Technique } from "@shared/types/attack";
 
 interface TechniqueDetailDialogProps {
   technique: Technique | null;
@@ -60,8 +44,7 @@ export default function TechniqueDetailDialog({
                 variant="outline"
                 onClick={() =>
                   window.open(
-                    technique.url ||
-                      `https://attack.mitre.org/techniques/${technique.attackId}/`,
+                    `https://attack.mitre.org/techniques/${technique.attackId}/`,
                     "_blank"
                   )
                 }

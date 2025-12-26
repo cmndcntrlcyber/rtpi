@@ -57,26 +57,26 @@ describe('TargetCard Component', () => {
   describe('Type Icons', () => {
     it('should show globe icon for domain type', () => {
       const target = { ...mockTarget, type: 'domain' };
-      const { container } = render(<TargetCard target={target} />);
+      render(<TargetCard target={target} />);
       // Icon is rendered, we can check the type badge
       expect(screen.getByText('domain')).toBeInTheDocument();
     });
 
     it('should show radio icon for network type', () => {
       const target = { ...mockTarget, type: 'network' };
-      const { container } = render(<TargetCard target={target} />);
+      render(<TargetCard target={target} />);
       expect(screen.getByText('network')).toBeInTheDocument();
     });
 
     it('should show radio icon for range type', () => {
       const target = { ...mockTarget, type: 'range' };
-      const { container } = render(<TargetCard target={target} />);
+      render(<TargetCard target={target} />);
       expect(screen.getByText('range')).toBeInTheDocument();
     });
 
     it('should show server icon for host type', () => {
       const target = { ...mockTarget, type: 'host' };
-      const { container } = render(<TargetCard target={target} />);
+      render(<TargetCard target={target} />);
       expect(screen.getByText('host')).toBeInTheDocument();
     });
   });

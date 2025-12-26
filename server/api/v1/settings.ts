@@ -16,7 +16,7 @@ const llmSettings = {
 };
 
 // GET /api/v1/settings/llm - Get LLM settings
-router.get("/llm", async (req, res) => {
+router.get("/llm", async (_req, res) => {
   try {
     // Mask API keys for security (show only last 4 characters)
     const maskedSettings = {

@@ -1,9 +1,9 @@
 # RTPI Enhancement Master Tracker
 
-**Last Updated:** 2025-12-25 (Day 10 - Production Deployment Ready! 🚀)
-**Overall Progress:** 106/261 (40.6%)
+**Last Updated:** 2025-12-25 (Day 10 - ATT&CK Phase 2 & 4 Complete! 🎯)
+**Overall Progress:** 109/261 (41.8%)
 **Current Sprint:** Week 1-2 - Foundation & Beta Enhancements
-**Active Enhancements:** ATT&CK Integration (58%), Empire C2 (92%), UI/UX (13%)
+**Active Enhancements:** ATT&CK Integration (65%), Empire C2 (92%), UI/UX (13%)
 **Deployment Status:** ✅ LIVE - Frontend (port 5000) | Backend (port 3001)
 
 ---
@@ -11,11 +11,13 @@
 ## 🎯 Key Achievements
 
 ### Recently Completed (2025-12-25)
+- ✅ **ATT&CK Phase 2 Complete** - Sub-technique expansion + Coverage heatmap overlay
+- ✅ **ATT&CK Phase 4 Complete** - Full MITRE bundle (49MB) downloaded and verified
 - ✅ **Security Fix** - Resolved critical Empire C2 password encryption vulnerability (AES-256-GCM)
 - ✅ **Production Deployment** - Application fully deployed and running
 - ✅ **Code Quality** - All TypeScript errors fixed (139 → 0)
 - ✅ **Code Quality** - All ESLint errors fixed (31 → 0)
-- ✅ **Build System** - Clean production build (12.55s)
+- ✅ **Build System** - Clean production build
 - ✅ **Services** - PostgreSQL, Redis, Backend API, Frontend UI all operational
 
 ### Previously Completed (2025-12-22 - 2025-12-25)
@@ -25,7 +27,7 @@
 - ✅ **Collapsible Sidebar** - Full keyboard shortcut support
 
 ### Active Development
-- 🔄 **ATT&CK Integration** - 58% complete (23/40 items) - STIX import ready, interactive features done
+- 🔄 **ATT&CK Integration** - 65% complete (26/40 items) - Phase 2 & 4 complete, heatmap + sub-techniques ready
 - 🔄 **Empire C2** - 92% complete (33/36 items) - All core phases complete, security fix applied
 - 🔄 **UI/UX Improvements** - 13% complete (4/30 items) - Sidebar complete
 
@@ -42,14 +44,14 @@
 | Metric | Value |
 |--------|-------|
 | Total Items | 261 |
-| Completed | 106 |
+| Completed | 109 |
 | In Progress | 10 |
 | Blocked | 0 |
-| Remaining | 145 |
-| Completion % | 40.6% |
+| Remaining | 142 |
+| Completion % | 41.8% |
 | Days Elapsed | 10 |
-| Avg Items/Day | 10.6 |
-| Projected Completion | 2026-01-08 |
+| Avg Items/Day | 10.9 |
+| Projected Completion | 2026-01-07 |
 | **Deployment Status** | **✅ LIVE** |
 
 ---
@@ -138,7 +140,7 @@
 **Target:** 2025-01-15
 **Started:** 2025-12-21
 
-### Progress: 23/40 (58%)
+### Progress: 26/40 (65%)
 
 #### Phase 1: Page Structure & Navigation ✅ (6/6) - COMPLETE
 - [x] #ATK-01: Create /attack route `client/src/App.tsx` ✅ 2025-12-21
@@ -148,12 +150,12 @@
 - [x] #ATK-05: Add stats display and context selector ✅ 2025-12-21
 - [x] #ATK-06: Set up ATT&CK state management with API integration ✅ 2025-12-21
 
-#### Phase 2: Navigator Tab - Matrix Visualization 🔄 (5/7) - 71% COMPLETE
+#### Phase 2: Navigator Tab - Matrix Visualization ✅ (7/7) - COMPLETE
 - [x] #ATK-07: Build TacticsGrid component `client/src/components/attack/TacticsGrid.tsx` ✅ 2025-12-21
 - [x] #ATK-08: Build TechniquesTable component `client/src/components/attack/TechniquesTable.tsx` ✅ 2025-12-21
 - [x] #ATK-09: Build CoverageMatrix visualization component ✅ 2025-12-21
-- [ ] #ATK-10: Add sub-technique expansion
-- [ ] #ATK-11: Implement coverage heatmap overlay (partial - matrix exists)
+- [x] #ATK-10: Add sub-technique expansion ✅ 2025-12-25
+- [x] #ATK-11: Implement coverage heatmap overlay ✅ 2025-12-25
 - [x] #ATK-12: Create TechniqueDetailDialog with tabbed interface ✅ 2025-12-21
 - [x] #ATK-13: Add export to ATT&CK Navigator JSON with layer file generation ✅ 2025-12-21
 
@@ -164,13 +166,13 @@
 - [x] #ATK-17: Add attack_groups, attack_software, attack_mitigations tables ✅ 2025-12-21
 - [x] #ATK-18: Add attack_data_sources, attack_campaigns, attack_relationships, junction tables ✅ 2025-12-21
 
-#### Phase 4: STIX Data Import ✅ (5/6) - 83% COMPLETE
+#### Phase 4: STIX Data Import ✅ (6/6) - COMPLETE
 - [x] #ATK-19: Create download-attack-data.ts script for MITRE bundle download ✅ 2025-12-21
 - [x] #ATK-20: Create stix-parser.ts `server/services/stix-parser.ts` ✅ 2025-12-21
 - [x] #ATK-21: Create StixImportDialog component for UI-based import ✅ 2025-12-21
 - [x] #ATK-22: Import techniques to database (tested with sample bundle) ✅ 2025-12-21
 - [x] #ATK-23: Import sub-techniques to database (tested with sample bundle) ✅ 2025-12-21
-- [x] #ATK-24: Import relationships and metadata (tested with sample bundle) ✅ 2025-12-21
+- [x] #ATK-24: Import relationships and metadata (verified with full 49MB MITRE bundle) ✅ 2025-12-25
 
 **Tools Created:**
 - `scripts/test-stix-import.ts`: Test parser with sample data

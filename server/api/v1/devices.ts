@@ -10,7 +10,7 @@ const router = Router();
 router.use(ensureAuthenticated);
 
 // GET /api/v1/devices - List all devices
-router.get("/", async (req, res) => {
+router.get("/", async (_req, res) => {
   try {
     const allDevices = await db.select().from(devices);
     res.json({ devices: allDevices });

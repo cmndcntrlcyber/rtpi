@@ -123,7 +123,7 @@ describe('Empire Executor Security Tests', () => {
         mockAxiosInstance.get.mockResolvedValue({ data: { version: '4.0.0' } });
 
         const empireExecutor = await getEmpireExecutor();
-        const result = await empireExecutor.checkConnection('server-1', 'user-1');
+        const _result = await empireExecutor.checkConnection('server-1', 'user-1');
 
         // Should have attempted to create axios client
         expect(axios.create).toHaveBeenCalled();

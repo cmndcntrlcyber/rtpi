@@ -11,7 +11,7 @@ const router = Router();
 router.use(ensureAuthenticated);
 
 // GET /api/v1/mcp-servers - List all MCP servers
-router.get("/", async (req, res) => {
+router.get("/", async (_req, res) => {
   try {
     const allServers = await db.select().from(mcpServers);
     res.json({ servers: allServers });

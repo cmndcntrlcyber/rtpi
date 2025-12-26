@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,12 +19,6 @@ export default function LinkedVulnerabilities({
 }: LinkedVulnerabilitiesProps) {
   const [vulnerabilities, setVulnerabilities] = useState<any[]>([]);
 
-  useEffect(() => {
-    if (targetId) {
-      loadVulnerabilities();
-    }
-  }, [targetId]);
-
   const loadVulnerabilities = async () => {
     if (!targetId) return;
 
@@ -38,6 +33,12 @@ export default function LinkedVulnerabilities({
       console.error("Failed to load vulnerabilities:", error);
     }
   };
+
+  useEffect(() => {
+    if (targetId) {
+      loadVulnerabilities();
+    }
+  }, [targetId, loadVulnerabilities]);
 
   // Calculate severity counts
   const counts = {

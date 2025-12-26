@@ -20,34 +20,28 @@ interface CvssCalculatorProps {
 
 export default function CvssCalculator({ value, onChange }: CvssCalculatorProps) {
   // Initialize metrics from prop value or defaults
-  const initialMetrics = useMemo(() => {
+  const [metrics, setMetrics] = useState<CvssMetricsValue>(() => {
     if (value && value.startsWith("CVSS:3.")) {
       return parseVectorCvss3(value);
     }
     return getDefaultMetrics();
-  }, [value]);
+  });
 
-  const [metrics, setMetrics] = useState<CvssMetricsValue>(initialMetrics);
-
-  // Track previous value to avoid unnecessary updates
-  const prevValueRef = useRef<string | undefined>(value);
-
-  // Sync metrics with external value prop changes
-  // This is a legitimate use of setState in useEffect for prop synchronization
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  // Sync metrics with external value prop changes using useEffect
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(() => {
-    // Only update if value actually changed to prevent cascading renders
-    if (value !== prevValueRef.current) {
-      prevValueRef.current = value;
-      if (value && value.startsWith("CVSS:3.")) {
-        const parsed = parseVectorCvss3(value);
+    if (value && value.startsWith("CVSS:3.")) {
+      const parsed = parseVectorCvss3(value);
+      // Only update if the parsed value is different
+      if (JSON.stringify(parsed) !== JSON.stringify(metrics)) {
         setMetrics(parsed);
-      } else if (!value) {
-        // Reset to defaults if value is cleared
-        setMetrics(getDefaultMetrics());
       }
+    } else if (!value && JSON.stringify(metrics) !== JSON.stringify(getDefaultMetrics())) {
+      // Reset to defaults if value is cleared
+      setMetrics(getDefaultMetrics());
     }
-  }, [value]);
+  }, [value]); // Intentionally omitting metrics from dependencies to avoid loops
+  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
   // Calculate derived values using useMemo to avoid unnecessary recalculations
   const vector = useMemo(() => stringifyVectorCvss31(metrics), [metrics]);

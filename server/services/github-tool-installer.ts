@@ -5,13 +5,12 @@
 
 import { Octokit } from '@octokit/rest';
 import { db } from '../db';
-import { githubToolInstallations, toolRegistry } from '../../shared/schema';
+import { githubToolInstallations } from '../../shared/schema';
 import { eq } from 'drizzle-orm';
 import type {
   GitHubRepoAnalysis,
   ToolDependency,
-  InstallMethod,
-  ToolConfiguration
+  InstallMethod
 } from '../../shared/types/tool-config';
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
@@ -42,7 +41,7 @@ const LANGUAGE_INSTALL_METHODS: Record<string, InstallMethod> = {
  * Extract owner and repo from GitHub URL
  */
 function parseGitHubUrl(url: string): { owner: string; repo: string } | null {
-  const match = url.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+  const match = url.match(/github\.com\/([^/]+)\/([^/]+)/);
   if (!match) return null;
 
   const owner = match[1];
@@ -299,7 +298,7 @@ function parsePackageJson(content: string): ToolDependency[] {
  */
 async function generateDockerfile(
   language: string,
-  dependencies: ToolDependency[],
+  _dependencies: ToolDependency[],
   repoName: string
 ): Promise<string> {
   let dockerfile = '';
@@ -459,7 +458,7 @@ ENTRYPOINT ["/bin/bash"]
 /**
  * Generate build script
  */
-function generateBuildScript(language: string, dependencies: ToolDependency[]): string {
+function generateBuildScript(language: string, _dependencies: ToolDependency[]): string {
   let script = '#!/bin/bash\n\n';
   script += 'set -e\n\n';
   script += 'echo "Building tool from GitHub repository..."\n\n';
@@ -556,7 +555,7 @@ function estimateBuildTime(language: string, dependencyCount: number): number {
  */
 export async function installToolFromGitHub(
   githubUrl: string,
-  toolId?: string
+  _toolId?: string
 ): Promise<string> {
   try {
     // First, analyze the repository

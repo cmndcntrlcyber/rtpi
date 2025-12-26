@@ -1,9 +1,8 @@
 import { db } from "../db";
-import { agents, targets, securityTools, mcpServers, toolRegistry } from "@shared/schema";
+import { agents, targets, securityTools, mcpServers } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { dockerExecutor } from "./docker-executor";
-import { metasploitExecutor } from "./metasploit-executor";
-import { getToolByToolId, getToolById } from "./tool-registry-manager";
+import { getToolById } from "./tool-registry-manager";
 import { executeTool } from "./tool-executor";
 import type { ToolConfiguration } from "../../shared/types/tool-config";
 
@@ -34,7 +33,7 @@ export class AgentToolConnector {
     }
 
     // Try new tool registry first, fallback to legacy securityTools
-    let tool = await getToolById(toolId);
+    let tool: any = await getToolById(toolId);
     const isNewFramework = !!tool;
 
     if (!tool) {
@@ -275,7 +274,7 @@ export class AgentToolConnector {
   /**
    * Parse input string for parameters
    */
-  private parseInputParameters(input: string, schema: any = {}): Record<string, any> {
+  private parseInputParameters(input: string, _schema: any = {}): Record<string, any> {
     const params: Record<string, any> = {};
     
     // Try to parse as JSON first
@@ -397,13 +396,13 @@ export class AgentToolConnector {
 
   private async executeOpenAI(agent: any, context: any): Promise<string> {
     // Placeholder - integrate with OpenAI API
-    const prompt = agent.config?.systemPrompt || "You are a security testing assistant";
+    
     return `[OpenAI Agent: ${agent.name}]\n\nTool: ${context.tool.name}\nTarget: ${context.target.value}\n\nAnalysis: Automated vulnerability assessment initiated.\nRecommendation: Continue with payload development.`;
   }
 
   private async executeAnthropic(agent: any, context: any): Promise<string> {
     // Placeholder - integrate with Anthropic API
-    const prompt = agent.config?.systemPrompt || "You are a security researcher";
+    
     return `[Anthropic Agent: ${agent.name}]\n\nTool: ${context.tool.name}\nTarget: ${context.target.value}\n\nDeep analysis: Security posture evaluated.\nNext steps: Exploit chain development.`;
   }
 

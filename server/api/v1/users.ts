@@ -11,7 +11,7 @@ router.use(ensureAuthenticated);
 router.use(ensureRole("admin"));
 
 // GET /api/v1/users - List all users
-router.get("/", async (req, res) => {
+router.get("/", async (_req, res) => {
   try {
     const allUsers = await db.select({
       id: users.id,

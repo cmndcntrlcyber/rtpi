@@ -11,7 +11,7 @@
  * child_process, as the actual execution is handled by the underlying service.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Create mock functions for dependencies
 const mockGetToolByToolId = vi.fn();

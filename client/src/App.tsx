@@ -1,9 +1,12 @@
 import { useEffect } from "react";
 import { Route, Switch } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { KeyboardShortcutsProvider } from "@/contexts/KeyboardShortcutsContext";
 import { SearchProvider, useSearch } from "@/contexts/SearchContext";
+import { NotificationProvider } from "@/contexts/NotificationContext";
+import { useNotificationTriggers } from "@/hooks/useNotificationTriggers";
 import MainLayout from "@/components/layout/MainLayout";
 import { KeyboardShortcutsDialog } from "@/components/shared/KeyboardShortcutsDialog";
 import { SearchDialog } from "@/components/shared/SearchDialog";
@@ -28,6 +31,9 @@ const queryClient = new QueryClient();
 
 function AuthenticatedApp() {
   const { setIsOpen } = useSearch();
+
+  // Set up notification triggers
+  useNotificationTriggers();
 
   return (
     <KeyboardShortcutsProvider onSearchOpen={() => setIsOpen(true)}>
@@ -91,9 +97,11 @@ function AppContent() {
   }
 
   return (
-    <SearchProvider>
-      <AuthenticatedApp />
-    </SearchProvider>
+    <NotificationProvider>
+      <SearchProvider>
+        <AuthenticatedApp />
+      </SearchProvider>
+    </NotificationProvider>
   );
 }
 
@@ -103,6 +111,13 @@ export default function App() {
       <AuthProvider>
         <AppContent />
       </AuthProvider>
+      <Toaster
+        position="top-right"
+        expand={false}
+        richColors
+        closeButton
+        duration={4000}
+      />
     </QueryClientProvider>
   );
 }

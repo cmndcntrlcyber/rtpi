@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useKeyboardShortcutsContext } from "@/contexts/KeyboardShortcutsContext";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { NotificationCenter } from "@/components/shared/NotificationCenter";
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -64,6 +65,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
           >
             <Keyboard className="h-4 w-4 sm:h-5 sm:w-5" />
           </Button>
+          <NotificationCenter />
           <ThemeToggle />
           <Button
             variant="ghost"

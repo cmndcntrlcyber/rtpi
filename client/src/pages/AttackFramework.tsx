@@ -10,6 +10,7 @@ import MitigationsTable from "@/components/attack/MitigationsTable";
 import CoverageMatrix from "@/components/attack/CoverageMatrix";
 import PlannerTab from "@/components/attack/PlannerTab";
 import AttackFlowDiagram from "@/components/attack/AttackFlowDiagram";
+import WorkbenchTab from "@/components/attack/WorkbenchTab";
 
 interface AttackStats {
   techniques: number;
@@ -156,6 +157,7 @@ export default function AttackFramework() {
           <TabsTrigger value="mitigations">Mitigations</TabsTrigger>
           <TabsTrigger value="planner">Planner</TabsTrigger>
           <TabsTrigger value="flow">Attack Flow</TabsTrigger>
+          <TabsTrigger value="workbench">Workbench</TabsTrigger>
           <TabsTrigger value="coverage">Coverage Matrix</TabsTrigger>
         </TabsList>
 
@@ -185,6 +187,10 @@ export default function AttackFramework() {
 
         <TabsContent value="flow" className="space-y-4">
           <AttackFlowDiagram />
+        </TabsContent>
+
+        <TabsContent value="workbench" className="space-y-4">
+          <WorkbenchTab />
         </TabsContent>
 
         <TabsContent value="coverage" className="space-y-4">

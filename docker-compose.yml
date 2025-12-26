@@ -96,6 +96,75 @@ services:
       retries: 5
       start_period: 60s
 
+  # ATT&CK Workbench MongoDB Database
+  workbench-db:
+    image: mongo:7
+    container_name: rtpi-workbench-db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: workbench
+      MONGO_INITDB_ROOT_PASSWORD: ${WORKBENCH_DB_PASSWORD:-workbench123}
+      MONGO_INITDB_DATABASE: attack-workbench
+    ports:
+      - "27017:27017"
+    volumes:
+      - workbench-db-data:/data/db
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ATT&CK Workbench REST API
+  workbench-api:
+    image: ghcr.io/center-for-threat-informed-defense/attack-workbench-rest-api:latest
+    container_name: rtpi-workbench-api
+    ports:
+      - "3010:3010"
+    environment:
+      # MongoDB connection
+      MONGODB_URL: mongodb://workbench:${WORKBENCH_DB_PASSWORD:-workbench123}@workbench-db:27017/attack-workbench?authSource=admin
+      # API configuration
+      PORT: 3010
+      # CORS configuration - allow RTPI frontend
+      CORS_ORIGIN: "http://localhost:5000,http://localhost:3000,http://localhost:3020"
+      # Session configuration
+      SESSION_SECRET: ${WORKBENCH_SESSION_SECRET:-change-this-secret-key}
+      # Authentication (optional)
+      AUTHN_MECHANISM: anonymous
+    depends_on:
+      workbench-db:
+        condition: service_healthy
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3010/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # ATT&CK Workbench Frontend (Optional - for direct access)
+  workbench-frontend:
+    image: ghcr.io/center-for-threat-informed-defense/attack-workbench-frontend:latest
+    container_name: rtpi-workbench-frontend
+    ports:
+      - "3020:80"
+    environment:
+      # API endpoint configuration
+      WORKBENCH_REST_API_URL: http://workbench-api:3010/api
+    depends_on:
+      workbench-api:
+        condition: service_healthy
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+    profiles:
+      - workbench-ui  # Optional profile - only start if explicitly enabled
+
 # Application (Development)
 #  app:
 #    build:
@@ -133,3 +202,4 @@ volumes:
   shared-data:
   empire-data:
   empire-downloads:
+  workbench-db-data:

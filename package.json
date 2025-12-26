@@ -69,6 +69,7 @@
     "postgres": "^3.4.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "reactflow": "^11.11.4",
     "recharts": "^3.5.1",
     "redis": "^4.6.11",
     "tailwind-merge": "^2.1.0",

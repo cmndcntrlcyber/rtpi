@@ -21,9 +21,24 @@ interface OperationListProps {
   onDelete?: (operation: Operation) => void;
   onStatusChange?: (operationId: string, newStatus: string) => Promise<void>; // FIX BUG #2
   onWorkflowsChange?: () => void; // FIX BUG #2
+  // Bulk selection props
+  selectable?: boolean;
+  selectedIds?: Set<string>;
+  onSelectionChange?: (id: string, selected: boolean) => void;
 }
 
-export default function OperationList({ operations, loading, onSelect, onEdit, onDelete, onStatusChange, onWorkflowsChange }: OperationListProps) {
+export default function OperationList({
+  operations,
+  loading,
+  onSelect,
+  onEdit,
+  onDelete,
+  onStatusChange,
+  onWorkflowsChange,
+  selectable = false,
+  selectedIds = new Set(),
+  onSelectionChange
+}: OperationListProps) {
   if (loading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -73,6 +88,9 @@ export default function OperationList({ operations, loading, onSelect, onEdit, o
           onDelete={onDelete}
           onStatusChange={onStatusChange}
           onWorkflowsChange={onWorkflowsChange}
+          selectable={selectable}
+          selected={selectedIds.has(operation.id)}
+          onSelectionChange={onSelectionChange}
         />
       ))}
     </div>

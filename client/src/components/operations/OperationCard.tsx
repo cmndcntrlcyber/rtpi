@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -36,6 +37,10 @@ interface OperationCardProps {
   onDelete?: (operation: Operation) => void;
   onWorkflowsChange?: () => void;
   onStatusChange?: (operationId: string, newStatus: string) => Promise<void>; // FIX BUG #2: Inline status change
+  // Bulk selection props
+  selectable?: boolean;
+  selected?: boolean;
+  onSelectionChange?: (id: string, selected: boolean) => void;
 }
 
 const statusColors = {
@@ -46,7 +51,17 @@ const statusColors = {
   failed: "bg-red-500/10 text-red-400"
 };
 
-export default function OperationCard({ operation, onSelect, onEdit, onDelete, onWorkflowsChange, onStatusChange }: OperationCardProps) {
+export default function OperationCard({
+  operation,
+  onSelect,
+  onEdit,
+  onDelete,
+  onWorkflowsChange,
+  onStatusChange,
+  selectable = false,
+  selected = false,
+  onSelectionChange
+}: OperationCardProps) {
   const [workflowReport, setWorkflowReport] = useState<any>(null);
   const [downloading, setDownloading] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -197,15 +212,29 @@ export default function OperationCard({ operation, onSelect, onEdit, onDelete, o
     }
   };
 
+  const handleSelectionChange = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onSelectionChange) {
+      onSelectionChange(operation.id, !selected);
+    }
+  };
+
   return (
-    <Card 
-      className="bg-card border-border hover:shadow-md cursor-pointer transition-all"
+    <Card
+      className={`bg-card border-border hover:shadow-md cursor-pointer transition-all ${
+        selected ? "ring-2 ring-primary ring-offset-2" : ""
+      }`}
       onClick={handleClick}
     >
       <CardContent className="p-6">
         <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-medium mr-3 ${getColorFromName(operation.name)}`}>
+          <div className="flex items-center gap-3">
+            {selectable && (
+              <div onClick={handleSelectionChange}>
+                <Checkbox checked={selected} />
+              </div>
+            )}
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-medium ${getColorFromName(operation.name)}`}>
               {getInitials(operation.name)}
             </div>
             <div>

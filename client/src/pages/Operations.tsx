@@ -1,10 +1,12 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Plus } from "lucide-react";
+import { Plus, CheckSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import OperationList from "@/components/operations/OperationList";
 import OperationForm from "@/components/operations/OperationForm";
+import { BulkActionToolbar } from "@/components/shared/BulkActionToolbar";
+import { BulkConfirmDialog } from "@/components/shared/BulkConfirmDialog";
 import { useOperations, useCreateOperation, useUpdateOperation, useDeleteOperation } from "@/hooks/useOperations";
 import { api } from "@/lib/api";
 
@@ -14,10 +16,17 @@ export default function Operations() {
   const { create, creating } = useCreateOperation();
   const { update } = useUpdateOperation();
   const { delete: deleteOp } = useDeleteOperation();
-  
+
   const [formOpen, setFormOpen] = useState(false);
   const [editingOperation, setEditingOperation] = useState<any>(null);
   const [operationsWithWorkflows, setOperationsWithWorkflows] = useState<any[]>([]);
+
+  // Bulk selection state
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [bulkAction, setBulkAction] = useState<"delete" | "status-change">("delete");
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
 
   const handleCreateOperation = async (data: any) => {
     try {
@@ -138,6 +147,75 @@ export default function Operations() {
     console.log("Selected operation:", operation);
   };
 
+  // Bulk selection handlers
+  const handleSelectionChange = (id: string, selected: boolean) => {
+    const newSelection = new Set(selectedIds);
+    if (selected) {
+      newSelection.add(id);
+    } else {
+      newSelection.delete(id);
+    }
+    setSelectedIds(newSelection);
+  };
+
+  const handleClearSelection = () => {
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkDelete = async () => {
+    setBulkAction("delete");
+    setConfirmDialogOpen(true);
+  };
+
+  const handleBulkStatusChange = async (status: string) => {
+    setBulkAction("status-change");
+    setBulkActionLoading(true);
+    try {
+      // Update status for all selected operations
+      await Promise.all(
+        Array.from(selectedIds).map((id) =>
+          api.patch(`/operations/${id}/status`, { status })
+        )
+      );
+      await refetch();
+      await enrichOperationsWithWorkflows();
+      handleClearSelection();
+    } catch (error) {
+      console.error("Failed to update statuses:", error);
+      alert("Failed to update statuses");
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  const handleConfirmBulkAction = async () => {
+    setBulkActionLoading(true);
+    try {
+      if (bulkAction === "delete") {
+        // Delete all selected operations
+        await Promise.all(
+          Array.from(selectedIds).map((id) => deleteOp(id))
+        );
+      }
+      await refetch();
+      handleClearSelection();
+      setConfirmDialogOpen(false);
+    } catch (error) {
+      console.error("Bulk operation failed:", error);
+      alert("Bulk operation failed");
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  const toggleBulkMode = () => {
+    setBulkMode(!bulkMode);
+    if (bulkMode) {
+      // Clear selection when exiting bulk mode
+      handleClearSelection();
+    }
+  };
+
   // Fetch latest workflow for each operation
   useEffect(() => {
     enrichOperationsWithWorkflows();
@@ -160,10 +238,19 @@ export default function Operations() {
             Manage red team operations and track progress
           </p>
         </div>
-        <Button onClick={() => setFormOpen(true)} disabled={creating}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Operation
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            variant={bulkMode ? "secondary" : "outline"}
+            onClick={toggleBulkMode}
+          >
+            <CheckSquare className="h-4 w-4 mr-2" />
+            {bulkMode ? "Exit Bulk Mode" : "Bulk Select"}
+          </Button>
+          <Button onClick={() => setFormOpen(true)} disabled={creating}>
+            <Plus className="h-4 w-4 mr-2" />
+            New Operation
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -200,6 +287,9 @@ export default function Operations() {
         onDelete={handleDeleteClick}
         onStatusChange={handleStatusChange}
         onWorkflowsChange={enrichOperationsWithWorkflows}
+        selectable={bulkMode}
+        selectedIds={selectedIds}
+        onSelectionChange={handleSelectionChange}
       />
 
       {/* Create/Edit Form Dialog */}
@@ -215,6 +305,27 @@ export default function Operations() {
         onDelete={handleDeleteOperation}
         onViewTargets={handleViewTargets}
         onAddTarget={handleAddTarget}
+      />
+
+      {/* Bulk Action Toolbar */}
+      {bulkMode && (
+        <BulkActionToolbar
+          selectedCount={selectedIds.size}
+          onClearSelection={handleClearSelection}
+          onDelete={handleBulkDelete}
+          onChangeStatus={handleBulkStatusChange}
+        />
+      )}
+
+      {/* Bulk Action Confirmation Dialog */}
+      <BulkConfirmDialog
+        open={confirmDialogOpen}
+        onOpenChange={setConfirmDialogOpen}
+        actionType={bulkAction}
+        itemCount={selectedIds.size}
+        itemType="operation"
+        onConfirm={handleConfirmBulkAction}
+        loading={bulkActionLoading}
       />
     </div>
   );

@@ -42,7 +42,7 @@ const statusColors = {
   planning: "bg-blue-500/10 text-blue-400",
   active: "bg-green-500/10 text-green-400",
   paused: "bg-yellow-500/10 text-yellow-400",
-  completed: "bg-gray-500/10 text-gray-400",
+  completed: "bg-secondary0/10 text-muted-foreground",
   failed: "bg-red-500/10 text-red-400"
 };
 
@@ -199,7 +199,7 @@ export default function OperationCard({ operation, onSelect, onEdit, onDelete, o
 
   return (
     <Card 
-      className="bg-white border-gray-200 hover:shadow-md cursor-pointer transition-all"
+      className="bg-card border-border hover:shadow-md cursor-pointer transition-all"
       onClick={handleClick}
     >
       <CardContent className="p-6">
@@ -209,8 +209,8 @@ export default function OperationCard({ operation, onSelect, onEdit, onDelete, o
               {getInitials(operation.name)}
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">{operation.name}</h3>
-              <p className="text-sm text-gray-500 flex items-center mt-0.5">
+              <h3 className="font-semibold text-foreground">{operation.name}</h3>
+              <p className="text-sm text-muted-foreground flex items-center mt-0.5">
                 <Users className="h-3 w-3 mr-1" />
                 Created by {operation.createdBy}
               </p>
@@ -248,7 +248,7 @@ export default function OperationCard({ operation, onSelect, onEdit, onDelete, o
                   </SelectItem>
                   <SelectItem value="completed">
                     <span className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-gray-500" />
+                      <span className="w-2 h-2 rounded-full bg-secondary0" />
                       Completed
                     </span>
                   </SelectItem>
@@ -272,11 +272,11 @@ export default function OperationCard({ operation, onSelect, onEdit, onDelete, o
         </div>
         
         <div className="grid grid-cols-2 gap-4 text-sm mb-3">
-          <div className="flex items-center text-gray-600">
+          <div className="flex items-center text-muted-foreground">
             <Calendar className="h-4 w-4 mr-2" />
             <span>{formatDate(operation.startDate)}</span>
           </div>
-          <div className="flex items-center text-gray-600">
+          <div className="flex items-center text-muted-foreground">
             {operation.endDate ? (
               <>
                 <Clock className="h-4 w-4 mr-2" />
@@ -298,12 +298,12 @@ export default function OperationCard({ operation, onSelect, onEdit, onDelete, o
               {operation.type}
             </Badge>
           )}
-          <div className="flex items-center text-xs text-gray-500">
+          <div className="flex items-center text-xs text-muted-foreground">
             <Target className="h-3 w-3 mr-1" />
             <span>{operation.targets || 0} targets</span>
           </div>
           {operation.findings !== undefined && (
-            <div className="flex items-center text-xs text-gray-500">
+            <div className="flex items-center text-xs text-muted-foreground">
               <AlertCircle className="h-3 w-3 mr-1" />
               <span>{operation.findings} findings</span>
             </div>
@@ -333,7 +333,7 @@ export default function OperationCard({ operation, onSelect, onEdit, onDelete, o
                       size="sm"
                       onClick={handleDownloadReport}
                       disabled={downloading}
-                      className="h-7 px-2 bg-white"
+                      className="h-7 px-2 bg-card"
                       title="Download Report"
                     >
                       <Download className="h-3 w-3" />
@@ -355,7 +355,7 @@ export default function OperationCard({ operation, onSelect, onEdit, onDelete, o
                     size="sm"
                     onClick={handleDeleteWorkflow}
                     disabled={deleting}
-                    className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-50 bg-white"
+                    className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-50 bg-card"
                     title="Delete Workflow"
                   >
                     <Trash2 className="h-3 w-3" />
@@ -368,7 +368,7 @@ export default function OperationCard({ operation, onSelect, onEdit, onDelete, o
 
         {/* Description if exists */}
         {operation.description && (
-          <p className="text-sm text-gray-600 mt-3 line-clamp-2">
+          <p className="text-sm text-muted-foreground mt-3 line-clamp-2">
             {operation.description}
           </p>
         )}

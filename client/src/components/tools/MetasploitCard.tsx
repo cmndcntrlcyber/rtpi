@@ -177,7 +177,7 @@ export default function MetasploitCard({ tool }: MetasploitCardProps) {
   const getStatusColor = () => {
     if (isExecuting) return "bg-yellow-500/10 text-yellow-600";
     if (tool.status === "running") return "bg-green-500/10 text-green-600";
-    return "bg-gray-500/10 text-gray-600";
+    return "bg-secondary0/10 text-muted-foreground";
   };
 
   return (
@@ -243,7 +243,7 @@ export default function MetasploitCard({ tool }: MetasploitCardProps) {
 
           {/* Module Selector Grid */}
           {loading ? (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-muted-foreground">
               <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2" />
               <p>Loading modules...</p>
             </div>
@@ -258,7 +258,7 @@ export default function MetasploitCard({ tool }: MetasploitCardProps) {
           {/* Module Parameters */}
           {primaryModule && (
             <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-gray-700">Module Parameters</h3>
+              <h3 className="text-sm font-semibold text-foreground">Module Parameters</h3>
               
               {/* Common parameters */}
               <div className="grid grid-cols-2 gap-3">

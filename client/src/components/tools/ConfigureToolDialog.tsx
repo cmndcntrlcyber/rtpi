@@ -152,7 +152,7 @@ export default function ConfigureToolDialog({
               type="checkbox"
               checked={params[paramName] || false}
               onChange={(e) => handleParamChange(paramName, e.target.checked)}
-              className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+              className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-border rounded"
             />
             <Label htmlFor={inputId} className="mb-0">
               {paramName.charAt(0).toUpperCase() + paramName.slice(1).replace(/([A-Z])/g, " $1")}
@@ -197,21 +197,21 @@ export default function ConfigureToolDialog({
 
         <div className="space-y-6">
           {/* Tool Info */}
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <h4 className="text-sm font-semibold text-gray-900 mb-2">Tool Information</h4>
+          <div className="bg-secondary p-4 rounded-lg">
+            <h4 className="text-sm font-semibold text-foreground mb-2">Tool Information</h4>
             <div className="space-y-1">
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-muted-foreground">
                 <span className="font-medium">Category:</span> {tool.category.replace(/_/g, " ")}
               </p>
               {tool.description && (
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-muted-foreground">
                   <span className="font-medium">Description:</span> {tool.description}
                 </p>
               )}
               {tool.command && (
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-muted-foreground">
                   <span className="font-medium">Command:</span>{" "}
-                  <code className="bg-gray-200 px-1 rounded text-xs">{tool.command}</code>
+                  <code className="bg-muted px-1 rounded text-xs">{tool.command}</code>
                 </p>
               )}
             </div>
@@ -242,7 +242,7 @@ export default function ConfigureToolDialog({
           {/* Parameters Form */}
           {hasParameters ? (
             <div className="space-y-4">
-              <h4 className="text-sm font-semibold text-gray-900">Parameters</h4>
+              <h4 className="text-sm font-semibold text-foreground">Parameters</h4>
               <div className="space-y-4">
                 {Object.entries(parameterSchema).map(([paramName, paramConfig]: [string, any]) =>
                   renderParameterField(paramName, paramConfig)
@@ -250,16 +250,16 @@ export default function ConfigureToolDialog({
               </div>
             </div>
           ) : (
-            <div className="text-center py-4 text-sm text-gray-500">
+            <div className="text-center py-4 text-sm text-muted-foreground">
               No configuration parameters available for this tool
             </div>
           )}
 
           {/* Execution Result */}
           {executionResult && (
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h4 className="text-sm font-semibold text-gray-900 mb-2">Execution Result</h4>
-              <pre className="text-xs bg-gray-900 text-green-400 p-3 rounded overflow-auto max-h-48">
+            <div className="bg-secondary p-4 rounded-lg">
+              <h4 className="text-sm font-semibold text-foreground mb-2">Execution Result</h4>
+              <pre className="text-xs bg-primary text-green-400 p-3 rounded overflow-auto max-h-48">
                 {typeof executionResult.result === "string"
                   ? executionResult.result
                   : JSON.stringify(executionResult.result, null, 2)}

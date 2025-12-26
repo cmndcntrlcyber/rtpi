@@ -52,10 +52,10 @@ export default function TacticsGrid() {
 
   if (tactics.length === 0) {
     return (
-      <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-        <Shield className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-        <p className="text-gray-500 font-medium">No tactics loaded</p>
-        <p className="text-sm text-gray-400 mt-2">
+      <div className="text-center py-12 bg-card rounded-lg border border-border">
+        <Shield className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+        <p className="text-muted-foreground font-medium">No tactics loaded</p>
+        <p className="text-sm text-muted-foreground mt-2">
           Import STIX data from MITRE ATT&CK to populate tactics
         </p>
       </div>
@@ -112,7 +112,7 @@ export default function TacticsGrid() {
               )}
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-gray-600 line-clamp-4">
+              <p className="text-sm text-muted-foreground line-clamp-4">
                 {tactic.description || "No description available"}
               </p>
             </CardContent>

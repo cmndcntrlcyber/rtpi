@@ -79,7 +79,7 @@ export default function ToolRegistry() {
       case 'failed':
         return 'bg-red-500';
       default:
-        return 'bg-gray-500';
+        return 'bg-secondary0';
     }
   };
 
@@ -92,7 +92,7 @@ export default function ToolRegistry() {
       case 'failed':
         return 'bg-red-500';
       default:
-        return 'bg-gray-500';
+        return 'bg-secondary0';
     }
   };
 
@@ -107,7 +107,7 @@ export default function ToolRegistry() {
       case 'reporting':
         return 'bg-green-100 text-green-800 border-green-300';
       default:
-        return 'bg-gray-100 text-gray-800 border-gray-300';
+        return 'bg-secondary text-foreground border-border';
     }
   };
 

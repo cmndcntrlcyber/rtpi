@@ -120,11 +120,11 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
 
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
-      pending: 'bg-gray-100 text-gray-800',
+      pending: 'bg-secondary text-foreground',
       running: 'bg-blue-100 text-blue-800',
       completed: 'bg-green-100 text-green-800',
       failed: 'bg-red-100 text-red-800',
-      cancelled: 'bg-gray-100 text-gray-800',
+      cancelled: 'bg-secondary text-foreground',
     };
     return styles[status] || styles.pending;
   };
@@ -144,8 +144,8 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
 
   if (!operationId) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
-        <div className="text-center text-gray-500">
+      <div className="bg-card rounded-lg shadow-sm border border-border p-8">
+        <div className="text-center text-muted-foreground">
           Please select an operation to configure scans
         </div>
       </div>
@@ -157,9 +157,9 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
       {/* Scanner Configuration */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* BBOT Configuration */}
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">BBOT Configuration</h3>
+            <h3 className="text-lg font-semibold text-foreground">BBOT Configuration</h3>
             <Switch
               checked={bbotConfig.enabled}
               onCheckedChange={(enabled) => setBbotConfig({ ...bbotConfig, enabled })}
@@ -167,7 +167,7 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
           </div>
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Preset</label>
+              <label className="text-sm font-medium text-foreground block mb-1">Preset</label>
               <Input
                 value={bbotConfig.preset}
                 onChange={(e) => setBbotConfig({ ...bbotConfig, preset: e.target.value })}
@@ -175,7 +175,7 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Modules (comma-separated)</label>
+              <label className="text-sm font-medium text-foreground block mb-1">Modules (comma-separated)</label>
               <Input
                 value={bbotConfig.modules}
                 onChange={(e) => setBbotConfig({ ...bbotConfig, modules: e.target.value })}
@@ -183,7 +183,7 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Flags</label>
+              <label className="text-sm font-medium text-foreground block mb-1">Flags</label>
               <Input
                 value={bbotConfig.flags}
                 onChange={(e) => setBbotConfig({ ...bbotConfig, flags: e.target.value })}
@@ -191,7 +191,7 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">
+              <label className="text-sm font-medium text-foreground block mb-1">
                 Additional Arguments (comma-separated)
               </label>
               <Input
@@ -199,7 +199,7 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
                 onChange={(e) => setBbotConfig({ ...bbotConfig, args: e.target.value })}
                 placeholder="--allow-deadly, --strict-scope"
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Examples: --allow-deadly, --strict-scope, --force
               </p>
             </div>
@@ -207,9 +207,9 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
         </div>
 
         {/* Nuclei Configuration */}
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">Nuclei Configuration</h3>
+            <h3 className="text-lg font-semibold text-foreground">Nuclei Configuration</h3>
             <Switch
               checked={nucleiConfig.enabled}
               onCheckedChange={(enabled) => setNucleiConfig({ ...nucleiConfig, enabled })}
@@ -217,7 +217,7 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
           </div>
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Severity Levels</label>
+              <label className="text-sm font-medium text-foreground block mb-1">Severity Levels</label>
               <Input
                 value={nucleiConfig.severity}
                 onChange={(e) => setNucleiConfig({ ...nucleiConfig, severity: e.target.value })}
@@ -225,7 +225,7 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Rate Limit</label>
+              <label className="text-sm font-medium text-foreground block mb-1">Rate Limit</label>
               <Input
                 type="number"
                 value={nucleiConfig.rateLimit}
@@ -234,7 +234,7 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Templates</label>
+              <label className="text-sm font-medium text-foreground block mb-1">Templates</label>
               <Input
                 value={nucleiConfig.templates}
                 onChange={(e) => setNucleiConfig({ ...nucleiConfig, templates: e.target.value })}
@@ -246,11 +246,11 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
       </div>
 
       {/* Scan Execution */}
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Execute Scan</h3>
+      <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+        <h3 className="text-lg font-semibold text-foreground mb-4">Execute Scan</h3>
         <div className="space-y-4">
           <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1">
+            <label className="text-sm font-medium text-foreground block mb-1">
               Targets (one per line)
             </label>
             <textarea
@@ -258,7 +258,7 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
               onChange={(e) => setTargets(e.target.value)}
               placeholder="example.com&#10;192.168.1.0/24&#10;https://app.example.com"
               rows={4}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg font-mono text-sm"
+              className="w-full px-4 py-2 border border-border rounded-lg font-mono text-sm"
             />
           </div>
           <div className="flex gap-3">
@@ -283,10 +283,10 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
       </div>
 
       {/* Scan History */}
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Scan History</h3>
+      <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+        <h3 className="text-lg font-semibold text-foreground mb-4">Scan History</h3>
         {scanHistory.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
+          <div className="text-center py-8 text-muted-foreground">
             No scans have been run yet
           </div>
         ) : (
@@ -295,22 +295,22 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
               const StatusIcon = getStatusIcon(scan.status);
               
               return (
-                <div key={scan.id} className="p-4 border border-gray-200 rounded-lg hover:border-blue-300 transition-colors">
+                <div key={scan.id} className="p-4 border border-border rounded-lg hover:border-blue-300 transition-colors">
                   <div className="flex items-start justify-between">
                     <div className="flex items-start gap-3 flex-1">
-                      <StatusIcon className="w-5 h-5 text-gray-500 mt-0.5" />
+                      <StatusIcon className="w-5 h-5 text-muted-foreground mt-0.5" />
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <p className="text-sm font-medium text-gray-900">{scan.toolName.toUpperCase()}</p>
+                          <p className="text-sm font-medium text-foreground">{scan.toolName.toUpperCase()}</p>
                           <Badge className={getStatusBadge(scan.status)}>
                             {scan.status}
                           </Badge>
                         </div>
-                        <p className="text-xs text-gray-600 mb-2">
+                        <p className="text-xs text-muted-foreground mb-2">
                           Targets: {scan.targets.join(', ')}
                         </p>
                         {scan.status === 'completed' && (
-                          <div className="flex items-center gap-4 text-xs text-gray-600">
+                          <div className="flex items-center gap-4 text-xs text-muted-foreground">
                             <span>Assets: {scan.assetsFound || 0}</span>
                             <span>Services: {scan.servicesFound || 0}</span>
                             <span>Vulns: {scan.vulnerabilitiesFound || 0}</span>
@@ -321,7 +321,7 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
                         )}
                       </div>
                     </div>
-                    <div className="text-right text-xs text-gray-500">
+                    <div className="text-right text-xs text-muted-foreground">
                       {scan.completedAt && new Date(scan.completedAt).toLocaleString()}
                       {scan.duration && (
                         <p className="mt-1">Duration: {Math.round(scan.duration / 60)}min</p>

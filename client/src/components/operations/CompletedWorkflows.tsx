@@ -145,7 +145,7 @@ export default function CompletedWorkflows({
       failed: { className: "bg-red-500/10 text-red-600", label: "FAILED", icon: XCircle },
       running: { className: "bg-blue-500/10 text-blue-600", label: "RUNNING", icon: Activity },
       pending: { className: "bg-yellow-500/10 text-yellow-600", label: "PENDING", icon: Clock },
-      cancelled: { className: "bg-gray-500/10 text-gray-600", label: "CANCELLED", icon: XCircle },
+      cancelled: { className: "bg-secondary0/10 text-muted-foreground", label: "CANCELLED", icon: XCircle },
     };
 
     const variant = variants[status] || variants.pending;
@@ -170,7 +170,7 @@ export default function CompletedWorkflows({
       <CardContent className="space-y-4">
         {/* Workflow Stats */}
         <div className="flex items-center gap-4 text-sm">
-          <span className="font-medium text-gray-700">
+          <span className="font-medium text-foreground">
             {total} {total === 1 ? "Workflow" : "Workflows"}
           </span>
           {total > 0 && (
@@ -183,20 +183,20 @@ export default function CompletedWorkflows({
 
         {/* Workflow List */}
         {total === 0 ? (
-          <p className="text-sm text-gray-500">No workflows executed yet</p>
+          <p className="text-sm text-muted-foreground">No workflows executed yet</p>
         ) : (
           <div className="space-y-2">
             {workflows.slice(0, 3).map((workflow) => (
               <div
                 key={workflow.id}
-                className="p-3 bg-gray-50 rounded border border-gray-200 hover:bg-gray-100 transition-colors"
+                className="p-3 bg-secondary rounded border border-border hover:bg-secondary transition-colors"
               >
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="flex-1 min-w-0">
-                    <h4 className="text-sm font-medium text-gray-900 truncate">
+                    <h4 className="text-sm font-medium text-foreground truncate">
                       {workflow.name}
                     </h4>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-muted-foreground">
                       {new Date(workflow.createdAt).toLocaleString()}
                     </p>
                   </div>
@@ -236,11 +236,11 @@ export default function CompletedWorkflows({
                 {/* Progress Info */}
                 {workflow.status !== "completed" && workflow.progress > 0 && (
                   <div className="mb-2">
-                    <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
                       <span>Progress</span>
                       <span>{workflow.progress}%</span>
                     </div>
-                    <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                       <div 
                         className="h-full bg-blue-600 transition-all"
                         style={{ width: `${workflow.progress}%` }}
@@ -264,7 +264,7 @@ export default function CompletedWorkflows({
               </div>
             ))}
             {total > 3 && (
-              <p className="text-xs text-gray-500 italic">
+              <p className="text-xs text-muted-foreground italic">
                 + {total - 3} more workflows
               </p>
             )}

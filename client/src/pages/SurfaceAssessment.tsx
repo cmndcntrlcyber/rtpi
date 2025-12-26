@@ -38,7 +38,7 @@ export default function SurfaceAssessment() {
       <div className="p-8">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
+          <p className="text-muted-foreground">Loading...</p>
         </div>
       </div>
     );
@@ -48,8 +48,8 @@ export default function SurfaceAssessment() {
     <div className="p-8">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Surface Assessment</h1>
-          <p className="text-gray-600 mt-1">
+          <h1 className="text-3xl font-bold text-foreground">Surface Assessment</h1>
+          <p className="text-muted-foreground mt-1">
             Centralized attack surface management dashboard
           </p>
         </div>

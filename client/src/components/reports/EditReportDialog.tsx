@@ -117,7 +117,7 @@ export default function EditReportDialog({
         <div className="flex-1 overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center h-96">
-              <div className="text-gray-500">Loading report content...</div>
+              <div className="text-muted-foreground">Loading report content...</div>
             </div>
           ) : (
             <Textarea

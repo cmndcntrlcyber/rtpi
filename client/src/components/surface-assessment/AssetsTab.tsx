@@ -80,9 +80,9 @@ export default function AssetsTab({ operationId }: AssetsTabProps) {
     const colors: Record<string, string> = {
       active: 'bg-green-100 text-green-800',
       down: 'bg-red-100 text-red-800',
-      unreachable: 'bg-gray-100 text-gray-800',
+      unreachable: 'bg-secondary text-foreground',
     };
-    return colors[status] || 'bg-gray-100 text-gray-800';
+    return colors[status] || 'bg-secondary text-foreground';
   };
 
   const filteredAssets = assets.filter(asset =>
@@ -92,8 +92,8 @@ export default function AssetsTab({ operationId }: AssetsTabProps) {
 
   if (!operationId) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
-        <div className="text-center text-gray-500">
+      <div className="bg-card rounded-lg shadow-sm border border-border p-8">
+        <div className="text-center text-muted-foreground">
           Please select an operation to view assets
         </div>
       </div>
@@ -102,10 +102,10 @@ export default function AssetsTab({ operationId }: AssetsTabProps) {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+      <div className="bg-card rounded-lg shadow-sm border border-border p-8">
         <div className="flex items-center justify-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          <p className="ml-4 text-gray-600">Loading assets...</p>
+          <p className="ml-4 text-muted-foreground">Loading assets...</p>
         </div>
       </div>
     );
@@ -114,9 +114,9 @@ export default function AssetsTab({ operationId }: AssetsTabProps) {
   return (
     <div className="space-y-4">
       {/* Header with Search */}
-      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+      <div className="bg-card p-4 rounded-lg shadow-sm border border-border">
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900">
+          <h3 className="text-lg font-semibold text-foreground">
             Discovered Assets ({filteredAssets.length})
           </h3>
           <input
@@ -124,15 +124,15 @@ export default function AssetsTab({ operationId }: AssetsTabProps) {
             placeholder="Search assets..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg w-64"
+            className="px-4 py-2 border border-border rounded-lg w-64"
           />
         </div>
       </div>
 
       {/* Assets List */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      <div className="bg-card rounded-lg shadow-sm border border-border">
         {filteredAssets.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
+          <div className="text-center py-12 text-muted-foreground">
             {assets.length === 0 
               ? 'No assets discovered yet. Run a BBOT scan to discover assets.' 
               : 'No assets match your search'}
@@ -147,12 +147,12 @@ export default function AssetsTab({ operationId }: AssetsTabProps) {
                 <div key={asset.id}>
                   {/* Asset Row */}
                   <div
-                    className="p-4 hover:bg-gray-50 cursor-pointer"
+                    className="p-4 hover:bg-secondary cursor-pointer"
                     onClick={() => toggleExpand(asset.id)}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3 flex-1">
-                        <button className="text-gray-400 hover:text-gray-600">
+                        <button className="text-muted-foreground hover:text-muted-foreground">
                           {isExpanded ? (
                             <ChevronDown className="w-5 h-5" />
                           ) : (
@@ -164,29 +164,29 @@ export default function AssetsTab({ operationId }: AssetsTabProps) {
                         </div>
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <p className="text-sm font-medium text-gray-900">{asset.value}</p>
+                            <p className="text-sm font-medium text-foreground">{asset.value}</p>
                             <Badge className="uppercase text-xs">{asset.type}</Badge>
                             <Badge className={getStatusColor(asset.status)}>
                               {asset.status}
                             </Badge>
                           </div>
                           {asset.hostname && asset.hostname !== asset.value && (
-                            <p className="text-xs text-gray-500 mt-1">{asset.hostname}</p>
+                            <p className="text-xs text-muted-foreground mt-1">{asset.hostname}</p>
                           )}
                           {asset.operatingSystem && (
-                            <p className="text-xs text-gray-600 mt-1">OS: {asset.operatingSystem}</p>
+                            <p className="text-xs text-muted-foreground mt-1">OS: {asset.operatingSystem}</p>
                           )}
                         </div>
                       </div>
                       <div className="flex items-center gap-4">
                         <div className="text-right">
-                          <p className="text-sm font-medium text-gray-900">{asset.services.length}</p>
-                          <p className="text-xs text-gray-500">services</p>
+                          <p className="text-sm font-medium text-foreground">{asset.services.length}</p>
+                          <p className="text-xs text-muted-foreground">services</p>
                         </div>
                         {asset.vulnerabilityCount > 0 && (
                           <div className="text-right">
                             <p className="text-sm font-medium text-red-600">{asset.vulnerabilityCount}</p>
-                            <p className="text-xs text-gray-500">vulns</p>
+                            <p className="text-xs text-muted-foreground">vulns</p>
                           </div>
                         )}
                       </div>
@@ -195,25 +195,25 @@ export default function AssetsTab({ operationId }: AssetsTabProps) {
 
                   {/* Expanded Services */}
                   {isExpanded && asset.services.length > 0 && (
-                    <div className="px-4 pb-4 bg-gray-50">
+                    <div className="px-4 pb-4 bg-secondary">
                       <div className="ml-11 border-l-2 border-blue-200 pl-4">
-                        <h4 className="text-xs font-semibold text-gray-700 uppercase mb-2">
+                        <h4 className="text-xs font-semibold text-foreground uppercase mb-2">
                           Services ({asset.services.length})
                         </h4>
                         <div className="space-y-2">
                           {asset.services.map((service) => (
                             <div
                               key={service.id}
-                              className="flex items-center justify-between bg-white p-3 rounded border border-gray-200"
+                              className="flex items-center justify-between bg-card p-3 rounded border border-border"
                             >
                               <div className="flex items-center gap-3">
                                 <Badge variant="outline">{service.port}/{service.protocol}</Badge>
-                                <span className="text-sm font-medium text-gray-900">{service.name}</span>
+                                <span className="text-sm font-medium text-foreground">{service.name}</span>
                                 {service.version && (
-                                  <span className="text-xs text-gray-500">v{service.version}</span>
+                                  <span className="text-xs text-muted-foreground">v{service.version}</span>
                                 )}
                               </div>
-                              <Badge className={service.state === 'open' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                              <Badge className={service.state === 'open' ? 'bg-green-100 text-green-800' : 'bg-secondary text-foreground'}>
                                 {service.state}
                               </Badge>
                             </div>

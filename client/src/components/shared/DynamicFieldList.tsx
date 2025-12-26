@@ -73,7 +73,7 @@ export default function DynamicFieldList({
           Add {label}
         </Button>
       )}
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-muted-foreground">
         {values.length} of {maxFields} {label.toLowerCase()} added
       </p>
     </div>

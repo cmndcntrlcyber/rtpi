@@ -268,21 +268,21 @@ export default function EmpireTab() {
     <div className="space-y-6">
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Empire Servers</h3>
-          <p className="text-3xl font-bold text-gray-900">{stats.servers}</p>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Empire Servers</h3>
+          <p className="text-3xl font-bold text-foreground">{stats.servers}</p>
           <p className="text-sm text-green-600 mt-1">{stats.connected} connected</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Listeners</h3>
-          <p className="text-3xl font-bold text-gray-900">{stats.listeners}</p>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Listeners</h3>
+          <p className="text-3xl font-bold text-foreground">{stats.listeners}</p>
           <p className="text-sm text-green-600 mt-1">{stats.activeListeners} running</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Agents</h3>
-          <p className="text-3xl font-bold text-gray-900">{stats.agents}</p>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Agents</h3>
+          <p className="text-3xl font-bold text-foreground">{stats.agents}</p>
           <p className="text-sm text-green-600 mt-1">{stats.activeAgents} active</p>
         </div>
       </div>
@@ -313,9 +313,9 @@ export default function EmpireTab() {
           </div>
 
           {servers.length === 0 && (
-            <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-              <p className="text-gray-500">No Empire servers configured</p>
-              <p className="text-sm text-gray-400 mt-2">
+            <div className="text-center py-12 bg-card rounded-lg border border-border">
+              <p className="text-muted-foreground">No Empire servers configured</p>
+              <p className="text-sm text-muted-foreground mt-2">
                 Add an Empire server to start managing C2 operations
               </p>
               <div className="mt-4">

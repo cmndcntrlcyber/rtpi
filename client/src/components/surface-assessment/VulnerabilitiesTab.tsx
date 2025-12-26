@@ -176,10 +176,10 @@ export default function VulnerabilitiesTab({ operationId }: VulnerabilitiesTabPr
       open: 'bg-red-100 text-red-800',
       in_progress: 'bg-yellow-100 text-yellow-800',
       fixed: 'bg-green-100 text-green-800',
-      false_positive: 'bg-gray-100 text-gray-800',
+      false_positive: 'bg-secondary text-foreground',
       accepted_risk: 'bg-purple-100 text-purple-800',
     };
-    return colors[status] || 'bg-gray-100 text-gray-800';
+    return colors[status] || 'bg-secondary text-foreground';
   };
 
   // Pagination
@@ -190,8 +190,8 @@ export default function VulnerabilitiesTab({ operationId }: VulnerabilitiesTabPr
 
   if (!operationId) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
-        <div className="text-center text-gray-500">
+      <div className="bg-card rounded-lg shadow-sm border border-border p-8">
+        <div className="text-center text-muted-foreground">
           Please select an operation to view vulnerabilities
         </div>
       </div>
@@ -200,10 +200,10 @@ export default function VulnerabilitiesTab({ operationId }: VulnerabilitiesTabPr
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+      <div className="bg-card rounded-lg shadow-sm border border-border p-8">
         <div className="flex items-center justify-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          <p className="ml-4 text-gray-600">Loading vulnerabilities...</p>
+          <p className="ml-4 text-muted-foreground">Loading vulnerabilities...</p>
         </div>
       </div>
     );
@@ -225,15 +225,15 @@ export default function VulnerabilitiesTab({ operationId }: VulnerabilitiesTabPr
       />
 
       {/* Vulnerabilities Table */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-card rounded-lg shadow-sm border border-border overflow-hidden">
         {paginatedVulns.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
+          <div className="text-center py-12 text-muted-foreground">
             {vulnerabilities.length === 0 ? 'No vulnerabilities found' : 'No vulnerabilities match the current filters'}
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+              <thead className="bg-secondary">
                 <tr>
                   <th className="px-4 py-3 text-left">
                     <input
@@ -249,28 +249,28 @@ export default function VulnerabilitiesTab({ operationId }: VulnerabilitiesTabPr
                       className="rounded"
                     />
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Title
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Severity
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     CVE ID
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Discovered
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-card divide-y divide-gray-200">
                 {paginatedVulns.map((vuln) => (
                   <tr
                     key={vuln.id}
-                    className="hover:bg-gray-50 cursor-pointer"
+                    className="hover:bg-secondary cursor-pointer"
                   >
                     <td className="px-4 py-4">
                       <input
@@ -282,8 +282,8 @@ export default function VulnerabilitiesTab({ operationId }: VulnerabilitiesTabPr
                       />
                     </td>
                     <td className="px-4 py-4">
-                      <div className="text-sm font-medium text-gray-900">{vuln.title}</div>
-                      <div className="text-xs text-gray-500 line-clamp-1">{vuln.description}</div>
+                      <div className="text-sm font-medium text-foreground">{vuln.title}</div>
+                      <div className="text-xs text-muted-foreground line-clamp-1">{vuln.description}</div>
                     </td>
                     <td className="px-4 py-4">
                       <Badge className={getSeverityColor(vuln.severity)}>
@@ -295,10 +295,10 @@ export default function VulnerabilitiesTab({ operationId }: VulnerabilitiesTabPr
                         {vuln.status.replace('_', ' ')}
                       </Badge>
                     </td>
-                    <td className="px-4 py-4 text-sm text-gray-900">
+                    <td className="px-4 py-4 text-sm text-foreground">
                       {vuln.cveId || '-'}
                     </td>
-                    <td className="px-4 py-4 text-sm text-gray-500">
+                    <td className="px-4 py-4 text-sm text-muted-foreground">
                       {new Date(vuln.discoveredAt).toLocaleDateString()}
                     </td>
                   </tr>
@@ -311,26 +311,26 @@ export default function VulnerabilitiesTab({ operationId }: VulnerabilitiesTabPr
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        <div className="bg-card rounded-lg shadow-sm border border-border p-4">
           <div className="flex items-center justify-between">
-            <div className="text-sm text-gray-700">
+            <div className="text-sm text-foreground">
               Showing {startIndex + 1}-{Math.min(endIndex, filteredVulns.length)} of {filteredVulns.length} vulnerabilities
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="p-2 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-2 rounded hover:bg-secondary disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <span className="text-sm text-gray-700">
+              <span className="text-sm text-foreground">
                 Page {page} of {totalPages}
               </span>
               <button
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
-                className="p-2 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-2 rounded hover:bg-secondary disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>

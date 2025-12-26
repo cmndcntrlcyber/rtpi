@@ -32,9 +32,9 @@ export default function EmpireListenersTable({
 }: EmpireListenersTableProps) {
   if (listeners.length === 0) {
     return (
-      <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-        <p className="text-gray-500">No listeners configured</p>
-        <p className="text-sm text-gray-400 mt-2">
+      <div className="text-center py-12 bg-card rounded-lg border border-border">
+        <p className="text-muted-foreground">No listeners configured</p>
+        <p className="text-sm text-muted-foreground mt-2">
           Create a listener to start accepting agent connections
         </p>
       </div>
@@ -42,7 +42,7 @@ export default function EmpireListenersTable({
   }
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200">
+    <div className="bg-card rounded-lg border border-border">
       <Table>
         <TableHeader>
           <TableRow>
@@ -79,7 +79,7 @@ export default function EmpireListenersTable({
                   {listener.enabled ? "Running" : "Stopped"}
                 </Badge>
               </TableCell>
-              <TableCell className="text-sm text-gray-500">
+              <TableCell className="text-sm text-muted-foreground">
                 {new Date(listener.created_at).toLocaleString()}
               </TableCell>
               <TableCell className="text-right">

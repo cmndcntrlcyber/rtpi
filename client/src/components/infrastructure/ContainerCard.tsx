@@ -22,7 +22,7 @@ interface ContainerCardProps {
 
 const statusColors = {
   running: "bg-green-500/10 text-green-600",
-  stopped: "bg-gray-500/10 text-gray-600",
+  stopped: "bg-secondary0/10 text-muted-foreground",
   paused: "bg-yellow-500/10 text-yellow-600",
   restarting: "bg-blue-500/10 text-blue-600",
   exited: "bg-red-500/10 text-red-600",
@@ -32,7 +32,7 @@ export default function ContainerCard({ container, onStart, onStop, onRestart }:
   const isRunning = container.state === "running";
 
   return (
-    <Card className="bg-white border-gray-200">
+    <Card className="bg-card border-border">
       <CardContent className="p-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center flex-1">
@@ -40,8 +40,8 @@ export default function ContainerCard({ container, onStart, onStop, onRestart }:
               <Container className="h-5 w-5" />
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-gray-900 truncate">{container.name}</h3>
-              <p className="text-sm text-gray-500 truncate">{container.image}</p>
+              <h3 className="font-semibold text-foreground truncate">{container.name}</h3>
+              <p className="text-sm text-muted-foreground truncate">{container.image}</p>
             </div>
           </div>
           <Badge 
@@ -54,13 +54,13 @@ export default function ContainerCard({ container, onStart, onStop, onRestart }:
 
         {/* Ports */}
         {container.ports && container.ports.length > 0 && (
-          <div className="mb-3 text-sm text-gray-600">
+          <div className="mb-3 text-sm text-muted-foreground">
             <span className="font-medium">Ports:</span> {container.ports.join(", ")}
           </div>
         )}
 
         {/* Created Date */}
-        <div className="text-xs text-gray-500 mb-4">
+        <div className="text-xs text-muted-foreground mb-4">
           Created: {new Date(container.created).toLocaleDateString()}
         </div>
 

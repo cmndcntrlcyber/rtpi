@@ -150,7 +150,7 @@ export default function GenerateReportDialog({
       high: "bg-orange-500/10 text-orange-600",
       medium: "bg-yellow-500/10 text-yellow-600",
       low: "bg-blue-500/10 text-blue-600",
-      informational: "bg-gray-500/10 text-gray-600",
+      informational: "bg-secondary0/10 text-muted-foreground",
     };
     return colors[severity.toLowerCase()] || colors.informational;
   };
@@ -189,7 +189,7 @@ export default function GenerateReportDialog({
             <>
               {/* Header Information Section */}
               <div className="border-t pt-4">
-                <h3 className="text-sm font-semibold text-gray-900 mb-4">Header Information</h3>
+                <h3 className="text-sm font-semibold text-foreground mb-4">Header Information</h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="report-name">Report Name *</Label>
@@ -212,7 +212,7 @@ export default function GenerateReportDialog({
                         setReportData({ ...reportData, testType: e.target.value })
                       }
                       placeholder="Penetration Test"
-                      className="bg-gray-50"
+                      className="bg-secondary"
                     />
                   </div>
 
@@ -224,7 +224,7 @@ export default function GenerateReportDialog({
                       onChange={(e) =>
                         setReportData({ ...reportData, testDate: e.target.value })
                       }
-                      className="bg-gray-50"
+                      className="bg-secondary"
                     />
                   </div>
 
@@ -260,7 +260,7 @@ export default function GenerateReportDialog({
                       onChange={(e) =>
                         setReportData({ ...reportData, testerName: e.target.value })
                       }
-                      className="bg-gray-50"
+                      className="bg-secondary"
                     />
                   </div>
                 </div>
@@ -274,7 +274,7 @@ export default function GenerateReportDialog({
                       setReportData({ ...reportData, objectives: e.target.value })
                     }
                     rows={2}
-                    className="bg-gray-50"
+                    className="bg-secondary"
                   />
                 </div>
 
@@ -287,7 +287,7 @@ export default function GenerateReportDialog({
                       setReportData({ ...reportData, scope: e.target.value })
                     }
                     rows={2}
-                    className="bg-gray-50"
+                    className="bg-secondary"
                   />
                 </div>
               </div>
@@ -295,7 +295,7 @@ export default function GenerateReportDialog({
               {/* Findings Section */}
               <div className="border-t pt-4">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-gray-900">
+                  <h3 className="text-sm font-semibold text-foreground">
                     Findings ({operationVulnerabilities.length} available)
                   </h3>
                   <div className="flex gap-2">
@@ -319,27 +319,27 @@ export default function GenerateReportDialog({
                 </div>
 
                 {operationVulnerabilities.length === 0 ? (
-                  <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200">
-                    <p className="text-sm text-gray-500">
+                  <div className="text-center py-8 bg-secondary rounded-lg border border-border">
+                    <p className="text-sm text-muted-foreground">
                       No vulnerabilities found for this operation
                     </p>
                   </div>
                 ) : (
-                  <div className="space-y-2 max-h-64 overflow-y-auto border border-gray-200 rounded-lg p-3">
+                  <div className="space-y-2 max-h-64 overflow-y-auto border border-border rounded-lg p-3">
                     {operationVulnerabilities.map((vuln) => {
                       const sourceTarget = operationTargets.find((t) => t.id === vuln.targetId);
                       
                       return (
                         <div
                           key={vuln.id}
-                          className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded"
+                          className="flex items-center gap-3 p-2 hover:bg-secondary rounded"
                         >
                           <input
                             type="checkbox"
                             id={`vuln-${vuln.id}`}
                             checked={selectedVulnerabilities.includes(vuln.id)}
                             onChange={() => handleVulnerabilityToggle(vuln.id)}
-                            className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                            className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-border rounded"
                           />
                           <Label
                             htmlFor={`vuln-${vuln.id}`}
@@ -355,12 +355,12 @@ export default function GenerateReportDialog({
                               <span className="flex-1">{vuln.title}</span>
                               <div className="flex items-center gap-2">
                                 {vuln.cvss && (
-                                  <span className="text-xs text-gray-500">
+                                  <span className="text-xs text-muted-foreground">
                                     CVSS: {vuln.cvss}
                                   </span>
                                 )}
                                 {vuln.cve && (
-                                  <span className="text-xs text-gray-500">{vuln.cve}</span>
+                                  <span className="text-xs text-muted-foreground">{vuln.cve}</span>
                                 )}
                               </div>
                             </div>
@@ -376,7 +376,7 @@ export default function GenerateReportDialog({
                   </div>
                 )}
 
-                <p className="text-xs text-gray-500 mt-2">
+                <p className="text-xs text-muted-foreground mt-2">
                   Selected: {selectedVulnerabilities.length} vulnerability(s)
                 </p>
               </div>

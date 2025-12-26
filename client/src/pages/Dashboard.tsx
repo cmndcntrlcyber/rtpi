@@ -109,7 +109,7 @@ export default function Dashboard() {
             ))}
             
             {operations.length === 0 && (
-              <p className="text-gray-500">No recent activity to display</p>
+              <p className="text-muted-foreground">No recent activity to display</p>
             )}
           </div>
         )}

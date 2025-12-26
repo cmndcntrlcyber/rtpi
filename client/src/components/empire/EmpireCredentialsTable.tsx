@@ -35,9 +35,9 @@ export default function EmpireCredentialsTable({
 
   if (credentials.length === 0) {
     return (
-      <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-        <p className="text-gray-500">No credentials harvested</p>
-        <p className="text-sm text-gray-400 mt-2">
+      <div className="text-center py-12 bg-card rounded-lg border border-border">
+        <p className="text-muted-foreground">No credentials harvested</p>
+        <p className="text-sm text-muted-foreground mt-2">
           Credentials will appear here when harvested by agents
         </p>
       </div>
@@ -96,7 +96,7 @@ export default function EmpireCredentialsTable({
     const secret =
       credential.password || credential.ntlmHash || credential.sha256Hash || "";
 
-    if (!secret) return <span className="text-gray-400 italic">N/A</span>;
+    if (!secret) return <span className="text-muted-foreground italic">N/A</span>;
 
     const icon = credential.password ? (
       <Key className="h-3 w-3 inline mr-1" />
@@ -145,7 +145,7 @@ export default function EmpireCredentialsTable({
       return (
         <div className="space-y-1">
           <p className="font-mono text-sm">{credential.username}</p>
-          <p className="text-xs text-gray-500">@{credential.host}</p>
+          <p className="text-xs text-muted-foreground">@{credential.host}</p>
         </div>
       );
     }
@@ -160,7 +160,7 @@ export default function EmpireCredentialsTable({
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-lg border border-gray-200">
+      <div className="bg-card rounded-lg border border-border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -183,11 +183,11 @@ export default function EmpireCredentialsTable({
                   )}
                 </TableCell>
                 <TableCell>
-                  <span className="text-sm text-gray-600">
+                  <span className="text-sm text-muted-foreground">
                     {credential.os || "Unknown"}
                   </span>
                 </TableCell>
-                <TableCell className="text-sm text-gray-500">
+                <TableCell className="text-sm text-muted-foreground">
                   {new Date(credential.harvestedAt).toLocaleString()}
                 </TableCell>
               </TableRow>
@@ -196,21 +196,21 @@ export default function EmpireCredentialsTable({
         </Table>
       </div>
 
-      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+      <div className="bg-secondary p-4 rounded-lg border border-border">
         <div className="flex items-center justify-between text-sm">
           <div className="flex gap-6">
             <div>
-              <span className="font-medium text-gray-700">Total:</span>{" "}
+              <span className="font-medium text-foreground">Total:</span>{" "}
               <span className="font-semibold">{credentialCounts.total}</span>
             </div>
             <div>
-              <span className="font-medium text-gray-700">Plaintext:</span>{" "}
+              <span className="font-medium text-foreground">Plaintext:</span>{" "}
               <span className="font-semibold text-orange-600">
                 {credentialCounts.plaintext}
               </span>
             </div>
             <div>
-              <span className="font-medium text-gray-700">Hashes:</span>{" "}
+              <span className="font-medium text-foreground">Hashes:</span>{" "}
               <span className="font-semibold text-blue-600">
                 {credentialCounts.hashes}
               </span>

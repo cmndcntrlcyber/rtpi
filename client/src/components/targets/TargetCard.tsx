@@ -53,7 +53,7 @@ export default function TargetCard({ target, onSelect, onEdit, onDelete, onScan 
 
   return (
     <Card 
-      className="bg-white border-gray-200 hover:shadow-md cursor-pointer transition-all"
+      className="bg-card border-border hover:shadow-md cursor-pointer transition-all"
       onClick={handleClick}
     >
       <CardContent className="p-6">
@@ -63,7 +63,7 @@ export default function TargetCard({ target, onSelect, onEdit, onDelete, onScan 
               {getTypeIcon()}
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-gray-900 truncate">{target.name}</h3>
+              <h3 className="font-semibold text-foreground truncate">{target.name}</h3>
               <div className="flex items-center gap-2 mt-0.5">
                 <Badge variant="secondary" className="text-xs">
                   {target.type}
@@ -80,12 +80,12 @@ export default function TargetCard({ target, onSelect, onEdit, onDelete, onScan 
 
         {/* Target Details */}
         <div className="space-y-2 text-sm mb-3">
-          <div className="flex items-center text-gray-600">
+          <div className="flex items-center text-muted-foreground">
             <Radio className="h-3 w-3 mr-2" />
             <span className="truncate font-mono text-xs">{target.value}</span>
           </div>
           {target.updatedAt && (
-            <div className="text-xs text-gray-500">
+            <div className="text-xs text-muted-foreground">
               Updated: {new Date(target.updatedAt).toLocaleDateString()}
             </div>
           )}
@@ -93,7 +93,7 @@ export default function TargetCard({ target, onSelect, onEdit, onDelete, onScan 
 
         {/* Description if exists */}
         {target.description && (
-          <p className="text-sm text-gray-600 mt-3 pt-3 border-t border-gray-100 line-clamp-2">
+          <p className="text-sm text-muted-foreground mt-3 pt-3 border-t border-gray-100 line-clamp-2">
             {target.description}
           </p>
         )}

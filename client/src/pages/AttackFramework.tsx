@@ -78,72 +78,72 @@ export default function AttackFramework() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
           <div className="flex items-center gap-2 mb-2">
             <Target className="h-5 w-5 text-blue-600" />
-            <h3 className="text-sm font-medium text-gray-500">Techniques</h3>
+            <h3 className="text-sm font-medium text-muted-foreground">Techniques</h3>
           </div>
-          <p className="text-3xl font-bold text-gray-900">
+          <p className="text-3xl font-bold text-foreground">
             {loading ? "..." : totalTechniques.toLocaleString()}
           </p>
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             {stats.techniques} base + {stats.subtechniques} sub
           </p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
           <div className="flex items-center gap-2 mb-2">
             <Shield className="h-5 w-5 text-purple-600" />
-            <h3 className="text-sm font-medium text-gray-500">Tactics</h3>
+            <h3 className="text-sm font-medium text-muted-foreground">Tactics</h3>
           </div>
-          <p className="text-3xl font-bold text-gray-900">
+          <p className="text-3xl font-bold text-foreground">
             {loading ? "..." : stats.tactics}
           </p>
-          <p className="text-xs text-gray-500 mt-1">Kill chain phases</p>
+          <p className="text-xs text-muted-foreground mt-1">Kill chain phases</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
           <div className="flex items-center gap-2 mb-2">
             <Users className="h-5 w-5 text-red-600" />
-            <h3 className="text-sm font-medium text-gray-500">Groups</h3>
+            <h3 className="text-sm font-medium text-muted-foreground">Groups</h3>
           </div>
-          <p className="text-3xl font-bold text-gray-900">
+          <p className="text-3xl font-bold text-foreground">
             {loading ? "..." : stats.groups}
           </p>
-          <p className="text-xs text-gray-500 mt-1">Threat actors</p>
+          <p className="text-xs text-muted-foreground mt-1">Threat actors</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
           <div className="flex items-center gap-2 mb-2">
             <Wrench className="h-5 w-5 text-orange-600" />
-            <h3 className="text-sm font-medium text-gray-500">Software</h3>
+            <h3 className="text-sm font-medium text-muted-foreground">Software</h3>
           </div>
-          <p className="text-3xl font-bold text-gray-900">
+          <p className="text-3xl font-bold text-foreground">
             {loading ? "..." : stats.software}
           </p>
-          <p className="text-xs text-gray-500 mt-1">Malware & tools</p>
+          <p className="text-xs text-muted-foreground mt-1">Malware & tools</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
           <div className="flex items-center gap-2 mb-2">
             <ShieldCheck className="h-5 w-5 text-green-600" />
-            <h3 className="text-sm font-medium text-gray-500">Mitigations</h3>
+            <h3 className="text-sm font-medium text-muted-foreground">Mitigations</h3>
           </div>
-          <p className="text-3xl font-bold text-gray-900">
+          <p className="text-3xl font-bold text-foreground">
             {loading ? "..." : stats.mitigations}
           </p>
-          <p className="text-xs text-gray-500 mt-1">Countermeasures</p>
+          <p className="text-xs text-muted-foreground mt-1">Countermeasures</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
           <div className="flex items-center gap-2 mb-2">
             <Database className="h-5 w-5 text-indigo-600" />
-            <h3 className="text-sm font-medium text-gray-500">Data Sources</h3>
+            <h3 className="text-sm font-medium text-muted-foreground">Data Sources</h3>
           </div>
-          <p className="text-3xl font-bold text-gray-900">
+          <p className="text-3xl font-bold text-foreground">
             {loading ? "..." : stats.dataSources}
           </p>
-          <p className="text-xs text-gray-500 mt-1">Detection sources</p>
+          <p className="text-xs text-muted-foreground mt-1">Detection sources</p>
         </div>
       </div>
 

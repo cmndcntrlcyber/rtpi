@@ -53,11 +53,11 @@ export default function LinkedTargets({
       <CardContent className="space-y-4">
         {/* Target Count */}
         <div className="flex items-center gap-3">
-          <span className="text-sm font-medium text-gray-700">
+          <span className="text-sm font-medium text-foreground">
             {total} {total === 1 ? "Target" : "Targets"}
           </span>
           {total === 0 && (
-            <span className="text-sm text-gray-500">No targets linked</span>
+            <span className="text-sm text-muted-foreground">No targets linked</span>
           )}
         </div>
 
@@ -67,11 +67,11 @@ export default function LinkedTargets({
             {targets.slice(0, 3).map((target) => (
               <div
                 key={target.id}
-                className="flex items-center justify-between p-2 bg-gray-50 rounded border border-gray-200 hover:bg-gray-100 transition-colors"
+                className="flex items-center justify-between p-2 bg-secondary rounded border border-border hover:bg-secondary transition-colors"
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <Target className="h-3 w-3 text-gray-400" />
-                  <span className="text-sm text-gray-900 truncate">
+                  <Target className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-sm text-foreground truncate">
                     {target.name}
                   </span>
                 </div>
@@ -81,7 +81,7 @@ export default function LinkedTargets({
               </div>
             ))}
             {total > 3 && (
-              <p className="text-xs text-gray-500 italic">
+              <p className="text-xs text-muted-foreground italic">
                 + {total - 3} more targets
               </p>
             )}

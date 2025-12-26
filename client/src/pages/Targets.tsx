@@ -176,8 +176,8 @@ export default function Targets() {
     <div className="p-8">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Targets</h1>
-          <p className="text-gray-600 mt-1">
+          <h1 className="text-3xl font-bold text-foreground">Targets</h1>
+          <p className="text-muted-foreground mt-1">
             Manage target systems and infrastructure
           </p>
         </div>
@@ -189,23 +189,23 @@ export default function Targets() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Total Targets</h3>
-          <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Total Targets</h3>
+          <p className="text-3xl font-bold text-foreground">{stats.total}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Active</h3>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Active</h3>
           <p className="text-3xl font-bold text-green-600">{stats.active}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Scanning</h3>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Scanning</h3>
           <p className="text-3xl font-bold text-blue-600">{stats.scanning}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Vulnerable</h3>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Vulnerable</h3>
           <p className="text-3xl font-bold text-red-600">{stats.vulnerable}</p>
         </div>
       </div>
@@ -246,7 +246,7 @@ export default function Targets() {
           <div className="space-y-4">
             <div>
               <Label>Target</Label>
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 {selectedTarget?.name} ({selectedTarget?.type}: {selectedTarget?.value})
               </p>
             </div>

@@ -30,7 +30,7 @@ export default function ActivityFeed({ events, onViewAll }: ActivityFeedProps) {
       case 'asset_discovered':
         return { Icon: Server, color: 'text-purple-600', bg: 'bg-purple-50' };
       default:
-        return { Icon: Search, color: 'text-gray-600', bg: 'bg-gray-50' };
+        return { Icon: Search, color: 'text-muted-foreground', bg: 'bg-secondary' };
     }
   };
 
@@ -52,9 +52,9 @@ export default function ActivityFeed({ events, onViewAll }: ActivityFeedProps) {
 
   if (recentEvents.length === 0) {
     return (
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+      <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
         <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
-        <div className="text-center py-8 text-gray-500">
+        <div className="text-center py-8 text-muted-foreground">
           No recent activity
         </div>
       </div>
@@ -62,7 +62,7 @@ export default function ActivityFeed({ events, onViewAll }: ActivityFeedProps) {
   }
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+    <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold">Recent Activity</h3>
         {onViewAll && events.length > 5 && (
@@ -83,15 +83,15 @@ export default function ActivityFeed({ events, onViewAll }: ActivityFeedProps) {
           return (
             <div
               key={event.id}
-              className="flex items-start gap-3 p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors"
+              className="flex items-start gap-3 p-3 rounded-lg border border-border hover:border-blue-300 hover:bg-blue-50 transition-colors"
             >
               <div className={`p-2 rounded-lg ${bg} flex-shrink-0`}>
                 <Icon className={`w-4 h-4 ${color}`} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900">{event.title}</p>
-                <p className="text-xs text-gray-600 mt-0.5">{event.description}</p>
-                <p className="text-xs text-gray-400 mt-1">
+                <p className="text-sm font-medium text-foreground">{event.title}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{event.description}</p>
+                <p className="text-xs text-muted-foreground mt-1">
                   {formatTimestamp(event.timestamp)}
                 </p>
               </div>

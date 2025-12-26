@@ -29,11 +29,11 @@ export default function ToolCard({ tool, onConfigure, onDelete }: ToolCardProps)
       development: "bg-indigo-500/10 text-indigo-600",
       ssl_tls: "bg-yellow-500/10 text-yellow-600",
     };
-    return colors[category] || "bg-gray-500/10 text-gray-600";
+    return colors[category] || "bg-secondary0/10 text-muted-foreground";
   };
 
   return (
-    <Card className="bg-white hover:shadow-md transition-shadow">
+    <Card className="bg-card hover:shadow-md transition-shadow">
       <CardContent className="p-6">
         {/* Header */}
         <div className="flex items-start justify-between mb-3">
@@ -42,7 +42,7 @@ export default function ToolCard({ tool, onConfigure, onDelete }: ToolCardProps)
               <Wrench className="h-5 w-5 text-indigo-600" />
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-gray-900 truncate">{tool.name}</h3>
+              <h3 className="font-semibold text-foreground truncate">{tool.name}</h3>
               <div className="flex items-center gap-2 mt-1">
                 <Badge
                   variant="secondary"
@@ -55,7 +55,7 @@ export default function ToolCard({ tool, onConfigure, onDelete }: ToolCardProps)
                   className={`text-xs ${
                     tool.status === "running"
                       ? "bg-green-500/10 text-green-600"
-                      : "bg-gray-500/10 text-gray-600"
+                      : "bg-secondary0/10 text-muted-foreground"
                   }`}
                 >
                   {tool.status}
@@ -66,35 +66,35 @@ export default function ToolCard({ tool, onConfigure, onDelete }: ToolCardProps)
         </div>
 
         {/* Description */}
-        <p className="text-sm text-gray-600 mb-4 line-clamp-2">
+        <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
           {tool.description || "No description available"}
         </p>
 
         {/* Metadata */}
         <div className="space-y-1 mb-4">
           {tool.version && (
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               <span className="font-medium">Version:</span> {tool.version}
             </p>
           )}
           {tool.command && (
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               <span className="font-medium">Command:</span> {tool.command}
             </p>
           )}
           {tool.dockerImage && (
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               <span className="font-medium">Container:</span> {tool.dockerImage}
             </p>
           )}
           {tool.lastUsed && (
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               <span className="font-medium">Last Used:</span>{" "}
               {new Date(tool.lastUsed).toLocaleDateString()}
             </p>
           )}
           {tool.usageCount > 0 && (
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               <span className="font-medium">Usage Count:</span> {tool.usageCount}
             </p>
           )}

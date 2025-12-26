@@ -76,7 +76,7 @@ export default function ActivityTab({ operationId }: ActivityTabProps) {
       case 'asset_discovered':
         return { Icon: Server, color: 'text-purple-600', bg: 'bg-purple-50' };
       default:
-        return { Icon: Search, color: 'text-gray-600', bg: 'bg-gray-50' };
+        return { Icon: Search, color: 'text-muted-foreground', bg: 'bg-secondary' };
     }
   };
 
@@ -105,8 +105,8 @@ export default function ActivityTab({ operationId }: ActivityTabProps) {
 
   if (!operationId) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
-        <div className="text-center text-gray-500">
+      <div className="bg-card rounded-lg shadow-sm border border-border p-8">
+        <div className="text-center text-muted-foreground">
           Please select an operation to view activity
         </div>
       </div>
@@ -115,10 +115,10 @@ export default function ActivityTab({ operationId }: ActivityTabProps) {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+      <div className="bg-card rounded-lg shadow-sm border border-border p-8">
         <div className="flex items-center justify-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          <p className="ml-4 text-gray-600">Loading activity...</p>
+          <p className="ml-4 text-muted-foreground">Loading activity...</p>
         </div>
       </div>
     );
@@ -127,14 +127,14 @@ export default function ActivityTab({ operationId }: ActivityTabProps) {
   return (
     <div className="space-y-4">
       {/* Filters and Export */}
-      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+      <div className="bg-card p-4 rounded-lg shadow-sm border border-border">
         <div className="flex items-center justify-between gap-4 mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">
+          <h3 className="text-lg font-semibold text-foreground">
             Activity Timeline ({filteredEvents.length})
           </h3>
           <button
             onClick={handleExport}
-            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded"
+            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-secondary hover:bg-muted rounded"
           >
             <Download className="w-4 h-4" />
             Export
@@ -143,13 +143,13 @@ export default function ActivityTab({ operationId }: ActivityTabProps) {
 
         {/* Search */}
         <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
             type="text"
             placeholder="Search activity..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 px-4 py-2 border border-gray-300 rounded-lg"
+            className="w-full pl-10 px-4 py-2 border border-border rounded-lg"
           />
         </div>
 
@@ -162,7 +162,7 @@ export default function ActivityTab({ operationId }: ActivityTabProps) {
               className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
                 typeFilter.includes(type)
                   ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  : 'bg-secondary text-foreground hover:bg-muted'
               }`}
             >
               {type.replace('_', ' ')}
@@ -172,9 +172,9 @@ export default function ActivityTab({ operationId }: ActivityTabProps) {
       </div>
 
       {/* Timeline */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      <div className="bg-card rounded-lg shadow-sm border border-border">
         {filteredEvents.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
+          <div className="text-center py-12 text-muted-foreground">
             {events.length === 0 
               ? 'No activity recorded yet. Activity will appear after running scans.' 
               : 'No events match your filters'}
@@ -185,7 +185,7 @@ export default function ActivityTab({ operationId }: ActivityTabProps) {
               const { Icon, color, bg } = getEventIcon(event.type);
 
               return (
-                <div key={event.id} className="p-4 hover:bg-gray-50">
+                <div key={event.id} className="p-4 hover:bg-secondary">
                   <div className="flex items-start gap-3">
                     <div className={`p-2 rounded-lg ${bg} flex-shrink-0`}>
                       <Icon className={`w-5 h-5 ${color}`} />
@@ -193,9 +193,9 @@ export default function ActivityTab({ operationId }: ActivityTabProps) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
-                          <p className="text-sm font-medium text-gray-900">{event.title}</p>
-                          <p className="text-sm text-gray-600 mt-1">{event.description}</p>
-                          <p className="text-xs text-gray-400 mt-2">
+                          <p className="text-sm font-medium text-foreground">{event.title}</p>
+                          <p className="text-sm text-muted-foreground mt-1">{event.description}</p>
+                          <p className="text-xs text-muted-foreground mt-2">
                             {formatTimestamp(event.timestamp)}
                           </p>
                         </div>

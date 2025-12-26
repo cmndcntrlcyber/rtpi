@@ -364,7 +364,7 @@ export default function AttackFlowDiagram() {
                   return nodeTypes[n.data.type].color;
                 }}
               />
-              <Panel position="top-right" className="bg-white p-2 rounded shadow-md">
+              <Panel position="top-right" className="bg-card p-2 rounded shadow-md">
                 <div className="text-xs text-muted-foreground">
                   <p>• Drag nodes to reposition</p>
                   <p>• Click nodes to select</p>

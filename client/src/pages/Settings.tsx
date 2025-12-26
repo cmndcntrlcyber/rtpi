@@ -100,7 +100,7 @@ export default function Settings() {
                   />
                   <button
                     type="button"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                     onClick={() => setShowOpenAI(!showOpenAI)}
                   >
                     {showOpenAI ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -121,7 +121,7 @@ export default function Settings() {
                   />
                   <button
                     type="button"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                     onClick={() => setShowAnthropic(!showAnthropic)}
                   >
                     {showAnthropic ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -142,7 +142,7 @@ export default function Settings() {
                   />
                   <button
                     type="button"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                     onClick={() => setShowTavily(!showTavily)}
                   >
                     {showTavily ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -154,7 +154,7 @@ export default function Settings() {
                 <Label htmlFor="default-model">Default Model</Label>
                 <select
                   id="default-model"
-                  className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+                  className="flex h-10 w-full rounded-md border border-border bg-card px-3 py-2 text-sm"
                   value={llmSettings.defaultModel}
                   onChange={(e) => setLlmSettings({ ...llmSettings, defaultModel: e.target.value })}
                 >
@@ -187,7 +187,7 @@ export default function Settings() {
             <div className="flex items-center justify-between">
               <div>
                 <Label>Dark Mode</Label>
-                <p className="text-sm text-gray-500">Toggle dark theme</p>
+                <p className="text-sm text-muted-foreground">Toggle dark theme</p>
               </div>
               <Switch checked={darkMode} onCheckedChange={toggleDarkMode} />
             </div>
@@ -235,21 +235,21 @@ export default function Settings() {
             <div className="flex items-center justify-between">
               <div>
                 <Label>Two-Factor Authentication</Label>
-                <p className="text-sm text-gray-500">Enhanced account security</p>
+                <p className="text-sm text-muted-foreground">Enhanced account security</p>
               </div>
               <Switch />
             </div>
             <div className="flex items-center justify-between">
               <div>
                 <Label>Session Timeout</Label>
-                <p className="text-sm text-gray-500">Auto-logout after inactivity</p>
+                <p className="text-sm text-muted-foreground">Auto-logout after inactivity</p>
               </div>
               <Switch defaultChecked />
             </div>
             <div className="flex items-center justify-between">
               <div>
                 <Label>Audit Logging</Label>
-                <p className="text-sm text-gray-500">Track all user actions</p>
+                <p className="text-sm text-muted-foreground">Track all user actions</p>
               </div>
               <Switch defaultChecked />
             </div>
@@ -298,21 +298,21 @@ export default function Settings() {
             <div className="flex items-center justify-between">
               <div>
                 <Label>Email Notifications</Label>
-                <p className="text-sm text-gray-500">Receive email alerts</p>
+                <p className="text-sm text-muted-foreground">Receive email alerts</p>
               </div>
               <Switch defaultChecked />
             </div>
             <div className="flex items-center justify-between">
               <div>
                 <Label>Critical Vulnerabilities</Label>
-                <p className="text-sm text-gray-500">Immediate alerts</p>
+                <p className="text-sm text-muted-foreground">Immediate alerts</p>
               </div>
               <Switch defaultChecked />
             </div>
             <div className="flex items-center justify-between">
               <div>
                 <Label>Operation Updates</Label>
-                <p className="text-sm text-gray-500">Status change notifications</p>
+                <p className="text-sm text-muted-foreground">Status change notifications</p>
               </div>
               <Switch />
             </div>

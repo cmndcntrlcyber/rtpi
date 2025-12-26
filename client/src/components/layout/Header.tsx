@@ -2,6 +2,7 @@ import { Menu, User, LogOut } from "lucide-react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -51,6 +52,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
               {user?.role}
             </span>
           </div>
+          <ThemeToggle />
           <Button variant="ghost" size="icon" onClick={handleProfile} title="Profile">
             <User className="h-5 w-5" />
           </Button>

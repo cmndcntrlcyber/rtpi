@@ -65,8 +65,8 @@ export default function ServicesTab({ operationId }: ServicesTabProps) {
 
   if (!operationId) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
-        <div className="text-center text-gray-500">
+      <div className="bg-card rounded-lg shadow-sm border border-border p-8">
+        <div className="text-center text-muted-foreground">
           Please select an operation to view services
         </div>
       </div>
@@ -75,10 +75,10 @@ export default function ServicesTab({ operationId }: ServicesTabProps) {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+      <div className="bg-card rounded-lg shadow-sm border border-border p-8">
         <div className="flex items-center justify-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          <p className="ml-4 text-gray-600">Loading services...</p>
+          <p className="ml-4 text-muted-foreground">Loading services...</p>
         </div>
       </div>
     );
@@ -87,9 +87,9 @@ export default function ServicesTab({ operationId }: ServicesTabProps) {
   return (
     <div className="space-y-4">
       {/* Header with Search */}
-      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+      <div className="bg-card p-4 rounded-lg shadow-sm border border-border">
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900">
+          <h3 className="text-lg font-semibold text-foreground">
             Discovered Services ({filteredServices.length})
           </h3>
           <input
@@ -97,15 +97,15 @@ export default function ServicesTab({ operationId }: ServicesTabProps) {
             placeholder="Search services..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg w-64"
+            className="px-4 py-2 border border-border rounded-lg w-64"
           />
         </div>
       </div>
 
       {/* Services List */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+      <div className="bg-card rounded-lg shadow-sm border border-border">
         {filteredServices.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
+          <div className="text-center py-12 text-muted-foreground">
             {services.length === 0 
               ? 'No services discovered yet. Run a BBOT scan to enumerate services.' 
               : 'No services match your search'}
@@ -120,12 +120,12 @@ export default function ServicesTab({ operationId }: ServicesTabProps) {
                 <div key={serviceKey}>
                   {/* Service Row */}
                   <div
-                    className="p-4 hover:bg-gray-50 cursor-pointer"
+                    className="p-4 hover:bg-secondary cursor-pointer"
                     onClick={() => toggleExpand(serviceKey)}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3 flex-1">
-                        <button className="text-gray-400 hover:text-gray-600">
+                        <button className="text-muted-foreground hover:text-muted-foreground">
                           {isExpanded ? (
                             <ChevronDown className="w-5 h-5" />
                           ) : (
@@ -137,12 +137,12 @@ export default function ServicesTab({ operationId }: ServicesTabProps) {
                         </div>
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <p className="text-sm font-medium text-gray-900">{service.name}</p>
+                            <p className="text-sm font-medium text-foreground">{service.name}</p>
                             <Badge variant="outline">Port {service.port}</Badge>
                             <Badge className="uppercase text-xs">{service.protocol}</Badge>
                           </div>
                           {service.versions.length > 0 && (
-                            <p className="text-xs text-gray-500 mt-1">
+                            <p className="text-xs text-muted-foreground mt-1">
                               Versions: {service.versions.join(', ')}
                             </p>
                           )}
@@ -150,8 +150,8 @@ export default function ServicesTab({ operationId }: ServicesTabProps) {
                       </div>
                       <div className="flex items-center gap-4">
                         <div className="text-right">
-                          <p className="text-sm font-medium text-gray-900">{service.hostCount}</p>
-                          <p className="text-xs text-gray-500">hosts</p>
+                          <p className="text-sm font-medium text-foreground">{service.hostCount}</p>
+                          <p className="text-xs text-muted-foreground">hosts</p>
                         </div>
                       </div>
                     </div>
@@ -159,24 +159,24 @@ export default function ServicesTab({ operationId }: ServicesTabProps) {
 
                   {/* Expanded Hosts */}
                   {isExpanded && service.hosts.length > 0 && (
-                    <div className="px-4 pb-4 bg-gray-50">
+                    <div className="px-4 pb-4 bg-secondary">
                       <div className="ml-11 border-l-2 border-purple-200 pl-4">
-                        <h4 className="text-xs font-semibold text-gray-700 uppercase mb-2">
+                        <h4 className="text-xs font-semibold text-foreground uppercase mb-2">
                           Affected Hosts ({service.hosts.length})
                         </h4>
                         <div className="space-y-2">
                           {service.hosts.map((host, idx) => (
                             <div
                               key={`${host.assetId}-${idx}`}
-                              className="flex items-center justify-between bg-white p-3 rounded border border-gray-200"
+                              className="flex items-center justify-between bg-card p-3 rounded border border-border"
                             >
                               <div className="flex items-center gap-3">
-                                <span className="text-sm font-medium text-gray-900">{host.assetValue}</span>
+                                <span className="text-sm font-medium text-foreground">{host.assetValue}</span>
                                 {host.version && (
-                                  <span className="text-xs text-gray-500">v{host.version}</span>
+                                  <span className="text-xs text-muted-foreground">v{host.version}</span>
                                 )}
                               </div>
-                              <Badge className={host.state === 'open' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                              <Badge className={host.state === 'open' ? 'bg-green-100 text-green-800' : 'bg-secondary text-foreground'}>
                                 {host.state}
                               </Badge>
                             </div>

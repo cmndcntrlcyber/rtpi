@@ -107,7 +107,7 @@ export default function Users() {
       case "operator":
         return <Wrench className="h-4 w-4 text-blue-500" />;
       case "viewer":
-        return <Eye className="h-4 w-4 text-gray-500" />;
+        return <Eye className="h-4 w-4 text-muted-foreground" />;
       default:
         return null;
     }
@@ -141,7 +141,7 @@ export default function Users() {
             <UsersIcon className="h-8 w-8" />
             User Management
           </h1>
-          <p className="text-gray-600 mt-1">Manage system users and permissions</p>
+          <p className="text-muted-foreground mt-1">Manage system users and permissions</p>
         </div>
 
         <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
@@ -170,7 +170,7 @@ export default function Users() {
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
                 <Input id="password" name="password" type="password" required minLength={12} />
-                <p className="text-xs text-gray-500">Minimum 12 characters</p>
+                <p className="text-xs text-muted-foreground">Minimum 12 characters</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="role">Role</Label>
@@ -193,7 +193,7 @@ export default function Users() {
                     </SelectItem>
                     <SelectItem value="viewer">
                       <div className="flex items-center gap-2">
-                        <Eye className="h-4 w-4 text-gray-500" />
+                        <Eye className="h-4 w-4 text-muted-foreground" />
                         Viewer
                       </div>
                     </SelectItem>
@@ -240,11 +240,11 @@ export default function Users() {
               </thead>
               <tbody>
                 {users.map((user) => (
-                  <tr key={user.id} className="border-b hover:bg-gray-50">
+                  <tr key={user.id} className="border-b hover:bg-secondary">
                     <td className="py-3 px-4">
                       <div>
                         <div className="font-medium">{user.username}</div>
-                        <div className="text-xs text-gray-500">{user.authMethod}</div>
+                        <div className="text-xs text-muted-foreground">{user.authMethod}</div>
                       </div>
                     </td>
                     <td className="py-3 px-4">{user.email}</td>
@@ -260,7 +260,7 @@ export default function Users() {
                         onCheckedChange={() => handleToggleActive(user.id, user.isActive)}
                       />
                     </td>
-                    <td className="py-3 px-4 text-sm text-gray-500">
+                    <td className="py-3 px-4 text-sm text-muted-foreground">
                       {user.lastLogin
                         ? new Date(user.lastLogin).toLocaleDateString()
                         : "Never"}
@@ -336,7 +336,7 @@ export default function Users() {
                     </SelectItem>
                     <SelectItem value="viewer">
                       <div className="flex items-center gap-2">
-                        <Eye className="h-4 w-4 text-gray-500" />
+                        <Eye className="h-4 w-4 text-muted-foreground" />
                         Viewer
                       </div>
                     </SelectItem>

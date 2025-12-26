@@ -41,9 +41,9 @@ export default function EmpireAgentsTable({
 }: EmpireAgentsTableProps) {
   if (agents.length === 0) {
     return (
-      <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-        <p className="text-gray-500">No active agents</p>
-        <p className="text-sm text-gray-400 mt-2">
+      <div className="text-center py-12 bg-card rounded-lg border border-border">
+        <p className="text-muted-foreground">No active agents</p>
+        <p className="text-sm text-muted-foreground mt-2">
           Deploy a stager to get agent callbacks
         </p>
       </div>
@@ -80,7 +80,7 @@ export default function EmpireAgentsTable({
   };
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200">
+    <div className="bg-card rounded-lg border border-border">
       <Table>
         <TableHeader>
           <TableRow>
@@ -102,7 +102,7 @@ export default function EmpireAgentsTable({
               <TableCell>
                 <div className="space-y-1">
                   <p className="font-medium">{agent.hostname}</p>
-                  <p className="text-xs text-gray-500 font-mono">
+                  <p className="text-xs text-muted-foreground font-mono">
                     {agent.internal_ip}
                   </p>
                 </div>
@@ -123,11 +123,11 @@ export default function EmpireAgentsTable({
               <TableCell>
                 <div className="space-y-1">
                   <p className="text-sm">{agent.language}</p>
-                  <p className="text-xs text-gray-500">{agent.architecture}</p>
+                  <p className="text-xs text-muted-foreground">{agent.architecture}</p>
                 </div>
               </TableCell>
               <TableCell>{getStatusBadge(agent)}</TableCell>
-              <TableCell className="text-sm text-gray-500">
+              <TableCell className="text-sm text-muted-foreground">
                 {new Date(agent.lastseen_time).toLocaleString()}
               </TableCell>
               <TableCell className="text-right">

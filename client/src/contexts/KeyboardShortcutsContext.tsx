@@ -6,6 +6,7 @@ interface KeyboardShortcutsContextType {
   showHelp: boolean;
   setShowHelp: (show: boolean) => void;
   globalShortcuts: KeyboardShortcut[];
+  openSearch?: () => void;
 }
 
 const KeyboardShortcutsContext = createContext<KeyboardShortcutsContextType | undefined>(
@@ -14,9 +15,10 @@ const KeyboardShortcutsContext = createContext<KeyboardShortcutsContextType | un
 
 interface KeyboardShortcutsProviderProps {
   children: React.ReactNode;
+  onSearchOpen?: () => void;
 }
 
-export function KeyboardShortcutsProvider({ children }: KeyboardShortcutsProviderProps) {
+export function KeyboardShortcutsProvider({ children, onSearchOpen }: KeyboardShortcutsProviderProps) {
   const [showHelp, setShowHelp] = useState(false);
   const [, navigate] = useLocation();
 
@@ -30,10 +32,11 @@ export function KeyboardShortcutsProvider({ children }: KeyboardShortcutsProvide
     },
     {
       key: "/",
-      description: "Focus search (coming soon)",
+      description: "Open search",
       action: () => {
-        // TODO: Implement global search
-        console.log("Global search - coming soon");
+        if (onSearchOpen) {
+          onSearchOpen();
+        }
       },
     },
     {

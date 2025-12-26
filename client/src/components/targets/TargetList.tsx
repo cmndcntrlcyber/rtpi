@@ -22,9 +22,23 @@ interface TargetListProps {
   onEdit?: (target: Target) => void;
   onDelete?: (target: Target) => void;
   onScan?: (target: Target) => void;
+  // Bulk selection props
+  selectable?: boolean;
+  selectedIds?: Set<string>;
+  onSelectionChange?: (id: string, selected: boolean) => void;
 }
 
-export default function TargetList({ targets, loading, onSelect, onEdit, onDelete, onScan }: TargetListProps) {
+export default function TargetList({
+  targets,
+  loading,
+  onSelect,
+  onEdit,
+  onDelete,
+  onScan,
+  selectable = false,
+  selectedIds = new Set(),
+  onSelectionChange
+}: TargetListProps) {
   if (loading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -73,6 +87,9 @@ export default function TargetList({ targets, loading, onSelect, onEdit, onDelet
           onEdit={onEdit}
           onDelete={onDelete}
           onScan={onScan}
+          selectable={selectable}
+          selected={selectedIds.has(target.id)}
+          onSelectionChange={onSelectionChange}
         />
       ))}
     </div>

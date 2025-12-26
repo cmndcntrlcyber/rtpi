@@ -1,6 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Globe, Server, Radio, Edit, Trash2, Scan } from "lucide-react";
 
 interface Target {
@@ -24,9 +25,22 @@ interface TargetCardProps {
   onEdit?: (target: Target) => void;
   onDelete?: (target: Target) => void;
   onScan?: (target: Target) => void;
+  // Bulk selection props
+  selectable?: boolean;
+  selected?: boolean;
+  onSelectionChange?: (id: string, selected: boolean) => void;
 }
 
-export default function TargetCard({ target, onSelect, onEdit, onDelete, onScan }: TargetCardProps) {
+export default function TargetCard({
+  target,
+  onSelect,
+  onEdit,
+  onDelete,
+  onScan,
+  selectable = false,
+  selected = false,
+  onSelectionChange
+}: TargetCardProps) {
   const handleClick = () => {
     if (onSelect) {
       onSelect(target);
@@ -51,15 +65,29 @@ export default function TargetCard({ target, onSelect, onEdit, onDelete, onScan 
     return "bg-blue-500/10 text-blue-600";
   };
 
+  const handleSelectionChange = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onSelectionChange) {
+      onSelectionChange(target.id, !selected);
+    }
+  };
+
   return (
-    <Card 
-      className="bg-card border-border hover:shadow-md cursor-pointer transition-all"
+    <Card
+      className={`bg-card border-border hover:shadow-md cursor-pointer transition-all ${
+        selected ? "ring-2 ring-primary ring-offset-2" : ""
+      }`}
       onClick={handleClick}
     >
       <CardContent className="p-6">
         <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center flex-1">
-            <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white mr-3">
+          <div className="flex items-center flex-1 gap-3">
+            {selectable && (
+              <div onClick={handleSelectionChange}>
+                <Checkbox checked={selected} />
+              </div>
+            )}
+            <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white">
               {getTypeIcon()}
             </div>
             <div className="flex-1 min-w-0">

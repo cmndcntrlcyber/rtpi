@@ -22,11 +22,10 @@ if (isGoogleOAuthConfigured) {
         clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
         callbackURL: process.env.GOOGLE_CALLBACK_URL || "http://localhost:3000/api/v1/auth/google/callback",
       },
-      async (accessToken, refreshToken, profile, done) => {
+      async (_accessToken, _refreshToken, profile, done) => {
       try {
         const googleId = profile.id;
         const email = profile.emails?.[0]?.value;
-        const displayName = profile.displayName;
 
         if (!email) {
           return done(new Error("No email found in Google profile"));

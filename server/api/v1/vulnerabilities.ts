@@ -11,7 +11,7 @@ const router = Router();
 router.use(ensureAuthenticated);
 
 // GET /api/v1/vulnerabilities - List all vulnerabilities
-router.get("/", async (req, res) => {
+router.get("/", async (_req, res) => {
   try {
     const allVulns = await db.select().from(vulnerabilities);
     res.json({ vulnerabilities: allVulns });

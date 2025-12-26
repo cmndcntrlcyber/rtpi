@@ -3,7 +3,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Database, RefreshCw, Target, CheckCircle2, Circle, AlertCircle } from "lucide-react";
+import { Database, RefreshCw, Target, CheckCircle2, Circle, AlertCircle, LayoutGrid, List } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface Operation {
   id: string;
@@ -39,12 +45,29 @@ interface CoverageStats {
   coveragePercentage: number;
 }
 
+interface Tactic {
+  id: string;
+  attackId: string;
+  name: string;
+  shortName: string;
+}
+
+interface TechniqueForMatrix {
+  id: string;
+  attackId: string;
+  name: string;
+  tactics: string[];
+}
+
 export default function CoverageMatrix() {
   const [operations, setOperations] = useState<Operation[]>([]);
   const [selectedOperationId, setSelectedOperationId] = useState<string | null>(null);
   const [coverage, setCoverage] = useState<CoverageMapping[]>([]);
   const [stats, setStats] = useState<CoverageStats | null>(null);
   const [loading, setLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<"list" | "heatmap">("list");
+  const [tactics, setTactics] = useState<Tactic[]>([]);
+  const [allTechniques, setAllTechniques] = useState<TechniqueForMatrix[]>([]);
 
   const fetchOperations = async () => {
     try {
@@ -102,8 +125,45 @@ export default function CoverageMatrix() {
     }
   };
 
+  const fetchTactics = async () => {
+    try {
+      const response = await fetch("/api/v1/attack/tactics", {
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setTactics(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch tactics:", error);
+    }
+  };
+
+  const fetchAllTechniques = async () => {
+    try {
+      const response = await fetch("/api/v1/attack/techniques?subtechniques=exclude", {
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setAllTechniques(data.map((t: any) => ({
+          id: t.id,
+          attackId: t.attackId,
+          name: t.name,
+          tactics: t.killChainPhases || [],
+        })));
+      }
+    } catch (error) {
+      console.error("Failed to fetch techniques:", error);
+    }
+  };
+
   useEffect(() => {
     fetchOperations();
+    fetchTactics();
+    fetchAllTechniques();
   }, []);
 
   useEffect(() => {
@@ -138,6 +198,176 @@ export default function CoverageMatrix() {
     }
   };
 
+  const getCoverageColor = (mapping: CoverageMapping | undefined) => {
+    if (!mapping) return "bg-gray-100 border-gray-200";
+
+    switch (mapping.status) {
+      case "completed":
+        return "bg-green-100 border-green-300 hover:bg-green-200";
+      case "in_progress":
+        return "bg-yellow-100 border-yellow-300 hover:bg-yellow-200";
+      case "planned":
+        return "bg-blue-100 border-blue-300 hover:bg-blue-200";
+      default:
+        return "bg-gray-100 border-gray-200 hover:bg-gray-200";
+    }
+  };
+
+  const renderHeatmapView = () => {
+    if (tactics.length === 0 || allTechniques.length === 0) {
+      return (
+        <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
+          <LayoutGrid className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-500 font-medium">Loading matrix data...</p>
+        </div>
+      );
+    }
+
+    // Group techniques by tactic
+    const techniquesByTactic: Record<string, TechniqueForMatrix[]> = {};
+    tactics.forEach((tactic) => {
+      techniquesByTactic[tactic.attackId] = allTechniques.filter((t) =>
+        t.tactics.includes(tactic.shortName.toLowerCase().replace(/\s+/g, "-"))
+      );
+    });
+
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <div className="min-w-max">
+            {/* Header row with tactics */}
+            <div className="flex border-b border-gray-200 bg-gray-50">
+              <div className="w-48 p-3 font-semibold text-sm border-r border-gray-200">
+                Technique
+              </div>
+              {tactics.map((tactic) => (
+                <div
+                  key={tactic.id}
+                  className="w-32 p-3 text-center border-r border-gray-200 last:border-r-0"
+                >
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <div className="font-semibold text-xs truncate">
+                          {tactic.shortName}
+                        </div>
+                        <div className="text-xs text-gray-500 font-mono">
+                          {tactic.attackId}
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{tactic.name}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+              ))}
+            </div>
+
+            {/* Technique rows */}
+            <div className="divide-y divide-gray-200">
+              {allTechniques.slice(0, 50).map((technique) => {
+                const techniqueCoverage = coverage.filter(
+                  (c) => c.technique.attackId === technique.attackId
+                );
+
+                return (
+                  <div key={technique.id} className="flex hover:bg-gray-50">
+                    <div className="w-48 p-2 border-r border-gray-200 flex items-center">
+                      <div className="truncate">
+                        <div className="font-mono text-xs text-gray-600">
+                          {technique.attackId}
+                        </div>
+                        <div className="text-sm font-medium truncate" title={technique.name}>
+                          {technique.name}
+                        </div>
+                      </div>
+                    </div>
+
+                    {tactics.map((tactic) => {
+                      const tacticShortName = tactic.shortName.toLowerCase().replace(/\s+/g, "-");
+                      const hasTactic = technique.tactics.includes(tacticShortName);
+                      const mapping = techniqueCoverage.find(
+                        (c) => c.tactic?.attackId === tactic.attackId
+                      );
+
+                      return (
+                        <div
+                          key={tactic.id}
+                          className={`w-32 p-2 border-r border-gray-200 last:border-r-0 ${
+                            hasTactic ? "" : "bg-gray-50"
+                          }`}
+                        >
+                          {hasTactic && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div
+                                    className={`h-12 rounded border-2 flex items-center justify-center cursor-pointer transition-colors ${getCoverageColor(
+                                      mapping
+                                    )}`}
+                                  >
+                                    {mapping ? (
+                                      <div className="text-center">
+                                        <div className="text-lg font-bold">
+                                          {mapping.coveragePercentage}%
+                                        </div>
+                                        <div className="text-xs">
+                                          {mapping.status === "completed" && "✓"}
+                                          {mapping.status === "in_progress" && "⋯"}
+                                          {mapping.status === "planned" && "○"}
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="text-2xl text-gray-400">•</div>
+                                    )}
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <div className="text-sm">
+                                    <p className="font-semibold">{technique.name}</p>
+                                    <p className="text-xs text-gray-400">
+                                      {technique.attackId} → {tactic.attackId}
+                                    </p>
+                                    {mapping ? (
+                                      <>
+                                        <p className="mt-1">
+                                          Status: <span className="font-semibold">{mapping.status}</span>
+                                        </p>
+                                        <p>
+                                          Coverage: <span className="font-semibold">{mapping.coveragePercentage}%</span>
+                                        </p>
+                                        {mapping.notes && (
+                                          <p className="mt-1 text-xs italic">{mapping.notes}</p>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <p className="mt-1 text-gray-400">Not mapped</p>
+                                    )}
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {allTechniques.length > 50 && (
+          <div className="p-4 bg-gray-50 border-t border-gray-200 text-center text-sm text-gray-500">
+            Showing first 50 techniques. Total: {allTechniques.length}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   if (operations.length === 0) {
     return (
       <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
@@ -164,6 +394,25 @@ export default function CoverageMatrix() {
         </div>
 
         <div className="flex items-center gap-4">
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant={viewMode === "list" ? "default" : "outline"}
+              onClick={() => setViewMode("list")}
+            >
+              <List className="h-4 w-4 mr-2" />
+              List
+            </Button>
+            <Button
+              size="sm"
+              variant={viewMode === "heatmap" ? "default" : "outline"}
+              onClick={() => setViewMode("heatmap")}
+            >
+              <LayoutGrid className="h-4 w-4 mr-2" />
+              Heatmap
+            </Button>
+          </div>
+
           <Select value={selectedOperationId || ""} onValueChange={setSelectedOperationId}>
             <SelectTrigger className="w-[250px]">
               <SelectValue placeholder="Select operation" />
@@ -244,12 +493,14 @@ export default function CoverageMatrix() {
         </div>
       )}
 
-      {/* Coverage List */}
+      {/* Coverage View */}
       {loading ? (
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
           <p className="text-muted-foreground">Loading coverage data...</p>
         </div>
+      ) : viewMode === "heatmap" ? (
+        renderHeatmapView()
       ) : coverage.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
           <Target className="h-12 w-12 text-gray-400 mx-auto mb-4" />

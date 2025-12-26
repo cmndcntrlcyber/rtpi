@@ -233,7 +233,7 @@ export class BBOTExecutor {
   private async storeResults(
     results: BBOTResult,
     operationId: string,
-    scanId: string
+    _scanId: string
   ): Promise<{ assetsCount: number; servicesCount: number }> {
     let assetsCount = 0;
     let servicesCount = 0;

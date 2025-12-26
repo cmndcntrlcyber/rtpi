@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Plus } from "lucide-react";
@@ -65,6 +66,42 @@ export default function Operations() {
     }
   };
 
+  const enrichOperationsWithWorkflows = async () => {
+    if (!operations || operations.length === 0) {
+      setOperationsWithWorkflows([]);
+      return;
+    }
+
+    try {
+      // Fetch all workflows
+      const response = await api.get<{ workflows: any[] }>("/agent-workflows");
+      const workflows = response.workflows || [];
+
+      // For each operation, find the most recent completed workflow
+      const enriched = operations.map((op) => {
+        const opWorkflows = workflows
+          .filter((w) => w.operationId === op.id && w.status === "completed")
+          .sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
+
+        const latestWorkflow = opWorkflows[0];
+
+        return {
+          ...op,
+          latestWorkflow: latestWorkflow?.name || undefined,
+          latestWorkflowId: latestWorkflow?.id || undefined,
+          latestWorkflowStatus: latestWorkflow?.status || undefined,
+          latestWorkflowDate: latestWorkflow?.completedAt || undefined,
+        };
+      });
+
+      setOperationsWithWorkflows(enriched);
+    } catch (error) {
+      console.error("Failed to fetch workflows for operations:", error);
+      // Fallback to operations without workflow data
+      setOperationsWithWorkflows(operations);
+    }
+  };
+
   // FIX BUG #2: Handle inline status changes
   const handleStatusChange = async (operationId: string, newStatus: string) => {
     try {
@@ -104,43 +141,7 @@ export default function Operations() {
   // Fetch latest workflow for each operation
   useEffect(() => {
     enrichOperationsWithWorkflows();
-  }, [operations]);
-
-  const enrichOperationsWithWorkflows = async () => {
-    if (!operations || operations.length === 0) {
-      setOperationsWithWorkflows([]);
-      return;
-    }
-
-    try {
-      // Fetch all workflows
-      const response = await api.get<{ workflows: any[] }>("/agent-workflows");
-      const workflows = response.workflows || [];
-
-      // For each operation, find the most recent completed workflow
-      const enriched = operations.map((op) => {
-        const opWorkflows = workflows
-          .filter((w) => w.operationId === op.id && w.status === "completed")
-          .sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime());
-
-        const latestWorkflow = opWorkflows[0];
-
-        return {
-          ...op,
-          latestWorkflow: latestWorkflow?.name || undefined,
-          latestWorkflowId: latestWorkflow?.id || undefined,
-          latestWorkflowStatus: latestWorkflow?.status || undefined,
-          latestWorkflowDate: latestWorkflow?.completedAt || undefined,
-        };
-      });
-
-      setOperationsWithWorkflows(enriched);
-    } catch (error) {
-      console.error("Failed to fetch workflows for operations:", error);
-      // Fallback to operations without workflow data
-      setOperationsWithWorkflows(operations);
-    }
-  };
+  }, [operations, enrichOperationsWithWorkflows]);
 
   // Calculate stats from operations
   const stats = {

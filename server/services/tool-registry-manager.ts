@@ -11,24 +11,22 @@ import {
   toolOutputParsers,
   toolTestResults,
 } from '../../shared/schema';
-import { eq, and, like, inArray } from 'drizzle-orm';
+import { eq, and, like } from 'drizzle-orm';
 import type {
   ToolConfiguration,
   ToolRegistryEntry,
-  ToolParameter,
 } from '../../shared/types/tool-config';
 import {
   validateToolConfiguration,
-  validateCreateToolRegistry,
   validateUpdateToolRegistry,
 } from '../validation/tool-config-schema';
 
 /**
  * Register a new tool in the registry
  */
-export async function registerTool(config: ToolConfiguration, userId?: string): Promise<string> {
+export async function registerTool(config: ToolConfiguration, _userId?: string): Promise<string> {
   // Validate configuration
-  const { error, value } = validateToolConfiguration(config);
+  const { error } = validateToolConfiguration(config);
   if (error) {
     throw new Error(`Invalid tool configuration: ${error.message}`);
   }

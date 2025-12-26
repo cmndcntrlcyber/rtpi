@@ -96,7 +96,7 @@ export async function importSTIXBundle(bundle: STIXBundle): Promise<ImportStats>
           stats.tactics++;
           break;
 
-        case "attack-pattern":
+        case "attack-pattern": {
           const isSubtechnique = obj.x_mitre_is_subtechnique === true;
           await importTechnique(obj);
           if (isSubtechnique) {
@@ -105,6 +105,7 @@ export async function importSTIXBundle(bundle: STIXBundle): Promise<ImportStats>
             stats.techniques++;
           }
           break;
+        }
 
         case "intrusion-set":
           await importGroup(obj);

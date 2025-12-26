@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,12 +19,6 @@ export default function LinkedTargets({
 }: LinkedTargetsProps) {
   const [targets, setTargets] = useState<any[]>([]);
 
-  useEffect(() => {
-    if (operationId) {
-      loadTargets();
-    }
-  }, [operationId]);
-
   const loadTargets = async () => {
     if (!operationId) return;
 
@@ -38,6 +33,12 @@ export default function LinkedTargets({
       console.error("Failed to load targets:", error);
     }
   };
+
+  useEffect(() => {
+    if (operationId) {
+      loadTargets();
+    }
+  }, [operationId, loadTargets]);
 
   const total = targets.length;
 

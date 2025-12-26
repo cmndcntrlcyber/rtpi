@@ -4,14 +4,9 @@
  * https://github.com/mitre-attack/attack-navigator
  */
 
-interface Technique {
-  attackId: string;
-  name: string;
-  description?: string;
-  killChainPhases?: string[] | null;
-  platforms?: string[] | null;
-}
+import type { NavigatorTechnique as SimpleTechnique } from "@shared/types/attack";
 
+// ATT&CK Navigator technique format
 interface NavigatorTechnique {
   techniqueID: string;
   tactic?: string;
@@ -64,7 +59,7 @@ interface NavigatorLayer {
  * Generate an ATT&CK Navigator layer file from techniques
  */
 export function generateNavigatorLayer(
-  techniques: Technique[],
+  techniques: SimpleTechnique[],
   options: {
     layerName?: string;
     description?: string;
@@ -159,7 +154,7 @@ export function downloadNavigatorLayer(
  * Export techniques to ATT&CK Navigator format and download
  */
 export function exportToNavigator(
-  techniques: Technique[],
+  techniques: SimpleTechnique[],
   options: {
     layerName?: string;
     description?: string;

@@ -6,7 +6,6 @@ import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware
 import { dockerExecutor } from "../../services/docker-executor";
 import { TargetSanitizer, type TargetType } from "../../../shared/utils/target-sanitizer";
 import { ScanTimeoutCalculator } from "../../../shared/utils/scan-timeout-calculator";
-import { scanWebSocketManager } from "../../services/scan-websocket-manager";
 
 const router = Router();
 
@@ -14,7 +13,7 @@ const router = Router();
 router.use(ensureAuthenticated);
 
 // GET /api/v1/targets - List all targets
-router.get("/", async (req, res) => {
+router.get("/", async (_req, res) => {
   try {
     const allTargets = await db.select().from(targets);
     res.json({ targets: allTargets });
@@ -73,7 +72,7 @@ router.put("/:id", ensureRole("admin", "operator"), async (req, res) => {
 
   try {
     // Exclude timestamp fields from request body to avoid Date conversion errors
-    const { createdAt, updatedAt, ...updateData } = req.body;
+    const { createdAt: _createdAt, updatedAt: _updatedAt, ...updateData } = req.body;
 
     const result = await db
       .update(targets)

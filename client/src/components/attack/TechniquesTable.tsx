@@ -10,41 +10,32 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, ExternalLink, RefreshCw, Info, Download } from "lucide-react";
+import { Search, ExternalLink, RefreshCw, Info, Download, ChevronRight, ChevronDown } from "lucide-react";
 import TechniqueDetailDialog from "./TechniqueDetailDialog";
 import { exportToNavigator } from "@/utils/attack-navigator-export";
-
-interface Technique {
-  id: string;
-  attackId: string;
-  name: string;
-  description: string;
-  isSubtechnique: boolean;
-  platforms: string[] | null;
-  deprecated: boolean;
-  revoked: boolean;
-  killChainPhases: string[] | null;
-  dataSources: string[] | null;
-  url?: string | null;
-  version?: string | null;
-  created?: string | null;
-  modified?: string | null;
-}
+import type { Technique, TechniqueWithSubtechniques } from "@shared/types/attack";
 
 export default function TechniquesTable() {
-  const [techniques, setTechniques] = useState<Technique[]>([]);
-  const [filteredTechniques, setFilteredTechniques] = useState<Technique[]>([]);
+  const [techniques, setTechniques] = useState<TechniqueWithSubtechniques[]>([]);
+  const [filteredTechniques, setFilteredTechniques] = useState<TechniqueWithSubtechniques[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filter, setFilter] = useState<"all" | "techniques" | "subtechniques">("techniques");
   const [selectedTechnique, setSelectedTechnique] = useState<Technique | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [expandedTechniques, setExpandedTechniques] = useState<Set<string>>(new Set());
 
   const fetchTechniques = async () => {
     setLoading(true);
     try {
       const subtechniquesParam = filter === "techniques" ? "exclude" : filter === "subtechniques" ? "only" : "";
-      const url = `/api/v1/attack/techniques${subtechniquesParam ? `?subtechniques=${subtechniquesParam}` : ""}`;
+      const hierarchicalParam = filter === "techniques" ? "true" : "false";
+
+      const params = new URLSearchParams();
+      if (subtechniquesParam) params.append("subtechniques", subtechniquesParam);
+      if (filter === "techniques") params.append("hierarchical", hierarchicalParam);
+
+      const url = `/api/v1/attack/techniques${params.toString() ? `?${params.toString()}` : ""}`;
 
       const response = await fetch(url, {
         credentials: "include",
@@ -68,18 +59,40 @@ export default function TechniquesTable() {
     fetchTechniques();
   }, [filter]);
 
+  const toggleExpanded = (techniqueId: string) => {
+    setExpandedTechniques((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(techniqueId)) {
+        newSet.delete(techniqueId);
+      } else {
+        newSet.add(techniqueId);
+      }
+      return newSet;
+    });
+  };
+
   useEffect(() => {
     if (!searchTerm) {
       setFilteredTechniques(techniques);
       return;
     }
 
-    const filtered = techniques.filter(
-      (t) =>
+    const filtered = techniques.filter((t) => {
+      const matchesParent =
         t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         t.attackId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (t.description && t.description.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
+        (t.description && t.description.toLowerCase().includes(searchTerm.toLowerCase()));
+
+      // Also check sub-techniques
+      const matchesSubtechnique = t.subtechniques?.some(
+        (sub) =>
+          sub.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          sub.attackId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (sub.description && sub.description.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
+
+      return matchesParent || matchesSubtechnique;
+    });
     setFilteredTechniques(filtered);
   }, [searchTerm, techniques]);
 
@@ -96,10 +109,148 @@ export default function TechniquesTable() {
         ? "Sub-techniques Only"
         : "All Techniques";
 
-    exportToNavigator(filteredTechniques, {
-      layerName: `RTPI ${filterLabel}${searchTerm ? ` - Search: ${searchTerm}` : ""}`,
-      description: `Exported from RTPI on ${new Date().toLocaleDateString()}. Contains ${filteredTechniques.length} techniques.`,
+    // Flatten techniques for export (include all sub-techniques)
+    const flatTechniques: Technique[] = [];
+    filteredTechniques.forEach((t) => {
+      flatTechniques.push(t);
+      if (t.subtechniques) {
+        flatTechniques.push(...t.subtechniques);
+      }
     });
+
+    exportToNavigator(flatTechniques, {
+      layerName: `RTPI ${filterLabel}${searchTerm ? ` - Search: ${searchTerm}` : ""}`,
+      description: `Exported from RTPI on ${new Date().toLocaleDateString()}. Contains ${flatTechniques.length} techniques.`,
+    });
+  };
+
+  const renderTechniqueRow = (technique: Technique | TechniqueWithSubtechniques, isSubtechnique = false): JSX.Element => {
+    const hasSubtechniques = !isSubtechnique && (technique as TechniqueWithSubtechniques).subtechniques && (technique as TechniqueWithSubtechniques).subtechniques!.length > 0;
+    const isExpanded = expandedTechniques.has(technique.id);
+
+    return (
+      <>
+        <TableRow key={technique.id} className={isSubtechnique ? "bg-gray-50" : ""}>
+          <TableCell className="font-mono font-medium">
+            <div className="flex items-center gap-2">
+              {hasSubtechniques && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0"
+                  onClick={() => toggleExpanded(technique.id)}
+                >
+                  {isExpanded ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                </Button>
+              )}
+              {!hasSubtechniques && !isSubtechnique && <div className="w-6" />}
+              {isSubtechnique && <div className="w-10" />}
+              <span>{technique.attackId}</span>
+              {isSubtechnique && (
+                <Badge variant="outline" className="ml-2 text-xs">
+                  Sub
+                </Badge>
+              )}
+            </div>
+          </TableCell>
+          <TableCell>
+            <div>
+              <p className="font-medium">{technique.name}</p>
+              {technique.description && (
+                <p className="text-sm text-gray-500 line-clamp-2 mt-1">
+                  {technique.description}
+                </p>
+              )}
+            </div>
+          </TableCell>
+          <TableCell>
+            <div className="flex flex-wrap gap-1">
+              {technique.platforms && technique.platforms.length > 0 ? (
+                technique.platforms.slice(0, 3).map((platform, idx) => (
+                  <Badge key={idx} variant="secondary" className="text-xs">
+                    {platform}
+                  </Badge>
+                ))
+              ) : (
+                <span className="text-sm text-gray-400">N/A</span>
+              )}
+              {technique.platforms && technique.platforms.length > 3 && (
+                <Badge variant="secondary" className="text-xs">
+                  +{technique.platforms.length - 3}
+                </Badge>
+              )}
+            </div>
+          </TableCell>
+          <TableCell>
+            <div className="flex flex-wrap gap-1">
+              {technique.killChainPhases && technique.killChainPhases.length > 0 ? (
+                technique.killChainPhases.slice(0, 2).map((phase, idx) => (
+                  <Badge key={idx} variant="outline" className="text-xs">
+                    {phase.replace(/-/g, " ")}
+                  </Badge>
+                ))
+              ) : (
+                <span className="text-sm text-gray-400">N/A</span>
+              )}
+              {technique.killChainPhases && technique.killChainPhases.length > 2 && (
+                <Badge variant="outline" className="text-xs">
+                  +{technique.killChainPhases.length - 2}
+                </Badge>
+              )}
+            </div>
+          </TableCell>
+          <TableCell>
+            {technique.deprecated && (
+              <Badge variant="destructive" className="text-xs">
+                Deprecated
+              </Badge>
+            )}
+            {technique.revoked && (
+              <Badge variant="destructive" className="text-xs">
+                Revoked
+              </Badge>
+            )}
+            {!technique.deprecated && !technique.revoked && (
+              <Badge variant="default" className="text-xs bg-green-600">
+                Active
+              </Badge>
+            )}
+          </TableCell>
+          <TableCell className="text-right">
+            <div className="flex gap-1 justify-end">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => handleViewDetails(technique)}
+                title="View details"
+              >
+                <Info className="h-4 w-4" />
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() =>
+                  window.open(
+                    `https://attack.mitre.org/techniques/${technique.attackId}/`,
+                    "_blank"
+                  )
+                }
+                title="View on MITRE ATT&CK"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </Button>
+            </div>
+          </TableCell>
+        </TableRow>
+        {hasSubtechniques && isExpanded && (technique as TechniqueWithSubtechniques).subtechniques!.map((sub) =>
+          renderTechniqueRow(sub, true)
+        )}
+      </>
+    );
   };
 
   if (loading) {
@@ -178,7 +329,19 @@ export default function TechniquesTable() {
 
       {/* Results count */}
       <div className="text-sm text-muted-foreground">
-        Showing {filteredTechniques.length} of {techniques.length} techniques
+        {filter === "techniques" ? (
+          <>
+            Showing {filteredTechniques.length} parent techniques
+            {filteredTechniques.reduce((acc, t) => acc + (t.subtechniques?.length || 0), 0) > 0 && (
+              <span className="text-gray-400">
+                {" "}
+                with {filteredTechniques.reduce((acc, t) => acc + (t.subtechniques?.length || 0), 0)} sub-techniques
+              </span>
+            )}
+          </>
+        ) : (
+          <>Showing {filteredTechniques.length} of {techniques.length} {filter === "subtechniques" ? "sub-techniques" : "techniques"}</>
+        )}
       </div>
 
       {/* Table */}
@@ -196,106 +359,7 @@ export default function TechniquesTable() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredTechniques.map((technique) => (
-                <TableRow key={technique.id}>
-                  <TableCell className="font-mono font-medium">
-                    {technique.attackId}
-                    {technique.isSubtechnique && (
-                      <Badge variant="outline" className="ml-2 text-xs">
-                        Sub
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <p className="font-medium">{technique.name}</p>
-                      {technique.description && (
-                        <p className="text-sm text-gray-500 line-clamp-2 mt-1">
-                          {technique.description}
-                        </p>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {technique.platforms && technique.platforms.length > 0 ? (
-                        technique.platforms.slice(0, 3).map((platform, idx) => (
-                          <Badge key={idx} variant="secondary" className="text-xs">
-                            {platform}
-                          </Badge>
-                        ))
-                      ) : (
-                        <span className="text-sm text-gray-400">N/A</span>
-                      )}
-                      {technique.platforms && technique.platforms.length > 3 && (
-                        <Badge variant="secondary" className="text-xs">
-                          +{technique.platforms.length - 3}
-                        </Badge>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {technique.killChainPhases && technique.killChainPhases.length > 0 ? (
-                        technique.killChainPhases.slice(0, 2).map((phase, idx) => (
-                          <Badge key={idx} variant="outline" className="text-xs">
-                            {phase.replace(/-/g, " ")}
-                          </Badge>
-                        ))
-                      ) : (
-                        <span className="text-sm text-gray-400">N/A</span>
-                      )}
-                      {technique.killChainPhases && technique.killChainPhases.length > 2 && (
-                        <Badge variant="outline" className="text-xs">
-                          +{technique.killChainPhases.length - 2}
-                        </Badge>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {technique.deprecated && (
-                      <Badge variant="destructive" className="text-xs">
-                        Deprecated
-                      </Badge>
-                    )}
-                    {technique.revoked && (
-                      <Badge variant="destructive" className="text-xs">
-                        Revoked
-                      </Badge>
-                    )}
-                    {!technique.deprecated && !technique.revoked && (
-                      <Badge variant="default" className="text-xs bg-green-600">
-                        Active
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex gap-1 justify-end">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleViewDetails(technique)}
-                        title="View details"
-                      >
-                        <Info className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() =>
-                          window.open(
-                            `https://attack.mitre.org/techniques/${technique.attackId}/`,
-                            "_blank"
-                          )
-                        }
-                        title="View on MITRE ATT&CK"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {filteredTechniques.map((technique) => renderTechniqueRow(technique))}
             </TableBody>
           </Table>
         </div>

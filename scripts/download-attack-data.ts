@@ -4,7 +4,7 @@
  * Downloads the latest ATT&CK Enterprise bundle from MITRE's GitHub
  */
 
-import { writeFileSync, mkdirSync, existsSync } from "fs";
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import https from "https";
@@ -95,7 +95,7 @@ async function main() {
 
     // Validate JSON
     console.log("✅ Validating JSON...");
-    const content = require(OUTPUT_FILE);
+    const content = JSON.parse(readFileSync(OUTPUT_FILE, 'utf-8'));
 
     if (content.type !== "bundle") {
       throw new Error("Invalid STIX bundle: missing 'type: bundle'");

@@ -101,7 +101,7 @@ export interface ToolDependency {
  */
 export interface OutputParserConfig {
   parserName: string;
-  parserType: 'json' | 'xml' | 'regex' | 'custom';
+  parserType: 'json' | 'xml' | 'regex' | 'custom' | 'line-by-line';
   outputFormat: OutputFormat;
   parserCode?: string; // JavaScript/TypeScript parser function as string
   regexPatterns?: {
@@ -239,21 +239,32 @@ export interface GitHubRepoAnalysis {
 
 /**
  * Tool registry entry
+ * Matches the database schema for tool_registry table
  */
 export interface ToolRegistryEntry {
   id: string;
   toolId: string;
   name: string;
   category: ToolCategory;
-  version: string;
+  version: string | null;
+  description: string | null;
   installMethod: InstallMethod;
-  githubUrl?: string;
-  config: ToolConfiguration;
+  installCommand: string | null;
+  dockerImage: string | null;
+  githubUrl: string | null;
+  binaryPath: string; // Top-level property from database schema
+  config: ToolConfiguration | any; // JSONB config field
   installStatus: 'pending' | 'installing' | 'installed' | 'failed' | 'updating';
-  installLog?: string;
-  installedAt?: string;
-  lastUpdated: string;
-  createdAt: string;
+  installLog: string | null;
+  validationStatus: string | null;
+  lastValidated: Date | null;
+  tags: any;
+  notes: string | null;
+  homepage: string | null;
+  documentation: string | null;
+  installedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 /**

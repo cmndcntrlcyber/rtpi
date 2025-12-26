@@ -65,7 +65,7 @@ export class OutputParserManager {
           break;
 
         case 'regex':
-          result.parsed = await this.parseRegex(output, parserConfig.regexPatterns);
+          result.parsed = await this.parseRegex(output, parserConfig.regexPatterns || {});
           result.success = true;
           break;
 
@@ -302,7 +302,7 @@ export class OutputParserManager {
       parserName: parser.parserName,
       parserType: parser.parserType as ParserType,
       outputFormat: parser.outputFormat,
-      parserCode: parser.parserCode,
+      parserCode: parser.parserCode || undefined,
       regexPatterns: parser.regexPatterns as Record<string, string>,
       jsonPaths: parser.jsonPaths as Record<string, string>,
       xmlPaths: parser.xmlPaths as Record<string, string>,

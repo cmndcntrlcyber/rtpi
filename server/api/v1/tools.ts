@@ -13,37 +13,26 @@ import fs from "fs";
 import {
   registerTool,
   getToolById as getNewToolById,
-  getToolByToolId,
   listTools as listNewTools,
-  updateTool as updateNewTool,
-  deleteTool as deleteNewTool,
-  getToolParameters,
-  getToolExecutionHistory,
   getToolStatistics,
   searchTools,
   getInstalledTools,
   getValidatedTools,
-  exportToolConfiguration,
 } from "../../services/tool-registry-manager";
 import {
   executeTool as executeNewTool,
   getExecutionResult,
-  cancelExecution,
-  getRunningExecutionsCount,
 } from "../../services/tool-executor";
 import {
   runAllTests,
   quickHealthCheck,
-  batchHealthCheck,
   validateToolConfiguration as validateConfig,
   getTestCoverage,
 } from "../../services/tool-tester";
 import {
   analyzeGitHubRepository,
   installToolFromGitHub,
-  getInstallationStatus,
 } from "../../services/github-tool-installer";
-import { outputParserManager } from "../../services/output-parser-manager";
 import type { ToolConfiguration } from "../../../shared/types/tool-config";
 
 const router = Router();
@@ -53,14 +42,14 @@ router.use(ensureAuthenticated);
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
+  destination: (_req, _file, cb) => {
     const uploadDir = path.join(process.cwd(), "uploads", "tools");
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
     cb(null, uploadDir);
   },
-  filename: (req, file, cb) => {
+  filename: (_req, file, cb) => {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
     cb(null, file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname));
   },
@@ -71,7 +60,7 @@ const upload = multer({
   limits: {
     fileSize: 100 * 1024 * 1024, // 100MB limit for JAR files
   },
-  fileFilter: (req, file, cb) => {
+  fileFilter: (_req, file, cb) => {
     // Allow JAR files for Burp Suite and other file types
     const allowedExts = [".jar", ".zip", ".tar", ".gz", ".exe", ".sh"];
     const ext = path.extname(file.originalname).toLowerCase();
@@ -85,7 +74,7 @@ const upload = multer({
 });
 
 // GET /api/v1/tools - List all security tools
-router.get("/", async (req, res) => {
+router.get("/", async (_req, res) => {
   try {
     const tools = await db.select().from(securityTools);
     res.json({ tools });
@@ -357,7 +346,7 @@ router.post("/:id/execute-docker", ensureRole("admin", "operator"), async (req, 
 });
 
 // GET /api/v1/tools/categories - Get tools by category
-router.get("/categories", async (req, res) => {
+router.get("/categories", async (_req, res) => {
   try {
     const tools = await db.select().from(securityTools);
     
@@ -686,15 +675,14 @@ router.post("/install-from-github", ensureRole("admin"), async (req, res) => {
       return res.status(400).json({ error: 'GitHub URL is required' });
     }
 
-    const result = await installToolFromGitHub(githubUrl, toolConfig, user.id);
+    const installationId = await installToolFromGitHub(githubUrl, toolConfig?.toolId);
 
     await logAudit(user.id, "install_github_tool", "/tools", null, true, req);
 
     res.json({
       message: 'Tool installation started',
-      installationId: result.installationId,
-      toolId: result.toolId,
-      status: result.status,
+      installationId,
+      status: 'pending',
     });
   } catch (error: any) {
     console.error('Failed to install from GitHub:', error);

@@ -149,7 +149,7 @@ export async function runAllTests(
  */
 async function testSyntax(
   binaryPath: string,
-  config: ToolConfiguration
+  _config: ToolConfiguration
 ): Promise<TestResult> {
   const startTime = Date.now();
 
@@ -247,7 +247,7 @@ async function testHealthCheck(
 async function runConfigTest(
   binaryPath: string,
   test: ToolTestConfig,
-  config: ToolConfiguration
+  _config: ToolConfiguration
 ): Promise<TestResult> {
   const startTime = Date.now();
 
@@ -311,7 +311,7 @@ async function runConfigTest(
  * Test output parsing
  */
 async function testOutputParsing(
-  toolId: string,
+  _toolId: string,
   config: ToolConfiguration
 ): Promise<TestResult> {
   if (!config.outputParser) {
@@ -338,10 +338,10 @@ async function testOutputParsing(
     // For now, just validate that parser configuration is valid
 
     const hasValidConfig =
-      (parser.parserType === 'json' && parser.jsonPaths) ||
-      (parser.parserType === 'xml' && parser.xmlPaths) ||
-      (parser.parserType === 'regex' && parser.regexPatterns) ||
-      (parser.parserType === 'custom' && parser.parserCode);
+      (parser.parserType === 'json' && !!parser.jsonPaths) ||
+      (parser.parserType === 'xml' && !!parser.xmlPaths) ||
+      (parser.parserType === 'regex' && !!parser.regexPatterns) ||
+      (parser.parserType === 'custom' && !!parser.parserCode);
 
     return {
       testType: 'output-parsing',

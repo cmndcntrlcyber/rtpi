@@ -50,7 +50,7 @@ export class ScanWebSocketManager {
     console.log(`[ScanWebSocket] New connection: ${url}`);
 
     // Extract target ID from URL: /api/v1/targets/:id/scan/ws
-    const match = url.match(/\/api\/v1\/targets\/([^\/]+)\/scan\/ws/);
+    const match = url.match(/\/api\/v1\/targets\/([^/]+)\/scan\/ws/);
     if (!match) {
       ws.send(JSON.stringify({ 
         type: 'error', 

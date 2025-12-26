@@ -855,7 +855,7 @@ export default function Agents() {
                               <h4 className="text-sm font-medium text-gray-900 mb-2">How Agent Flow Works</h4>
                               <ul className="text-xs text-gray-600 space-y-1">
                                 <li>• Agents execute in the order shown above (top to bottom)</li>
-                                <li>• Each agent can process and enhance the previous agent's output</li>
+                                <li>• Each agent can process and enhance the previous agent&apos;s output</li>
                                 <li>• Drag agents up or down to change their execution order</li>
                                 <li>• Click X to remove an agent from the flow</li>
                                 <li>• The final output combines insights from all agents in sequence</li>

@@ -24,7 +24,7 @@ const operationSchema = z.object({
 });
 
 // GET /api/v1/operations - List all operations
-router.get("/", async (req, res) => {
+router.get("/", async (_req, res) => {
   try {
     const allOperations = await db.select().from(operations);
     res.json({ operations: allOperations });

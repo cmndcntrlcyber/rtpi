@@ -1,11 +1,10 @@
 import { Router } from 'express';
 import { db } from '../../db';
-import { 
-  discoveredAssets, 
-  discoveredServices, 
-  vulnerabilities, 
-  axScanResults,
-  surfaceAssessments 
+import {
+  discoveredAssets,
+  discoveredServices,
+  vulnerabilities,
+  axScanResults
 } from '@shared/schema';
 import { eq, and, sql, desc } from 'drizzle-orm';
 

@@ -39,7 +39,7 @@ function loadModules(): any {
 }
 
 // GET /api/v1/metasploit/modules - Get all module categories and metadata
-router.get("/modules", async (req, res) => {
+router.get("/modules", async (_req, res) => {
   try {
     const modulesData = loadModules();
     res.json({

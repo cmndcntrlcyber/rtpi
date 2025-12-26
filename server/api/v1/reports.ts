@@ -12,7 +12,7 @@ const router = Router();
 router.use(ensureAuthenticated);
 
 // GET /api/v1/reports - List all reports
-router.get("/", async (req, res) => {
+router.get("/", async (_req, res) => {
   try {
     const allReports = await db.select().from(reports);
     res.json({ reports: allReports });
@@ -124,7 +124,7 @@ router.delete("/:id", ensureRole("admin"), async (req, res) => {
 });
 
 // GET /api/v1/reports/templates - List templates
-router.get("/templates/list", async (req, res) => {
+router.get("/templates/list", async (_req, res) => {
   try {
     const templates = await db
       .select()

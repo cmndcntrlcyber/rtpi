@@ -5,7 +5,7 @@
 
 import { spawn } from 'child_process';
 import { db } from '../db';
-import { toolExecutions, toolRegistry, toolOutputParsers } from '../../shared/schema';
+import { toolExecutions } from '../../shared/schema';
 import { eq } from 'drizzle-orm';
 import type {
   ToolExecutionRequest,
@@ -36,7 +36,7 @@ export async function executeTool(
   request: ToolExecutionRequest
 ): Promise<ToolExecutionResult> {
   // Validate request
-  const { error, value } = validateToolExecutionRequest(request);
+  const { error } = validateToolExecutionRequest(request);
   if (error) {
     throw new Error(`Invalid execution request: ${error.message}`);
   }
@@ -222,19 +222,21 @@ function validateParameter(paramDef: any, value: any): void {
       }
       break;
 
-    case 'ip-address':
+    case 'ip-address': {
       const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
       if (!ipRegex.test(value)) {
         throw new Error(`Parameter '${name}' must be a valid IP address`);
       }
       break;
+    }
 
-    case 'cidr':
+    case 'cidr': {
       const cidrRegex = /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/;
       if (!cidrRegex.test(value)) {
         throw new Error(`Parameter '${name}' must be a valid CIDR notation`);
       }
       break;
+    }
 
     case 'url':
       try {

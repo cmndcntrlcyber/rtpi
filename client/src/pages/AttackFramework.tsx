@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Shield, Target, Users, Wrench, ShieldCheck, Database } from "lucide-react";
+import { Shield, Target, Users, Wrench, ShieldCheck, Database, BookOpen } from "lucide-react";
 import TechniquesTable from "@/components/attack/TechniquesTable";
 import TacticsGrid from "@/components/attack/TacticsGrid";
 import StixImportDialog from "@/components/attack/StixImportDialog";
@@ -8,6 +8,7 @@ import GroupsTable from "@/components/attack/GroupsTable";
 import SoftwareTable from "@/components/attack/SoftwareTable";
 import MitigationsTable from "@/components/attack/MitigationsTable";
 import CoverageMatrix from "@/components/attack/CoverageMatrix";
+import PlannerTab from "@/components/attack/PlannerTab";
 
 interface AttackStats {
   techniques: number;
@@ -152,6 +153,7 @@ export default function AttackFramework() {
           <TabsTrigger value="groups">Groups</TabsTrigger>
           <TabsTrigger value="software">Software</TabsTrigger>
           <TabsTrigger value="mitigations">Mitigations</TabsTrigger>
+          <TabsTrigger value="planner">Planner</TabsTrigger>
           <TabsTrigger value="coverage">Coverage Matrix</TabsTrigger>
         </TabsList>
 
@@ -173,6 +175,10 @@ export default function AttackFramework() {
 
         <TabsContent value="mitigations" className="space-y-4">
           <MitigationsTable />
+        </TabsContent>
+
+        <TabsContent value="planner" className="space-y-4">
+          <PlannerTab />
         </TabsContent>
 
         <TabsContent value="coverage" className="space-y-4">

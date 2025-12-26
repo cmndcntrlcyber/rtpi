@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
-import { Plus } from "lucide-react";
+import { Plus, CheckSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import VulnerabilityList from "@/components/vulnerabilities/VulnerabilityList";
 import EditVulnerabilityDialog from "@/components/vulnerabilities/EditVulnerabilityDialog";
+import { BulkActionToolbar } from "@/components/shared/BulkActionToolbar";
+import { BulkConfirmDialog } from "@/components/shared/BulkConfirmDialog";
 import { api } from "@/lib/api";
 
 export default function Vulnerabilities() {
@@ -11,6 +13,13 @@ export default function Vulnerabilities() {
   const [loading, setLoading] = useState(true);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedVulnerability, setSelectedVulnerability] = useState<any>(null);
+
+  // Bulk selection state
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [bulkAction, setBulkAction] = useState<"delete" | "status-change">("delete");
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -93,6 +102,74 @@ export default function Vulnerabilities() {
     }
   };
 
+  // Bulk selection handlers
+  const handleSelectionChange = (id: string, selected: boolean) => {
+    const newSelection = new Set(selectedIds);
+    if (selected) {
+      newSelection.add(id);
+    } else {
+      newSelection.delete(id);
+    }
+    setSelectedIds(newSelection);
+  };
+
+  const handleClearSelection = () => {
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkDelete = async () => {
+    setBulkAction("delete");
+    setConfirmDialogOpen(true);
+  };
+
+  const handleBulkStatusChange = async (status: string) => {
+    setBulkAction("status-change");
+    setBulkActionLoading(true);
+    try {
+      // Update status for all selected vulnerabilities
+      await Promise.all(
+        Array.from(selectedIds).map((id) =>
+          api.patch(`/vulnerabilities/${id}`, { status })
+        )
+      );
+      await loadData();
+      handleClearSelection();
+    } catch (error) {
+      console.error("Failed to update statuses:", error);
+      alert("Failed to update statuses");
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  const handleConfirmBulkAction = async () => {
+    setBulkActionLoading(true);
+    try {
+      if (bulkAction === "delete") {
+        // Delete all selected vulnerabilities
+        await Promise.all(
+          Array.from(selectedIds).map((id) => api.delete(`/vulnerabilities/${id}`))
+        );
+      }
+      await loadData();
+      handleClearSelection();
+      setConfirmDialogOpen(false);
+    } catch (error) {
+      console.error("Bulk operation failed:", error);
+      alert("Bulk operation failed");
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  const toggleBulkMode = () => {
+    setBulkMode(!bulkMode);
+    if (bulkMode) {
+      // Clear selection when exiting bulk mode
+      handleClearSelection();
+    }
+  };
+
   // Calculate stats
   const stats = {
     total: vulnerabilities.length,
@@ -111,10 +188,19 @@ export default function Vulnerabilities() {
             Track and manage security vulnerabilities
           </p>
         </div>
-        <Button onClick={handleAddVulnerability}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Vulnerability
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            variant={bulkMode ? "secondary" : "outline"}
+            onClick={toggleBulkMode}
+          >
+            <CheckSquare className="h-4 w-4 mr-2" />
+            {bulkMode ? "Exit Bulk Mode" : "Bulk Select"}
+          </Button>
+          <Button onClick={handleAddVulnerability}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Vulnerability
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -149,6 +235,9 @@ export default function Vulnerabilities() {
         onSelect={handleSelectVulnerability}
         onEdit={handleEditVulnerability}
         onDelete={(v) => handleDeleteVulnerability(v.id)}
+        selectable={bulkMode}
+        selectedIds={selectedIds}
+        onSelectionChange={handleSelectionChange}
       />
 
       {/* Edit Dialog */}
@@ -159,6 +248,27 @@ export default function Vulnerabilities() {
         onClose={() => setEditDialogOpen(false)}
         onSave={handleSaveVulnerability}
         onDelete={handleDeleteVulnerability}
+      />
+
+      {/* Bulk Action Toolbar */}
+      {bulkMode && (
+        <BulkActionToolbar
+          selectedCount={selectedIds.size}
+          onClearSelection={handleClearSelection}
+          onDelete={handleBulkDelete}
+          onChangeStatus={handleBulkStatusChange}
+        />
+      )}
+
+      {/* Bulk Action Confirmation Dialog */}
+      <BulkConfirmDialog
+        open={confirmDialogOpen}
+        onOpenChange={setConfirmDialogOpen}
+        actionType={bulkAction}
+        itemCount={selectedIds.size}
+        itemType="vulnerability"
+        onConfirm={handleConfirmBulkAction}
+        loading={bulkActionLoading}
       />
     </div>
   );

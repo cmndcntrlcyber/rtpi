@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Plus, RotateCcw } from "lucide-react";
+import { Plus, RotateCcw, CheckSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import TargetList from "@/components/targets/TargetList";
 import EditTargetDialog from "@/components/targets/EditTargetDialog";
+import { BulkActionToolbar } from "@/components/shared/BulkActionToolbar";
+import { BulkConfirmDialog } from "@/components/shared/BulkConfirmDialog";
 import { api } from "@/lib/api";
 
 export default function Targets() {
@@ -20,6 +22,13 @@ export default function Targets() {
   const [loopDialogOpen, setLoopDialogOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState("");
   const [runningLoop, setRunningLoop] = useState(false);
+
+  // Bulk selection state
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [bulkAction, setBulkAction] = useState<"delete" | "archive">("delete");
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -164,6 +173,54 @@ export default function Targets() {
     // TODO: Pass targetId to vulnerabilities page to pre-fill in add dialog
   };
 
+  // Bulk selection handlers
+  const handleSelectionChange = (id: string, selected: boolean) => {
+    const newSelection = new Set(selectedIds);
+    if (selected) {
+      newSelection.add(id);
+    } else {
+      newSelection.delete(id);
+    }
+    setSelectedIds(newSelection);
+  };
+
+  const handleClearSelection = () => {
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkDelete = async () => {
+    setBulkAction("delete");
+    setConfirmDialogOpen(true);
+  };
+
+  const handleConfirmBulkAction = async () => {
+    setBulkActionLoading(true);
+    try {
+      if (bulkAction === "delete") {
+        // Delete all selected targets
+        await Promise.all(
+          Array.from(selectedIds).map((id) => api.delete(`/targets/${id}`))
+        );
+      }
+      await loadData();
+      handleClearSelection();
+      setConfirmDialogOpen(false);
+    } catch (error) {
+      console.error("Bulk operation failed:", error);
+      alert("Bulk operation failed");
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  const toggleBulkMode = () => {
+    setBulkMode(!bulkMode);
+    if (bulkMode) {
+      // Clear selection when exiting bulk mode
+      handleClearSelection();
+    }
+  };
+
   // Calculate stats
   const stats = {
     total: targets.length,
@@ -181,10 +238,19 @@ export default function Targets() {
             Manage target systems and infrastructure
           </p>
         </div>
-        <Button onClick={handleAddTarget}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Target
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            variant={bulkMode ? "secondary" : "outline"}
+            onClick={toggleBulkMode}
+          >
+            <CheckSquare className="h-4 w-4 mr-2" />
+            {bulkMode ? "Exit Bulk Mode" : "Bulk Select"}
+          </Button>
+          <Button onClick={handleAddTarget}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Target
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -218,6 +284,9 @@ export default function Targets() {
         onEdit={handleEditTarget}
         onDelete={(t) => handleDeleteTarget(t.id)}
         onScan={handleScanTarget}
+        selectable={bulkMode}
+        selectedIds={selectedIds}
+        onSelectionChange={handleSelectionChange}
       />
 
       {/* Edit Dialog */}
@@ -288,6 +357,26 @@ export default function Targets() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Bulk Action Toolbar */}
+      {bulkMode && (
+        <BulkActionToolbar
+          selectedCount={selectedIds.size}
+          onClearSelection={handleClearSelection}
+          onDelete={handleBulkDelete}
+        />
+      )}
+
+      {/* Bulk Action Confirmation Dialog */}
+      <BulkConfirmDialog
+        open={confirmDialogOpen}
+        onOpenChange={setConfirmDialogOpen}
+        actionType={bulkAction}
+        itemCount={selectedIds.size}
+        itemType="target"
+        onConfirm={handleConfirmBulkAction}
+        loading={bulkActionLoading}
+      />
     </div>
   );
 }

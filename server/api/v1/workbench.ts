@@ -7,7 +7,7 @@
 
 import { Router, Request, Response } from 'express';
 import { workbenchClient } from '../../services/attack-workbench-client';
-import { db } from '../../../db';
+import { db } from '../../db';
 import { attackTechniques, attackTactics } from '../../../shared/schema';
 import { eq, inArray } from 'drizzle-orm';
 

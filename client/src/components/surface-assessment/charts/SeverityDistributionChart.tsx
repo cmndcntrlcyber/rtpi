@@ -31,9 +31,9 @@ export default function SeverityDistributionChart({ data }: SeverityDistribution
 
   if (total === 0) {
     return (
-      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+      <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
         <h3 className="text-lg font-semibold mb-4">Vulnerabilities by Severity</h3>
-        <div className="h-64 flex items-center justify-center text-gray-500">
+        <div className="h-64 flex items-center justify-center text-muted-foreground">
           No vulnerabilities found
         </div>
       </div>
@@ -41,7 +41,7 @@ export default function SeverityDistributionChart({ data }: SeverityDistribution
   }
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+    <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
       <h3 className="text-lg font-semibold mb-4">Vulnerabilities by Severity</h3>
       <ResponsiveContainer width="100%" height={250}>
         <PieChart>

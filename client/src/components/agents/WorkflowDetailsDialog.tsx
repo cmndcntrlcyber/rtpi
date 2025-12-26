@@ -40,7 +40,7 @@ export default function WorkflowDetailsDialog({
       running: { className: "bg-blue-500/10 text-blue-600", label: "RUNNING" },
       completed: { className: "bg-green-500/10 text-green-600", label: "COMPLETED" },
       failed: { className: "bg-red-500/10 text-red-600", label: "FAILED" },
-      cancelled: { className: "bg-gray-500/10 text-gray-600", label: "CANCELLED" },
+      cancelled: { className: "bg-secondary0/10 text-muted-foreground", label: "CANCELLED" },
       in_progress: { className: "bg-blue-500/10 text-blue-600", label: "IN PROGRESS" },
     };
 
@@ -62,7 +62,7 @@ export default function WorkflowDetailsDialog({
       case "failed":
         return <XCircle className="h-5 w-5 text-red-600" />;
       default:
-        return <Circle className="h-5 w-5 text-gray-400" />;
+        return <Circle className="h-5 w-5 text-muted-foreground" />;
     }
   };
 
@@ -79,13 +79,13 @@ export default function WorkflowDetailsDialog({
 
         <div className="space-y-4">
           {/* Progress Overview */}
-          <div className="p-4 bg-gray-50 rounded-lg">
-            <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
+          <div className="p-4 bg-secondary rounded-lg">
+            <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
               <span className="font-medium">Overall Progress</span>
               <span>{workflow.progress}%</span>
             </div>
             <Progress value={workflow.progress} className="h-3" />
-            <div className="flex items-center justify-between text-xs text-gray-500 mt-2">
+            <div className="flex items-center justify-between text-xs text-muted-foreground mt-2">
               <div>
                 {workflow.startedAt && (
                   <span>Started: {new Date(workflow.startedAt).toLocaleString()}</span>
@@ -114,16 +114,16 @@ export default function WorkflowDetailsDialog({
                   const agent = agents.find((a) => a.id === task.agentId);
                   
                   return (
-                    <div key={task.id} className="p-4 border border-gray-200 rounded-lg">
+                    <div key={task.id} className="p-4 border border-border rounded-lg">
                       <div className="flex items-start gap-3">
                         <div className="mt-0.5">{getTaskIcon(task.status)}</div>
                         <div className="flex-1">
                           <div className="flex items-center justify-between mb-2">
-                            <h4 className="font-semibold text-gray-900">{task.taskName}</h4>
+                            <h4 className="font-semibold text-foreground">{task.taskName}</h4>
                             {getStatusBadge(task.status)}
                           </div>
                           
-                          <div className="text-sm text-gray-600 space-y-1">
+                          <div className="text-sm text-muted-foreground space-y-1">
                             <div>
                               <span className="font-medium">Agent:</span> {agent?.name || "Unknown"}
                             </div>
@@ -131,7 +131,7 @@ export default function WorkflowDetailsDialog({
                               <span className="font-medium">Type:</span> {task.taskType}
                             </div>
                             {task.startedAt && (
-                              <div className="flex items-center gap-1 text-xs text-gray-500">
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                 <Clock className="h-3 w-3" />
                                 <span>
                                   {task.completedAt
@@ -154,10 +154,10 @@ export default function WorkflowDetailsDialog({
 
                           {task.outputData && task.outputData.rawResponse && (
                             <details className="mt-2">
-                              <summary className="text-xs text-gray-600 cursor-pointer hover:text-gray-900">
+                              <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
                                 View Output
                               </summary>
-                              <div className="mt-2 p-2 bg-gray-50 rounded text-xs font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">
+                              <div className="mt-2 p-2 bg-secondary rounded text-xs font-mono whitespace-pre-wrap max-h-48 overflow-y-auto">
                                 {task.outputData.rawResponse}
                               </div>
                             </details>
@@ -171,9 +171,9 @@ export default function WorkflowDetailsDialog({
 
             {/* Logs Tab */}
             <TabsContent value="logs" className="mt-4">
-              <div className="space-y-2 max-h-96 overflow-y-auto border border-gray-200 rounded-lg p-3 bg-gray-50">
+              <div className="space-y-2 max-h-96 overflow-y-auto border border-border rounded-lg p-3 bg-secondary">
                 {logs.length === 0 ? (
-                  <p className="text-sm text-gray-500 text-center py-4">No logs available</p>
+                  <p className="text-sm text-muted-foreground text-center py-4">No logs available</p>
                 ) : (
                   logs
                     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
@@ -185,11 +185,11 @@ export default function WorkflowDetailsDialog({
                             ? "bg-red-50 text-red-700"
                             : log.level === "warning"
                             ? "bg-yellow-50 text-yellow-700"
-                            : "bg-white text-gray-700"
+                            : "bg-card text-foreground"
                         }`}
                       >
                         <div className="flex items-start gap-2">
-                          <span className="text-gray-500 whitespace-nowrap">
+                          <span className="text-muted-foreground whitespace-nowrap">
                             {new Date(log.timestamp).toLocaleTimeString()}
                           </span>
                           <span className="font-medium uppercase">[{log.level}]</span>
@@ -206,20 +206,20 @@ export default function WorkflowDetailsDialog({
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label className="text-xs text-gray-500">Workflow ID</Label>
-                    <p className="text-sm font-mono text-gray-900">{workflow.id}</p>
+                    <Label className="text-xs text-muted-foreground">Workflow ID</Label>
+                    <p className="text-sm font-mono text-foreground">{workflow.id}</p>
                   </div>
                   <div>
-                    <Label className="text-xs text-gray-500">Type</Label>
-                    <p className="text-sm text-gray-900">{workflow.workflowType}</p>
+                    <Label className="text-xs text-muted-foreground">Type</Label>
+                    <p className="text-sm text-foreground">{workflow.workflowType}</p>
                   </div>
                   <div>
-                    <Label className="text-xs text-gray-500">Target ID</Label>
-                    <p className="text-sm font-mono text-gray-900">{workflow.targetId}</p>
+                    <Label className="text-xs text-muted-foreground">Target ID</Label>
+                    <p className="text-sm font-mono text-foreground">{workflow.targetId}</p>
                   </div>
                   <div>
-                    <Label className="text-xs text-gray-500">Created At</Label>
-                    <p className="text-sm text-gray-900">
+                    <Label className="text-xs text-muted-foreground">Created At</Label>
+                    <p className="text-sm text-foreground">
                       {new Date(workflow.createdAt).toLocaleString()}
                     </p>
                   </div>
@@ -227,8 +227,8 @@ export default function WorkflowDetailsDialog({
 
                 {workflow.metadata && (
                   <div>
-                    <Label className="text-xs text-gray-500">Metadata</Label>
-                    <pre className="mt-1 p-3 bg-gray-50 rounded text-xs font-mono overflow-x-auto">
+                    <Label className="text-xs text-muted-foreground">Metadata</Label>
+                    <pre className="mt-1 p-3 bg-secondary rounded text-xs font-mono overflow-x-auto">
                       {JSON.stringify(workflow.metadata, null, 2)}
                     </pre>
                   </div>

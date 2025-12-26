@@ -61,7 +61,7 @@ export default function SummaryStatsCard({ stats }: SummaryStatsCardProps) {
   ];
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+    <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
       <h3 className="text-lg font-semibold mb-4">Summary Statistics</h3>
       <div className="space-y-4">
         {statItems.map((item) => {
@@ -72,19 +72,19 @@ export default function SummaryStatsCard({ stats }: SummaryStatsCardProps) {
                 <div className={`p-2 rounded-lg ${item.bgColor}`}>
                   <Icon className={`w-5 h-5 ${item.color}`} />
                 </div>
-                <span className="text-sm font-medium text-gray-700">{item.label}</span>
+                <span className="text-sm font-medium text-foreground">{item.label}</span>
               </div>
-              <span className="text-2xl font-bold text-gray-900">{item.value}</span>
+              <span className="text-2xl font-bold text-foreground">{item.value}</span>
             </div>
           );
         })}
       </div>
       
       {stats.lastScanTimestamp && (
-        <div className="mt-6 pt-4 border-t border-gray-200">
+        <div className="mt-6 pt-4 border-t border-border">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-500">Last scan</span>
-            <span className="text-gray-700 font-medium">
+            <span className="text-muted-foreground">Last scan</span>
+            <span className="text-foreground font-medium">
               {formatLastScan(stats.lastScanTimestamp)}
             </span>
           </div>

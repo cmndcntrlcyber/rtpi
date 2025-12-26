@@ -71,18 +71,18 @@ export default function Tools() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Total Tools</h3>
-          <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Total Tools</h3>
+          <p className="text-3xl font-bold text-foreground">{stats.total}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Running</h3>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Running</h3>
           <p className="text-3xl font-bold text-green-600">{stats.running}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Available</h3>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Available</h3>
           <p className="text-3xl font-bold text-blue-600">{stats.available}</p>
         </div>
       </div>
@@ -99,7 +99,7 @@ export default function Tools() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-gray-600 mb-4">
+              <p className="text-sm text-muted-foreground mb-4">
                 Access full desktop environments with pre-installed security tools
               </p>
               <Button onClick={() => window.open("https://kasm.local", "_blank")}>
@@ -117,7 +117,7 @@ export default function Tools() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-gray-600 mb-4">
+              <p className="text-sm text-muted-foreground mb-4">
                 Manage command and control operations
               </p>
               <Button onClick={() => window.open("http://localhost:1337", "_blank")}>
@@ -133,12 +133,12 @@ export default function Tools() {
       <div>
         <h2 className="text-xl font-semibold mb-4">Tools Catalog</h2>
         {loading ? (
-          <p className="text-gray-500">Loading tools...</p>
+          <p className="text-muted-foreground">Loading tools...</p>
         ) : tools.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-            <Wrench className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600">No tools configured</p>
-            <p className="text-sm text-gray-500">Contact administrator to add security tools</p>
+          <div className="text-center py-12 bg-card rounded-lg border border-border">
+            <Wrench className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">No tools configured</p>
+            <p className="text-sm text-muted-foreground">Contact administrator to add security tools</p>
           </div>
         ) : (
           <>
@@ -196,7 +196,7 @@ export default function Tools() {
                 onChange={handleFileChange}
                 disabled={uploading}
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Supported formats: JAR, ZIP, TAR, GZ (max 100MB)
               </p>
             </div>

@@ -130,7 +130,7 @@ export default function TechniquesTable() {
 
     return (
       <>
-        <TableRow key={technique.id} className={isSubtechnique ? "bg-gray-50" : ""}>
+        <TableRow key={technique.id} className={isSubtechnique ? "bg-secondary" : ""}>
           <TableCell className="font-mono font-medium">
             <div className="flex items-center gap-2">
               {hasSubtechniques && (
@@ -161,7 +161,7 @@ export default function TechniquesTable() {
             <div>
               <p className="font-medium">{technique.name}</p>
               {technique.description && (
-                <p className="text-sm text-gray-500 line-clamp-2 mt-1">
+                <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
                   {technique.description}
                 </p>
               )}
@@ -176,7 +176,7 @@ export default function TechniquesTable() {
                   </Badge>
                 ))
               ) : (
-                <span className="text-sm text-gray-400">N/A</span>
+                <span className="text-sm text-muted-foreground">N/A</span>
               )}
               {technique.platforms && technique.platforms.length > 3 && (
                 <Badge variant="secondary" className="text-xs">
@@ -194,7 +194,7 @@ export default function TechniquesTable() {
                   </Badge>
                 ))
               ) : (
-                <span className="text-sm text-gray-400">N/A</span>
+                <span className="text-sm text-muted-foreground">N/A</span>
               )}
               {technique.killChainPhases && technique.killChainPhases.length > 2 && (
                 <Badge variant="outline" className="text-xs">
@@ -264,9 +264,9 @@ export default function TechniquesTable() {
 
   if (techniques.length === 0) {
     return (
-      <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-        <p className="text-gray-500 font-medium">No techniques loaded</p>
-        <p className="text-sm text-gray-400 mt-2">
+      <div className="text-center py-12 bg-card rounded-lg border border-border">
+        <p className="text-muted-foreground font-medium">No techniques loaded</p>
+        <p className="text-sm text-muted-foreground mt-2">
           Import STIX data from MITRE ATT&CK to populate techniques
         </p>
       </div>
@@ -302,7 +302,7 @@ export default function TechniquesTable() {
         </div>
 
         <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search by ID, name, or description..."
             value={searchTerm}
@@ -333,7 +333,7 @@ export default function TechniquesTable() {
           <>
             Showing {filteredTechniques.length} parent techniques
             {filteredTechniques.reduce((acc, t) => acc + (t.subtechniques?.length || 0), 0) > 0 && (
-              <span className="text-gray-400">
+              <span className="text-muted-foreground">
                 {" "}
                 with {filteredTechniques.reduce((acc, t) => acc + (t.subtechniques?.length || 0), 0)} sub-techniques
               </span>
@@ -345,7 +345,7 @@ export default function TechniquesTable() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="bg-card rounded-lg border border-border overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>

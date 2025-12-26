@@ -161,8 +161,8 @@ export default function Reports() {
     <div className="p-8">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Reports</h1>
-          <p className="text-gray-600 mt-1">
+          <h1 className="text-3xl font-bold text-foreground">Reports</h1>
+          <p className="text-muted-foreground mt-1">
             Generate and manage security assessment reports
           </p>
         </div>
@@ -180,24 +180,24 @@ export default function Reports() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Total Reports</h3>
-          <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Total Reports</h3>
+          <p className="text-3xl font-bold text-foreground">{stats.total}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Completed</h3>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Completed</h3>
           <p className="text-3xl font-bold text-green-600">{stats.completed}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Drafts</h3>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Drafts</h3>
           <p className="text-3xl font-bold text-blue-600">{stats.draft}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Templates</h3>
-          <p className="text-3xl font-bold text-gray-600">{stats.templates}</p>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Templates</h3>
+          <p className="text-3xl font-bold text-muted-foreground">{stats.templates}</p>
         </div>
       </div>
 
@@ -205,12 +205,12 @@ export default function Reports() {
       <div className="space-y-4">
         <h2 className="text-xl font-semibold">Recent Reports</h2>
         {reportsLoading ? (
-          <p className="text-gray-500">Loading reports...</p>
+          <p className="text-muted-foreground">Loading reports...</p>
         ) : reports.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-            <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600">No reports found</p>
-            <p className="text-sm text-gray-500 mb-4">Get started by generating your first report</p>
+          <div className="text-center py-12 bg-card rounded-lg border border-border">
+            <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">No reports found</p>
+            <p className="text-sm text-muted-foreground mb-4">Get started by generating your first report</p>
             <Button onClick={() => setReportDialogOpen(true)}>
               <Plus className="h-4 w-4 mr-2" />
               Generate Report
@@ -219,7 +219,7 @@ export default function Reports() {
         ) : (
           <div className="grid grid-cols-1 gap-4">
             {reports.map((report) => (
-              <Card key={report.id} className="bg-white">
+              <Card key={report.id} className="bg-card">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center flex-1">
@@ -227,21 +227,21 @@ export default function Reports() {
                         <FileText className="h-5 w-5 text-blue-600" />
                       </div>
                       <div className="flex-1">
-                        <h3 className="font-semibold text-gray-900">{report.name}</h3>
+                        <h3 className="font-semibold text-foreground">{report.name}</h3>
                         <div className="flex items-center gap-3 mt-1">
-                          <span className="text-sm text-gray-500">{report.type}</span>
-                          <span className="text-sm text-gray-400">•</span>
-                          <span className="text-sm text-gray-500">{report.format.toUpperCase()}</span>
+                          <span className="text-sm text-muted-foreground">{report.type}</span>
+                          <span className="text-sm text-muted-foreground">•</span>
+                          <span className="text-sm text-muted-foreground">{report.format.toUpperCase()}</span>
                           {report.fileSize && (
                             <>
-                              <span className="text-sm text-gray-400">•</span>
-                              <span className="text-sm text-gray-500">
+                              <span className="text-sm text-muted-foreground">•</span>
+                              <span className="text-sm text-muted-foreground">
                                 {(report.fileSize / 1024 / 1024).toFixed(2)} MB
                               </span>
                             </>
                           )}
-                          <span className="text-sm text-gray-400">•</span>
-                          <div className="flex items-center text-sm text-gray-500">
+                          <span className="text-sm text-muted-foreground">•</span>
+                          <div className="flex items-center text-sm text-muted-foreground">
                             <Calendar className="h-3 w-3 mr-1" />
                             {new Date(report.generatedAt).toLocaleDateString()}
                           </div>
@@ -254,7 +254,7 @@ export default function Reports() {
                         className={`${
                           report.status === "completed"
                             ? "bg-green-500/10 text-green-600"
-                            : "bg-gray-500/10 text-gray-600"
+                            : "bg-secondary0/10 text-muted-foreground"
                         }`}
                       >
                         {report.status}
@@ -298,19 +298,19 @@ export default function Reports() {
       <div className="mt-8">
         <h2 className="text-xl font-semibold mb-4">Report Templates</h2>
         {templatesLoading ? (
-          <p className="text-gray-500">Loading templates...</p>
+          <p className="text-muted-foreground">Loading templates...</p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {templates.map((template) => (
-              <Card key={template.id} className="bg-white">
+              <Card key={template.id} className="bg-card">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center flex-1">
-                      <FileText className="h-5 w-5 text-gray-400 mr-2" />
+                      <FileText className="h-5 w-5 text-muted-foreground mr-2" />
                       <div className="flex-1">
-                        <span className="text-sm font-medium text-gray-900">{template.name}</span>
+                        <span className="text-sm font-medium text-foreground">{template.name}</span>
                         {template.description && (
-                          <p className="text-xs text-gray-500 mt-1">{template.description}</p>
+                          <p className="text-xs text-muted-foreground mt-1">{template.description}</p>
                         )}
                       </div>
                     </div>

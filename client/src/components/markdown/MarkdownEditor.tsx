@@ -34,10 +34,10 @@ export default function MarkdownEditor({
     html = html.replace(/\*(.*?)\*/gim, '<em>$1</em>');
     
     // Code blocks
-    html = html.replace(/```([\s\S]*?)```/gim, '<pre class="bg-gray-100 p-3 rounded mt-2 mb-2 overflow-x-auto"><code>$1</code></pre>');
+    html = html.replace(/```([\s\S]*?)```/gim, '<pre class="bg-secondary p-3 rounded mt-2 mb-2 overflow-x-auto"><code>$1</code></pre>');
     
     // Inline code
-    html = html.replace(/`([^`]+)`/gim, '<code class="bg-gray-100 px-1 py-0.5 rounded text-sm">$1</code>');
+    html = html.replace(/`([^`]+)`/gim, '<code class="bg-secondary px-1 py-0.5 rounded text-sm">$1</code>');
     
     // Links
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/gim, '<a href="$2" class="text-blue-600 hover:underline" target="_blank">$1</a>');
@@ -73,20 +73,20 @@ export default function MarkdownEditor({
           rows={rows}
           className="font-mono text-sm"
         />
-        <p className="text-xs text-gray-500 mt-1">
+        <p className="text-xs text-muted-foreground mt-1">
           Supports Markdown: **bold**, *italic*, `code`, # headers, - lists, [links](url)
         </p>
       </TabsContent>
       
       <TabsContent value="preview" className="mt-2">
-        <div className="border border-gray-200 rounded-md p-4 min-h-[200px] bg-white">
+        <div className="border border-border rounded-md p-4 min-h-[200px] bg-card">
           {value ? (
             <div
               className="prose prose-sm max-w-none"
               dangerouslySetInnerHTML={{ __html: renderMarkdown(value) }}
             />
           ) : (
-            <p className="text-gray-400 italic">No content to preview</p>
+            <p className="text-muted-foreground italic">No content to preview</p>
           )}
         </div>
       </TabsContent>

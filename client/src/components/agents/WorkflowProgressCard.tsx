@@ -64,7 +64,7 @@ export default function WorkflowProgressCard({
       running: { className: "bg-blue-500/10 text-blue-600", label: "RUNNING" },
       completed: { className: "bg-green-500/10 text-green-600", label: "COMPLETED" },
       failed: { className: "bg-red-500/10 text-red-600", label: "FAILED" },
-      cancelled: { className: "bg-gray-500/10 text-gray-600", label: "CANCELLED" },
+      cancelled: { className: "bg-secondary0/10 text-muted-foreground", label: "CANCELLED" },
     };
 
     const variant = variants[status] || variants.pending;
@@ -85,7 +85,7 @@ export default function WorkflowProgressCard({
       case "failed":
         return <XCircle className="h-4 w-4 text-red-600" />;
       default:
-        return <Circle className="h-4 w-4 text-gray-400" />;
+        return <Circle className="h-4 w-4 text-muted-foreground" />;
     }
   };
 
@@ -106,20 +106,20 @@ export default function WorkflowProgressCard({
   };
 
   return (
-    <Card className="bg-white border-l-4 border-blue-600">
+    <Card className="bg-card border-l-4 border-blue-600">
       <CardContent className="p-4">
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Activity className="h-4 w-4 text-blue-600" />
-            <h3 className="font-semibold text-gray-900">{workflow.name}</h3>
+            <h3 className="font-semibold text-foreground">{workflow.name}</h3>
           </div>
           {getStatusBadge(workflow.status)}
         </div>
 
         {/* Progress Bar */}
         <div className="mb-4">
-          <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+          <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
             <span>Progress</span>
             <span>{workflow.progress}%</span>
           </div>
@@ -129,13 +129,13 @@ export default function WorkflowProgressCard({
         {/* Current Status */}
         {workflow.status === "running" && currentAgent && currentTask && (
           <div className="mb-4 p-3 bg-blue-50 rounded-lg">
-            <div className="text-xs text-gray-600 space-y-1">
+            <div className="text-xs text-muted-foreground space-y-1">
               <div>
-                <span className="font-medium text-gray-700">Current Agent:</span>{" "}
+                <span className="font-medium text-foreground">Current Agent:</span>{" "}
                 {currentAgent.name}
               </div>
               <div>
-                <span className="font-medium text-gray-700">Task:</span>{" "}
+                <span className="font-medium text-foreground">Task:</span>{" "}
                 {currentTask.taskName}
               </div>
               {elapsedTime && (
@@ -155,7 +155,7 @@ export default function WorkflowProgressCard({
             .map((task) => (
               <div key={task.id} className="flex items-center gap-2 text-sm">
                 {getTaskIcon(task)}
-                <span className={`flex-1 ${task.status === "completed" ? "text-gray-600 line-through" : "text-gray-900"}`}>
+                <span className={`flex-1 ${task.status === "completed" ? "text-muted-foreground line-through" : "text-foreground"}`}>
                   {task.taskName}
                 </span>
                 {task.status === "in_progress" && (
@@ -164,7 +164,7 @@ export default function WorkflowProgressCard({
                   </span>
                 )}
                 {task.status === "completed" && (
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-muted-foreground">
                     {getTaskDuration(task)}
                   </span>
                 )}
@@ -176,7 +176,7 @@ export default function WorkflowProgressCard({
         </div>
 
         {/* Metadata */}
-        <div className="text-xs text-gray-500 mb-3">
+        <div className="text-xs text-muted-foreground mb-3">
           {workflow.startedAt && (
             <div>Started: {new Date(workflow.startedAt).toLocaleString()}</div>
           )}

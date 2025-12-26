@@ -120,8 +120,8 @@ export default function OverviewTab({ operationId }: OverviewTabProps) {
 
   if (!operationId) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
-        <div className="text-center text-gray-500">
+      <div className="bg-card rounded-lg shadow-sm border border-border p-8">
+        <div className="text-center text-muted-foreground">
           Please select an operation to view the dashboard
         </div>
       </div>
@@ -130,10 +130,10 @@ export default function OverviewTab({ operationId }: OverviewTabProps) {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+      <div className="bg-card rounded-lg shadow-sm border border-border p-8">
         <div className="flex items-center justify-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          <p className="ml-4 text-gray-600">Loading dashboard data...</p>
+          <p className="ml-4 text-muted-foreground">Loading dashboard data...</p>
         </div>
       </div>
     );
@@ -141,7 +141,7 @@ export default function OverviewTab({ operationId }: OverviewTabProps) {
 
   if (error) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-red-200 p-8">
+      <div className="bg-card rounded-lg shadow-sm border border-red-200 p-8">
         <div className="text-center">
           <p className="text-red-600 mb-2">{error}</p>
           <button

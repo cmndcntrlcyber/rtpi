@@ -78,10 +78,10 @@ export default function MitigationsTable() {
 
   if (mitigations.length === 0) {
     return (
-      <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-        <ShieldCheck className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-        <p className="text-gray-500 font-medium">No mitigations loaded</p>
-        <p className="text-sm text-gray-400 mt-2">
+      <div className="text-center py-12 bg-card rounded-lg border border-border">
+        <ShieldCheck className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+        <p className="text-muted-foreground font-medium">No mitigations loaded</p>
+        <p className="text-sm text-muted-foreground mt-2">
           Import STIX data from MITRE ATT&CK to populate mitigations
         </p>
       </div>
@@ -93,7 +93,7 @@ export default function MitigationsTable() {
       {/* Search and Refresh */}
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search by ID, name, or description..."
             value={searchTerm}
@@ -114,7 +114,7 @@ export default function MitigationsTable() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="bg-card rounded-lg border border-border overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
@@ -137,11 +137,11 @@ export default function MitigationsTable() {
                   </TableCell>
                   <TableCell>
                     {mitigation.description ? (
-                      <p className="text-sm text-gray-600 line-clamp-3">
+                      <p className="text-sm text-muted-foreground line-clamp-3">
                         {mitigation.description}
                       </p>
                     ) : (
-                      <span className="text-sm text-gray-400">No description</span>
+                      <span className="text-sm text-muted-foreground">No description</span>
                     )}
                   </TableCell>
                   <TableCell>

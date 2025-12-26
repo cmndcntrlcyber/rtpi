@@ -22,14 +22,14 @@ export default function QuestionResponseTable({
   onChange,
 }: QuestionResponseTableProps) {
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden">
+    <div className="border border-border rounded-lg overflow-hidden">
       <table className="w-full">
         <thead className="bg-red-200">
           <tr>
-            <th className="text-left p-3 font-semibold text-gray-900 w-1/3">
+            <th className="text-left p-3 font-semibold text-foreground w-1/3">
               Question
             </th>
-            <th className="text-left p-3 font-semibold text-gray-900">
+            <th className="text-left p-3 font-semibold text-foreground">
               Response
             </th>
           </tr>
@@ -38,9 +38,9 @@ export default function QuestionResponseTable({
           {rows.map((row, index) => (
             <tr
               key={row.field}
-              className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}
+              className={index % 2 === 0 ? "bg-card" : "bg-secondary"}
             >
-              <td className="p-3 text-sm text-gray-900 align-top">
+              <td className="p-3 text-sm text-foreground align-top">
                 {row.question}
               </td>
               <td className="p-3">

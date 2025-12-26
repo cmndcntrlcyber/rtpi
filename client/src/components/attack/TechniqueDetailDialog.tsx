@@ -88,7 +88,7 @@ export default function TechniqueDetailDialog({
                   <BookOpen className="h-5 w-5" />
                   Description
                 </h3>
-                <p className="text-gray-700 leading-relaxed">
+                <p className="text-foreground leading-relaxed">
                   {technique.description ||
                     "No description available for this technique."}
                 </p>
@@ -121,7 +121,7 @@ export default function TechniqueDetailDialog({
                     {technique.platforms.map((platform, idx) => (
                       <div
                         key={idx}
-                        className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200"
+                        className="flex items-center gap-2 p-3 bg-secondary rounded-lg border border-border"
                       >
                         <Target className="h-4 w-4 text-blue-600" />
                         <span className="font-medium">{platform}</span>
@@ -129,7 +129,7 @@ export default function TechniqueDetailDialog({
                     ))}
                   </div>
                 ) : (
-                  <p className="text-gray-500 italic">
+                  <p className="text-muted-foreground italic">
                     No platform information available
                   </p>
                 )}
@@ -159,7 +159,7 @@ export default function TechniqueDetailDialog({
                     ))}
                   </div>
                 ) : (
-                  <p className="text-gray-500 italic">
+                  <p className="text-muted-foreground italic">
                     No tactic information available
                   </p>
                 )}
@@ -168,23 +168,23 @@ export default function TechniqueDetailDialog({
 
             <TabsContent value="metadata" className="space-y-4 mt-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                  <p className="text-sm text-gray-500 mb-1">ATT&CK ID</p>
+                <div className="p-4 bg-secondary rounded-lg border border-border">
+                  <p className="text-sm text-muted-foreground mb-1">ATT&CK ID</p>
                   <p className="font-mono font-semibold">
                     {technique.attackId}
                   </p>
                 </div>
 
                 {technique.version && (
-                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                    <p className="text-sm text-gray-500 mb-1">Version</p>
+                  <div className="p-4 bg-secondary rounded-lg border border-border">
+                    <p className="text-sm text-muted-foreground mb-1">Version</p>
                     <p className="font-semibold">{technique.version}</p>
                   </div>
                 )}
 
                 {technique.created && (
-                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                    <p className="text-sm text-gray-500 mb-1">Created</p>
+                  <div className="p-4 bg-secondary rounded-lg border border-border">
+                    <p className="text-sm text-muted-foreground mb-1">Created</p>
                     <p className="font-semibold">
                       {new Date(technique.created).toLocaleDateString()}
                     </p>
@@ -192,8 +192,8 @@ export default function TechniqueDetailDialog({
                 )}
 
                 {technique.modified && (
-                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                    <p className="text-sm text-gray-500 mb-1">
+                  <div className="p-4 bg-secondary rounded-lg border border-border">
+                    <p className="text-sm text-muted-foreground mb-1">
                       Last Modified
                     </p>
                     <p className="font-semibold">
@@ -202,8 +202,8 @@ export default function TechniqueDetailDialog({
                   </div>
                 )}
 
-                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                  <p className="text-sm text-gray-500 mb-1">Type</p>
+                <div className="p-4 bg-secondary rounded-lg border border-border">
+                  <p className="text-sm text-muted-foreground mb-1">Type</p>
                   <p className="font-semibold">
                     {technique.isSubtechnique
                       ? "Sub-technique"
@@ -211,8 +211,8 @@ export default function TechniqueDetailDialog({
                   </p>
                 </div>
 
-                <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                  <p className="text-sm text-gray-500 mb-1">Status</p>
+                <div className="p-4 bg-secondary rounded-lg border border-border">
+                  <p className="text-sm text-muted-foreground mb-1">Status</p>
                   <p className="font-semibold">
                     {technique.deprecated
                       ? "Deprecated"

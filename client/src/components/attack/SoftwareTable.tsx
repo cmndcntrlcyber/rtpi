@@ -89,10 +89,10 @@ export default function SoftwareTable() {
 
   if (software.length === 0) {
     return (
-      <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-        <Wrench className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-        <p className="text-gray-500 font-medium">No software loaded</p>
-        <p className="text-sm text-gray-400 mt-2">
+      <div className="text-center py-12 bg-card rounded-lg border border-border">
+        <Wrench className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+        <p className="text-muted-foreground font-medium">No software loaded</p>
+        <p className="text-sm text-muted-foreground mt-2">
           Import STIX data from MITRE ATT&CK to populate software
         </p>
       </div>
@@ -128,7 +128,7 @@ export default function SoftwareTable() {
         </div>
 
         <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search by ID, name, alias, or description..."
             value={searchTerm}
@@ -149,7 +149,7 @@ export default function SoftwareTable() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="bg-card rounded-lg border border-border overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
@@ -173,7 +173,7 @@ export default function SoftwareTable() {
                     <div>
                       <p className="font-medium">{item.name}</p>
                       {item.description && (
-                        <p className="text-sm text-gray-500 line-clamp-2 mt-1">
+                        <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
                           {item.description}
                         </p>
                       )}
@@ -196,7 +196,7 @@ export default function SoftwareTable() {
                           </Badge>
                         ))
                       ) : (
-                        <span className="text-sm text-gray-400">N/A</span>
+                        <span className="text-sm text-muted-foreground">N/A</span>
                       )}
                       {item.platforms && item.platforms.length > 2 && (
                         <Badge variant="secondary" className="text-xs">
@@ -214,7 +214,7 @@ export default function SoftwareTable() {
                           </Badge>
                         ))
                       ) : (
-                        <span className="text-sm text-gray-400">N/A</span>
+                        <span className="text-sm text-muted-foreground">N/A</span>
                       )}
                       {item.aliases && item.aliases.length > 2 && (
                         <Badge variant="outline" className="text-xs">

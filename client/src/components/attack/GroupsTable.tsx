@@ -81,10 +81,10 @@ export default function GroupsTable() {
 
   if (groups.length === 0) {
     return (
-      <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-        <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-        <p className="text-gray-500 font-medium">No threat groups loaded</p>
-        <p className="text-sm text-gray-400 mt-2">
+      <div className="text-center py-12 bg-card rounded-lg border border-border">
+        <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+        <p className="text-muted-foreground font-medium">No threat groups loaded</p>
+        <p className="text-sm text-muted-foreground mt-2">
           Import STIX data from MITRE ATT&CK to populate threat groups
         </p>
       </div>
@@ -96,7 +96,7 @@ export default function GroupsTable() {
       {/* Search and Refresh */}
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search by ID, name, alias, or description..."
             value={searchTerm}
@@ -117,7 +117,7 @@ export default function GroupsTable() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="bg-card rounded-lg border border-border overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
@@ -148,7 +148,7 @@ export default function GroupsTable() {
                           </Badge>
                         ))
                       ) : (
-                        <span className="text-sm text-gray-400">N/A</span>
+                        <span className="text-sm text-muted-foreground">N/A</span>
                       )}
                       {group.aliases && group.aliases.length > 3 && (
                         <Badge variant="secondary" className="text-xs">
@@ -159,11 +159,11 @@ export default function GroupsTable() {
                   </TableCell>
                   <TableCell>
                     {group.description ? (
-                      <p className="text-sm text-gray-600 line-clamp-2">
+                      <p className="text-sm text-muted-foreground line-clamp-2">
                         {group.description}
                       </p>
                     ) : (
-                      <span className="text-sm text-gray-400">No description</span>
+                      <span className="text-sm text-muted-foreground">No description</span>
                     )}
                   </TableCell>
                   <TableCell>

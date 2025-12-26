@@ -54,11 +54,11 @@ export default function EmpireServerCard({
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 gap-2 text-sm">
           <div>
-            <span className="text-gray-500">Version:</span>
+            <span className="text-muted-foreground">Version:</span>
             <p className="font-medium">{server.version || "Unknown"}</p>
           </div>
           <div>
-            <span className="text-gray-500">Last Heartbeat:</span>
+            <span className="text-muted-foreground">Last Heartbeat:</span>
             <p className="font-medium">
               {server.lastHeartbeat
                 ? new Date(server.lastHeartbeat).toLocaleString()

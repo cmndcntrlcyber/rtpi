@@ -166,7 +166,7 @@ export default function EditTargetDialog({
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Basic Information */}
           <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">
+            <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">
               Basic Information
             </h3>
 
@@ -273,7 +273,7 @@ export default function EditTargetDialog({
 
           {/* Advanced Fields */}
           <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">
+            <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">
               Advanced
             </h3>
 
@@ -297,7 +297,7 @@ export default function EditTargetDialog({
                 rows={4}
                 className="font-mono text-sm"
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Optional JSON object for discovered services
               </p>
             </div>
@@ -313,7 +313,7 @@ export default function EditTargetDialog({
                 rows={4}
                 className="font-mono text-sm"
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Optional JSON object for custom metadata
               </p>
             </div>

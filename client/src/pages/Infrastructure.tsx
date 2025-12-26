@@ -92,23 +92,23 @@ export default function Infrastructure() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Containers</h3>
-          <p className="text-3xl font-bold text-gray-900">{stats.containers}</p>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Containers</h3>
+          <p className="text-3xl font-bold text-foreground">{stats.containers}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Running</h3>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Running</h3>
           <p className="text-3xl font-bold text-green-600">{stats.running}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Devices</h3>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Devices</h3>
           <p className="text-3xl font-bold text-blue-600">{stats.devices}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Health Checks</h3>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Health Checks</h3>
           <p className="text-3xl font-bold text-green-600">{stats.healthChecks}</p>
         </div>
       </div>
@@ -139,10 +139,10 @@ export default function Infrastructure() {
         <TabsContent value="devices" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {devices.map((device) => (
-              <div key={device.id} className="bg-white p-6 rounded-lg border border-gray-200">
-                <h3 className="font-semibold text-gray-900">{device.hostname}</h3>
-                <p className="text-sm text-gray-500">{device.ipAddress}</p>
-                <div className="mt-2 text-xs text-gray-500">
+              <div key={device.id} className="bg-card p-6 rounded-lg border border-border">
+                <h3 className="font-semibold text-foreground">{device.hostname}</h3>
+                <p className="text-sm text-muted-foreground">{device.ipAddress}</p>
+                <div className="mt-2 text-xs text-muted-foreground">
                   {device.osType} - {device.status}
                 </div>
               </div>
@@ -153,17 +153,17 @@ export default function Infrastructure() {
         <TabsContent value="health" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {healthChecks.map((check) => (
-              <div key={check.id} className="bg-white p-6 rounded-lg border border-gray-200">
+              <div key={check.id} className="bg-card p-6 rounded-lg border border-border">
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-semibold text-gray-900">{check.name}</h3>
+                  <h3 className="font-semibold text-foreground">{check.name}</h3>
                   <span className={`text-xs px-2 py-1 rounded ${
                     check.status === "healthy" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
                   }`}>
                     {check.status}
                   </span>
                 </div>
-                <p className="text-sm text-gray-600">{check.message}</p>
-                <p className="text-xs text-gray-400 mt-2">
+                <p className="text-sm text-muted-foreground">{check.message}</p>
+                <p className="text-xs text-muted-foreground mt-2">
                   Last check: {new Date(check.lastCheck).toLocaleString()}
                 </p>
               </div>

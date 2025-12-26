@@ -58,11 +58,11 @@ function SortableAgentItem({ agent, onRemove }: { agent: any; onRemove: (agentId
       ref={setNodeRef}
       style={style}
       {...attributes}
-      className="flex items-center p-3 bg-gray-50 border border-gray-200 rounded-lg"
+      className="flex items-center p-3 bg-secondary border border-border rounded-lg"
     >
       <div
         {...listeners}
-        className="cursor-grab active:cursor-grabbing p-1 mr-3 text-gray-400 hover:text-gray-600"
+        className="cursor-grab active:cursor-grabbing p-1 mr-3 text-muted-foreground hover:text-muted-foreground"
       >
         <GripVertical className="h-4 w-4" />
       </div>
@@ -72,10 +72,10 @@ function SortableAgentItem({ agent, onRemove }: { agent: any; onRemove: (agentId
           <Bot className="h-4 w-4 text-blue-600" />
         </div>
         <div className="flex-1">
-          <h4 className="text-gray-900 font-medium">{agent.name}</h4>
-          <p className="text-sm text-gray-500 capitalize">{agent.type} Agent</p>
+          <h4 className="text-foreground font-medium">{agent.name}</h4>
+          <p className="text-sm text-muted-foreground capitalize">{agent.type} Agent</p>
         </div>
-        <div className="text-sm text-gray-500 mr-3">
+        <div className="text-sm text-muted-foreground mr-3">
           Order: {agent.config?.flowOrder >= 0 ? agent.config.flowOrder : 0}
         </div>
         <Button
@@ -111,20 +111,20 @@ function SortableToolItem({ id, tool, index }: { id: string; tool: any; index: n
       ref={setNodeRef}
       style={style}
       {...attributes}
-      className="flex items-center p-2 bg-gray-50 border border-gray-200 rounded-lg"
+      className="flex items-center p-2 bg-secondary border border-border rounded-lg"
     >
       <div className="flex items-center justify-center w-6 h-6 bg-indigo-100 rounded-full text-indigo-600 text-xs font-medium mr-2">
         {index + 1}
       </div>
       <div
         {...listeners}
-        className="cursor-grab active:cursor-grabbing p-1 mr-2 text-gray-400 hover:text-gray-600"
+        className="cursor-grab active:cursor-grabbing p-1 mr-2 text-muted-foreground hover:text-muted-foreground"
       >
         <GripVertical className="h-4 w-4" />
       </div>
       <div className="flex-1">
-        <span className="text-sm font-medium text-gray-900">{tool.name}</span>
-        <span className="text-xs text-gray-500 ml-2">
+        <span className="text-sm font-medium text-foreground">{tool.name}</span>
+        <span className="text-xs text-muted-foreground ml-2">
           ({tool.category.replace(/_/g, " ")})
         </span>
       </div>
@@ -556,23 +556,23 @@ export default function Agents() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">AI Agents</h3>
-          <p className="text-3xl font-bold text-gray-900">{stats.aiAgents}</p>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">AI Agents</h3>
+          <p className="text-3xl font-bold text-foreground">{stats.aiAgents}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Active Agents</h3>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Active Agents</h3>
           <p className="text-3xl font-bold text-green-600">{stats.active}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">MCP Servers</h3>
-          <p className="text-3xl font-bold text-gray-900">{stats.mcpServers}</p>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">MCP Servers</h3>
+          <p className="text-3xl font-bold text-foreground">{stats.mcpServers}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Connected</h3>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Connected</h3>
           <p className="text-3xl font-bold text-blue-600">{stats.connected}</p>
         </div>
       </div>
@@ -593,12 +593,12 @@ export default function Agents() {
           </div>
 
           {agentsLoading ? (
-            <p className="text-gray-500">Loading AI agents...</p>
+            <p className="text-muted-foreground">Loading AI agents...</p>
           ) : agents.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-              <Bot className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">No AI agents configured</p>
-              <p className="text-sm text-gray-500 mb-4">Import an AI agent to get started</p>
+            <div className="text-center py-12 bg-card rounded-lg border border-border">
+              <Bot className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No AI agents configured</p>
+              <p className="text-sm text-muted-foreground mb-4">Import an AI agent to get started</p>
               <Button onClick={() => setAgentDialogOpen(true)}>
                 <Plus className="h-4 w-4 mr-2" />
                 Import Agent
@@ -614,7 +614,7 @@ export default function Agents() {
                     : null;
                   
                   return (
-                    <Card key={agent.id} className="bg-white">
+                    <Card key={agent.id} className="bg-card">
                       <CardContent className="p-6">
                         <div className="flex items-center justify-between mb-4">
                           <div className="flex items-center">
@@ -622,8 +622,8 @@ export default function Agents() {
                               <Bot className="h-5 w-5" />
                             </div>
                             <div>
-                              <h3 className="font-semibold text-gray-900">{agent.name}</h3>
-                              <p className="text-sm text-gray-500 capitalize">{agent.type}</p>
+                              <h3 className="font-semibold text-foreground">{agent.name}</h3>
+                              <p className="text-sm text-muted-foreground capitalize">{agent.type}</p>
                             </div>
                           </div>
                           <Badge
@@ -631,7 +631,7 @@ export default function Agents() {
                             className={`${
                               agent.status === "running"
                                 ? "bg-green-500/10 text-green-600"
-                                : "bg-gray-500/10 text-gray-600"
+                                : "bg-secondary0/10 text-muted-foreground"
                             }`}
                           >
                             {agent.status}
@@ -639,9 +639,9 @@ export default function Agents() {
                         </div>
 
                         {/* Capabilities Section */}
-                        <div className="mb-4 p-3 bg-gray-50 rounded">
-                          <h4 className="text-xs font-semibold text-gray-700 mb-2">CAPABILITIES</h4>
-                          <p className="text-xs text-gray-600">
+                        <div className="mb-4 p-3 bg-secondary rounded">
+                          <h4 className="text-xs font-semibold text-foreground mb-2">CAPABILITIES</h4>
+                          <p className="text-xs text-muted-foreground">
                             {agent.type === "openai" && "Advanced reasoning, vulnerability analysis, comprehensive reporting, ethical assessment"}
                             {agent.type === "anthropic" && "Advanced reasoning, vulnerability analysis, comprehensive reporting, ethical assessment"}
                             {agent.type === "mcp_server" && "Tool integration, automated workflows, external service connectivity"}
@@ -654,9 +654,9 @@ export default function Agents() {
                           <div className="mb-4 p-3 bg-indigo-50 rounded border-l-4 border-indigo-600">
                             <div className="flex items-center gap-2 mb-2">
                               <Zap className="h-4 w-4 text-indigo-600" />
-                              <h4 className="text-xs font-semibold text-gray-700">TOOLS ENABLED</h4>
+                              <h4 className="text-xs font-semibold text-foreground">TOOLS ENABLED</h4>
                             </div>
-                            <div className="text-xs text-gray-600 space-y-1">
+                            <div className="text-xs text-muted-foreground space-y-1">
                               {config.enabledTools.slice(0, 3).map((toolId: string) => {
                                 const tool = tools.find((t) => t.id === toolId);
                                 return tool ? (
@@ -679,9 +679,9 @@ export default function Agents() {
                           <div className="mb-4 p-3 bg-blue-50 rounded border-l-4 border-blue-600">
                             <div className="flex items-center gap-2 mb-2">
                               <RotateCcw className="h-4 w-4 text-blue-600" />
-                              <h4 className="text-xs font-semibold text-gray-700">LOOP ENABLED</h4>
+                              <h4 className="text-xs font-semibold text-foreground">LOOP ENABLED</h4>
                             </div>
-                            <div className="text-xs text-gray-600 space-y-1">
+                            <div className="text-xs text-muted-foreground space-y-1">
                               <div>Partner: {loopPartner.name}</div>
                               <div>Max Iterations: {config.maxLoopIterations || 5}</div>
                               <div>Exit: {config.loopExitCondition || "functional_poc"}</div>
@@ -691,12 +691,12 @@ export default function Agents() {
 
                         {/* Stats */}
                         <div className="grid grid-cols-2 gap-4 text-sm mb-4">
-                          <div className="flex items-center text-gray-600">
+                          <div className="flex items-center text-muted-foreground">
                             <Activity className="h-4 w-4 mr-2" />
                             <span>{agent.tasksCompleted || 0} tasks</span>
                           </div>
                           {agent.lastActivity && (
-                            <div className="flex items-center text-gray-600">
+                            <div className="flex items-center text-muted-foreground">
                               <Clock className="h-4 w-4 mr-2" />
                               <span>{new Date(agent.lastActivity).toLocaleTimeString()}</span>
                             </div>
@@ -738,7 +738,7 @@ export default function Agents() {
 
               {/* Agent Flow Order Section */}
               {agents.length > 0 && (
-                <Card className="mt-6 bg-white">
+                <Card className="mt-6 bg-card">
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <div>
@@ -746,7 +746,7 @@ export default function Agents() {
                           <ArrowRight className="h-5 w-5 text-blue-600" />
                           Agent Flow Order
                         </CardTitle>
-                        <p className="text-gray-600 text-sm mt-1">
+                        <p className="text-muted-foreground text-sm mt-1">
                           Drag and drop to organize the order that AI agents will communicate with each other
                         </p>
                       </div>
@@ -754,7 +754,7 @@ export default function Agents() {
                       {/* Target Selector & Execute Button */}
                       <div className="flex flex-col items-end gap-2">
                         <div className="flex items-center gap-2">
-                          <Target className="h-4 w-4 text-gray-500" />
+                          <Target className="h-4 w-4 text-muted-foreground" />
                           <Select value={selectedTargetId} onValueChange={setSelectedTargetId}>
                             <SelectTrigger className="w-48">
                               <SelectValue placeholder="Select target..." />
@@ -817,7 +817,7 @@ export default function Agents() {
                                     </div>
                                     <SortableAgentItem agent={agent} onRemove={handleRemoveFromFlow} />
                                     {index < agentsInFlow.length - 1 && (
-                                      <ArrowRight className="h-4 w-4 text-gray-400" />
+                                      <ArrowRight className="h-4 w-4 text-muted-foreground" />
                                     )}
                                   </div>
                                 ))}
@@ -827,9 +827,9 @@ export default function Agents() {
 
                           {/* Add Agent Section */}
                           {availableAgents.length > 0 && (
-                            <div className="mt-6 p-4 bg-gray-50 border border-dashed border-gray-300 rounded-lg">
+                            <div className="mt-6 p-4 bg-secondary border border-dashed border-border rounded-lg">
                               <div className="flex items-center gap-3">
-                                <Plus className="h-4 w-4 text-gray-500" />
+                                <Plus className="h-4 w-4 text-muted-foreground" />
                                 <Select onValueChange={handleAddToFlow}>
                                   <SelectTrigger className="flex-1">
                                     <SelectValue placeholder="Add agent to flow..." />
@@ -843,7 +843,7 @@ export default function Agents() {
                                   </SelectContent>
                                 </Select>
                               </div>
-                              <p className="text-xs text-gray-500 mt-2">
+                              <p className="text-xs text-muted-foreground mt-2">
                                 {availableAgents.length} agent(s) available to add
                               </p>
                             </div>
@@ -852,8 +852,8 @@ export default function Agents() {
                           {/* How it Works Section */}
                           {agentsInFlow.length > 1 && (
                             <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                              <h4 className="text-sm font-medium text-gray-900 mb-2">How Agent Flow Works</h4>
-                              <ul className="text-xs text-gray-600 space-y-1">
+                              <h4 className="text-sm font-medium text-foreground mb-2">How Agent Flow Works</h4>
+                              <ul className="text-xs text-muted-foreground space-y-1">
                                 <li>• Agents execute in the order shown above (top to bottom)</li>
                                 <li>• Each agent can process and enhance the previous agent&apos;s output</li>
                                 <li>• Drag agents up or down to change their execution order</li>
@@ -871,13 +871,13 @@ export default function Agents() {
 
               {/* Active Workflows Section */}
               {runningWorkflows.length > 0 && (
-                <Card className="mt-6 bg-white">
+                <Card className="mt-6 bg-card">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Activity className="h-5 w-5 text-blue-600" />
                       Active Workflows
                     </CardTitle>
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-sm text-muted-foreground mt-1">
                       Real-time monitoring of running workflows with progress tracking
                     </p>
                   </CardHeader>
@@ -900,13 +900,13 @@ export default function Agents() {
 
               {/* Workflow History Section */}
               {allNonRunning.length > 0 && (
-                <Card className="mt-6 bg-white">
+                <Card className="mt-6 bg-card">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                      <Clock className="h-5 w-5 text-gray-600" />
+                      <Clock className="h-5 w-5 text-muted-foreground" />
                       Workflow History
                     </CardTitle>
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-sm text-muted-foreground mt-1">
                       Completed and failed workflows
                     </p>
                   </CardHeader>
@@ -915,14 +915,14 @@ export default function Agents() {
                       {allNonRunning.slice(0, 5).map((workflow) => (
                         <div
                           key={workflow.id}
-                          className="p-3 bg-gray-50 rounded border border-gray-200 hover:bg-gray-100 transition-colors"
+                          className="p-3 bg-secondary rounded border border-border hover:bg-secondary transition-colors"
                         >
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex-1">
-                              <h4 className="text-sm font-medium text-gray-900">
+                              <h4 className="text-sm font-medium text-foreground">
                                 {workflow.name}
                               </h4>
-                              <p className="text-xs text-gray-500">
+                              <p className="text-xs text-muted-foreground">
                                 {workflow.completedAt 
                                   ? new Date(workflow.completedAt).toLocaleString()
                                   : new Date(workflow.createdAt).toLocaleString()}
@@ -935,7 +935,7 @@ export default function Agents() {
                                   ? "bg-green-500/10 text-green-600"
                                   : workflow.status === "failed"
                                   ? "bg-red-500/10 text-red-600"
-                                  : "bg-gray-500/10 text-gray-600"
+                                  : "bg-secondary0/10 text-muted-foreground"
                               }`}
                             >
                               {workflow.status.toUpperCase()}
@@ -952,7 +952,7 @@ export default function Agents() {
                         </div>
                       ))}
                       {allNonRunning.length > 5 && (
-                        <p className="text-xs text-gray-500 text-center italic">
+                        <p className="text-xs text-muted-foreground text-center italic">
                           + {allNonRunning.length - 5} more workflows
                         </p>
                       )}
@@ -963,7 +963,7 @@ export default function Agents() {
 
               {/* Active Loops Section */}
               {activeLoops.length > 0 && (
-                <Card className="mt-6 bg-white">
+                <Card className="mt-6 bg-card">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <RotateCcw className="h-5 w-5 text-blue-600" />
@@ -977,11 +977,11 @@ export default function Agents() {
                         const partner = agents.find((a) => a.id === loop.partnerId);
                         
                         return (
-                          <div key={loop.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                          <div key={loop.id} className="p-4 bg-secondary rounded-lg border border-border">
                             <div className="flex items-center justify-between mb-3">
                               <div className="flex items-center gap-3">
                                 <Target className="h-4 w-4 text-blue-600" />
-                                <span className="text-sm font-medium text-gray-900">
+                                <span className="text-sm font-medium text-foreground">
                                   {agent?.name} ↔ {partner?.name}
                                 </span>
                                 <Badge
@@ -997,7 +997,7 @@ export default function Agents() {
                                 </Badge>
                               </div>
                               <div className="flex items-center gap-2">
-                                <span className="text-xs text-gray-500">
+                                <span className="text-xs text-muted-foreground">
                                   {loop.currentIteration}/{loop.maxIterations} iterations
                                 </span>
                                 {loop.status === "running" && (
@@ -1013,7 +1013,7 @@ export default function Agents() {
                               </div>
                             </div>
 
-                            <div className="text-xs text-gray-600 space-y-1 mb-3">
+                            <div className="text-xs text-muted-foreground space-y-1 mb-3">
                               <div>Exit Condition: {loop.exitCondition}</div>
                               <div>Started: {new Date(loop.startedAt).toLocaleString()}</div>
                               {loop.completedAt && (
@@ -1023,21 +1023,21 @@ export default function Agents() {
 
                             {/* Latest Iteration */}
                             {loop.iterations && loop.iterations.length > 0 && (
-                              <div className="p-3 bg-white rounded border border-gray-200">
-                                <h5 className="text-xs font-semibold text-gray-700 mb-2">
+                              <div className="p-3 bg-card rounded border border-border">
+                                <h5 className="text-xs font-semibold text-foreground mb-2">
                                   Latest Iteration
                                 </h5>
-                                <div className="text-xs text-gray-600">
+                                <div className="text-xs text-muted-foreground">
                                   <div className="mb-1">
-                                    <span className="text-gray-700">Agent:</span>{" "}
+                                    <span className="text-foreground">Agent:</span>{" "}
                                     {agents.find((a) => a.id === loop.iterations[loop.iterations.length - 1].agentId)?.name}
                                   </div>
                                   <div className="mb-1">
-                                    <span className="text-gray-700">Output:</span>{" "}
+                                    <span className="text-foreground">Output:</span>{" "}
                                     {loop.iterations[loop.iterations.length - 1].output.substring(0, 100)}...
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <span className="text-gray-700">Success:</span>
+                                    <span className="text-foreground">Success:</span>
                                     {loop.iterations[loop.iterations.length - 1].success ? (
                                       <CheckCircle className="h-3 w-3 text-green-600" />
                                     ) : (
@@ -1067,12 +1067,12 @@ export default function Agents() {
           </div>
 
           {serversLoading ? (
-            <p className="text-gray-500">Loading MCP servers...</p>
+            <p className="text-muted-foreground">Loading MCP servers...</p>
           ) : mcpServers.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-              <Server className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">No MCP servers configured</p>
-              <p className="text-sm text-gray-500 mb-4">Add an MCP server to get started</p>
+            <div className="text-center py-12 bg-card rounded-lg border border-border">
+              <Server className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No MCP servers configured</p>
+              <p className="text-sm text-muted-foreground mb-4">Add an MCP server to get started</p>
               <Button onClick={() => setServerDialogOpen(true)}>
                 <Plus className="h-4 w-4 mr-2" />
                 Add MCP Server
@@ -1081,7 +1081,7 @@ export default function Agents() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {mcpServers.map((server) => (
-                <Card key={server.id} className="bg-white">
+                <Card key={server.id} className="bg-card">
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center">
@@ -1089,8 +1089,8 @@ export default function Agents() {
                           <Server className="h-5 w-5" />
                         </div>
                         <div>
-                          <h3 className="font-semibold text-gray-900">{server.name}</h3>
-                          <p className="text-sm text-gray-500">MCP Server</p>
+                          <h3 className="font-semibold text-foreground">{server.name}</h3>
+                          <p className="text-sm text-muted-foreground">MCP Server</p>
                         </div>
                       </div>
                       <Badge
@@ -1098,17 +1098,17 @@ export default function Agents() {
                         className={`${
                           server.status === "running"
                             ? "bg-green-500/10 text-green-600"
-                            : "bg-gray-500/10 text-gray-600"
+                            : "bg-secondary0/10 text-muted-foreground"
                         }`}
                       >
                         {server.status}
                       </Badge>
                     </div>
-                    <div className="text-sm text-gray-600 mb-2 truncate">
+                    <div className="text-sm text-muted-foreground mb-2 truncate">
                       {server.command}
                     </div>
                     {server.autoRestart && (
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-muted-foreground">
                         Auto-restart enabled
                       </div>
                     )}
@@ -1236,20 +1236,20 @@ export default function Agents() {
             </div>
 
             {/* Tools Enabled Section */}
-            <div className="border-t border-gray-200 pt-4">
+            <div className="border-t border-border pt-4">
               <div className="flex items-center gap-2 mb-4">
                 <Zap className="h-4 w-4 text-indigo-600" />
                 <h3 className="text-lg font-semibold">Tools Enabled</h3>
               </div>
 
-              <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-200 rounded-lg p-3">
+              <div className="space-y-2 max-h-48 overflow-y-auto border border-border rounded-lg p-3">
                 {tools.length === 0 ? (
-                  <p className="text-sm text-gray-500 text-center py-2">
+                  <p className="text-sm text-muted-foreground text-center py-2">
                     No tools available. Please seed the tools database.
                   </p>
                 ) : (
                   tools.map((tool) => (
-                    <div key={tool.id} className="flex items-center gap-2 hover:bg-gray-50 p-2 rounded">
+                    <div key={tool.id} className="flex items-center gap-2 hover:bg-secondary p-2 rounded">
                       <input
                         type="checkbox"
                         id={`tool-${tool.id}`}
@@ -1263,11 +1263,11 @@ export default function Agents() {
                             config: { ...newAgent.config, enabledTools }
                           });
                         }}
-                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-border rounded"
                       />
                       <Label htmlFor={`tool-${tool.id}`} className="flex-1 mb-0 cursor-pointer">
                         <span className="font-medium">{tool.name}</span>
-                        <span className="text-xs text-gray-500 ml-2">
+                        <span className="text-xs text-muted-foreground ml-2">
                           ({tool.category.replace(/_/g, " ")})
                         </span>
                       </Label>
@@ -1275,15 +1275,15 @@ export default function Agents() {
                   ))
                 )}
               </div>
-              <p className="text-xs text-gray-500 mt-2">
+              <p className="text-xs text-muted-foreground mt-2">
                 Selected: {newAgent.config.enabledTools.length} tool(s)
               </p>
 
               {/* Tools Order Section */}
               {newAgent.config.enabledTools.length > 0 && (
                 <div className="mt-4">
-                  <h4 className="text-sm font-semibold text-gray-700 mb-2">Tools Order</h4>
-                  <p className="text-xs text-gray-500 mb-3">
+                  <h4 className="text-sm font-semibold text-foreground mb-2">Tools Order</h4>
+                  <p className="text-xs text-muted-foreground mb-3">
                     Drag to reorder how the agent will use these tools
                   </p>
                   
@@ -1326,7 +1326,7 @@ export default function Agents() {
                   </DndContext>
 
                   <div className="mt-3 p-3 bg-indigo-50 rounded-lg border border-indigo-200">
-                    <p className="text-xs text-gray-600">
+                    <p className="text-xs text-muted-foreground">
                       💡 The agent will execute tools in the order shown above (top to bottom)
                     </p>
                   </div>
@@ -1335,7 +1335,7 @@ export default function Agents() {
             </div>
 
             {/* MCP Server Integration Section */}
-            <div className="border-t border-gray-200 pt-4">
+            <div className="border-t border-border pt-4">
               <div className="flex items-center gap-2 mb-4">
                 <Server className="h-4 w-4 text-purple-600" />
                 <h3 className="text-lg font-semibold">MCP Server Integration</h3>
@@ -1343,7 +1343,7 @@ export default function Agents() {
 
               <div>
                 <Label htmlFor="mcp-server">Select MCP Server (Optional)</Label>
-                <p className="text-sm text-gray-500 mb-2">
+                <p className="text-sm text-muted-foreground mb-2">
                   Connect this agent to an MCP server for enhanced capabilities like web search and data extraction
                 </p>
                 <Select
@@ -1375,7 +1375,7 @@ export default function Agents() {
             </div>
 
             {/* Loop Configuration Section */}
-            <div className="border-t border-gray-200 pt-4">
+            <div className="border-t border-border pt-4">
               <div className="flex items-center gap-2 mb-4">
                 <RotateCcw className="h-4 w-4 text-blue-600" />
                 <h3 className="text-lg font-semibold">Loop Configuration</h3>
@@ -1384,7 +1384,7 @@ export default function Agents() {
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <Label>Enable Agent Loop</Label>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-muted-foreground">
                     Allow this agent to loop with another agent for iterative refinement
                   </p>
                 </div>

@@ -41,7 +41,7 @@ export default function TerminalOutput({
   };
 
   return (
-    <Card className="bg-gray-900 border-gray-700">
+    <Card className="bg-primary border-gray-700">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-green-400">
@@ -59,7 +59,7 @@ export default function TerminalOutput({
               variant="ghost"
               onClick={handleCopy}
               disabled={!output}
-              className="text-gray-400 hover:text-gray-200"
+              className="text-muted-foreground hover:text-gray-200"
               title="Copy to clipboard"
             >
               <Copy className="h-3.5 w-3.5" />
@@ -69,7 +69,7 @@ export default function TerminalOutput({
               variant="ghost"
               onClick={handleDownload}
               disabled={!output}
-              className="text-gray-400 hover:text-gray-200"
+              className="text-muted-foreground hover:text-gray-200"
               title="Download output"
             >
               <Download className="h-3.5 w-3.5" />
@@ -84,7 +84,7 @@ export default function TerminalOutput({
           style={{ fontFamily: 'Consolas, Monaco, "Courier New", monospace' }}
         >
           {output || (
-            <span className="text-gray-600">
+            <span className="text-muted-foreground">
               {isExecuting 
                 ? "Waiting for output..." 
                 : "No output yet. Execute a module to see results."}

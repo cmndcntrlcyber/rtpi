@@ -72,9 +72,9 @@ export default function Profile() {
       case "operator":
         return "bg-blue-100 text-blue-700";
       case "viewer":
-        return "bg-gray-100 text-gray-700";
+        return "bg-secondary text-foreground";
       default:
-        return "bg-gray-100 text-gray-700";
+        return "bg-secondary text-foreground";
     }
   };
 
@@ -111,15 +111,15 @@ export default function Profile() {
             {!editMode ? (
               <>
                 <div>
-                  <Label className="text-sm text-gray-500">Username</Label>
+                  <Label className="text-sm text-muted-foreground">Username</Label>
                   <p className="text-lg font-medium">{user?.username}</p>
                 </div>
                 <div>
-                  <Label className="text-sm text-gray-500">Email</Label>
+                  <Label className="text-sm text-muted-foreground">Email</Label>
                   <p className="text-lg font-medium">{user?.email}</p>
                 </div>
                 <div>
-                  <Label className="text-sm text-gray-500">Role</Label>
+                  <Label className="text-sm text-muted-foreground">Role</Label>
                   <div className="mt-1">
                     <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium capitalize ${getRoleBadgeColor(user?.role || "")}`}>
                       <Shield className="h-4 w-4" />
@@ -128,11 +128,11 @@ export default function Profile() {
                   </div>
                 </div>
                 <div>
-                  <Label className="text-sm text-gray-500">Authentication Method</Label>
+                  <Label className="text-sm text-muted-foreground">Authentication Method</Label>
                   <p className="text-lg font-medium capitalize">{user?.authMethod}</p>
                 </div>
                 <div>
-                  <Label className="text-sm text-gray-500">Account Status</Label>
+                  <Label className="text-sm text-muted-foreground">Account Status</Label>
                   <p className="text-lg font-medium">
                     {user?.isActive ? (
                       <span className="text-green-600">Active</span>
@@ -189,7 +189,7 @@ export default function Profile() {
             {!passwordMode ? (
               <>
                 <div>
-                  <Label className="text-sm text-gray-500">Password</Label>
+                  <Label className="text-sm text-muted-foreground">Password</Label>
                   <p className="text-lg font-medium">••••••••••••</p>
                 </div>
                 {user?.mustChangePassword && (
@@ -223,7 +223,7 @@ export default function Profile() {
                     required
                     minLength={12}
                   />
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted-foreground">
                     Minimum 12 characters with uppercase, lowercase, number, and special character
                   </p>
                 </div>
@@ -268,7 +268,7 @@ export default function Profile() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <Label className="text-sm text-gray-500">Last Login</Label>
+              <Label className="text-sm text-muted-foreground">Last Login</Label>
               <p className="text-lg font-medium">
                 {user?.lastLogin
                   ? new Date(user.lastLogin).toLocaleString()
@@ -276,7 +276,7 @@ export default function Profile() {
               </p>
             </div>
             <div>
-              <Label className="text-sm text-gray-500">Account Created</Label>
+              <Label className="text-sm text-muted-foreground">Account Created</Label>
               <p className="text-lg font-medium">
                 {user?.createdAt
                   ? new Date(user.createdAt).toLocaleString()
@@ -296,7 +296,7 @@ export default function Profile() {
             <CardDescription>Recent account activity</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-muted-foreground">
               Activity tracking coming soon. This will show login history, actions performed, and security events.
             </p>
           </CardContent>

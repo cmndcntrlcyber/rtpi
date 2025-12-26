@@ -121,10 +121,10 @@ export default function StixImportDialog() {
         <div className="space-y-6 py-4">
           {!importing && !stats && !error && (
             <div className="space-y-4">
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors">
-                <FileJson className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <div className="border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-gray-400 transition-colors">
+                <FileJson className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <label htmlFor="file-upload" className="cursor-pointer">
-                  <span className="text-sm font-medium text-gray-700">
+                  <span className="text-sm font-medium text-foreground">
                     Click to upload STIX JSON file
                   </span>
                   <input
@@ -135,7 +135,7 @@ export default function StixImportDialog() {
                     className="hidden"
                   />
                 </label>
-                <p className="text-xs text-gray-500 mt-2">
+                <p className="text-xs text-muted-foreground mt-2">
                   Download from{" "}
                   <a
                     href="https://github.com/mitre-attack/attack-stix-data"
@@ -197,37 +197,37 @@ export default function StixImportDialog() {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-500">Tactics</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.tactics}</p>
+                <div className="bg-secondary rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground">Tactics</p>
+                  <p className="text-2xl font-bold text-foreground">{stats.tactics}</p>
                 </div>
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-500">Techniques</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.techniques}</p>
+                <div className="bg-secondary rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground">Techniques</p>
+                  <p className="text-2xl font-bold text-foreground">{stats.techniques}</p>
                 </div>
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-500">Sub-techniques</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.subtechniques}</p>
+                <div className="bg-secondary rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground">Sub-techniques</p>
+                  <p className="text-2xl font-bold text-foreground">{stats.subtechniques}</p>
                 </div>
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-500">Groups</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.groups}</p>
+                <div className="bg-secondary rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground">Groups</p>
+                  <p className="text-2xl font-bold text-foreground">{stats.groups}</p>
                 </div>
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-500">Software</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.software}</p>
+                <div className="bg-secondary rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground">Software</p>
+                  <p className="text-2xl font-bold text-foreground">{stats.software}</p>
                 </div>
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-500">Mitigations</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.mitigations}</p>
+                <div className="bg-secondary rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground">Mitigations</p>
+                  <p className="text-2xl font-bold text-foreground">{stats.mitigations}</p>
                 </div>
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-500">Relationships</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.relationships}</p>
+                <div className="bg-secondary rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground">Relationships</p>
+                  <p className="text-2xl font-bold text-foreground">{stats.relationships}</p>
                 </div>
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-500">Campaigns</p>
-                  <p className="text-2xl font-bold text-gray-900">{stats.campaigns}</p>
+                <div className="bg-secondary rounded-lg p-3">
+                  <p className="text-xs text-muted-foreground">Campaigns</p>
+                  <p className="text-2xl font-bold text-foreground">{stats.campaigns}</p>
                 </div>
               </div>
 

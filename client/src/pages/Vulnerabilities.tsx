@@ -106,8 +106,8 @@ export default function Vulnerabilities() {
     <div className="p-8">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Vulnerabilities</h1>
-          <p className="text-gray-600 mt-1">
+          <h1 className="text-3xl font-bold text-foreground">Vulnerabilities</h1>
+          <p className="text-muted-foreground mt-1">
             Track and manage security vulnerabilities
           </p>
         </div>
@@ -119,25 +119,25 @@ export default function Vulnerabilities() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">
             Total Vulnerabilities
           </h3>
-          <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
+          <p className="text-3xl font-bold text-foreground">{stats.total}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Critical</h3>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Critical</h3>
           <p className="text-3xl font-bold text-red-600">{stats.critical}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">High</h3>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">High</h3>
           <p className="text-3xl font-bold text-orange-600">{stats.high}</p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Remediated</h3>
+        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
+          <h3 className="text-sm font-medium text-muted-foreground mb-2">Remediated</h3>
           <p className="text-3xl font-bold text-green-600">{stats.remediated}</p>
         </div>
       </div>

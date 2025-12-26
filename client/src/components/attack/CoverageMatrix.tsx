@@ -179,9 +179,9 @@ export default function CoverageMatrix() {
       case "in_progress":
         return <AlertCircle className="h-4 w-4 text-yellow-600" />;
       case "planned":
-        return <Circle className="h-4 w-4 text-gray-400" />;
+        return <Circle className="h-4 w-4 text-muted-foreground" />;
       default:
-        return <Circle className="h-4 w-4 text-gray-400" />;
+        return <Circle className="h-4 w-4 text-muted-foreground" />;
     }
   };
 
@@ -199,7 +199,7 @@ export default function CoverageMatrix() {
   };
 
   const getCoverageColor = (mapping: CoverageMapping | undefined) => {
-    if (!mapping) return "bg-gray-100 border-gray-200";
+    if (!mapping) return "bg-secondary border-border";
 
     switch (mapping.status) {
       case "completed":
@@ -209,16 +209,16 @@ export default function CoverageMatrix() {
       case "planned":
         return "bg-blue-100 border-blue-300 hover:bg-blue-200";
       default:
-        return "bg-gray-100 border-gray-200 hover:bg-gray-200";
+        return "bg-secondary border-border hover:bg-muted";
     }
   };
 
   const renderHeatmapView = () => {
     if (tactics.length === 0 || allTechniques.length === 0) {
       return (
-        <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-          <LayoutGrid className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-500 font-medium">Loading matrix data...</p>
+        <div className="text-center py-12 bg-card rounded-lg border border-border">
+          <LayoutGrid className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+          <p className="text-muted-foreground font-medium">Loading matrix data...</p>
         </div>
       );
     }
@@ -232,18 +232,18 @@ export default function CoverageMatrix() {
     });
 
     return (
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="bg-card rounded-lg border border-border overflow-hidden">
         <div className="overflow-x-auto">
           <div className="min-w-max">
             {/* Header row with tactics */}
-            <div className="flex border-b border-gray-200 bg-gray-50">
-              <div className="w-48 p-3 font-semibold text-sm border-r border-gray-200">
+            <div className="flex border-b border-border bg-secondary">
+              <div className="w-48 p-3 font-semibold text-sm border-r border-border">
                 Technique
               </div>
               {tactics.map((tactic) => (
                 <div
                   key={tactic.id}
-                  className="w-32 p-3 text-center border-r border-gray-200 last:border-r-0"
+                  className="w-32 p-3 text-center border-r border-border last:border-r-0"
                 >
                   <TooltipProvider>
                     <Tooltip>
@@ -251,7 +251,7 @@ export default function CoverageMatrix() {
                         <div className="font-semibold text-xs truncate">
                           {tactic.shortName}
                         </div>
-                        <div className="text-xs text-gray-500 font-mono">
+                        <div className="text-xs text-muted-foreground font-mono">
                           {tactic.attackId}
                         </div>
                       </TooltipTrigger>
@@ -272,10 +272,10 @@ export default function CoverageMatrix() {
                 );
 
                 return (
-                  <div key={technique.id} className="flex hover:bg-gray-50">
-                    <div className="w-48 p-2 border-r border-gray-200 flex items-center">
+                  <div key={technique.id} className="flex hover:bg-secondary">
+                    <div className="w-48 p-2 border-r border-border flex items-center">
                       <div className="truncate">
-                        <div className="font-mono text-xs text-gray-600">
+                        <div className="font-mono text-xs text-muted-foreground">
                           {technique.attackId}
                         </div>
                         <div className="text-sm font-medium truncate" title={technique.name}>
@@ -294,8 +294,8 @@ export default function CoverageMatrix() {
                       return (
                         <div
                           key={tactic.id}
-                          className={`w-32 p-2 border-r border-gray-200 last:border-r-0 ${
-                            hasTactic ? "" : "bg-gray-50"
+                          className={`w-32 p-2 border-r border-border last:border-r-0 ${
+                            hasTactic ? "" : "bg-secondary"
                           }`}
                         >
                           {hasTactic && (
@@ -319,14 +319,14 @@ export default function CoverageMatrix() {
                                         </div>
                                       </div>
                                     ) : (
-                                      <div className="text-2xl text-gray-400">•</div>
+                                      <div className="text-2xl text-muted-foreground">•</div>
                                     )}
                                   </div>
                                 </TooltipTrigger>
                                 <TooltipContent>
                                   <div className="text-sm">
                                     <p className="font-semibold">{technique.name}</p>
-                                    <p className="text-xs text-gray-400">
+                                    <p className="text-xs text-muted-foreground">
                                       {technique.attackId} → {tactic.attackId}
                                     </p>
                                     {mapping ? (
@@ -342,7 +342,7 @@ export default function CoverageMatrix() {
                                         )}
                                       </>
                                     ) : (
-                                      <p className="mt-1 text-gray-400">Not mapped</p>
+                                      <p className="mt-1 text-muted-foreground">Not mapped</p>
                                     )}
                                   </div>
                                 </TooltipContent>
@@ -360,7 +360,7 @@ export default function CoverageMatrix() {
         </div>
 
         {allTechniques.length > 50 && (
-          <div className="p-4 bg-gray-50 border-t border-gray-200 text-center text-sm text-gray-500">
+          <div className="p-4 bg-secondary border-t border-border text-center text-sm text-muted-foreground">
             Showing first 50 techniques. Total: {allTechniques.length}
           </div>
         )}
@@ -370,10 +370,10 @@ export default function CoverageMatrix() {
 
   if (operations.length === 0) {
     return (
-      <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-        <Database className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-        <p className="text-gray-500 font-medium">No operations found</p>
-        <p className="text-sm text-gray-400 mt-2">
+      <div className="text-center py-12 bg-card rounded-lg border border-border">
+        <Database className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+        <p className="text-muted-foreground font-medium">No operations found</p>
+        <p className="text-sm text-muted-foreground mt-2">
           Create an operation first to track ATT&CK technique coverage
         </p>
       </div>
@@ -454,7 +454,7 @@ export default function CoverageMatrix() {
           <Card>
             <CardHeader className="pb-3">
               <CardDescription>Planned</CardDescription>
-              <CardTitle className="text-3xl text-gray-600">{stats.plannedTechniques}</CardTitle>
+              <CardTitle className="text-3xl text-muted-foreground">{stats.plannedTechniques}</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-xs text-muted-foreground">Not yet started</p>
@@ -502,18 +502,18 @@ export default function CoverageMatrix() {
       ) : viewMode === "heatmap" ? (
         renderHeatmapView()
       ) : coverage.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-          <Target className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-500 font-medium">No techniques mapped</p>
-          <p className="text-sm text-gray-400 mt-2">
+        <div className="text-center py-12 bg-card rounded-lg border border-border">
+          <Target className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+          <p className="text-muted-foreground font-medium">No techniques mapped</p>
+          <p className="text-sm text-muted-foreground mt-2">
             Start mapping ATT&CK techniques to this operation to track coverage
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200">
+        <div className="bg-card rounded-lg border border-border">
           <div className="divide-y divide-gray-200">
             {coverage.map((mapping) => (
-              <div key={mapping.id} className="p-4 hover:bg-gray-50 transition-colors">
+              <div key={mapping.id} className="p-4 hover:bg-secondary transition-colors">
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-3 flex-1">
                     {getStatusIcon(mapping.status)}
@@ -528,14 +528,14 @@ export default function CoverageMatrix() {
                           </Badge>
                         )}
                       </div>
-                      <h4 className="font-medium text-gray-900">{mapping.technique.name}</h4>
+                      <h4 className="font-medium text-foreground">{mapping.technique.name}</h4>
                       {mapping.tactic && (
-                        <p className="text-sm text-gray-500 mt-1">
+                        <p className="text-sm text-muted-foreground mt-1">
                           Tactic: {mapping.tactic.name} ({mapping.tactic.attackId})
                         </p>
                       )}
                       {mapping.notes && (
-                        <p className="text-sm text-gray-600 mt-2 bg-gray-50 p-2 rounded">
+                        <p className="text-sm text-muted-foreground mt-2 bg-secondary p-2 rounded">
                           {mapping.notes}
                         </p>
                       )}
@@ -544,10 +544,10 @@ export default function CoverageMatrix() {
 
                   <div className="flex items-center gap-4 ml-4">
                     <div className="text-right">
-                      <p className="text-2xl font-bold text-gray-900">
+                      <p className="text-2xl font-bold text-foreground">
                         {mapping.coveragePercentage}%
                       </p>
-                      <p className="text-xs text-gray-500">Coverage</p>
+                      <p className="text-xs text-muted-foreground">Coverage</p>
                     </div>
                     {getStatusBadge(mapping.status)}
                   </div>

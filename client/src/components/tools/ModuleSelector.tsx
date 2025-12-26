@@ -53,7 +53,7 @@ export default function ModuleSelector({
             ) : (
               categories.map((category) => (
                 <SelectGroup key={category}>
-                  <SelectLabel className="text-xs font-semibold text-gray-500 uppercase">
+                  <SelectLabel className="text-xs font-semibold text-muted-foreground uppercase">
                     {category.replace(/_/g, " ")}
                   </SelectLabel>
                   {typeModules[category].map((modulePath: string) => {
@@ -76,7 +76,7 @@ export default function ModuleSelector({
 
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-gray-700">Module Selection</h3>
+      <h3 className="text-sm font-semibold text-foreground">Module Selection</h3>
       
       {/* 3x2 Grid */}
       <div className="grid grid-cols-3 gap-4">

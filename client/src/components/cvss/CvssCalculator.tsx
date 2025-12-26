@@ -73,7 +73,7 @@ export default function CvssCalculator({ value, onChange }: CvssCalculatorProps)
     orange: "bg-orange-500 text-white",
     yellow: "bg-yellow-500 text-white",
     blue: "bg-blue-500 text-white",
-    gray: "bg-gray-500 text-white",
+    gray: "bg-secondary0 text-white",
   };
 
   return (
@@ -86,11 +86,11 @@ export default function CvssCalculator({ value, onChange }: CvssCalculatorProps)
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Score Display */}
-        <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+        <div className="bg-secondary p-4 rounded-lg border border-border">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium text-gray-700">CVSS Score</span>
+            <span className="text-sm font-medium text-foreground">CVSS Score</span>
             <div className="flex items-center gap-2">
-              <span className="text-3xl font-bold text-gray-900">{score.toFixed(1)}</span>
+              <span className="text-3xl font-bold text-foreground">{score.toFixed(1)}</span>
               <Badge
                 className={`${
                   severityColors[severity.color as keyof typeof severityColors]
@@ -100,7 +100,7 @@ export default function CvssCalculator({ value, onChange }: CvssCalculatorProps)
               </Badge>
             </div>
           </div>
-          <div className="text-xs text-gray-600 font-mono break-all">
+          <div className="text-xs text-muted-foreground font-mono break-all">
             {vector}
           </div>
         </div>
@@ -124,13 +124,13 @@ export default function CvssCalculator({ value, onChange }: CvssCalculatorProps)
                     <SelectItem key={choice.id} value={choice.id}>
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{choice.id}</span>
-                        <span className="text-gray-600">- {choice.name}</span>
+                        <span className="text-muted-foreground">- {choice.name}</span>
                       </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-gray-500">{metric.description}</p>
+              <p className="text-xs text-muted-foreground">{metric.description}</p>
             </div>
           ))}
         </div>

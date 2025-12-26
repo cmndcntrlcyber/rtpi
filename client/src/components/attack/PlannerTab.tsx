@@ -314,7 +314,7 @@ export default function PlannerTab() {
         <CardContent className="space-y-4">
           {/* Search */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search techniques..."
               value={searchTerm}
@@ -408,7 +408,7 @@ export default function PlannerTab() {
                     key={technique.id}
                     draggable
                     onDragStart={() => handleDragStart(technique)}
-                    className="p-3 hover:bg-gray-50 cursor-move transition-colors"
+                    className="p-3 hover:bg-secondary cursor-move transition-colors"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
@@ -416,7 +416,7 @@ export default function PlannerTab() {
                           <Badge variant="outline" className="font-mono text-xs">
                             {technique.attackId}
                           </Badge>
-                          <GripVertical className="h-4 w-4 text-gray-400" />
+                          <GripVertical className="h-4 w-4 text-muted-foreground" />
                         </div>
                         <p className="font-medium text-sm truncate">{technique.name}</p>
                         {technique.killChainPhases && technique.killChainPhases.length > 0 && (
@@ -479,7 +479,7 @@ export default function PlannerTab() {
           <div
             onDrop={handleDrop}
             onDragOver={handleDragOver}
-            className="border-2 border-dashed border-gray-300 rounded-lg min-h-[400px] p-4"
+            className="border-2 border-dashed border-border rounded-lg min-h-[400px] p-4"
           >
             {selectedTechniques.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground py-12">
@@ -496,10 +496,10 @@ export default function PlannerTab() {
                     onDragStart={() => handleDragStartReorder(index)}
                     onDrop={() => handleDropReorder(index)}
                     onDragOver={handleDragOver}
-                    className="bg-white border rounded-lg p-3 hover:shadow-md transition-all cursor-move"
+                    className="bg-card border rounded-lg p-3 hover:shadow-md transition-all cursor-move"
                   >
                     <div className="flex items-start gap-3">
-                      <div className="flex items-center gap-2 text-gray-400">
+                      <div className="flex items-center gap-2 text-muted-foreground">
                         <span className="text-sm font-medium">{index + 1}</span>
                         <GripVertical className="h-4 w-4" />
                       </div>

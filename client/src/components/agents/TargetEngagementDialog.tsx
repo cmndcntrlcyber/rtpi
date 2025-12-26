@@ -142,7 +142,7 @@ export default function TargetEngagementDialog({
             <Target className="h-5 w-5 text-blue-600" />
             Target Engagement - {agent?.name}
           </DialogTitle>
-          <p className="text-sm text-gray-500 mt-2">
+          <p className="text-sm text-muted-foreground mt-2">
             Select targets and tools to engage, then click &quot;Engage&quot; to start tool execution
           </p>
         </DialogHeader>
@@ -152,20 +152,20 @@ export default function TargetEngagementDialog({
           <div className={`p-4 rounded-lg border ${
             engagementStatus.active 
               ? "bg-green-50 border-green-200" 
-              : "bg-gray-50 border-gray-200"
+              : "bg-secondary border-border"
           }`}>
             <div className="flex items-center gap-2 mb-2">
               {engagementStatus.active ? (
                 <Activity className="h-5 w-5 text-green-600 animate-pulse" />
               ) : (
-                <CheckCircle2 className="h-5 w-5 text-gray-600" />
+                <CheckCircle2 className="h-5 w-5 text-muted-foreground" />
               )}
-              <h4 className="font-semibold text-gray-900">
+              <h4 className="font-semibold text-foreground">
                 {engagementStatus.active ? "Currently Engaged" : "Not Engaged"}
               </h4>
             </div>
             {engagementStatus.active && (
-              <div className="text-sm text-gray-600 space-y-1">
+              <div className="text-sm text-muted-foreground space-y-1">
                 <p>Targets: {engagementStatus.targetCount || 0}</p>
                 <p>Tools: {engagementStatus.toolCount || 0}</p>
                 <p>Started: {new Date(engagementStatus.startedAt).toLocaleString()}</p>
@@ -189,10 +189,10 @@ export default function TargetEngagementDialog({
               </Button>
             </div>
 
-            <div className="border border-gray-200 rounded-lg max-h-[400px] overflow-y-auto">
+            <div className="border border-border rounded-lg max-h-[400px] overflow-y-auto">
               {targets.length === 0 ? (
-                <div className="p-8 text-center text-gray-500">
-                  <Target className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                <div className="p-8 text-center text-muted-foreground">
+                  <Target className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
                   <p className="text-sm">No targets available</p>
                   <p className="text-xs">Create targets first to engage</p>
                 </div>
@@ -204,7 +204,7 @@ export default function TargetEngagementDialog({
                       className={`flex items-start gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
                         selectedTargets.includes(target.id)
                           ? "bg-blue-50 border-blue-200"
-                          : "bg-white border-gray-200 hover:bg-gray-50"
+                          : "bg-card border-border hover:bg-secondary"
                       }`}
                       onClick={() => handleToggleTarget(target.id)}
                     >
@@ -214,17 +214,17 @@ export default function TargetEngagementDialog({
                         className="mt-1"
                       />
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-gray-900 text-sm truncate">
+                        <h4 className="font-medium text-foreground text-sm truncate">
                           {target.name}
                         </h4>
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-muted-foreground mt-1">
                           <Badge variant="secondary" className="text-xs">
                             {target.type}
                           </Badge>
                           <span className="ml-2">{target.value}</span>
                         </p>
                         {target.description && (
-                          <p className="text-xs text-gray-600 mt-1 truncate">
+                          <p className="text-xs text-muted-foreground mt-1 truncate">
                             {target.description}
                           </p>
                         )}
@@ -235,7 +235,7 @@ export default function TargetEngagementDialog({
               )}
             </div>
 
-            <div className="mt-2 text-xs text-gray-500 text-center">
+            <div className="mt-2 text-xs text-muted-foreground text-center">
               {selectedTargets.length} target(s) selected
             </div>
           </div>
@@ -254,10 +254,10 @@ export default function TargetEngagementDialog({
               </Button>
             </div>
 
-            <div className="border border-gray-200 rounded-lg max-h-[400px] overflow-y-auto">
+            <div className="border border-border rounded-lg max-h-[400px] overflow-y-auto">
               {availableTools.length === 0 ? (
-                <div className="p-8 text-center text-gray-500">
-                  <Zap className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                <div className="p-8 text-center text-muted-foreground">
+                  <Zap className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
                   <p className="text-sm">No tools enabled</p>
                   <p className="text-xs">Enable tools in agent configuration</p>
                 </div>
@@ -269,7 +269,7 @@ export default function TargetEngagementDialog({
                       className={`flex items-start gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
                         selectedTools.includes(tool.id)
                           ? "bg-indigo-50 border-indigo-200"
-                          : "bg-white border-gray-200 hover:bg-gray-50"
+                          : "bg-card border-border hover:bg-secondary"
                       }`}
                       onClick={() => handleToggleTool(tool.id)}
                     >
@@ -279,16 +279,16 @@ export default function TargetEngagementDialog({
                         className="mt-1"
                       />
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-gray-900 text-sm">
+                        <h4 className="font-medium text-foreground text-sm">
                           {tool.name}
                         </h4>
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-muted-foreground mt-1">
                           <Badge variant="secondary" className="text-xs">
                             {tool.category.replace(/_/g, " ")}
                           </Badge>
                         </p>
                         {tool.description && (
-                          <p className="text-xs text-gray-600 mt-1 line-clamp-2">
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                             {tool.description}
                           </p>
                         )}
@@ -299,7 +299,7 @@ export default function TargetEngagementDialog({
               )}
             </div>
 
-            <div className="mt-2 text-xs text-gray-500 text-center">
+            <div className="mt-2 text-xs text-muted-foreground text-center">
               {selectedTools.length} tool(s) selected
             </div>
           </div>
@@ -308,10 +308,10 @@ export default function TargetEngagementDialog({
         {/* Engagement Info */}
         {selectedTargets.length > 0 && selectedTools.length > 0 && (
           <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-            <h4 className="text-sm font-semibold text-gray-900 mb-2">
+            <h4 className="text-sm font-semibold text-foreground mb-2">
               Ready to Engage
             </h4>
-            <p className="text-xs text-gray-600">
+            <p className="text-xs text-muted-foreground">
               The agent will execute {selectedTools.length} tool(s) against {selectedTargets.length} target(s).
               Tools will run in the order configured in the agent settings.
             </p>

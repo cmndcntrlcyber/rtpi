@@ -25,6 +25,7 @@ interface SidebarProps {
   isOpen: boolean;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  onClose: () => void;
 }
 
 const navItems = [
@@ -48,18 +49,29 @@ const adminNavItems = [
   { path: "/users", label: "User Management", icon: Users },
 ];
 
-export default function Sidebar({ isOpen, isCollapsed, onToggleCollapse }: SidebarProps) {
+export default function Sidebar({ isOpen, isCollapsed, onToggleCollapse, onClose }: SidebarProps) {
   const [location] = useLocation();
   const { isAdmin } = useAuth();
 
-  if (!isOpen) return null;
-
   return (
-    <aside
-      className={`bg-background border-r border-border fixed left-0 top-16 bottom-0 overflow-y-auto z-10 transition-all duration-300 ${
-        isCollapsed ? "w-20" : "w-64"
-      }`}
-    >
+    <>
+      {/* Mobile overlay */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-20 lg:hidden"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        className={`bg-background border-r border-border fixed left-0 top-16 bottom-0 overflow-y-auto z-30 transition-all duration-300
+          ${isCollapsed ? "w-20" : "w-64"}
+          ${isOpen ? "translate-x-0" : "-translate-x-full"}
+          lg:translate-x-0
+        `}
+      >
       {/* Header */}
       <div className="p-4 border-b border-border flex items-center justify-between">
         {!isCollapsed ? (
@@ -105,6 +117,7 @@ export default function Sidebar({ isOpen, isCollapsed, onToggleCollapse }: Sideb
             <Link
               key={item.path}
               href={item.path}
+              onClick={onClose}
               className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
                 isActive
                   ? "bg-primary/10 text-primary font-medium"
@@ -135,6 +148,7 @@ export default function Sidebar({ isOpen, isCollapsed, onToggleCollapse }: Sideb
                 <Link
                   key={item.path}
                   href={item.path}
+                  onClick={onClose}
                   className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
                     isActive
                       ? "bg-primary/10 text-primary font-medium"
@@ -151,5 +165,6 @@ export default function Sidebar({ isOpen, isCollapsed, onToggleCollapse }: Sideb
         )}
       </nav>
     </aside>
+    </>
   );
 }

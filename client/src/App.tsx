@@ -2,7 +2,9 @@ import { useEffect } from "react";
 import { Route, Switch } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { KeyboardShortcutsProvider } from "@/contexts/KeyboardShortcutsContext";
 import MainLayout from "@/components/layout/MainLayout";
+import { KeyboardShortcutsDialog } from "@/components/shared/KeyboardShortcutsDialog";
 import Dashboard from "@/pages/Dashboard";
 import Operations from "@/pages/Operations";
 import Targets from "@/pages/Targets";
@@ -51,31 +53,34 @@ function AppContent() {
   }
 
   return (
-    <MainLayout>
-      <Switch>
-        <Route path="/" component={Dashboard} />
-        <Route path="/operations" component={Operations} />
-        <Route path="/targets" component={Targets} />
-        <Route path="/vulnerabilities" component={Vulnerabilities} />
-        <Route path="/surface-assessment" component={SurfaceAssessment} />
-        <Route path="/attack" component={AttackFramework} />
-        <Route path="/agents" component={Agents} />
-        <Route path="/empire" component={Empire} />
-        <Route path="/infrastructure" component={Infrastructure} />
-        <Route path="/tools" component={Tools} />
-        <Route path="/tool-registry" component={ToolRegistry} />
-        <Route path="/reports" component={Reports} />
-        <Route path="/settings" component={Settings} />
-        <Route path="/profile" component={Profile} />
-        <Route path="/users" component={Users} />
-        <Route>
-          <div className="p-8">
-            <h1 className="text-3xl font-bold mb-4">404 - Page Not Found</h1>
-            <p className="text-muted-foreground">The page you&apos;re looking for doesn&apos;t exist.</p>
-          </div>
-        </Route>
-      </Switch>
-    </MainLayout>
+    <KeyboardShortcutsProvider>
+      <MainLayout>
+        <Switch>
+          <Route path="/" component={Dashboard} />
+          <Route path="/operations" component={Operations} />
+          <Route path="/targets" component={Targets} />
+          <Route path="/vulnerabilities" component={Vulnerabilities} />
+          <Route path="/surface-assessment" component={SurfaceAssessment} />
+          <Route path="/attack" component={AttackFramework} />
+          <Route path="/agents" component={Agents} />
+          <Route path="/empire" component={Empire} />
+          <Route path="/infrastructure" component={Infrastructure} />
+          <Route path="/tools" component={Tools} />
+          <Route path="/tool-registry" component={ToolRegistry} />
+          <Route path="/reports" component={Reports} />
+          <Route path="/settings" component={Settings} />
+          <Route path="/profile" component={Profile} />
+          <Route path="/users" component={Users} />
+          <Route>
+            <div className="p-8">
+              <h1 className="text-3xl font-bold mb-4">404 - Page Not Found</h1>
+              <p className="text-muted-foreground">The page you&apos;re looking for doesn&apos;t exist.</p>
+            </div>
+          </Route>
+        </Switch>
+      </MainLayout>
+      <KeyboardShortcutsDialog />
+    </KeyboardShortcutsProvider>
   );
 }
 

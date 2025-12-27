@@ -1185,3 +1185,70 @@ export const attackTechniqueTactics = pgTable("attack_technique_tactics", {
   tacticId: uuid("tactic_id").notNull().references(() => attackTactics.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// ============================================================================
+// Kasm Workspaces Integration
+// ============================================================================
+
+export const kasmWorkspaces = pgTable("kasm_workspaces", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "set null" }),
+
+  // Workspace configuration
+  workspaceType: text("workspace_type").notNull(), // 'vscode', 'burp', 'kali', 'firefox', 'empire'
+  workspaceName: text("workspace_name"),
+
+  // Kasm identifiers
+  kasmSessionId: text("kasm_session_id").notNull().unique(),
+  kasmContainerId: text("kasm_container_id"),
+  kasmUserId: text("kasm_user_id"),
+
+  // Status and access
+  status: text("status").notNull().default("starting"), // 'starting', 'running', 'stopped', 'failed'
+  accessUrl: text("access_url"),
+  internalIp: text("internal_ip"),
+
+  // Resource limits
+  cpuLimit: text("cpu_limit").default("2"), // CPU cores
+  memoryLimit: text("memory_limit").default("4096M"), // Memory limit
+
+  // Lifecycle management
+  createdAt: timestamp("created_at").defaultNow(),
+  startedAt: timestamp("started_at"),
+  lastAccessed: timestamp("last_accessed"),
+  expiresAt: timestamp("expires_at").notNull(),
+  terminatedAt: timestamp("terminated_at"),
+
+  // Metadata
+  metadata: json("metadata").default({}),
+  errorMessage: text("error_message"),
+
+  createdBy: uuid("created_by").references(() => users.id),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const kasmSessions = pgTable("kasm_sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  workspaceId: uuid("workspace_id").references(() => kasmWorkspaces.id, { onDelete: "cascade" }),
+
+  // Session tracking
+  sessionToken: text("session_token").unique(),
+  kasmSessionId: text("kasm_session_id"),
+
+  // Activity tracking
+  lastActivity: timestamp("last_activity").defaultNow(),
+  activityCount: integer("activity_count").default(0),
+
+  // Connection info
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+
+  // Session lifecycle
+  createdAt: timestamp("created_at").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+  terminatedAt: timestamp("terminated_at"),
+
+  metadata: json("metadata").default({}),
+});

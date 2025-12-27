@@ -26,6 +26,8 @@ import Users from "@/pages/Users";
 import SurfaceAssessment from "@/pages/SurfaceAssessment";
 import AttackFramework from "@/pages/AttackFramework";
 import Empire from "@/pages/Empire";
+import Implants from "@/pages/Implants";
+import Ollama from "@/pages/Ollama";
 import Login from "@/pages/Login";
 
 const queryClient = new QueryClient();
@@ -48,7 +50,9 @@ function AuthenticatedApp() {
           <Route path="/attack" component={AttackFramework} />
           <Route path="/agents" component={Agents} />
           <Route path="/empire" component={Empire} />
+          <Route path="/implants" component={Implants} />
           <Route path="/infrastructure" component={Infrastructure} />
+          <Route path="/ollama" component={Ollama} />
           <Route path="/tools" component={Tools} />
           <Route path="/tool-registry" component={ToolRegistry} />
           <Route path="/tool-migration" component={ToolMigration} />

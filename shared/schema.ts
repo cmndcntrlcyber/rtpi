@@ -7,6 +7,7 @@ import {
   boolean,
   json,
   pgEnum,
+  real,
 } from "drizzle-orm/pg-core";
 
 // ============================================================================
@@ -25,6 +26,29 @@ export const assetTypeEnum = pgEnum("asset_type", ["host", "domain", "ip", "netw
 export const discoveryMethodEnum = pgEnum("discovery_method", ["bbot", "nuclei", "nmap", "manual"]);
 export const assetStatusEnum = pgEnum("asset_status", ["active", "down", "unreachable"]);
 export const scanStatusEnum = pgEnum("scan_status", ["pending", "running", "completed", "failed", "cancelled"]);
+
+// rust-nexus enums
+export const implantTypeEnum = pgEnum("implant_type", ["reconnaissance", "exploitation", "exfiltration", "general"]);
+export const implantStatusEnum = pgEnum("implant_status", ["registered", "connected", "idle", "busy", "disconnected", "terminated"]);
+export const rustNexusTaskTypeEnum = pgEnum("rust_nexus_task_type", [
+  "shell_command",
+  "file_transfer",
+  "process_execution",
+  "network_scan",
+  "credential_harvest",
+  "privilege_escalation",
+  "lateral_movement",
+  "data_collection",
+  "persistence",
+  "custom",
+]);
+export const rustNexusTaskStatusEnum = pgEnum("rust_nexus_task_status", ["queued", "assigned", "running", "completed", "failed", "timeout", "cancelled", "retrying"]);
+export const rustNexusCertificateTypeEnum = pgEnum("rust_nexus_certificate_type", ["ca", "server", "client"]);
+export const healthStatusEnum = pgEnum("health_status", ["healthy", "degraded", "unhealthy", "critical"]);
+
+// Ollama AI enums
+export const ollamaModelStatusEnum = pgEnum("ollama_model_status", ["available", "downloading", "loading", "loaded", "unloaded", "error"]);
+export const aiProviderEnum = pgEnum("ai_provider", ["ollama", "openai", "anthropic", "llama.cpp"]);
 
 // Empire C2 enums
 export const empireListenerTypeEnum = pgEnum("empire_listener_type", [
@@ -1251,4 +1275,325 @@ export const kasmSessions = pgTable("kasm_sessions", {
   terminatedAt: timestamp("terminated_at"),
 
   metadata: json("metadata").default({}),
+});
+
+// ============================================================================
+// RUST-NEXUS AGENTIC IMPLANTS INTEGRATION (5 tables)
+// ============================================================================
+
+export const rustNexusImplants = pgTable("rust_nexus_implants", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "cascade" }),
+
+  // Implant Identity
+  implantName: text("implant_name").notNull().unique(),
+  implantType: implantTypeEnum("implant_type").notNull(),
+  version: text("version").notNull(),
+
+  // Target System Information
+  hostname: text("hostname").notNull(),
+  osType: text("os_type").notNull(),
+  osVersion: text("os_version"),
+  architecture: text("architecture").notNull(), // 'x86', 'x64', 'arm', 'arm64'
+  ipAddress: text("ip_address"),
+  macAddress: text("mac_address"),
+
+  // Connection Status
+  status: implantStatusEnum("status").notNull().default("registered"),
+  lastHeartbeat: timestamp("last_heartbeat"),
+  connectionQuality: integer("connection_quality").default(100),
+
+  // Authentication
+  certificateSerial: text("certificate_serial").notNull().unique(),
+  certificateFingerprint: text("certificate_fingerprint").notNull(),
+  authToken: text("auth_token").notNull(),
+
+  // Capabilities
+  capabilities: json("capabilities").default([]),
+  maxConcurrentTasks: integer("max_concurrent_tasks").default(3),
+
+  // AI Configuration
+  aiProvider: text("ai_provider"), // 'openai', 'anthropic', 'local-llama', 'proxy'
+  aiModel: text("ai_model"),
+  autonomyLevel: integer("autonomy_level").default(1),
+
+  // Statistics
+  totalTasksCompleted: integer("total_tasks_completed").default(0),
+  totalTasksFailed: integer("total_tasks_failed").default(0),
+  totalBytesTransferred: integer("total_bytes_transferred").default(0),
+  averageResponseTimeMs: integer("average_response_time_ms"),
+
+  // Metadata
+  metadata: json("metadata").default({}),
+  tags: text("tags").array().default([]),
+
+  // Timestamps
+  registeredAt: timestamp("registered_at").notNull().defaultNow(),
+  firstConnectionAt: timestamp("first_connection_at"),
+  lastConnectionAt: timestamp("last_connection_at"),
+  terminatedAt: timestamp("terminated_at"),
+
+  // Audit
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const rustNexusTasks = pgTable("rust_nexus_tasks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  implantId: uuid("implant_id").notNull().references(() => rustNexusImplants.id, { onDelete: "cascade" }),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "cascade" }),
+  workflowId: uuid("workflow_id").references(() => agentWorkflows.id, { onDelete: "set null" }),
+
+  // Task Definition
+  taskType: rustNexusTaskTypeEnum("task_type").notNull(),
+  taskName: text("task_name").notNull(),
+  taskDescription: text("task_description"),
+
+  // Task Payload
+  command: text("command"),
+  parameters: json("parameters").default({}),
+  environmentVars: json("environment_vars").default({}),
+
+  // Execution Control
+  priority: integer("priority").default(5),
+  timeoutSeconds: integer("timeout_seconds").default(300),
+  retryCount: integer("retry_count").default(0),
+  maxRetries: integer("max_retries").default(3),
+
+  // Status Tracking
+  status: rustNexusTaskStatusEnum("status").notNull().default("queued"),
+  progressPercentage: integer("progress_percentage").default(0),
+
+  // AI Decision Making
+  requiresAiApproval: boolean("requires_ai_approval").default(false),
+  aiApproved: boolean("ai_approved"),
+  aiReasoning: text("ai_reasoning"),
+
+  // Execution Metadata
+  assignedAt: timestamp("assigned_at"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  executionTimeMs: integer("execution_time_ms"),
+
+  // Error Handling
+  errorMessage: text("error_message"),
+  errorStack: text("error_stack"),
+
+  // Dependencies
+  dependsOnTaskIds: text("depends_on_task_ids").array().default([]),
+  blocksTaskIds: text("blocks_task_ids").array().default([]),
+
+  // Metadata
+  metadata: json("metadata").default({}),
+  tags: text("tags").array().default([]),
+
+  // Audit
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const rustNexusTaskResults = pgTable("rust_nexus_task_results", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  taskId: uuid("task_id").notNull().references(() => rustNexusTasks.id, { onDelete: "cascade" }),
+  implantId: uuid("implant_id").notNull().references(() => rustNexusImplants.id, { onDelete: "cascade" }),
+
+  // Result Data
+  resultType: text("result_type").notNull(), // 'stdout', 'stderr', 'file', 'json', 'binary', 'error'
+  resultData: text("result_data"),
+  resultJson: json("result_json"),
+
+  // File Results
+  filePath: text("file_path"),
+  fileSize: integer("file_size"),
+  fileHash: text("file_hash"),
+  fileMimeType: text("file_mime_type"),
+
+  // Execution Metrics
+  exitCode: integer("exit_code"),
+  executionTimeMs: integer("execution_time_ms").notNull(),
+  memoryUsedMb: integer("memory_used_mb"),
+  cpuUsagePercent: integer("cpu_usage_percent"),
+
+  // Output Parsing
+  parsedSuccessfully: boolean("parsed_successfully").default(false),
+  parsingErrors: text("parsing_errors"),
+  extractedData: json("extracted_data"),
+
+  // Security Indicators
+  containsCredentials: boolean("contains_credentials").default(false),
+  containsSensitiveData: boolean("contains_sensitive_data").default(false),
+  securityFlags: text("security_flags").array().default([]),
+
+  // Metadata
+  metadata: json("metadata").default({}),
+
+  // Timestamps
+  capturedAt: timestamp("captured_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const rustNexusCertificates = pgTable("rust_nexus_certificates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  implantId: uuid("implant_id").references(() => rustNexusImplants.id, { onDelete: "cascade" }),
+
+  // Certificate Identity
+  certificateType: rustNexusCertificateTypeEnum("certificate_type").notNull(),
+  serialNumber: text("serial_number").notNull().unique(),
+  fingerprintSha256: text("fingerprint_sha256").notNull().unique(),
+
+  // Subject Information
+  commonName: text("common_name").notNull(),
+  organization: text("organization"),
+  organizationalUnit: text("organizational_unit"),
+  country: text("country"),
+
+  // Certificate Data
+  certificatePem: text("certificate_pem").notNull(),
+  publicKeyPem: text("public_key_pem").notNull(),
+
+  // Validity
+  notBefore: timestamp("not_before").notNull(),
+  notAfter: timestamp("not_after").notNull(),
+  isValid: boolean("is_valid").default(true),
+
+  // Revocation
+  revoked: boolean("revoked").default(false),
+  revokedAt: timestamp("revoked_at"),
+  revocationReason: text("revocation_reason"),
+  revokedBy: uuid("revoked_by").references(() => users.id),
+
+  // CA Information
+  issuerCommonName: text("issuer_common_name").notNull(),
+  issuerFingerprint: text("issuer_fingerprint"),
+  caCertificateId: uuid("ca_certificate_id"),
+
+  // Usage Tracking
+  lastUsedAt: timestamp("last_used_at"),
+  usageCount: integer("usage_count").default(0),
+
+  // Rotation
+  rotationScheduledAt: timestamp("rotation_scheduled_at"),
+  rotationCompletedAt: timestamp("rotation_completed_at"),
+  successorCertificateId: uuid("successor_certificate_id"),
+
+  // Metadata
+  metadata: json("metadata").default({}),
+
+  // Audit
+  issuedBy: uuid("issued_by").notNull().references(() => users.id),
+  issuedAt: timestamp("issued_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const rustNexusTelemetry = pgTable("rust_nexus_telemetry", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  implantId: uuid("implant_id").notNull().references(() => rustNexusImplants.id, { onDelete: "cascade" }),
+
+  // System Metrics
+  cpuUsagePercent: integer("cpu_usage_percent"),
+  memoryUsageMb: integer("memory_usage_mb"),
+  memoryTotalMb: integer("memory_total_mb"),
+  diskUsageGb: integer("disk_usage_gb"),
+  diskTotalGb: integer("disk_total_gb"),
+
+  // Network Metrics
+  networkLatencyMs: integer("network_latency_ms"),
+  networkBandwidthKbps: integer("network_bandwidth_kbps"),
+  packetsSent: integer("packets_sent"),
+  packetsReceived: integer("packets_received"),
+  bytesSent: integer("bytes_sent"),
+  bytesReceived: integer("bytes_received"),
+
+  // Process Metrics
+  processCount: integer("process_count"),
+  threadCount: integer("thread_count"),
+  handleCount: integer("handle_count"),
+  uptimeSeconds: integer("uptime_seconds"),
+
+  // Task Metrics
+  activeTasks: integer("active_tasks").default(0),
+  queuedTasks: integer("queued_tasks").default(0),
+  completedTasksLastHour: integer("completed_tasks_last_hour").default(0),
+  failedTasksLastHour: integer("failed_tasks_last_hour").default(0),
+
+  // Connection Metrics
+  connectionDropsCount: integer("connection_drops_count").default(0),
+  reconnectionAttempts: integer("reconnection_attempts").default(0),
+  lastConnectionError: text("last_connection_error"),
+
+  // Health Status
+  healthStatus: healthStatusEnum("health_status").notNull(),
+  healthScore: integer("health_score"),
+  healthIssues: text("health_issues").array().default([]),
+
+  // Anomaly Detection
+  anomalyDetected: boolean("anomaly_detected").default(false),
+  anomalyType: text("anomaly_type"),
+  anomalySeverity: text("anomaly_severity"), // 'low', 'medium', 'high', 'critical'
+  anomalyDescription: text("anomaly_description"),
+
+  // Security Events
+  securityEventsCount: integer("security_events_count").default(0),
+  lastSecurityEvent: text("last_security_event"),
+  lastSecurityEventAt: timestamp("last_security_event_at"),
+
+  // AI Metrics (if implant has local AI)
+  aiInferenceCount: integer("ai_inference_count").default(0),
+  aiAverageLatencyMs: integer("ai_average_latency_ms"),
+  aiErrorCount: integer("ai_error_count").default(0),
+
+  // Custom Metrics
+  customMetrics: json("custom_metrics").default({}),
+
+  // Metadata
+  metadata: json("metadata").default({}),
+
+  // Timestamps
+  collectedAt: timestamp("collected_at").notNull(),
+  receivedAt: timestamp("received_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// ============================================================================
+// OLLAMA AI INTEGRATION TABLES
+// Enhancement #08 - Ollama AI
+// ============================================================================
+
+export const ollamaModels = pgTable("ollama_models", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  modelName: text("model_name").notNull().unique(),
+  modelTag: text("model_tag").default("latest"),
+  modelSize: integer("model_size"), // Size in bytes (using integer for now)
+  parameterSize: text("parameter_size"), // e.g., "8b", "7b"
+  quantization: text("quantization"), // e.g., "q4_0", "q8_0"
+  downloadedAt: timestamp("downloaded_at").defaultNow(),
+  lastUsed: timestamp("last_used"),
+  usageCount: integer("usage_count").default(0),
+  status: ollamaModelStatusEnum("status").default("available"),
+  metadata: json("metadata").default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const aiEnrichmentLogs = pgTable("ai_enrichment_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  vulnerabilityId: uuid("vulnerability_id").references(() => vulnerabilities.id, { onDelete: "cascade" }),
+  modelUsed: text("model_used").notNull(), // e.g., "llama3:8b", "qwen2.5-coder:7b", "gpt-4"
+  provider: aiProviderEnum("provider").notNull().default("ollama"),
+  enrichmentType: text("enrichment_type").notNull(), // e.g., "description", "impact", "remediation", "cve_matching"
+  prompt: text("prompt").notNull(),
+  response: text("response"),
+  tokensUsed: integer("tokens_used"), // Total tokens (prompt + completion)
+  promptTokens: integer("prompt_tokens"),
+  completionTokens: integer("completion_tokens"),
+  durationMs: integer("duration_ms"), // Time taken for inference
+  temperature: real("temperature").default(0.7),
+  maxTokens: integer("max_tokens"),
+  success: boolean("success").default(true),
+  errorMessage: text("error_message"),
+  metadata: json("metadata").default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Table,
   TableBody,
@@ -129,8 +129,8 @@ export default function TechniquesTable() {
     const isExpanded = expandedTechniques.has(technique.id);
 
     return (
-      <>
-        <TableRow key={technique.id} className={isSubtechnique ? "bg-secondary" : ""}>
+      <React.Fragment key={technique.id}>
+        <TableRow className={isSubtechnique ? "bg-secondary" : ""}>
           <TableCell className="font-mono font-medium">
             <div className="flex items-center gap-2">
               {hasSubtechniques && (
@@ -249,7 +249,7 @@ export default function TechniquesTable() {
         {hasSubtechniques && isExpanded && (technique as TechniqueWithSubtechniques).subtechniques!.map((sub) =>
           renderTechniqueRow(sub, true)
         )}
-      </>
+      </React.Fragment>
     );
   };
 

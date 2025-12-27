@@ -15,16 +15,28 @@ export default function Tools() {
   const { tools, loading, refetch } = useTools();
   const { upload, uploading } = useUploadToolFile();
   const { deleteTool } = useDeleteTool();
-  
+
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [configureDialogOpen, setConfigureDialogOpen] = useState(false);
   const [selectedTool, setSelectedTool] = useState<Tool | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Filter out test/invalid tools from production display
+  const isValidTool = (tool: Tool) => {
+    const hasInvalidName = tool.name.toLowerCase().includes('invalid');
+    const hasInvalidPath =
+      tool.configPath?.includes('/invalid/') ||
+      tool.command?.includes('/invalid/') ||
+      (tool.metadata && JSON.stringify(tool.metadata).includes('/invalid/'));
+    return !hasInvalidName && !hasInvalidPath;
+  };
+
+  const validTools = tools.filter(isValidTool);
+
   const stats = {
-    total: tools.length,
-    running: tools.filter((t) => t.status === "running").length,
-    available: tools.filter((t) => t.status === "available").length,
+    total: validTools.length,
+    running: validTools.filter((t) => t.status === "running").length,
+    available: validTools.filter((t) => t.status === "available").length,
   };
 
   const handleConfigure = (tool: Tool) => {
@@ -134,7 +146,7 @@ export default function Tools() {
         <h2 className="text-xl font-semibold mb-4">Tools Catalog</h2>
         {loading ? (
           <p className="text-muted-foreground">Loading tools...</p>
-        ) : tools.length === 0 ? (
+        ) : validTools.length === 0 ? (
           <div className="text-center py-12 bg-card rounded-lg border border-border">
             <Wrench className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <p className="text-muted-foreground">No tools configured</p>
@@ -143,7 +155,7 @@ export default function Tools() {
         ) : (
           <>
             {/* Metasploit tools get special treatment */}
-            {tools
+            {validTools
               .filter((tool) => tool.name.toLowerCase().includes("metasploit"))
               .map((tool) => (
                 <div key={tool.id} className="mb-6">
@@ -153,7 +165,7 @@ export default function Tools() {
 
             {/* Other tools in grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {tools
+              {validTools
                 .filter((tool) => !tool.name.toLowerCase().includes("metasploit"))
                 .map((tool) => (
                   <ToolCard

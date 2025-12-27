@@ -207,7 +207,7 @@ export default function Settings() {
               <Label htmlFor="api-url">API Base URL</Label>
               <Input
                 id="api-url"
-                defaultValue="http://localhost:3000"
+                defaultValue="http://localhost:3001"
                 placeholder="https://api.example.com"
               />
             </div>
@@ -215,7 +215,7 @@ export default function Settings() {
               <Label htmlFor="ws-url">WebSocket URL</Label>
               <Input
                 id="ws-url"
-                defaultValue="ws://localhost:3000"
+                defaultValue="ws://localhost:3001"
                 placeholder="wss://api.example.com"
               />
             </div>

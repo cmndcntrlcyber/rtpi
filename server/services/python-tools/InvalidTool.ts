@@ -1,5 +1,5 @@
 /**
- * WebVulnerabilityTester - TypeScript Wrapper
+ * InvalidTool - TypeScript Wrapper
  * Auto-generated from offsec-team Python tool
  *
  * A tool for testing applications for common web vulnerabilities.
@@ -11,20 +11,20 @@ import path from 'path';
 
 export class WebVulnerabilityTesterWrapper {
   private pythonPath: string;
-  private _modulePath: string;
+  private modulePath: string;
 
   constructor() {
     this.pythonPath = process.env.PYTHON_PATH || 'python3';
-    this._modulePath = path.join(
+    this.modulePath = path.join(
       process.cwd(),
-      './tools/offsec-team/tools/bug_hunter/WebVulnerabilityTester.py'
+      '/invalid/path/tool.py'
     );
   }
 
   /**
    * Execute a Python method with parameters
    */
-  private async _executePythonMethod(
+  private async executePythonMethod(
     methodName: string,
     params: Record<string, any>
   ): Promise<any> {
@@ -32,9 +32,9 @@ export class WebVulnerabilityTesterWrapper {
       const pythonScript = `
 import sys
 import json
-sys.path.append('/home/cmndcntrl/rtpi/tools/offsec-team/tools/bug_hunter')
+sys.path.append('/invalid/path')
 
-from WebVulnerabilityTester import WebVulnerabilityTester
+from tool import WebVulnerabilityTester
 
 # Create instance
 tool = WebVulnerabilityTester()

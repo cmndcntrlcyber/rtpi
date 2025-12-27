@@ -37,6 +37,8 @@ import kasmWorkspacesRoutes from "./api/v1/kasm-workspaces";
 import kasmProxyRoutes from "./api/v1/kasm-proxy";
 import sslCertificatesRoutes from "./api/v1/ssl-certificates";
 import burpBuilderRoutes from "./api/v1/burp-builder";
+import rustNexusRoutes from "./api/v1/rust-nexus";
+import ollamaRoutes from "./api/v1/ollama";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -99,6 +101,8 @@ app.use("/api/v1/kasm-workspaces", kasmWorkspacesRoutes);
 app.use("/api/v1/kasm-proxy", kasmProxyRoutes);
 app.use("/api/v1/ssl-certificates", sslCertificatesRoutes);
 app.use("/api/v1/burp-builder", burpBuilderRoutes);
+app.use("/api/v1/rust-nexus", rustNexusRoutes);
+app.use("/api/v1/ollama", ollamaRoutes);
 
 // Root endpoint
 app.get("/api/v1", (_req, res) => {
@@ -129,6 +133,8 @@ app.get("/api/v1", (_req, res) => {
       kasmProxy: "/api/v1/kasm-proxy",
       sslCertificates: "/api/v1/ssl-certificates",
       burpBuilder: "/api/v1/burp-builder",
+      rustNexus: "/api/v1/rust-nexus",
+      ollama: "/api/v1/ollama",
     },
   });
 });

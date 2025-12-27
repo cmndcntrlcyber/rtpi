@@ -17,9 +17,11 @@ import {
   Package,
   Shield,
   Crown,
+  Cpu,
   ChevronLeft,
   ChevronRight,
   Download,
+  Brain,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -38,7 +40,9 @@ const navItems = [
   { path: "/attack", label: "ATT&CK Framework", icon: Shield },
   { path: "/agents", label: "Agents", icon: Bot },
   { path: "/empire", label: "Empire C2", icon: Crown },
+  { path: "/implants", label: "Agentic Implants", icon: Cpu },
   { path: "/infrastructure", label: "Infrastructure", icon: Server },
+  { path: "/ollama", label: "Ollama AI", icon: Brain },
   { path: "/tools", label: "Tools", icon: Wrench },
   { path: "/tool-registry", label: "Tool Registry", icon: Package },
   { path: "/tool-migration", label: "Tool Migration", icon: Download },

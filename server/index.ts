@@ -32,6 +32,7 @@ import usersRoutes from "./api/v1/users";
 import empireRoutes from "./api/v1/empire";
 import attackRoutes from "./api/v1/attack";
 import workbenchRoutes from "./api/v1/workbench";
+import toolMigrationRoutes from "./api/v1/tool-migration";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -89,6 +90,7 @@ app.use("/api/v1/users", usersRoutes);
 app.use("/api/v1/empire", empireRoutes);
 app.use("/api/v1/attack", attackRoutes);
 app.use("/api/v1/workbench", workbenchRoutes);
+app.use("/api/v1/tool-migration", toolMigrationRoutes);
 
 // Root endpoint
 app.get("/api/v1", (_req, res) => {

@@ -3,6 +3,7 @@ import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { db } from "../../db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { empireExecutor } from "../../services/empire-executor";
 
 // Check if Google OAuth is configured
 const isGoogleOAuthConfigured = 
@@ -95,6 +96,9 @@ if (isGoogleOAuthConfigured) {
             lastLogin: new Date(),
           })
           .returning();
+
+        // Initialize Empire tokens for the new user
+        await empireExecutor.initializeTokensForUser(newUserResult[0].id);
 
         return done(null, newUserResult[0]);
       } catch (error) {

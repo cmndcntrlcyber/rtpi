@@ -13,7 +13,7 @@ import ReactFlow, {
   Panel,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -188,7 +188,7 @@ export default function AttackFlowDiagram() {
     setSelectedTechnique("");
   };
 
-  const clearFlow = () => {
+  const _clearFlow = () => {
     if (confirm("Are you sure you want to clear the entire flow?")) {
       setNodes([]);
       setEdges([]);

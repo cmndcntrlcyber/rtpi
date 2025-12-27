@@ -19,6 +19,7 @@ import {
   Crown,
   ChevronLeft,
   ChevronRight,
+  Download,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -40,6 +41,7 @@ const navItems = [
   { path: "/infrastructure", label: "Infrastructure", icon: Server },
   { path: "/tools", label: "Tools", icon: Wrench },
   { path: "/tool-registry", label: "Tool Registry", icon: Package },
+  { path: "/tool-migration", label: "Tool Migration", icon: Download },
   { path: "/reports", label: "Reports", icon: FileText },
   { path: "/settings", label: "Settings", icon: Settings },
   { path: "/profile", label: "Profile", icon: User },

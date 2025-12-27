@@ -56,7 +56,7 @@ interface WorkbenchHealth {
 export default function WorkbenchTab() {
   const [health, setHealth] = useState<WorkbenchHealth | null>(null);
   const [collections, setCollections] = useState<WorkbenchCollection[]>([]);
-  const [selectedTechniques, setSelectedTechniques] = useState<string[]>([]);
+  const [selectedTechniques, _setSelectedTechniques] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
 

@@ -1245,8 +1245,10 @@ Format in markdown.`;
           result = await empireExecutor.executeTask(
             server.id,
             'system', // TODO: Get actual user ID from context
-            task.agentName,
-            task.command
+            {
+              agentName: task.agentName,
+              command: task.command
+            }
           );
         } else if (task.taskType === "module") {
           // Execute Empire module
@@ -1270,7 +1272,7 @@ Format in markdown.`;
           task: `${task.taskType}: ${task.command}`,
           agentName: task.agentName,
           success: taskSuccess,
-          output: result.data || result.output,
+          output: result.data,
           error: result.error,
           timestamp: new Date().toISOString(),
         });
@@ -1283,7 +1285,7 @@ Format in markdown.`;
           {
             task: task.command,
             success: taskSuccess,
-            hasOutput: !!(result.data || result.output)
+            hasOutput: !!result.data
           }
         );
       } catch (error) {
@@ -1373,7 +1375,7 @@ Format in markdown.`;
       const agents = await db
         .select()
         .from(empireAgents)
-        .where(eq(empireAgents.checkin_time, empireAgents.checkin_time)); // Get all agents
+        .where(eq(empireAgents.checkinTime, empireAgents.checkinTime)); // Get all agents
 
       // Get available modules (sample for context)
       const modules = await db
@@ -1400,15 +1402,15 @@ Format in markdown.`;
           id: a.id,
           name: a.name,
           hostname: a.hostname,
-          internalIp: a.internal_ip,
-          externalIp: a.external_ip,
+          internalIp: a.internalIp,
+          externalIp: a.externalIp,
           username: a.username,
-          highIntegrity: a.high_integrity,
-          os: a.os_details,
+          highIntegrity: a.highIntegrity,
+          os: a.osDetails,
           language: a.language
         })),
         modules: modules.map(m => ({
-          name: m.name,
+          name: m.moduleName,
           category: m.category,
           description: m.description
         }))

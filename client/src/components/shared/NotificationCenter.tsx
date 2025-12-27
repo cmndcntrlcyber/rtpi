@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Bell, Check, CheckCheck, Trash2, ExternalLink, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +8,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { Notification, NotificationType } from "@/types/notification";
+import { NotificationType } from "@/types/notification";
 import { useNotifications } from "@/contexts/NotificationContext";
 
 const typeIcons: Record<NotificationType, React.ReactNode> = {
@@ -18,7 +18,7 @@ const typeIcons: Record<NotificationType, React.ReactNode> = {
   error: <Bell className="h-4 w-4 text-red-600" />,
 };
 
-const typeColors: Record<NotificationType, string> = {
+const _typeColors: Record<NotificationType, string> = {
   info: "bg-blue-50 border-blue-200 dark:bg-blue-950 dark:border-blue-800",
   success: "bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800",
   warning: "bg-amber-50 border-amber-200 dark:bg-amber-950 dark:border-amber-800",

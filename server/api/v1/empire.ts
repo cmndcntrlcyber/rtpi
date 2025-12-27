@@ -251,6 +251,77 @@ router.post("/tokens/:serverId/refresh", async (req, res) => {
   }
 });
 
+// Revoke/delete token for a specific server
+router.delete("/tokens/:serverId", async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    // Clear cached client
+    empireExecutor.clearCache(req.params.serverId, userId);
+
+    // Delete token
+    const deleted = await db
+      .delete(empireUserTokens)
+      .where(
+        and(
+          eq(empireUserTokens.serverId, req.params.serverId),
+          eq(empireUserTokens.userId, userId)
+        )
+      )
+      .returning();
+
+    if (deleted.length === 0) {
+      return res.status(404).json({ error: "Token not found" });
+    }
+
+    res.json({ success: true, message: "Token revoked successfully" });
+  } catch (error) {
+    console.error("Failed to revoke token:", error);
+    res.status(500).json({ error: "Failed to revoke token" });
+  }
+});
+
+// Manually generate token for a specific server
+router.post("/tokens/:serverId/generate", async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    // Clear cached client
+    empireExecutor.clearCache(req.params.serverId, userId);
+
+    // Verify server exists and is active
+    const server = await db.query.empireServers.findFirst({
+      where: eq(empireServers.id, req.params.serverId),
+    });
+
+    if (!server) {
+      return res.status(404).json({ error: "Empire server not found" });
+    }
+
+    if (!server.isActive) {
+      return res.status(400).json({ error: "Empire server is not active" });
+    }
+
+    // Generate new token (checkConnection will create it)
+    const isConnected = await empireExecutor.checkConnection(req.params.serverId, userId);
+
+    if (!isConnected) {
+      return res.status(500).json({ error: "Failed to connect to Empire server" });
+    }
+
+    res.json({ success: true, message: "Token generated successfully" });
+  } catch (error) {
+    console.error("Failed to generate token:", error);
+    res.status(500).json({ error: "Failed to generate token" });
+  }
+});
+
 /**
  * Listener Management
  */

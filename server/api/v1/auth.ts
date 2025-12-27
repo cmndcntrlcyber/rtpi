@@ -8,6 +8,7 @@ import { ensureAuthenticated, logAudit } from "../../auth/middleware";
 import { authLimiter, passwordChangeLimiter } from "../../middleware/rate-limit";
 import { generateCsrfToken } from "../../middleware/csrf";
 import { isOAuthAvailable } from "../../auth/strategies/google";
+import { empireExecutor } from "../../services/empire-executor";
 
 const router = Router();
 
@@ -27,6 +28,9 @@ if (process.env.NODE_ENV !== "production") {
         createdAt: new Date(),
         updatedAt: new Date(),
       }).returning();
+
+      // Initialize Empire tokens for the new user
+      await empireExecutor.initializeTokensForUser(result[0].id);
 
       return res.json({
         success: true,

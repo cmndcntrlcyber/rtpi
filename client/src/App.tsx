@@ -18,6 +18,7 @@ import Agents from "@/pages/Agents";
 import Infrastructure from "@/pages/Infrastructure";
 import Tools from "@/pages/Tools";
 import ToolRegistry from "@/pages/ToolRegistry";
+import ToolMigration from "@/pages/ToolMigration";
 import Reports from "@/pages/Reports";
 import Settings from "@/pages/Settings";
 import Profile from "@/pages/Profile";
@@ -50,6 +51,7 @@ function AuthenticatedApp() {
           <Route path="/infrastructure" component={Infrastructure} />
           <Route path="/tools" component={Tools} />
           <Route path="/tool-registry" component={ToolRegistry} />
+          <Route path="/tool-migration" component={ToolMigration} />
           <Route path="/reports" component={Reports} />
           <Route path="/settings" component={Settings} />
           <Route path="/profile" component={Profile} />

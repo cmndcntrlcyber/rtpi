@@ -33,6 +33,7 @@ import empireRoutes from "./api/v1/empire";
 import attackRoutes from "./api/v1/attack";
 import workbenchRoutes from "./api/v1/workbench";
 import toolMigrationRoutes from "./api/v1/tool-migration";
+import kasmWorkspacesRoutes from "./api/v1/kasm-workspaces";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -91,6 +92,7 @@ app.use("/api/v1/empire", empireRoutes);
 app.use("/api/v1/attack", attackRoutes);
 app.use("/api/v1/workbench", workbenchRoutes);
 app.use("/api/v1/tool-migration", toolMigrationRoutes);
+app.use("/api/v1/kasm-workspaces", kasmWorkspacesRoutes);
 
 // Root endpoint
 app.get("/api/v1", (_req, res) => {
@@ -117,6 +119,7 @@ app.get("/api/v1", (_req, res) => {
       empire: "/api/v1/empire",
       attack: "/api/v1/attack",
       workbench: "/api/v1/workbench",
+      kasmWorkspaces: "/api/v1/kasm-workspaces",
     },
   });
 });

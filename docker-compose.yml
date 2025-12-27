@@ -376,19 +376,52 @@ services:
     restart: unless-stopped
 
   # Certbot - Automated SSL/TLS certificate management
+  # Supports both HTTP-01 and DNS-01 (Cloudflare) challenges
   certbot:
-    image: certbot/certbot:latest
+    image: certbot/dns-cloudflare:latest
     container_name: rtpi-certbot
     environment:
       - CERTBOT_EMAIL=${CERTBOT_EMAIL:-admin@example.com}
       - CERTBOT_DOMAIN=${KASM_SERVER_HOSTNAME:-localhost}
+      # Cloudflare API token for DNS-01 challenge (#KW-12)
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
     volumes:
       - certbot-conf:/etc/letsencrypt
       - certbot-www:/var/www/certbot
       - kasm-certs:/etc/nginx/certs
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot --webroot-path=/var/www/certbot; sleep 12h & wait $${!}; done;'"
+      - ./scripts/ssl:/scripts/ssl:ro  # SSL automation scripts
+    command: >
+      sh -c "
+      # Create Cloudflare credentials if API token is set
+      if [ -n \"$$CLOUDFLARE_API_TOKEN\" ]; then
+        echo \"dns_cloudflare_api_token = $$CLOUDFLARE_API_TOKEN\" > /etc/letsencrypt/cloudflare.ini
+        chmod 600 /etc/letsencrypt/cloudflare.ini
+      fi
+
+      # Certificate renewal loop (#KW-13)
+      trap exit TERM
+      while :; do
+        # Renew certificates expiring within 30 days
+        certbot renew --quiet
+
+        # Copy certificates to nginx directory
+        if [ -d /etc/letsencrypt/live ]; then
+          for domain in /etc/letsencrypt/live/*; do
+            if [ -d \"$$domain\" ]; then
+              domain_name=\$$(basename \"$$domain\")
+              cp -L \"$$domain/fullchain.pem\" \"/etc/nginx/certs/\$${domain_name}.crt\" 2>/dev/null || true
+              cp -L \"$$domain/privkey.pem\" \"/etc/nginx/certs/\$${domain_name}.key\" 2>/dev/null || true
+            fi
+          done
+        fi
+
+        # Renewal runs every 12 hours
+        sleep 12h & wait $$!
+      done
+      "
     networks:
       - rtpi-network
+    restart: unless-stopped
     profiles:
       - certbot  # Optional profile - only start if SSL automation is needed
 

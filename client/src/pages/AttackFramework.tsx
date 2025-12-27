@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Shield, Target, Users, Wrench, ShieldCheck, Database, BookOpen, GitBranch } from "lucide-react";
+import { Shield, Target, Users, Wrench, ShieldCheck, Database } from "lucide-react";
 import TechniquesTable from "@/components/attack/TechniquesTable";
 import TacticsGrid from "@/components/attack/TacticsGrid";
 import StixImportDialog from "@/components/attack/StixImportDialog";

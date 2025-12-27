@@ -143,7 +143,7 @@ export default function PlannerTab() {
     // Platform filter
     if (filterPlatform !== "all") {
       filtered = filtered.filter((t) =>
-        t.platforms?.includes(filterPlatform)
+        t.platforms?.some(p => p === filterPlatform)
       );
     }
 

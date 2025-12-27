@@ -1,4 +1,4 @@
-import { X, Trash2, CheckCircle2, XCircle, Archive, Tag } from "lucide-react";
+import { X, Trash2, CheckCircle2, Archive, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,

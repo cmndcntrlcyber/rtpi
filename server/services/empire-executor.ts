@@ -13,6 +13,7 @@ import {
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { decrypt } from "../utils/encryption";
+import { kasmNginxManager } from "./kasm-nginx-manager";
 
 /**
  * PowerShell Empire C2 Executor
@@ -309,7 +310,7 @@ class EmpireExecutor {
       const response = await client.post<EmpireListener>("/api/listeners", listenerConfig);
 
       // Store listener in database
-      await db.insert(empireListeners).values({
+      const [createdListener] = await db.insert(empireListeners).values({
         serverId,
         empireListenerId: response.data.ID.toString(),
         name: response.data.name,
@@ -328,7 +329,23 @@ class EmpireExecutor {
         status: response.data.enabled ? "running" : "stopped",
         createdBy: userId,
         config: response.data.options,
-      });
+      }).returning();
+
+      // Register dynamic proxy route with Kasm nginx (if enabled)
+      try {
+        const proxyRoute = await kasmNginxManager.registerListenerProxy(
+          createdListener.id,
+          options.port,
+          options.name
+        );
+
+        if (proxyRoute) {
+          console.log(`[EmpireExecutor] Registered proxy route for listener ${options.name}: ${proxyRoute.subdomain}`);
+        }
+      } catch (proxyError) {
+        console.warn('[EmpireExecutor] Failed to register proxy route (non-fatal):', proxyError);
+        // Don't fail listener creation if proxy registration fails
+      }
 
       return {
         success: true,
@@ -878,6 +895,40 @@ class EmpireExecutor {
         error: error.message || "Failed to kill agent",
         timestamp,
       };
+    }
+  }
+
+  /**
+   * Initialize Empire tokens for a new user across all active servers
+   * Called automatically when a new user is created
+   */
+  async initializeTokensForUser(userId: string): Promise<void> {
+    try {
+      // Get all active Empire servers
+      const servers = await db.query.empireServers.findMany({
+        where: eq(empireServers.isActive, true),
+      });
+
+      if (servers.length === 0) {
+        console.log(`[EmpireExecutor] No active Empire servers found, skipping token initialization for user ${userId}`);
+        return;
+      }
+
+      // Generate tokens for each active server
+      for (const server of servers) {
+        try {
+          await this.getUserToken(server.id, userId);
+          console.log(`[EmpireExecutor] Initialized Empire token for user ${userId} on server ${server.name}`);
+        } catch (error) {
+          console.warn(`[EmpireExecutor] Failed to initialize token for user ${userId} on server ${server.name}:`, error);
+          // Continue with other servers even if one fails
+        }
+      }
+
+      console.log(`[EmpireExecutor] Completed token initialization for user ${userId} across ${servers.length} server(s)`);
+    } catch (error) {
+      console.error('[EmpireExecutor] Failed to initialize tokens for user:', error);
+      // Don't throw - token initialization should not block user creation
     }
   }
 

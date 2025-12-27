@@ -8,7 +8,7 @@
 import { Router, Request, Response } from 'express';
 import { workbenchClient } from '../../services/attack-workbench-client';
 import { db } from '../../db';
-import { attackTechniques, attackTactics } from '../../../shared/schema';
+import { attackTechniques } from '../../../shared/schema';
 import { eq, inArray } from 'drizzle-orm';
 
 const router = Router();
@@ -17,7 +17,7 @@ const router = Router();
  * GET /api/v1/workbench/health
  * Test connection to Workbench API
  */
-router.get('/health', async (req: Request, res: Response) => {
+router.get('/health', async (_req: Request, res: Response) => {
   try {
     const isHealthy = await workbenchClient.testConnection();
 
@@ -118,7 +118,7 @@ router.post('/techniques', async (req: Request, res: Response) => {
  * GET /api/v1/workbench/collections
  * Get all collections from Workbench
  */
-router.get('/collections', async (req: Request, res: Response) => {
+router.get('/collections', async (_req: Request, res: Response) => {
   try {
     const collections = await workbenchClient.getCollections();
     res.json(collections);
@@ -263,7 +263,7 @@ router.post('/sync/push-techniques', async (req: Request, res: Response) => {
  * POST /api/v1/workbench/sync/pull-techniques
  * Pull techniques from Workbench to RTPI
  */
-router.post('/sync/pull-techniques', async (req: Request, res: Response) => {
+router.post('/sync/pull-techniques', async (_req: Request, res: Response) => {
   try {
     const result = await workbenchClient.pullTechniquesFromWorkbench();
 
@@ -304,7 +304,11 @@ router.post('/sync/pull-techniques', async (req: Request, res: Response) => {
           platforms: technique.platforms,
           dataSources: technique.dataSources,
           isSubtechnique: false,
-          url: `https://attack.mitre.org/techniques/${technique.attackId}`,
+          externalReferences: [{
+            url: `https://attack.mitre.org/techniques/${technique.attackId}`,
+            source_name: "mitre-attack",
+            external_id: technique.attackId
+          }],
         });
 
         imported.success++;
@@ -339,7 +343,7 @@ router.post('/sync/pull-techniques', async (req: Request, res: Response) => {
  * GET /api/v1/workbench/groups
  * Get all groups from Workbench
  */
-router.get('/groups', async (req: Request, res: Response) => {
+router.get('/groups', async (_req: Request, res: Response) => {
   try {
     const groups = await workbenchClient.getGroups();
     res.json(groups);
@@ -356,7 +360,7 @@ router.get('/groups', async (req: Request, res: Response) => {
  * GET /api/v1/workbench/software
  * Get all software from Workbench
  */
-router.get('/software', async (req: Request, res: Response) => {
+router.get('/software', async (_req: Request, res: Response) => {
   try {
     const software = await workbenchClient.getSoftware();
     res.json(software);
@@ -373,7 +377,7 @@ router.get('/software', async (req: Request, res: Response) => {
  * GET /api/v1/workbench/mitigations
  * Get all mitigations from Workbench
  */
-router.get('/mitigations', async (req: Request, res: Response) => {
+router.get('/mitigations', async (_req: Request, res: Response) => {
   try {
     const mitigations = await workbenchClient.getMitigations();
     res.json(mitigations);

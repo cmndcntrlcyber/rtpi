@@ -1,0 +1,51 @@
+# Optimized Firefox Workspace for RTPI
+# Base: kasmweb/firefox:1.17.0
+# Optimization: Minimal footprint with essential web security tools
+
+FROM kasmweb/firefox:1.17.0
+
+LABEL maintainer="RTPI Platform Team"
+LABEL description="Optimized Firefox workspace for web application testing"
+LABEL version="1.0.0-optimized"
+
+USER root
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install minimal set of web testing tools
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    python3 \
+    python3-pip \
+    git \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /tmp/*
+
+# Install web security Python tools
+RUN pip3 install --no-cache-dir \
+    requests \
+    beautifulsoup4 \
+    lxml
+
+# Create workspace directory
+RUN mkdir -p /home/kasm-user/downloads \
+    && chown -R 1000:1000 /home/kasm-user
+
+# Firefox preferences for security testing
+COPY --chown=1000:1000 firefox-prefs.js /home/kasm-user/.mozilla/firefox/profile.default/user.js
+
+WORKDIR /home/kasm-user
+
+USER 1000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD pgrep -f "firefox" || exit 1
+
+ARG BUILD_DATE
+ARG VCS_REF
+LABEL org.label-schema.build-date=$BUILD_DATE \
+      org.label-schema.vcs-ref=$VCS_REF

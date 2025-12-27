@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import https from 'https';
 import { db } from '../db';
 import { kasmWorkspaces, kasmSessions } from '@shared/schema';
 import { eq, and, lt, isNull, sql, desc } from 'drizzle-orm';
@@ -150,7 +151,7 @@ export class KasmWorkspaceManager {
       headers: {
         'Content-Type': 'application/json',
       },
-      httpsAgent: new (require('https').Agent)({
+      httpsAgent: new https.Agent({
         rejectUnauthorized: false, // For self-signed certs
       }),
     });
@@ -215,9 +216,13 @@ export class KasmWorkspaceManager {
       throw new Error('Kasm Workspaces is not enabled');
     }
 
+    const provisioningStartTime = Date.now();
+
     try {
       // Check resource quotas
+      const quotaCheckStart = Date.now();
       await this.checkResourceQuota(config.userId, config.cpuLimit, config.memoryLimit);
+      const quotaCheckDuration = Date.now() - quotaCheckStart;
 
       // Generate unique identifiers
       const workspaceId = uuidv4();
@@ -228,13 +233,16 @@ export class KasmWorkspaceManager {
       const expiresAt = new Date(Date.now() + expiryHours * 60 * 60 * 1000);
 
       // Create Kasm session via API
+      const sessionCreateStart = Date.now();
       const kasmSession = await this.createKasmSession({
         image: this.imageMapping[config.workspaceType],
         cpuLimit: config.cpuLimit || '2',
         memoryLimit: config.memoryLimit || '4096M',
       });
+      const sessionCreateDuration = Date.now() - sessionCreateStart;
 
       // Store workspace in database
+      const dbInsertStart = Date.now();
       const [workspace] = await db.insert(kasmWorkspaces).values({
         id: workspaceId,
         userId: config.userId,
@@ -250,14 +258,28 @@ export class KasmWorkspaceManager {
         cpuLimit: config.cpuLimit || '2',
         memoryLimit: config.memoryLimit || '4096M',
         expiresAt,
-        metadata: config.metadata || {},
+        metadata: {
+          ...(config.metadata || {}),
+          performance: {
+            provisioningStartedAt: new Date(provisioningStartTime).toISOString(),
+            quotaCheckDurationMs: quotaCheckDuration,
+            sessionCreateDurationMs: sessionCreateDuration,
+          },
+        },
         createdBy: config.userId,
       }).returning();
+      const dbInsertDuration = Date.now() - dbInsertStart;
 
-      console.log(`[KasmWorkspaceManager] Provisioned workspace ${workspaceId} for user ${config.userId}`);
+      const provisioningDuration = Date.now() - provisioningStartTime;
 
-      // Start monitoring the workspace
-      this.monitorWorkspaceStartup(workspaceId);
+      console.log(
+        `[KasmWorkspaceManager] Provisioned workspace ${workspaceId} for user ${config.userId} ` +
+        `(total: ${provisioningDuration}ms, quota: ${quotaCheckDuration}ms, ` +
+        `session: ${sessionCreateDuration}ms, db: ${dbInsertDuration}ms)`
+      );
+
+      // Start monitoring the workspace with performance tracking
+      this.monitorWorkspaceStartup(workspaceId, provisioningStartTime);
 
       return {
         id: workspaceId,
@@ -300,9 +322,10 @@ export class KasmWorkspaceManager {
   /**
    * Monitor workspace startup and update status
    */
-  private async monitorWorkspaceStartup(workspaceId: string): Promise<void> {
+  private async monitorWorkspaceStartup(workspaceId: string, provisioningStartTime?: number): Promise<void> {
     const maxAttempts = 20; // 20 attempts * 3 seconds = 60 seconds timeout
     let attempts = 0;
+    const monitoringStartTime = Date.now();
 
     const checkStatus = async () => {
       try {
@@ -314,33 +337,97 @@ export class KasmWorkspaceManager {
         if (!workspace) return;
 
         // Get status from Kasm API
+        const statusCheckStart = Date.now();
         const kasmStatus = await this.getKasmSessionStatus(workspace.kasmSessionId);
+        const statusCheckDuration = Date.now() - statusCheckStart;
 
         if (kasmStatus === 'running') {
+          const totalStartupTime = Date.now() - (provisioningStartTime || monitoringStartTime);
+          const monitoringDuration = Date.now() - monitoringStartTime;
+
+          // Update workspace metadata with performance metrics
+          const metadata = workspace.metadata as Record<string, any> || {};
+          const performance = {
+            ...(metadata.performance || {}),
+            startupCompletedAt: new Date().toISOString(),
+            totalStartupTimeMs: totalStartupTime,
+            monitoringDurationMs: monitoringDuration,
+            statusCheckAttempts: attempts + 1,
+            averageStatusCheckDurationMs: Math.round(
+              (((metadata.performance?.totalStatusCheckDurationMs || 0) + statusCheckDuration) / (attempts + 1))
+            ),
+            totalStatusCheckDurationMs: (metadata.performance?.totalStatusCheckDurationMs || 0) + statusCheckDuration,
+          };
+
           await db
             .update(kasmWorkspaces)
             .set({
               status: 'running',
               startedAt: new Date(),
               updatedAt: new Date(),
+              metadata: { ...metadata, performance },
             })
             .where(eq(kasmWorkspaces.id, workspaceId));
 
-          console.log(`[KasmWorkspaceManager] Workspace ${workspaceId} is now running`);
+          const performanceWarning = totalStartupTime > 60000 ? ' ⚠️  EXCEEDS 60s GOAL' : ' ✅ Within target';
+          console.log(
+            `[KasmWorkspaceManager] Workspace ${workspaceId} is now running ` +
+            `(startup: ${totalStartupTime}ms, attempts: ${attempts + 1})${performanceWarning}`
+          );
+
+          // Log detailed performance breakdown
+          console.log(
+            `[KasmWorkspaceManager] Performance breakdown: ` +
+            `quota=${metadata.performance?.quotaCheckDurationMs}ms, ` +
+            `session=${metadata.performance?.sessionCreateDurationMs}ms, ` +
+            `monitoring=${monitoringDuration}ms`
+          );
         } else if (kasmStatus === 'failed' || attempts >= maxAttempts) {
+          const totalStartupTime = Date.now() - (provisioningStartTime || monitoringStartTime);
+
+          // Update workspace metadata with failure metrics
+          const metadata = workspace.metadata as Record<string, any> || {};
+          const performance = {
+            ...(metadata.performance || {}),
+            failedAt: new Date().toISOString(),
+            totalTimeBeforeFailureMs: totalStartupTime,
+            statusCheckAttempts: attempts + 1,
+            failureReason: attempts >= maxAttempts ? 'timeout' : 'kasm_api_failure',
+          };
+
           await db
             .update(kasmWorkspaces)
             .set({
               status: 'failed',
-              errorMessage: attempts >= maxAttempts ? 'Startup timeout exceeded' : 'Failed to start',
+              errorMessage: attempts >= maxAttempts ? 'Startup timeout exceeded (>60s)' : 'Failed to start',
+              updatedAt: new Date(),
+              metadata: { ...metadata, performance },
+            })
+            .where(eq(kasmWorkspaces.id, workspaceId));
+
+          console.error(
+            `[KasmWorkspaceManager] Workspace ${workspaceId} failed to start ` +
+            `(time: ${totalStartupTime}ms, attempts: ${attempts + 1})`
+          );
+        } else {
+          // Still starting, check again
+          attempts++;
+
+          // Update metadata with current attempt info
+          const metadata = workspace.metadata as Record<string, any> || {};
+          const performance = {
+            ...(metadata.performance || {}),
+            totalStatusCheckDurationMs: (metadata.performance?.totalStatusCheckDurationMs || 0) + statusCheckDuration,
+          };
+
+          await db
+            .update(kasmWorkspaces)
+            .set({
+              metadata: { ...metadata, performance },
               updatedAt: new Date(),
             })
             .where(eq(kasmWorkspaces.id, workspaceId));
 
-          console.error(`[KasmWorkspaceManager] Workspace ${workspaceId} failed to start`);
-        } else {
-          // Still starting, check again
-          attempts++;
           setTimeout(checkStatus, 3000);
         }
       } catch (error) {

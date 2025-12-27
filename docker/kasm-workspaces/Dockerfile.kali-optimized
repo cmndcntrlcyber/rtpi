@@ -1,0 +1,80 @@
+# Optimized Kali Linux Workspace for RTPI
+# Base: kasmweb/kali-rolling-desktop:1.17.0
+# Optimization: Remove unnecessary packages, add only essential pentesting tools
+
+FROM kasmweb/kali-rolling-desktop:1.17.0
+
+LABEL maintainer="RTPI Platform Team"
+LABEL description="Optimized Kali Linux workspace for penetration testing"
+LABEL version="1.0.0-optimized"
+
+# Switch to root for installations
+USER root
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV KALI_TOOLS="nmap metasploit-framework sqlmap burpsuite nikto john hydra wireshark"
+
+# Remove unnecessary desktop applications to reduce image size
+RUN apt-get update && \
+    apt-get purge -y \
+    libreoffice* \
+    thunderbird* \
+    transmission* \
+    gimp* \
+    inkscape* \
+    vlc* \
+    && apt-get autoremove -y \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /tmp/*
+
+# Install essential pentesting tools only
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    $KALI_TOOLS \
+    python3-pip \
+    git \
+    curl \
+    wget \
+    net-tools \
+    dnsutils \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /tmp/*
+
+# Install Python security tools
+RUN pip3 install --no-cache-dir \
+    impacket \
+    pwntools \
+    requests \
+    beautifulsoup4 \
+    scapy
+
+# Create workspace directories
+RUN mkdir -p /home/kasm-user/workspace \
+    && mkdir -p /home/kasm-user/tools \
+    && mkdir -p /home/kasm-user/results \
+    && chown -R 1000:1000 /home/kasm-user
+
+# Pre-configure Metasploit database
+RUN service postgresql start && \
+    msfdb init && \
+    service postgresql stop
+
+# Set up default workspace
+WORKDIR /home/kasm-user/workspace
+
+# Switch back to kasm-user
+USER 1000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD pgrep -f "vnc" || exit 1
+
+# Metadata for tracking
+ARG BUILD_DATE
+ARG VCS_REF
+LABEL org.label-schema.build-date=$BUILD_DATE \
+      org.label-schema.vcs-ref=$VCS_REF \
+      org.label-schema.schema-version="1.0"

@@ -34,6 +34,7 @@ import attackRoutes from "./api/v1/attack";
 import workbenchRoutes from "./api/v1/workbench";
 import toolMigrationRoutes from "./api/v1/tool-migration";
 import kasmWorkspacesRoutes from "./api/v1/kasm-workspaces";
+import kasmProxyRoutes from "./api/v1/kasm-proxy";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -93,6 +94,7 @@ app.use("/api/v1/attack", attackRoutes);
 app.use("/api/v1/workbench", workbenchRoutes);
 app.use("/api/v1/tool-migration", toolMigrationRoutes);
 app.use("/api/v1/kasm-workspaces", kasmWorkspacesRoutes);
+app.use("/api/v1/kasm-proxy", kasmProxyRoutes);
 
 // Root endpoint
 app.get("/api/v1", (_req, res) => {
@@ -120,6 +122,7 @@ app.get("/api/v1", (_req, res) => {
       attack: "/api/v1/attack",
       workbench: "/api/v1/workbench",
       kasmWorkspaces: "/api/v1/kasm-workspaces",
+      kasmProxy: "/api/v1/kasm-proxy",
     },
   });
 });

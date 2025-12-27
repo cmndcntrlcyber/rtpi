@@ -16,6 +16,9 @@ import { agentToolConnector } from "./agent-tool-connector";
 import { metasploitExecutor } from "./metasploit-executor";
 import { empireExecutor } from "./empire-executor";
 import { generateMarkdownReport } from "./report-generator";
+import { ollamaAIClient } from "./ollama-ai-client";
+import type { AgentConfig, AgentAIConfig } from "../../shared/types/agent-config";
+import { mergeAgentAIConfig } from "../../shared/types/agent-config";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 
@@ -35,6 +38,55 @@ export class AgentWorkflowOrchestrator {
     if (process.env.ANTHROPIC_API_KEY) {
       this.anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     }
+  }
+
+  /**
+   * Get AI configuration from agent
+   * Merges agent-specific config with defaults
+   */
+  private getAgentAIConfig(agent: any): AgentAIConfig {
+    const config = agent.config as AgentConfig;
+    return mergeAgentAIConfig(config?.ai);
+  }
+
+  /**
+   * Call AI model using agent's configuration
+   * Uses OllamaAIClient which handles provider selection and fallback
+   */
+  private async callAgentAI(
+    agent: any,
+    messages: Array<{ role: string; content: string }>,
+    options?: Partial<AgentAIConfig>
+  ): Promise<string> {
+    const aiConfig = this.getAgentAIConfig(agent);
+    const mergedConfig = { ...aiConfig, ...options };
+
+    // Determine provider
+    let provider: "ollama" | "openai" | "anthropic" | undefined;
+    if (mergedConfig.provider === "auto") {
+      // Auto-select: prefer local if configured
+      if (mergedConfig.preferLocal) {
+        const isOllamaAvailable = await ollamaAIClient.isOllamaAvailable();
+        provider = isOllamaAvailable ? "ollama" : undefined;
+      }
+    } else {
+      provider = mergedConfig.provider as any;
+    }
+
+    // Call AI
+    const response = await ollamaAIClient.complete(messages as any, {
+      provider,
+      model: mergedConfig.model,
+      temperature: mergedConfig.temperature,
+      maxTokens: mergedConfig.maxTokens,
+      useCache: mergedConfig.useCache,
+    });
+
+    if (!response.success) {
+      throw new Error(`AI completion failed: ${response.error}`);
+    }
+
+    return response.content;
   }
 
   /**
@@ -418,18 +470,17 @@ export class AgentWorkflowOrchestrator {
       }
     }
 
-    // Use GPT-5 to analyze and create execution plan
-    if (!this.openai) {
-      throw new Error("OpenAI API key not configured");
-    }
+    // Use AI to analyze and create execution plan (Ollama/OpenAI/Anthropic)
+    const aiConfig = this.getAgentAIConfig(agent);
 
     await this.log(
       workflowId,
       taskId,
       "info",
       `Analyzing target and creating execution plan`,
-      { 
-        model: (agent.config as any)?.model || "gpt-4o",
+      {
+        provider: aiConfig.provider,
+        model: aiConfig.model,
         targetValue: input.targetValue
       }
     );
@@ -442,20 +493,14 @@ export class AgentWorkflowOrchestrator {
       empireInfo
     );
 
-    const completion = await this.openai.chat.completions.create({
-      model: (agent.config as any)?.model || "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content: (agent.config as any)?.systemPrompt || 
-            "You are an experienced penetration tester creating attack plans.",
-        },
-        { role: "user", content: prompt },
-      ],
-      temperature: 0.7,
-    });
-
-    const response = completion.choices[0]?.message?.content || "";
+    const response = await this.callAgentAI(agent, [
+      {
+        role: "system",
+        content: (agent.config as any)?.systemPrompt ||
+          "You are an experienced penetration tester creating attack plans.",
+      },
+      { role: "user", content: prompt },
+    ]);
 
     // Parse execution plan from response
     const executionPlan = this.parseExecutionPlan(response);
@@ -729,9 +774,7 @@ export class AgentWorkflowOrchestrator {
       throw new Error("No exploitation results received from Senior Cyber Operator");
     }
 
-    if (!this.openai) {
-      throw new Error("OpenAI API key not configured");
-    }
+    const aiConfig = this.getAgentAIConfig(agent);
 
     await this.log(
       workflowId,
@@ -739,7 +782,8 @@ export class AgentWorkflowOrchestrator {
       "info",
       `Generating penetration test report`,
       {
-        model: (agent.config as any)?.model || "gpt-4o",
+        provider: aiConfig.provider,
+        model: aiConfig.model,
         targetValue: exploitationResults.targetValue,
         successfulExploitation: exploitationResults.success,
         attemptsCount: exploitationResults.attempts?.length || 0
@@ -748,20 +792,14 @@ export class AgentWorkflowOrchestrator {
 
     const prompt = this.buildReportPrompt(exploitationResults);
 
-    const completion = await this.openai.chat.completions.create({
-      model: (agent.config as any)?.model || "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content: (agent.config as any)?.systemPrompt || 
-            "You are a technical writer creating professional penetration test reports.",
-        },
-        { role: "user", content: prompt },
-      ],
-      temperature: 0.7,
-    });
-
-    const reportContent = completion.choices[0]?.message?.content || "";
+    const reportContent = await this.callAgentAI(agent, [
+      {
+        role: "system",
+        content: (agent.config as any)?.systemPrompt ||
+          "You are a technical writer creating professional penetration test reports.",
+      },
+      { role: "user", content: prompt },
+    ]);
 
     await this.log(
       workflowId,
@@ -1005,10 +1043,6 @@ Provide your response in the following JSON format:
     result: any,
     attempts: any[]
   ): Promise<{ success: boolean; reasoning: string }> {
-    if (!this.anthropic) {
-      return { success: false, reasoning: "Anthropic API not configured" };
-    }
-
     const prompt = `Analyze this Metasploit execution result:
 
 **Output:**
@@ -1024,22 +1058,19 @@ ${result.output}
 
 Respond with JSON: {"success": true/false, "reasoning": "brief explanation"}`;
 
-    const message = await this.anthropic.messages.create({
-      model: (agent.config as any)?.model || "claude-sonnet-4-5-20250929",
-      max_tokens: 1024,
-      messages: [{ role: "user", content: prompt }],
-    });
+    try {
+      const response = await this.callAgentAI(
+        agent,
+        [{ role: "user", content: prompt }],
+        { maxTokens: 1024 }
+      );
 
-    const content = message.content[0];
-    if (content.type === "text") {
-      try {
-        const jsonMatch = content.text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          return JSON.parse(jsonMatch[0]);
-        }
-      } catch (error) {
-        console.error("Failed to parse analysis:", error);
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
       }
+    } catch (error) {
+      console.error("Failed to analyze exploitation result:", error);
     }
 
     return { success: false, reasoning: "Unable to determine success" };

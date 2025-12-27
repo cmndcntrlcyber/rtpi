@@ -165,6 +165,233 @@ services:
     profiles:
       - workbench-ui  # Optional profile - only start if explicitly enabled
 
+  # ============================================================================
+  # Kasm Workspaces - Browser-Based Desktop Streaming Platform
+  # ============================================================================
+
+  # Kasm PostgreSQL Database (separate from main RTPI database)
+  kasm-db:
+    image: kasmweb/postgres:1.17.0
+    container_name: rtpi-kasm-db
+    environment:
+      POSTGRES_USER: kasmapp
+      POSTGRES_PASSWORD: ${KASM_DB_PASSWORD:-kasm123secure}
+      POSTGRES_DB: kasm
+    ports:
+      - "5433:5432"  # Different port to avoid conflict with main postgres
+    volumes:
+      - kasm-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kasmapp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+
+  # Kasm Redis Cache (separate from main RTPI Redis)
+  kasm-redis:
+    image: redis:5-alpine
+    container_name: rtpi-kasm-redis
+    ports:
+      - "6380:6379"  # Different port to avoid conflict with main redis
+    volumes:
+      - kasm-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+
+  # Kasm API Server - REST API for workspace management
+  kasm-api:
+    image: kasmweb/api:1.17.0
+    container_name: rtpi-kasm-api
+    environment:
+      # Database connection
+      DATABASE_HOSTNAME: kasm-db
+      DATABASE_PORT: 5432
+      DATABASE_USER: kasmapp
+      DATABASE_PASSWORD: ${KASM_DB_PASSWORD:-kasm123secure}
+      DATABASE_NAME: kasm
+      DATABASE_SSL: "false"
+      # Redis connection
+      REDIS_HOSTNAME: kasm-redis
+      REDIS_PORT: 6379
+      # API configuration
+      API_SERVER_ID: ${KASM_API_SERVER_ID:-default}
+      SERVER_HOSTNAME: ${KASM_SERVER_HOSTNAME:-localhost}
+      SERVER_ZONE: default
+      # SSL/TLS
+      HTTPS_ENABLED: "true"
+      SSL_CERT_FILE: /opt/kasm/current/certs/kasm_nginx.crt
+      SSL_KEY_FILE: /opt/kasm/current/certs/kasm_nginx.key
+    ports:
+      - "8443:443"  # Kasm HTTPS API port
+    volumes:
+      - kasm-api-data:/opt/kasm/current
+      - kasm-certs:/opt/kasm/current/certs
+    depends_on:
+      kasm-db:
+        condition: service_healthy
+      kasm-redis:
+        condition: service_healthy
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-k", "-f", "https://localhost:443/api/__healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Kasm Manager - Workspace lifecycle management
+  kasm-manager:
+    image: kasmweb/manager:1.17.0
+    container_name: rtpi-kasm-manager
+    environment:
+      # Database connection
+      DATABASE_HOSTNAME: kasm-db
+      DATABASE_PORT: 5432
+      DATABASE_USER: kasmapp
+      DATABASE_PASSWORD: ${KASM_DB_PASSWORD:-kasm123secure}
+      DATABASE_NAME: kasm
+      # Redis connection
+      REDIS_HOSTNAME: kasm-redis
+      REDIS_PORT: 6379
+      # Manager configuration
+      MANAGER_ID: ${KASM_MANAGER_ID:-default-manager}
+      SERVER_HOSTNAME: ${KASM_SERVER_HOSTNAME:-localhost}
+    volumes:
+      - kasm-manager-data:/opt/kasm/current
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker socket for workspace management
+    depends_on:
+      kasm-db:
+        condition: service_healthy
+      kasm-redis:
+        condition: service_healthy
+      kasm-api:
+        condition: service_healthy
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+
+  # Kasm Proxy (Nginx) - Reverse proxy for workspace access
+  kasm-proxy:
+    image: nginx:alpine
+    container_name: rtpi-kasm-proxy
+    environment:
+      - SERVER_HOSTNAME=${KASM_SERVER_HOSTNAME:-localhost}
+    ports:
+      - "8443:443"  # HTTPS for workspace access
+      - "8080:80"   # HTTP redirect to HTTPS
+    volumes:
+      - kasm-proxy-config:/etc/nginx/conf.d
+      - kasm-certs:/etc/nginx/certs:ro
+    depends_on:
+      - kasm-api
+      - kasm-guac
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Kasm Guacamole - Remote desktop protocol gateway
+  kasm-guac:
+    image: kasmweb/kasm-guac:1.17.0
+    container_name: rtpi-kasm-guac
+    environment:
+      # Database connection for session tracking
+      POSTGRES_HOSTNAME: kasm-db
+      POSTGRES_PORT: 5432
+      POSTGRES_DATABASE: kasm
+      POSTGRES_USER: kasmapp
+      POSTGRES_PASSWORD: ${KASM_DB_PASSWORD:-kasm123secure}
+      # Guacamole configuration
+      GUACD_HOSTNAME: localhost
+      GUACD_PORT: 4822
+    ports:
+      - "4822:4822"  # Guacamole daemon port
+    volumes:
+      - kasm-guac-data:/opt/kasm/current
+    depends_on:
+      kasm-db:
+        condition: service_healthy
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+
+  # Kasm Agent - Workspace provisioning and monitoring
+  kasm-agent:
+    image: kasmweb/agent:1.17.0
+    container_name: rtpi-kasm-agent
+    environment:
+      # API connection
+      API_HOSTNAME: kasm-api
+      API_PORT: 443
+      # Agent configuration
+      AGENT_ID: ${KASM_AGENT_ID:-default-agent}
+      SERVER_HOSTNAME: ${KASM_SERVER_HOSTNAME:-localhost}
+      PUBLIC_HOSTNAME: ${KASM_PUBLIC_HOSTNAME:-localhost}
+    volumes:
+      - kasm-agent-data:/opt/kasm/current
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker socket for container management
+    depends_on:
+      kasm-api:
+        condition: service_healthy
+      kasm-manager:
+        condition: service_started
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+
+  # Kasm Share - File sharing service for workspaces
+  kasm-share:
+    image: kasmweb/share:1.17.0
+    container_name: rtpi-kasm-share
+    environment:
+      # Redis connection for share tracking
+      REDIS_HOSTNAME: kasm-redis
+      REDIS_PORT: 6379
+      # Share service configuration
+      SHARE_ID: ${KASM_SHARE_ID:-default-share}
+    ports:
+      - "8182:8182"  # File sharing port
+    volumes:
+      - kasm-share-data:/opt/kasm/current/shares
+    depends_on:
+      kasm-redis:
+        condition: service_healthy
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+
+  # Certbot - Automated SSL/TLS certificate management
+  certbot:
+    image: certbot/certbot:latest
+    container_name: rtpi-certbot
+    environment:
+      - CERTBOT_EMAIL=${CERTBOT_EMAIL:-admin@example.com}
+      - CERTBOT_DOMAIN=${KASM_SERVER_HOSTNAME:-localhost}
+    volumes:
+      - certbot-conf:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+      - kasm-certs:/etc/nginx/certs
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot --webroot-path=/var/www/certbot; sleep 12h & wait $${!}; done;'"
+    networks:
+      - rtpi-network
+    profiles:
+      - certbot  # Optional profile - only start if SSL automation is needed
+
 # Application (Development)
 #  app:
 #    build:
@@ -203,3 +430,15 @@ volumes:
   empire-data:
   empire-downloads:
   workbench-db-data:
+  # Kasm Workspaces volumes
+  kasm-db-data:
+  kasm-redis-data:
+  kasm-api-data:
+  kasm-manager-data:
+  kasm-proxy-config:
+  kasm-guac-data:
+  kasm-agent-data:
+  kasm-share-data:
+  kasm-certs:
+  certbot-conf:
+  certbot-www:

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "../../db";
-import { operations } from "@shared/schema";
+import { operations, users } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import { z } from "zod";
@@ -26,7 +26,26 @@ const operationSchema = z.object({
 // GET /api/v1/operations - List all operations
 router.get("/", async (_req, res) => {
   try {
-    const allOperations = await db.select().from(operations);
+    const allOperations = await db
+      .select({
+        id: operations.id,
+        name: operations.name,
+        description: operations.description,
+        status: operations.status,
+        objectives: operations.objectives,
+        scope: operations.scope,
+        startDate: operations.startDate,
+        endDate: operations.endDate,
+        ownerId: operations.ownerId,
+        teamMembers: operations.teamMembers,
+        metadata: operations.metadata,
+        createdAt: operations.createdAt,
+        updatedAt: operations.updatedAt,
+        createdBy: users.username,
+      })
+      .from(operations)
+      .leftJoin(users, eq(operations.ownerId, users.id));
+
     res.json({ operations: allOperations });
   } catch (error) {
     console.error("List operations error:", error);
@@ -40,11 +59,27 @@ router.get("/:id", async (req, res) => {
 
   try {
     const result = await db
-      .select()
+      .select({
+        id: operations.id,
+        name: operations.name,
+        description: operations.description,
+        status: operations.status,
+        objectives: operations.objectives,
+        scope: operations.scope,
+        startDate: operations.startDate,
+        endDate: operations.endDate,
+        ownerId: operations.ownerId,
+        teamMembers: operations.teamMembers,
+        metadata: operations.metadata,
+        createdAt: operations.createdAt,
+        updatedAt: operations.updatedAt,
+        createdBy: users.username,
+      })
       .from(operations)
+      .leftJoin(users, eq(operations.ownerId, users.id))
       .where(eq(operations.id, id))
       .limit(1);
-    
+
     if (!result || result.length === 0) {
       return res.status(404).json({ error: "Operation not found" });
     }

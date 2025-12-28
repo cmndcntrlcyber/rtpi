@@ -72,7 +72,33 @@ export default function TargetList({
           </svg>
         </div>
         <h3 className="text-lg font-medium text-foreground mb-2">No targets found</h3>
-        <p className="text-muted-foreground mb-4">Add targets to begin scanning</p>
+        <p className="text-muted-foreground mb-4">
+          Targets are the systems, networks, or applications you want to assess.
+        </p>
+        <div className="max-w-md mx-auto text-sm text-muted-foreground space-y-2">
+          <p className="font-medium text-foreground mb-3">Get started by adding:</p>
+          <ul className="text-left space-y-2">
+            <li className="flex items-start">
+              <span className="text-primary mr-2">•</span>
+              <span>IP addresses (e.g., 192.168.1.1)</span>
+            </li>
+            <li className="flex items-start">
+              <span className="text-primary mr-2">•</span>
+              <span>Domain names (e.g., example.com)</span>
+            </li>
+            <li className="flex items-start">
+              <span className="text-primary mr-2">•</span>
+              <span>URL endpoints (e.g., https://api.example.com)</span>
+            </li>
+            <li className="flex items-start">
+              <span className="text-primary mr-2">•</span>
+              <span>Network ranges (e.g., 10.0.0.0/24)</span>
+            </li>
+          </ul>
+          <p className="mt-4 pt-4 border-t border-border">
+            Click <strong>"Add Target"</strong> above to create your first target
+          </p>
+        </div>
       </div>
     );
   }

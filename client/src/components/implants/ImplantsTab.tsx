@@ -75,6 +75,7 @@ export default function ImplantsTab() {
   const [stats, setStats] = useState<ImplantStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedImplantId, setSelectedImplantId] = useState<string | null>(null);
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
   // Fetch all implants
   const fetchImplants = async () => {
@@ -174,6 +175,7 @@ export default function ImplantsTab() {
     fetchImplants();
     fetchTasks(selectedImplantId || undefined);
     fetchStats();
+    setLastRefresh(new Date());
   };
 
   // Initial data load
@@ -189,14 +191,42 @@ export default function ImplantsTab() {
     }
   }, [implants.length, selectedImplantId]);
 
-  // Auto-refresh every 10 seconds
+  // Auto-refresh every 10 seconds (only when page is visible)
   useEffect(() => {
-    const interval = setInterval(() => {
-      fetchImplants();
-      fetchStats();
-    }, 10000);
+    let interval: NodeJS.Timeout;
 
-    return () => clearInterval(interval);
+    const startAutoRefresh = () => {
+      interval = setInterval(() => {
+        if (!document.hidden) {
+          fetchImplants();
+          fetchStats();
+          setLastRefresh(new Date());
+        }
+      }, 10000);
+    };
+
+    // Start immediately
+    startAutoRefresh();
+
+    // Pause/resume based on page visibility
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        clearInterval(interval);
+      } else {
+        startAutoRefresh();
+        // Refresh immediately when tab becomes visible
+        fetchImplants();
+        fetchStats();
+        setLastRefresh(new Date());
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, []);
 
   return (
@@ -207,15 +237,20 @@ export default function ImplantsTab() {
           <Activity className="h-5 w-5 text-cyan-600" />
           <h2 className="text-xl font-semibold">Implant Management</h2>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleRefresh}
-          disabled={loading}
-        >
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-muted-foreground">
+            Last updated {Math.floor((Date.now() - lastRefresh.getTime()) / 1000)}s ago
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={loading}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Statistics Cards */}
@@ -223,7 +258,7 @@ export default function ImplantsTab() {
 
       {/* Tabs */}
       <Tabs defaultValue="implants" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="implants" className="flex items-center gap-2">
             <Cpu className="h-4 w-4" />
             Implants ({implants.length})
@@ -231,10 +266,6 @@ export default function ImplantsTab() {
           <TabsTrigger value="tasks" className="flex items-center gap-2">
             <ListTodo className="h-4 w-4" />
             Tasks ({tasks.length})
-          </TabsTrigger>
-          <TabsTrigger value="telemetry" className="flex items-center gap-2">
-            <BarChart3 className="h-4 w-4" />
-            Telemetry
           </TabsTrigger>
         </TabsList>
 
@@ -257,22 +288,6 @@ export default function ImplantsTab() {
             selectedImplantId={selectedImplantId}
             onSelectImplant={setSelectedImplantId}
           />
-        </TabsContent>
-
-        <TabsContent value="telemetry" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Telemetry Dashboard</CardTitle>
-              <CardDescription>
-                Real-time performance and health metrics
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">
-                Telemetry visualization coming soon...
-              </p>
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
     </div>

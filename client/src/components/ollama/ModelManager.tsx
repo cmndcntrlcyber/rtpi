@@ -72,15 +72,19 @@ export function ModelManager() {
     loadModels();
   }, []);
 
-  const loadModels = async () => {
+  const loadModels = async (showError = true) => {
     try {
       setLoading(true);
-      const response = await fetch("/api/v1/ollama/models");
+      const response = await fetch("/api/v1/ollama/models", {
+        credentials: "include",
+      });
       if (!response.ok) throw new Error("Failed to load models");
       const data = await response.json();
       setModels(data);
     } catch (error) {
-      toast.error("Failed to load models. Is Ollama running?");
+      if (showError) {
+        toast.error("Failed to load models. Is Ollama running?");
+      }
       console.error("Load models error:", error);
     } finally {
       setLoading(false);
@@ -92,6 +96,7 @@ export function ModelManager() {
       setSyncing(true);
       const response = await fetch("/api/v1/ollama/models/sync", {
         method: "POST",
+        credentials: "include",
       });
       if (!response.ok) throw new Error("Failed to sync models");
       const result = await response.json();
@@ -119,6 +124,7 @@ export function ModelManager() {
 
       const response = await fetch("/api/v1/ollama/models/pull", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ modelName: newModelName }),
       });
@@ -153,7 +159,9 @@ export function ModelManager() {
   const pollModelStatus = async (modelName: string) => {
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/v1/ollama/models/${encodeURIComponent(modelName)}/status`);
+        const response = await fetch(`/api/v1/ollama/models/${encodeURIComponent(modelName)}/status`, {
+          credentials: "include",
+        });
         if (!response.ok) throw new Error("Failed to get status");
 
         const model = await response.json();
@@ -166,7 +174,7 @@ export function ModelManager() {
             return next;
           });
           toast.success(`${modelName} is now available`);
-          await loadModels();
+          await loadModels(false); // Don't show error toast on silent refresh
         } else if (model.status === "error") {
           clearInterval(interval);
           setDownloading(prev => {
@@ -175,7 +183,7 @@ export function ModelManager() {
             return next;
           });
           toast.error(`Failed to download ${modelName}`);
-          await loadModels();
+          await loadModels(false); // Don't show error toast on silent refresh
         }
       } catch (error) {
         clearInterval(interval);
@@ -184,6 +192,7 @@ export function ModelManager() {
           delete next[modelName];
           return next;
         });
+        // Silent failure - don't show toast here as it's a polling error
       }
     }, 2000);
 
@@ -195,6 +204,7 @@ export function ModelManager() {
     try {
       const response = await fetch(`/api/v1/ollama/models/${encodeURIComponent(modelName)}`, {
         method: "DELETE",
+        credentials: "include",
       });
 
       if (!response.ok) {
@@ -204,7 +214,7 @@ export function ModelManager() {
 
       toast.success(`${modelName} has been removed`);
 
-      await loadModels();
+      await loadModels(false); // Don't show error toast on silent refresh
     } catch (error: any) {
       toast.error(`Delete Failed: ${error.message}`);
     } finally {
@@ -217,6 +227,7 @@ export function ModelManager() {
     try {
       const response = await fetch(`/api/v1/ollama/models/${encodeURIComponent(modelName)}/unload`, {
         method: "POST",
+        credentials: "include",
       });
 
       if (!response.ok) {
@@ -226,7 +237,7 @@ export function ModelManager() {
 
       toast.success(`${modelName} has been unloaded from memory`);
 
-      await loadModels();
+      await loadModels(false); // Don't show error toast on silent refresh
     } catch (error: any) {
       toast.error(`Unload Failed: ${error.message}`);
     }

@@ -661,7 +661,12 @@ export class DistributedWorkflowOrchestrator {
         maxConcurrentImplants: 5,
         maxTasksPerImplant: 5,
         maxExecutionTimeMs: 600000, // 10 minutes
-        allowedCapabilities: ["reconnaissance", "exploitation", "credential_harvesting"],
+        allowedCapabilities: [
+          "reconnaissance",
+          "exploitation",
+          "credential_harvesting",
+          "command_execution", // Added: Semi-autonomous can execute commands
+        ],
         forbiddenCommands: ["rm -rf /", "format c:", "dd if=/dev/zero"],
         requireApprovalFor: ["privilege_escalation", "lateral_movement"],
         maxDataExfiltrationMb: 50,

@@ -80,7 +80,32 @@ print(json.dumps(result))
     });
   }
 
+  /**
+   * Method: test_injection_vulnerabilities
+   */
+  async test_injection_vulnerabilities(target_url: string, parameters: string): Promise<any> {
+    return this.executePythonMethod('test_injection_vulnerabilities', {
+      target_url, parameters
+    });
+  }
 
+  /**
+   * Method: analyze_cross_site_vulnerabilities
+   */
+  async analyze_cross_site_vulnerabilities(target_url: string): Promise<any> {
+    return this.executePythonMethod('analyze_cross_site_vulnerabilities', {
+      target_url
+    });
+  }
+
+  /**
+   * Method: evaluate_authentication_security
+   */
+  async evaluate_authentication_security(login_url: string, auth_flow: string): Promise<any> {
+    return this.executePythonMethod('evaluate_authentication_security', {
+      login_url, auth_flow
+    });
+  }
 }
 
 /**

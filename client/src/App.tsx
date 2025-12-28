@@ -1,12 +1,13 @@
 import { useEffect } from "react";
 import { Route, Switch } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { KeyboardShortcutsProvider } from "@/contexts/KeyboardShortcutsContext";
 import { SearchProvider, useSearch } from "@/contexts/SearchContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { useNotificationTriggers } from "@/hooks/useNotificationTriggers";
+import { initializeSessionManagement } from "@/lib/api";
 import MainLayout from "@/components/layout/MainLayout";
 import { KeyboardShortcutsDialog } from "@/components/shared/KeyboardShortcutsDialog";
 import { SearchDialog } from "@/components/shared/SearchDialog";
@@ -75,7 +76,7 @@ function AuthenticatedApp() {
 }
 
 function AppContent() {
-  const { user, loading } = useAuth();
+  const { user, loading, logout } = useAuth();
 
   // Apply dark mode on app load
   useEffect(() => {
@@ -86,6 +87,27 @@ function AppContent() {
       document.documentElement.classList.remove("dark");
     }
   }, []);
+
+  // Initialize session management
+  useEffect(() => {
+    if (user) {
+      initializeSessionManagement();
+    }
+  }, [user]);
+
+  // Handle unauthorized events (session expired)
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      toast.error("Session Expired", {
+        description: "Your login session has expired. Please log in again.",
+        duration: 5000,
+      });
+      logout();
+    };
+
+    window.addEventListener("auth:unauthorized", handleUnauthorized);
+    return () => window.removeEventListener("auth:unauthorized", handleUnauthorized);
+  }, [logout]);
 
   if (loading) {
     return (

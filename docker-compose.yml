@@ -127,7 +127,7 @@ services:
       # API configuration
       PORT: 3010
       # CORS configuration - allow RTPI frontend
-      CORS_ORIGIN: "http://localhost:5000,http://localhost:3000,http://localhost:3020"
+      CORS_ORIGIN: "http://localhost:5000,http://localhost:3000,http://localhost:3001,http://localhost:3020"
       # Session configuration
       SESSION_SECRET: ${WORKBENCH_SESSION_SECRET:-change-this-secret-key}
       # Authentication (optional)

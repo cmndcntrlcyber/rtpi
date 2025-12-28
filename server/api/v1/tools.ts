@@ -76,7 +76,18 @@ const upload = multer({
 // GET /api/v1/tools - List all security tools
 router.get("/", async (_req, res) => {
   try {
-    const tools = await db.select().from(securityTools);
+    const allTools = await db.select().from(securityTools);
+
+    // Filter out test/invalid tools
+    const tools = allTools.filter(tool => {
+      const hasInvalidName = tool.name.toLowerCase().includes('invalid');
+      const hasInvalidPath =
+        tool.configPath?.includes('/invalid/') ||
+        tool.command?.includes('/invalid/') ||
+        (tool.metadata && JSON.stringify(tool.metadata).includes('/invalid/'));
+      return !hasInvalidName && !hasInvalidPath;
+    });
+
     res.json({ tools });
   } catch (error) {
     console.error("List tools error:", error);

@@ -170,8 +170,8 @@ export default function TechniquesTable() {
           <TableCell>
             <div className="flex flex-wrap gap-1">
               {technique.platforms && technique.platforms.length > 0 ? (
-                technique.platforms.slice(0, 3).map((platform, idx) => (
-                  <Badge key={idx} variant="secondary" className="text-xs">
+                technique.platforms.slice(0, 3).map((platform) => (
+                  <Badge key={platform} variant="secondary" className="text-xs">
                     {platform}
                   </Badge>
                 ))
@@ -188,8 +188,8 @@ export default function TechniquesTable() {
           <TableCell>
             <div className="flex flex-wrap gap-1">
               {technique.killChainPhases && technique.killChainPhases.length > 0 ? (
-                technique.killChainPhases.slice(0, 2).map((phase, idx) => (
-                  <Badge key={idx} variant="outline" className="text-xs">
+                technique.killChainPhases.slice(0, 2).map((phase) => (
+                  <Badge key={phase} variant="outline" className="text-xs">
                     {phase.replace(/-/g, " ")}
                   </Badge>
                 ))
@@ -246,9 +246,11 @@ export default function TechniquesTable() {
             </div>
           </TableCell>
         </TableRow>
-        {hasSubtechniques && isExpanded && (technique as TechniqueWithSubtechniques).subtechniques!.map((sub) =>
-          renderTechniqueRow(sub, true)
-        )}
+        {hasSubtechniques && isExpanded && (technique as TechniqueWithSubtechniques).subtechniques!.map((sub) => (
+          <React.Fragment key={sub.id}>
+            {renderTechniqueRow(sub, true)}
+          </React.Fragment>
+        ))}
       </React.Fragment>
     );
   };

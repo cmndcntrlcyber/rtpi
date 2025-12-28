@@ -74,7 +74,7 @@ export default function TargetCard({
 
   return (
     <Card
-      className={`bg-card border-border hover:shadow-md cursor-pointer transition-all ${
+      className={`bg-card border-border shadow-sm hover:shadow-lg cursor-pointer transition-all duration-200 ${
         selected ? "ring-2 ring-primary ring-offset-2" : ""
       }`}
       onClick={handleClick}

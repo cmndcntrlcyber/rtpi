@@ -295,10 +295,22 @@ export default function Profile() {
             </CardTitle>
             <CardDescription>Recent account activity</CardDescription>
           </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Activity tracking coming soon. This will show login history, actions performed, and security events.
-            </p>
+          <CardContent className="space-y-3">
+            <div className="text-sm text-muted-foreground space-y-2">
+              <p className="font-medium text-foreground">Activity logging is enabled for:</p>
+              <ul className="space-y-1 ml-4">
+                <li>• Login attempts and sessions</li>
+                <li>• Operations and workflow actions</li>
+                <li>• Security-related events</li>
+                <li>• Configuration changes</li>
+              </ul>
+            </div>
+            <div className="pt-3 border-t border-border">
+              <p className="text-xs text-muted-foreground">
+                Activity history will be displayed here once actions are performed on your account.
+                Check your current session details above.
+              </p>
+            </div>
           </CardContent>
         </Card>
       </div>

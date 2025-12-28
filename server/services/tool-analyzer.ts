@@ -160,39 +160,41 @@ function extractClassInfo(content: string): { name: string; docstring: string } 
 
 /**
  * Extract methods from Python class
+ * Handles methods with or without docstrings
  */
 function extractMethods(content: string): ToolMethod[] {
   const methods: ToolMethod[] = [];
 
-  // Match method definitions with docstrings
-  const methodRegex = /def\s+(\w+)\s*\([^)]*\)\s*(?:->\s*([^:]+))?\s*:\s*\n\s*"""([\s\S]*?)"""/g;
+  // Extract all method definitions (with or without docstrings)
+  // Use [\s\S] to match newlines within parameter lists
+  const methodDefRegex = /def\s+(\w+)\s*\(([\s\S]*?)\)\s*(?:->\s*([^:]+))?\s*:/g;
 
   let match;
-  while ((match = methodRegex.exec(content)) !== null) {
+  while ((match = methodDefRegex.exec(content)) !== null) {
     const methodName = match[1];
-    const returnType = match[2]?.trim() || 'Any';
-    const docstring = match[3].trim();
+    const params = match[2] || '';
+    const returnType = match[3]?.trim() || 'Any';
 
-    // Skip private methods and __init__
-    if (methodName.startsWith('_') && methodName !== '__init__') {
+    // Skip private methods (except __init__ and special methods)
+    if (methodName.startsWith('_') && !methodName.startsWith('__')) {
       continue;
     }
 
-    // Extract method signature
-    const methodSignatureMatch = content.match(
-      new RegExp(`def\\s+${methodName}\\s*\\(([^)]*)\\)`)
-    );
-
-    const parameters = methodSignatureMatch
-      ? extractMethodParameters(methodSignatureMatch[1], docstring)
-      : [];
+    // Try to extract docstring (may not exist)
+    const docstring = extractDocstringForMethod(content, methodName);
 
     // Check if async
-    const isAsync = content.includes(`async def ${methodName}`);
+    const isAsync = new RegExp(`async\\s+def\\s+${methodName}\\s*\\(`).test(content);
+
+    // Extract parameters from signature (clean up newlines and extra whitespace)
+    const cleanParams = params.replace(/\s+/g, ' ').trim();
+    const parameters = extractMethodParameters(cleanParams, docstring || '');
 
     methods.push({
       name: methodName,
-      description: extractMethodDescription(docstring),
+      description: docstring
+        ? extractMethodDescription(docstring)
+        : `Method: ${methodName}`, // Fallback description
       parameters,
       returnType,
       isAsync,
@@ -200,6 +202,23 @@ function extractMethods(content: string): ToolMethod[] {
   }
 
   return methods;
+}
+
+/**
+ * Extract docstring for a specific method (if it exists)
+ */
+function extractDocstringForMethod(content: string, methodName: string): string | null {
+  // Look for docstring immediately after method definition
+  // Support both triple-double and triple-single quotes
+  const pattern = new RegExp(
+    `def\\s+${methodName}\\s*\\([^)]*\\)\\s*(?:->\\s*[^:]+)?\\s*:\\s*\\n\\s*(?:"""([\\s\\S]*?)"""|'''([\\s\\S]*?)''')`,
+    'm'
+  );
+
+  const match = content.match(pattern);
+  if (!match) return null;
+
+  return (match[1] || match[2] || '').trim();
 }
 
 /**

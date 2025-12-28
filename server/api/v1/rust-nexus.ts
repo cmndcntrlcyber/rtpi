@@ -588,9 +588,27 @@ router.get("/stats", async (req, res) => {
 
     const activeConnections = rustNexusController.getConnectedImplants();
 
+    // Convert string counts to numbers (PostgreSQL COUNT returns bigint as string)
+    const implantData = implantStats[0];
+    const taskData = taskStats[0];
+
     res.json({
-      implants: implantStats[0],
-      tasks: taskStats[0],
+      implants: {
+        total: Number(implantData.total),
+        connected: Number(implantData.connected),
+        idle: Number(implantData.idle),
+        busy: Number(implantData.busy),
+        disconnected: Number(implantData.disconnected),
+        terminated: Number(implantData.terminated),
+      },
+      tasks: {
+        total: Number(taskData.total),
+        queued: Number(taskData.queued),
+        running: Number(taskData.running),
+        completed: Number(taskData.completed),
+        failed: Number(taskData.failed),
+        cancelled: Number(taskData.cancelled),
+      },
       connections: {
         total: activeConnections.length,
         authenticated: activeConnections.filter((c) => c.implantId).length,

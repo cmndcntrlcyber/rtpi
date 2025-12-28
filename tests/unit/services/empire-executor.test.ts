@@ -12,7 +12,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import axios from 'axios';
 
 // Create mock functions that can be reset
-const mockDbInsertValues = vi.fn().mockResolvedValue([]);
+const mockDbInsertReturning = vi.fn().mockResolvedValue([]);
+const mockDbInsertValues = vi.fn().mockReturnValue({ returning: mockDbInsertReturning });
 const mockDbUpdateSet = vi.fn();
 const mockDbUpdateWhere = vi.fn().mockResolvedValue(undefined);
 const mockDbSelectFrom = vi.fn();
@@ -60,6 +61,13 @@ vi.mock('../../../server/db', () => ({
 // Mock axios
 vi.mock('axios');
 
+// Mock kasm-nginx-manager
+vi.mock('../../../server/services/kasm-nginx-manager', () => ({
+  kasmNginxManager: {
+    registerListenerProxy: vi.fn().mockResolvedValue(null),
+  },
+}));
+
 // Store the executor instance
 let empireExecutorInstance: any = null;
 
@@ -82,7 +90,8 @@ describe('Empire Executor Security Tests', () => {
     mockDbUpdateSet.mockReturnValue({ where: mockDbUpdateWhere });
     mockDbSelectFrom.mockReturnValue({ where: mockDbSelectFromWhere });
     mockDbUpdateWhere.mockResolvedValue(undefined);
-    mockDbInsertValues.mockResolvedValue([]);
+    mockDbInsertReturning.mockResolvedValue([]);
+    mockDbInsertValues.mockReturnValue({ returning: mockDbInsertReturning });
 
     // Setup axios mock
     mockAxiosInstance = {
@@ -688,8 +697,33 @@ describe('Empire Executor Security Tests', () => {
         permanentToken: 'valid-token',
       };
 
+      const mockCreatedListener = {
+        id: 'listener-123',
+        serverId: 'server-1',
+        empireListenerId: '1',
+        name: 'http-listener',
+        listenerType: 'http',
+        listenerCategory: 'http',
+        host: '0.0.0.0',
+        port: 80,
+        certPath: null,
+        stagingKey: null,
+        defaultDelay: 5,
+        defaultJitter: 0.0,
+        defaultLostLimit: 60,
+        killDate: null,
+        workingHours: null,
+        isActive: true,
+        status: 'running',
+        createdBy: 'user-1',
+        config: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
       mockDbQuery.empireServers.findFirst.mockResolvedValue(mockServer);
       mockDbQuery.empireUserTokens.findFirst.mockResolvedValue(mockToken);
+      mockDbInsertReturning.mockResolvedValue([mockCreatedListener]);
       mockAxiosInstance.post.mockResolvedValue({
         data: {
           ID: 1,
@@ -712,6 +746,9 @@ describe('Empire Executor Security Tests', () => {
         defaultJitter: 0.0,
       });
 
+      if (!result.success) {
+        console.error('Test failed with error:', result.error);
+      }
       expect(result.success).toBe(true);
     });
 

@@ -351,10 +351,15 @@ export class BinaryObfuscation {
 
   /**
    * Generate polymorphic code identifiers
+   * Uses cryptographically secure random bytes to ensure uniqueness
    */
   generatePolymorphicIdentifier(base: string): string {
     const hash = crypto.createHash("sha256");
-    hash.update(base + Date.now().toString());
+    const randomBytes = crypto.randomBytes(16); // 128 bits of cryptographic entropy
+
+    hash.update(base);
+    hash.update(randomBytes);
+
     return "_" + hash.digest("hex").substring(0, 16);
   }
 

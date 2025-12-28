@@ -39,6 +39,7 @@ import sslCertificatesRoutes from "./api/v1/ssl-certificates";
 import burpBuilderRoutes from "./api/v1/burp-builder";
 import rustNexusRoutes from "./api/v1/rust-nexus";
 import ollamaRoutes from "./api/v1/ollama";
+import { initializeDefaultAdmin } from "./services/admin-initialization";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -156,13 +157,35 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   });
 });
 
-// Start server
-const server = app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
-  console.log(`📚 API documentation: http://0.0.0.0:${PORT}/api/v1`);
-});
+// Initialize database and default admin user
+async function initializeServer() {
+  try {
+    // Check database connection
+    const dbHealthy = await checkDatabaseConnection();
+    if (!dbHealthy) {
+      console.error("❌ Database connection failed");
+      process.exit(1);
+    }
+    console.log("✅ Database connection successful");
 
-// FIX BUG #4: Initialize WebSocket manager for real-time scan progress
-import { initializeScanWebSocketManager } from "./services/scan-websocket-manager";
-initializeScanWebSocketManager(server);
-console.log(`🔌 WebSocket server ready for scan streaming`);
+    // Initialize default admin user
+    await initializeDefaultAdmin();
+
+    // Start server
+    const server = app.listen(PORT, "0.0.0.0", () => {
+      console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
+      console.log(`📚 API documentation: http://0.0.0.0:${PORT}/api/v1`);
+    });
+
+    // FIX BUG #4: Initialize WebSocket manager for real-time scan progress
+    const { initializeScanWebSocketManager } = await import("./services/scan-websocket-manager");
+    initializeScanWebSocketManager(server);
+    console.log(`🔌 WebSocket server ready for scan streaming`);
+  } catch (error) {
+    console.error("❌ Server initialization failed:", error);
+    process.exit(1);
+  }
+}
+
+// Start the server
+initializeServer();

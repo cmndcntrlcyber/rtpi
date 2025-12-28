@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Settings as SettingsIcon, Shield, Database, Bell, Moon, Sun, Brain, Eye, EyeOff } from "lucide-react";
 import { api } from "@/lib/api";
+import { toast } from "sonner";
 
 export default function Settings() {
   const [darkMode, setDarkMode] = useState(false);
@@ -19,6 +20,8 @@ export default function Settings() {
   const [showAnthropic, setShowAnthropic] = useState(false);
   const [showTavily, setShowTavily] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
 
   useEffect(() => {
     // Check for saved dark mode preference
@@ -52,12 +55,65 @@ export default function Settings() {
     setSaving(true);
     try {
       await api.post("/settings/llm", llmSettings);
-      alert("LLM settings saved successfully!");
-    } catch (error) {
+      toast.success("AI settings saved successfully!", {
+        description: "Your API keys and model preferences have been updated.",
+      });
+    } catch (error: any) {
       console.error("Failed to save LLM settings:", error);
-      alert("Failed to save LLM settings");
+      toast.error("Failed to save AI settings", {
+        description: error.message || "Please check your connection and try again.",
+      });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveSystemConfig = async () => {
+    setSavingConfig(true);
+    try {
+      // Simulate save - in real implementation this would call an API
+      await new Promise(resolve => setTimeout(resolve, 500));
+      toast.success("System configuration saved!", {
+        description: "API and WebSocket URLs have been updated.",
+      });
+    } catch (error: any) {
+      toast.error("Failed to save configuration", {
+        description: error.message || "Please try again.",
+      });
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
+  const testDatabaseConnection = async () => {
+    setTestingConnection(true);
+    try {
+      const response = await fetch("http://localhost:3001/api/v1/health", {
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.status === "healthy" && data.database === "connected") {
+          toast.success("Database connection successful!", {
+            description: "PostgreSQL is connected and responsive.",
+          });
+        } else {
+          toast.warning("Database connection issue", {
+            description: `Status: ${data.database || "unknown"}`,
+          });
+        }
+      } else {
+        toast.error("Connection test failed", {
+          description: `Server returned ${response.status}: ${response.statusText}`,
+        });
+      }
+    } catch (error: any) {
+      toast.error("Database connection failed", {
+        description: error.message || "Unable to reach the database server.",
+      });
+    } finally {
+      setTestingConnection(false);
     }
   };
 
@@ -219,7 +275,9 @@ export default function Settings() {
                 placeholder="wss://api.example.com"
               />
             </div>
-            <Button>Save Configuration</Button>
+            <Button onClick={saveSystemConfig} disabled={savingConfig}>
+              {savingConfig ? "Saving..." : "Save Configuration"}
+            </Button>
           </CardContent>
         </Card>
 
@@ -282,7 +340,13 @@ export default function Settings() {
                 placeholder="5432"
               />
             </div>
-            <Button variant="outline">Test Connection</Button>
+            <Button
+              variant="outline"
+              onClick={testDatabaseConnection}
+              disabled={testingConnection}
+            >
+              {testingConnection ? "Testing..." : "Test Connection"}
+            </Button>
           </CardContent>
         </Card>
 

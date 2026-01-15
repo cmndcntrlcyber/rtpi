@@ -401,6 +401,51 @@ router.get("/server-info", async (_req, res) => {
   }
 });
 
+/**
+ * GET /api/v1/ollama/benchmark
+ * Get performance benchmark results for Ollama models
+ */
+router.get("/benchmark", async (_req, res) => {
+  try {
+    // Get usage stats and model information for benchmarking
+    const stats = await ollamaManager.getUsageStats();
+    const models = await ollamaManager.listModelsFromDB();
+
+    // Build benchmark data structure
+    const benchmarks = models.map((model: any) => {
+      // Calculate average response time if usage data exists
+      const modelStats = stats.modelUsage?.find((m: any) => m.modelName === model.name);
+
+      return {
+        modelName: model.name,
+        modelTag: model.tag,
+        sizeGB: model.size ? (model.size / (1024 * 1024 * 1024)).toFixed(2) : "Unknown",
+        totalRequests: modelStats?.requestCount || 0,
+        avgResponseTime: modelStats?.avgResponseTime || null,
+        lastUsed: model.lastUsedAt || null,
+        status: model.isLoaded ? "loaded" : "available",
+      };
+    });
+
+    res.json({
+      benchmarks,
+      summary: {
+        totalModels: models.length,
+        loadedModels: models.filter((m: any) => m.isLoaded).length,
+        totalRequests: stats.totalRequests || 0,
+        avgResponseTime: stats.avgResponseTime || null,
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({
+      error: "Failed to get benchmark data",
+      details: error?.message || "Internal server error"
+    });
+  }
+});
+
 // ============================================================================
 // MANUAL AUTO-UNLOAD TRIGGER (for testing)
 // ============================================================================

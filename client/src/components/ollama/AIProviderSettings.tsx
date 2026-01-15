@@ -76,10 +76,14 @@ export function AIProviderSettings() {
       const response = await fetch("/api/v1/settings/ai-provider");
       if (response.ok) {
         const data = await response.json();
-        setConfig(data);
+        if (data.settings) {
+          setConfig(data.settings);
+        }
+      } else {
+        toast.error("Failed to load AI provider settings");
       }
-    } catch (error) {
-      // Error already shown via toast
+    } catch (error: any) {
+      toast.error(`Failed to load settings: ${error.message || "Network error"}`);
     } finally {
       setLoading(false);
     }
@@ -101,11 +105,16 @@ export function AIProviderSettings() {
 
       setProviderStatus({
         ollama: ollamaHealthy,
-        openai: openaiData.available || false,
-        anthropic: anthropicData.available || false,
+        openai: openaiData.connected || false,
+        anthropic: anthropicData.connected || false,
       });
-    } catch (error) {
-      // Error already shown via toast
+
+      // Show status check results
+      toast.info("Provider status checked", {
+        description: `Ollama: ${ollamaHealthy ? "✓" : "✗"} | OpenAI: ${openaiData.connected ? "✓" : "✗"} | Anthropic: ${anthropicData.connected ? "✓" : "✗"}`,
+      });
+    } catch (error: any) {
+      toast.error(`Failed to check provider status: ${error.message || "Network error"}`);
     }
   };
 

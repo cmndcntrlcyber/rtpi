@@ -6,38 +6,51 @@ Unified platform for red team operations, combining attack-node, MCP-Nexus, and 
 
 ## Quick Start
 
+### Prerequisites
+- **Node.js 20+** (check with `node -v`, install via [nvm](https://github.com/nvm-sh/nvm))
+- **Docker & Docker Compose**
+
+### Setup
+
 ```bash
-# Install dependencies
+# 1. Copy environment file
+cp .env.example .env
+
+# 2. Install dependencies
 npm install
 
-# Start database and Redis services
-docker compose up -d
+# 3. Start database and Redis services
+docker compose up -d postgres redis
 
-# Run database migrations
+# 4. Run database migrations
 npm run db:push
 
-# Create default admin user (REQUIRED for first-time setup)
+# 5. Create default admin user
 npx tsx scripts/create-admin.ts
 
-# Start development servers (requires two terminals)
+# 6. Start development servers (two terminals)
 
-# Terminal 1: Start backend API server
+# Terminal 1: Backend API
 npm run dev
 
-# Terminal 2: Start frontend UI server
+# Terminal 2: Frontend UI
 npm run dev:frontend
 ```
 
-**Default Admin Credentials:**
-- Username: `admin`
-- Password: `Admin123!@` (configured in `.env` as `DEFAULT_ADMIN_PASSWORD`)
+### Port Configuration
 
-> ⚠️ **Security Note:** Change the default admin password after first login!
+Default ports are configured to avoid conflicts with common local services:
+- **PostgreSQL:** `5434` (instead of 5432)
+- **Redis:** `6381` (instead of 6379)
 
-**Access the application:**
-- Frontend UI: http://localhost:5000 (or 5001 if 5000 is busy)
-- Backend API: http://localhost:3001
-- API Documentation: http://localhost:3001/api/v1
+### Access
+
+- **Frontend UI:** http://localhost:5000
+- **Backend API:** http://localhost:3001
+- **API Documentation:** http://localhost:3001/api/v1
+- **Default credentials:** admin / Admin123!@
+
+> **Security Note:** Change the default admin password after first login!
 
 **Note:** Always access the full application through the frontend URL. The backend API serves JSON responses only.
 

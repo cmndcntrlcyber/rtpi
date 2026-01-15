@@ -14,9 +14,9 @@ router.get("/", async (_req, res) => {
   try {
     const allChecks = await db.select().from(healthChecks);
     res.json({ healthChecks: allChecks });
-  } catch (error) {
-    console.error("List health checks error:", error);
-    res.status(500).json({ error: "Failed to list health checks" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list health checks", details: error?.message || "Internal server error" });
   }
 });
 
@@ -36,9 +36,9 @@ router.get("/:id", async (req, res) => {
     }
 
     res.json({ healthCheck: result[0] });
-  } catch (error) {
-    console.error("Get health check error:", error);
-    res.status(500).json({ error: "Failed to get health check" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get health check", details: error?.message || "Internal server error" });
   }
 });
 
@@ -51,9 +51,9 @@ router.post("/", ensureRole("admin"), async (req, res) => {
       .returning();
 
     res.status(201).json({ healthCheck: check[0] });
-  } catch (error) {
-    console.error("Create health check error:", error);
-    res.status(500).json({ error: "Failed to create health check" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to create health check", details: error?.message || "Internal server error" });
   }
 });
 
@@ -76,9 +76,9 @@ router.put("/:id", ensureRole("admin", "operator"), async (req, res) => {
     }
 
     res.json({ healthCheck: result[0] });
-  } catch (error) {
-    console.error("Update health check error:", error);
-    res.status(500).json({ error: "Failed to update health check" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to update health check", details: error?.message || "Internal server error" });
   }
 });
 
@@ -89,9 +89,9 @@ router.delete("/:id", ensureRole("admin"), async (req, res) => {
   try {
     await db.delete(healthChecks).where(eq(healthChecks.id, id));
     res.json({ message: "Health check deleted successfully" });
-  } catch (error) {
-    console.error("Delete health check error:", error);
-    res.status(500).json({ error: "Failed to delete health check" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to delete health check", details: error?.message || "Internal server error" });
   }
 });
 

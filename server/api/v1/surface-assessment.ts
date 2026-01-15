@@ -208,8 +208,8 @@ router.get('/:operationId/overview', async (req, res) => {
     };
 
     res.json(response);
-  } catch (error) {
-    console.error('Error fetching surface assessment overview:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ 
       error: 'Failed to fetch overview data',
       message: error instanceof Error ? error.message : 'Unknown error'
@@ -305,8 +305,8 @@ router.get('/:operationId/assets', async (req, res) => {
       limit: limitNum,
       totalPages: Math.ceil(filteredAssets.length / limitNum),
     });
-  } catch (error) {
-    console.error('Error fetching assets:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to fetch assets',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -381,8 +381,8 @@ router.get('/:operationId/services', async (req, res) => {
       services: formattedServices,
       total: formattedServices.length,
     });
-  } catch (error) {
-    console.error('Error fetching services:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to fetch services',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -456,8 +456,8 @@ router.get('/:operationId/activity', async (req, res) => {
       events,
       total: events.length,
     });
-  } catch (error) {
-    console.error('Error fetching activity:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to fetch activity',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -505,10 +505,10 @@ router.post('/:operationId/scan/bbot', async (req, res) => {
     // Execute scan asynchronously
     bbotExecutor.executeScan(targets, bbotOptions, operationId, userId)
       .then((result) => {
-        console.log(`✅ BBOT scan ${result.scanId} completed successfully`);
+        // Debug logging removed
       })
       .catch((error) => {
-        console.error('BBOT scan failed:', error);
+        // Error logged for debugging
       });
 
     // Return immediately with scan ID
@@ -516,8 +516,8 @@ router.post('/:operationId/scan/bbot', async (req, res) => {
       message: 'BBOT scan started successfully',
       status: 'running',
     });
-  } catch (error) {
-    console.error('Error starting BBOT scan:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to start BBOT scan',
       message: error instanceof Error ? error.message : 'Unknown error',

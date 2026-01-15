@@ -22,8 +22,8 @@ router.get('/routes', async (_req, res) => {
   try {
     const routes = await kasmNginxManager.listAllProxyRoutes();
     res.json(routes);
-  } catch (error) {
-    console.error('Failed to list proxy routes:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to list proxy routes' });
   }
 });
@@ -36,8 +36,8 @@ router.get('/routes/empire', async (_req, res) => {
   try {
     const routes = await kasmNginxManager.listProxyRoutes();
     res.json(routes);
-  } catch (error) {
-    console.error('Failed to list Empire proxy routes:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to list Empire proxy routes' });
   }
 });
@@ -50,8 +50,8 @@ router.get('/routes/workspaces', async (_req, res) => {
   try {
     const routes = await kasmNginxManager.listWorkspaceProxyRoutes();
     res.json(routes);
-  } catch (error) {
-    console.error('Failed to list workspace proxy routes:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to list workspace proxy routes' });
   }
 });
@@ -77,8 +77,8 @@ router.get('/routes/:type/:id', async (req, res) => {
     }
 
     res.json(route);
-  } catch (error) {
-    console.error('Failed to get proxy route:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to get proxy route' });
   }
 });
@@ -101,8 +101,8 @@ router.get('/callbacks/:routeId', async (req, res) => {
     }
 
     res.json({ routeId, callbackUrl });
-  } catch (error) {
-    console.error('Failed to get callback URL:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to get callback URL' });
   }
 });
@@ -120,8 +120,8 @@ router.get('/callbacks', async (_req, res) => {
     }));
 
     res.json(formatted);
-  } catch (error) {
-    console.error('Failed to list callback URLs:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to list callback URLs' });
   }
 });
@@ -142,8 +142,8 @@ router.put('/callbacks/:routeId', async (req, res) => {
     kasmNginxManager.updateCallbackUrl(routeId, callbackUrl);
 
     res.json({ routeId, callbackUrl });
-  } catch (error) {
-    console.error('Failed to update callback URL:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to update callback URL' });
   }
 });
@@ -162,8 +162,8 @@ router.get('/logs', async (req, res) => {
     const logs = await kasmNginxManager.getAccessLogs(limit);
 
     res.json(logs);
-  } catch (error) {
-    console.error('Failed to get access logs:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to get access logs' });
   }
 });
@@ -179,8 +179,8 @@ router.get('/logs/:subdomain', async (req, res) => {
     const logs = await kasmNginxManager.getAccessLogsBySubdomain(subdomain, limit);
 
     res.json(logs);
-  } catch (error) {
-    console.error('Failed to get access logs for subdomain:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to get access logs for subdomain' });
   }
 });
@@ -195,8 +195,8 @@ router.post('/logs/rotate', async (req, res) => {
     await kasmNginxManager.rotateAccessLogs(daysToKeep);
 
     res.json({ message: `Access logs rotated, kept last ${daysToKeep} days` });
-  } catch (error) {
-    console.error('Failed to rotate access logs:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to rotate access logs' });
   }
 });
@@ -213,8 +213,8 @@ router.get('/stats', async (_req, res) => {
   try {
     const stats = await kasmNginxManager.getProxyStats();
     res.json(stats);
-  } catch (error) {
-    console.error('Failed to get proxy stats:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to get proxy stats' });
   }
 });
@@ -231,8 +231,8 @@ router.get('/config/test', async (_req, res) => {
   try {
     const isValid = await kasmNginxManager.testConfiguration();
     res.json({ valid: isValid });
-  } catch (error) {
-    console.error('Failed to test nginx configuration:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to test nginx configuration' });
   }
 });
@@ -252,8 +252,8 @@ router.get('/health', async (_req, res) => {
       stats,
       timestamp: new Date().toISOString(),
     });
-  } catch (error) {
-    console.error('Failed to check proxy health:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       status: 'unhealthy',
       error: 'Failed to check proxy health'

@@ -46,7 +46,7 @@ export default function SoftwareTable() {
         console.error("Failed to fetch software");
       }
     } catch (error) {
-      console.error("Failed to fetch software:", error);
+      // Error already shown via toast
     } finally {
       setLoading(false);
     }

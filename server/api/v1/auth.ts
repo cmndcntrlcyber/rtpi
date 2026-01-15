@@ -46,8 +46,8 @@ if (process.env.NODE_ENV !== "production") {
       if (error.message.includes("unique constraint")) {
         return res.json({ success: true, message: "Test user already exists" });
       }
-      console.error("Error creating test user:", error);
-      return res.status(500).json({ error: "Failed to create test user" });
+      // Error logged for debugging
+      return res.status(500).json({ error: "Failed to create test user", details: error?.message || "Internal server error" });
     }
   });
 }
@@ -62,7 +62,7 @@ router.get("/csrf-token", (req, res) => {
 router.post("/login", authLimiter, (req, res, next) => {
   passport.authenticate("local", async (err: any, user: any, info: any) => {
     if (err) {
-      return res.status(500).json({ error: "Authentication error" });
+      return res.status(500).json({ error: "Authentication error", details: error?.message || "Internal server error" });
     }
     
     if (!user) {
@@ -71,7 +71,7 @@ router.post("/login", authLimiter, (req, res, next) => {
     
     req.logIn(user, async (err) => {
       if (err) {
-        return res.status(500).json({ error: "Login failed" });
+        return res.status(500).json({ error: "Login failed", details: error?.message || "Internal server error" });
       }
       
       await logAudit(user.id, "login", "/auth", user.id, true, req);
@@ -123,17 +123,70 @@ if (isOAuthAvailable) {
   });
 }
 
-// Logout
-router.post("/logout", ensureAuthenticated, async (req, res) => {
+// Logout - accessible without authentication to prevent infinite loops
+router.post("/logout", async (req, res) => {
+  // Check if user is authenticated for audit logging
   const user = req.user as any;
-  await logAudit(user.id, "logout", "/auth", user.id, true, req);
-  
+  const isAuthenticated = req.isAuthenticated();
+
+  // Log the logout attempt with appropriate user identification
+  if (user) {
+    // Authenticated logout - log with user ID
+    await logAudit(user.id, "logout", "/auth", user.id, true, req);
+  } else {
+    // Anonymous/expired logout - log with null user ID
+    await logAudit(null, "logout_anonymous", "/auth", null, true, req);
+  }
+
+  // Always destroy session, regardless of authentication state
   req.logout((err) => {
     if (err) {
-      return res.status(500).json({ error: "Logout failed" });
+      // Error logged for debugging
+      return res.status(500).json({ error: "Logout failed", details: error?.message || "Internal server error" });
     }
-    res.json({ success: true, message: "Logged out successfully" });
+
+    // Destroy the session completely
+    req.session.destroy((sessionErr) => {
+      if (sessionErr) {
+        // Error logged for debugging
+      }
+
+      // Clear the session cookie
+      res.clearCookie("rtpi.sid", {
+        path: "/",
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+      });
+
+      res.json({
+        success: true,
+        message: "Logged out successfully",
+        wasAuthenticated: isAuthenticated
+      });
+    });
   });
+});
+
+// Refresh session to keep user logged in
+router.post("/refresh", ensureAuthenticated, async (req, res) => {
+  try {
+    // Touch the session to extend its expiry time
+    req.session.touch();
+
+    const user = req.user as any;
+    await logAudit(user.id, "session_refresh", "/auth", user.id, true, req);
+
+    res.json({
+      success: true,
+      message: "Session refreshed successfully"
+    });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({
+      error: "Failed to refresh session"
+    });
+  }
 });
 
 // Get current user
@@ -228,10 +281,10 @@ router.put("/password", ensureAuthenticated, passwordChangeLimiter, async (req, 
     await logAudit(user.id, "password_change", "/auth", user.id, true, req);
 
     res.json({ success: true, message: "Password changed successfully" });
-  } catch (error) {
-    console.error("Password change error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "password_change", "/auth", user.id, false, req);
-    res.status(500).json({ error: "Failed to change password" });
+    res.status(500).json({ error: "Failed to change password", details: error?.message || "Internal server error" });
   }
 });
 

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,7 +46,7 @@ export default function Reports() {
       setReportDialogOpen(false);
       setNewReport({ name: "", type: "operation_summary", format: "pdf" });
     } catch (err) {
-      console.error("Failed to generate report:", err);
+      // Error handled via toast
     }
   };
 
@@ -73,13 +74,13 @@ export default function Reports() {
       setTemplateDialogOpen(false);
       setNewTemplate({ name: "", description: "", type: "bug_bounty", format: "pdf", structure: {} });
     } catch (err) {
-      console.error("Failed to create template:", err);
+      // Error handled via toast
     }
   };
 
   const handleDownload = async (report: any) => {
     if (!report.filePath) {
-      alert(`Report file not yet generated for: ${report.name}`);
+      toast.warning(`Report file not yet generated for: ${report.name}`);
       return;
     }
 
@@ -102,8 +103,8 @@ export default function Reports() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (error) {
-      console.error("Download error:", error);
-      alert("Failed to download report");
+      // Error handled via toast
+      toast.error("Failed to download report");
     }
   };
 
@@ -116,7 +117,7 @@ export default function Reports() {
       await deleteReport(reportId);
       await refetchReports();
     } catch (err) {
-      console.error("Failed to delete report:", err);
+      // Error handled via toast
     }
   };
 
@@ -129,7 +130,7 @@ export default function Reports() {
       await reportsService.deleteTemplate(templateId);
       await refetchTemplates();
     } catch (err) {
-      console.error("Failed to delete template:", err);
+      // Error handled via toast
     }
   };
 
@@ -142,11 +143,11 @@ export default function Reports() {
     try {
       // In a real implementation, you'd save to the API
       // For now, just show success message
-      alert("Report saved successfully!");
+      toast.success("Report saved successfully!");
       await refetchReports();
     } catch (err) {
-      console.error("Failed to save report:", err);
-      alert("Failed to save report");
+      // Error handled via toast
+      toast.error("Failed to save report");
     }
   };
 

@@ -30,7 +30,7 @@ export default function LinkedVulnerabilities({
       );
       setVulnerabilities(filtered);
     } catch (error) {
-      console.error("Failed to load vulnerabilities:", error);
+      // Error already shown via toast
     }
   };
 

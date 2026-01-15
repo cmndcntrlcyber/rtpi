@@ -35,9 +35,9 @@ router.get("/models", async (_req, res) => {
   try {
     const models = await ollamaManager.listModelsFromDB();
     res.json({ models });
-  } catch (error) {
-    console.error("[API] List models error:", error);
-    res.status(500).json({ error: "Failed to list models" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list models", details: error?.message || "Internal server error" });
   }
 });
 
@@ -58,10 +58,10 @@ router.post("/models/sync", ensureRole("admin", "operator"), async (req, res) =>
       ...result,
       message: `Synced ${result.added + result.updated} models (${result.added} added, ${result.updated} updated, ${result.removed} removed)`,
     });
-  } catch (error) {
-    console.error("[API] Sync models error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "sync_ollama_models", "/ollama/models/sync", null, false, req);
-    res.status(500).json({ error: "Failed to sync models" });
+    res.status(500).json({ error: "Failed to sync models", details: error?.message || "Internal server error" });
   }
 });
 
@@ -120,8 +120,8 @@ router.post("/models/pull", ensureRole("admin", "operator"), async (req, res) =>
         error: result.error || "Failed to pull model",
       });
     }
-  } catch (error) {
-    console.error("[API] Pull model error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(
       user.id,
       "pull_ollama_model",
@@ -130,7 +130,7 @@ router.post("/models/pull", ensureRole("admin", "operator"), async (req, res) =>
       false,
       req
     );
-    res.status(500).json({ error: "Failed to pull model" });
+    res.status(500).json({ error: "Failed to pull model", details: error?.message || "Internal server error" });
   }
 });
 
@@ -181,8 +181,8 @@ router.delete("/models/:name", ensureRole("admin"), async (req, res) => {
         error: result.error || "Failed to delete model",
       });
     }
-  } catch (error) {
-    console.error("[API] Delete model error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(
       user.id,
       "delete_ollama_model",
@@ -191,7 +191,7 @@ router.delete("/models/:name", ensureRole("admin"), async (req, res) => {
       false,
       req
     );
-    res.status(500).json({ error: "Failed to delete model" });
+    res.status(500).json({ error: "Failed to delete model", details: error?.message || "Internal server error" });
   }
 });
 
@@ -217,9 +217,9 @@ router.get("/models/:name/status", async (req, res) => {
     }
 
     res.json({ model });
-  } catch (error) {
-    console.error("[API] Get model status error:", error);
-    res.status(500).json({ error: "Failed to get model status" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get model status", details: error?.message || "Internal server error" });
   }
 });
 
@@ -259,8 +259,8 @@ router.put("/models/:name/metadata", ensureRole("admin", "operator"), async (req
       modelName: name,
       message: "Model metadata updated successfully",
     });
-  } catch (error) {
-    console.error("[API] Update model metadata error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(
       user.id,
       "update_ollama_model_metadata",
@@ -269,7 +269,7 @@ router.put("/models/:name/metadata", ensureRole("admin", "operator"), async (req
       false,
       req
     );
-    res.status(500).json({ error: "Failed to update model metadata" });
+    res.status(500).json({ error: "Failed to update model metadata", details: error?.message || "Internal server error" });
   }
 });
 
@@ -320,8 +320,8 @@ router.post("/models/:name/unload", ensureRole("admin", "operator"), async (req,
         error: result.error || "Failed to unload model",
       });
     }
-  } catch (error) {
-    console.error("[API] Unload model error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(
       user.id,
       "unload_ollama_model",
@@ -330,7 +330,7 @@ router.post("/models/:name/unload", ensureRole("admin", "operator"), async (req,
       false,
       req
     );
-    res.status(500).json({ error: "Failed to unload model" });
+    res.status(500).json({ error: "Failed to unload model", details: error?.message || "Internal server error" });
   }
 });
 
@@ -346,9 +346,9 @@ router.get("/stats", async (_req, res) => {
   try {
     const stats = await ollamaManager.getUsageStats();
     res.json({ stats });
-  } catch (error) {
-    console.error("[API] Get stats error:", error);
-    res.status(500).json({ error: "Failed to get statistics" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get statistics", details: error?.message || "Internal server error" });
   }
 });
 
@@ -377,8 +377,8 @@ router.get("/health", async (_req, res) => {
         error: health.error,
       });
     }
-  } catch (error) {
-    console.error("[API] Health check error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(503).json({
       healthy: false,
       status: "error",
@@ -395,9 +395,9 @@ router.get("/server-info", async (_req, res) => {
   try {
     const info = await ollamaManager.getServerInfo();
     res.json({ info });
-  } catch (error) {
-    console.error("[API] Get server info error:", error);
-    res.status(500).json({ error: "Failed to get server info" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get server info", details: error?.message || "Internal server error" });
   }
 });
 
@@ -429,8 +429,8 @@ router.post("/check-inactive", ensureRole("admin"), async (req, res) => {
       unloadedCount,
       message: `Checked and unloaded ${unloadedCount} inactive models`,
     });
-  } catch (error) {
-    console.error("[API] Check inactive models error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(
       user.id,
       "check_inactive_ollama_models",
@@ -439,7 +439,7 @@ router.post("/check-inactive", ensureRole("admin"), async (req, res) => {
       false,
       req
     );
-    res.status(500).json({ error: "Failed to check inactive models" });
+    res.status(500).json({ error: "Failed to check inactive models", details: error?.message || "Internal server error" });
   }
 });
 

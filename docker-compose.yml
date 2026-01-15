@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: rtpi
       POSTGRES_DB: rtpi_main
     ports:
-      - "5432:5432"
+      - "5434:5432"  # Changed from 5432 to avoid conflicts
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -24,7 +24,7 @@ services:
     image: redis:7-alpine
     container_name: rtpi-redis
     ports:
-      - "6379:6379"
+      - "6381:6379"  # Changed from 6379 to avoid conflicts
     volumes:
       - redis_data:/data
     healthcheck:

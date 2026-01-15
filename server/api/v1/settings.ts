@@ -33,9 +33,9 @@ router.get("/llm", async (_req, res) => {
     };
 
     res.json({ settings: maskedSettings });
-  } catch (error) {
-    console.error("Get LLM settings error:", error);
-    res.status(500).json({ error: "Failed to get settings" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get settings", details: error?.message || "Internal server error" });
   }
 });
 
@@ -62,9 +62,9 @@ router.post("/llm", async (req, res) => {
       success: true, 
       message: "LLM settings saved successfully" 
     });
-  } catch (error) {
-    console.error("Save LLM settings error:", error);
-    res.status(500).json({ error: "Failed to save settings" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to save settings", details: error?.message || "Internal server error" });
   }
 });
 

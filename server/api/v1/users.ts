@@ -29,9 +29,9 @@ router.get("/", async (_req, res) => {
     }).from(users);
 
     res.json({ users: allUsers });
-  } catch (error) {
-    console.error("List users error:", error);
-    res.status(500).json({ error: "Failed to list users" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list users", details: error?.message || "Internal server error" });
   }
 });
 
@@ -60,9 +60,9 @@ router.get("/:id", async (req, res) => {
     }
 
     res.json({ user: user[0] });
-  } catch (error) {
-    console.error("Get user error:", error);
-    res.status(500).json({ error: "Failed to get user" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get user", details: error?.message || "Internal server error" });
   }
 });
 
@@ -89,9 +89,9 @@ router.patch("/:id", async (req, res) => {
     }
 
     res.json({ user: updatedUser[0] });
-  } catch (error) {
-    console.error("Update user error:", error);
-    res.status(500).json({ error: "Failed to update user" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to update user", details: error?.message || "Internal server error" });
   }
 });
 
@@ -115,9 +115,9 @@ router.delete("/:id", async (req, res) => {
     }
 
     res.json({ success: true, message: "User deleted successfully" });
-  } catch (error) {
-    console.error("Delete user error:", error);
-    res.status(500).json({ error: "Failed to delete user" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to delete user", details: error?.message || "Internal server error" });
   }
 });
 

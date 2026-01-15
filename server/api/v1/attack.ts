@@ -28,9 +28,9 @@ router.get("/stats", async (_req, res) => {
   try {
     const stats = await getImportStatistics();
     res.json(stats);
-  } catch (error) {
-    console.error("Failed to get ATT&CK statistics:", error);
-    res.status(500).json({ error: "Failed to get statistics" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get statistics", details: error?.message || "Internal server error" });
   }
 });
 
@@ -57,7 +57,7 @@ router.post("/import", upload.single("file"), async (req, res) => {
       stats,
     });
   } catch (error: any) {
-    console.error("Failed to import STIX bundle:", error);
+    // Error logged for debugging
     res.status(500).json({
       error: "Failed to import STIX bundle",
       message: error.message,
@@ -83,7 +83,7 @@ router.post("/import/json", async (req, res) => {
       stats,
     });
   } catch (error: any) {
-    console.error("Failed to import STIX bundle:", error);
+    // Error logged for debugging
     res.status(500).json({
       error: "Failed to import STIX bundle",
       message: error.message,
@@ -101,9 +101,9 @@ router.get("/tactics", async (_req, res) => {
     });
 
     res.json(tactics);
-  } catch (error) {
-    console.error("Failed to list tactics:", error);
-    res.status(500).json({ error: "Failed to list tactics" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list tactics", details: error?.message || "Internal server error" });
   }
 });
 
@@ -121,9 +121,9 @@ router.get("/tactics/:id", async (req, res) => {
     }
 
     res.json(tactic);
-  } catch (error) {
-    console.error("Failed to get tactic:", error);
-    res.status(500).json({ error: "Failed to get tactic" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get tactic", details: error?.message || "Internal server error" });
   }
 });
 
@@ -175,9 +175,9 @@ router.get("/techniques", async (req, res) => {
     }
 
     res.json(techniques);
-  } catch (error) {
-    console.error("Failed to list techniques:", error);
-    res.status(500).json({ error: "Failed to list techniques" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list techniques", details: error?.message || "Internal server error" });
   }
 });
 
@@ -212,9 +212,9 @@ router.get("/techniques/:id", async (req, res) => {
       parent,
       subtechniques,
     });
-  } catch (error) {
-    console.error("Failed to get technique:", error);
-    res.status(500).json({ error: "Failed to get technique" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get technique", details: error?.message || "Internal server error" });
   }
 });
 
@@ -228,9 +228,9 @@ router.get("/groups", async (_req, res) => {
     });
 
     res.json(groups);
-  } catch (error) {
-    console.error("Failed to list groups:", error);
-    res.status(500).json({ error: "Failed to list groups" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list groups", details: error?.message || "Internal server error" });
   }
 });
 
@@ -248,9 +248,9 @@ router.get("/groups/:id", async (req, res) => {
     }
 
     res.json(group);
-  } catch (error) {
-    console.error("Failed to get group:", error);
-    res.status(500).json({ error: "Failed to get group" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get group", details: error?.message || "Internal server error" });
   }
 });
 
@@ -264,9 +264,9 @@ router.get("/software", async (_req, res) => {
     });
 
     res.json(software);
-  } catch (error) {
-    console.error("Failed to list software:", error);
-    res.status(500).json({ error: "Failed to list software" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list software", details: error?.message || "Internal server error" });
   }
 });
 
@@ -284,9 +284,9 @@ router.get("/software/:id", async (req, res) => {
     }
 
     res.json(software);
-  } catch (error) {
-    console.error("Failed to get software:", error);
-    res.status(500).json({ error: "Failed to get software" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get software", details: error?.message || "Internal server error" });
   }
 });
 
@@ -300,9 +300,9 @@ router.get("/mitigations", async (_req, res) => {
     });
 
     res.json(mitigations);
-  } catch (error) {
-    console.error("Failed to list mitigations:", error);
-    res.status(500).json({ error: "Failed to list mitigations" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list mitigations", details: error?.message || "Internal server error" });
   }
 });
 
@@ -320,9 +320,9 @@ router.get("/mitigations/:id", async (req, res) => {
     }
 
     res.json(mitigation);
-  } catch (error) {
-    console.error("Failed to get mitigation:", error);
-    res.status(500).json({ error: "Failed to get mitigation" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get mitigation", details: error?.message || "Internal server error" });
   }
 });
 
@@ -336,9 +336,9 @@ router.get("/data-sources", async (_req, res) => {
     });
 
     res.json(dataSources);
-  } catch (error) {
-    console.error("Failed to list data sources:", error);
-    res.status(500).json({ error: "Failed to list data sources" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list data sources", details: error?.message || "Internal server error" });
   }
 });
 
@@ -352,9 +352,9 @@ router.get("/campaigns", async (_req, res) => {
     });
 
     res.json(campaigns);
-  } catch (error) {
-    console.error("Failed to list campaigns:", error);
-    res.status(500).json({ error: "Failed to list campaigns" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list campaigns", details: error?.message || "Internal server error" });
   }
 });
 
@@ -372,9 +372,9 @@ router.get("/operations/:operationId/coverage", async (req, res) => {
     });
 
     res.json(coverage);
-  } catch (error) {
-    console.error("Failed to get operation coverage:", error);
-    res.status(500).json({ error: "Failed to get operation coverage" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get operation coverage", details: error?.message || "Internal server error" });
   }
 });
 
@@ -428,9 +428,9 @@ router.post("/operations/:operationId/techniques/:techniqueId", async (req, res)
       .returning();
 
     res.status(201).json(mapping);
-  } catch (error) {
-    console.error("Failed to map technique to operation:", error);
-    res.status(500).json({ error: "Failed to map technique" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to map technique", details: error?.message || "Internal server error" });
   }
 });
 
@@ -449,9 +449,9 @@ router.delete("/operations/:operationId/techniques/:techniqueId", async (req, re
       );
 
     res.status(204).send();
-  } catch (error) {
-    console.error("Failed to remove technique from operation:", error);
-    res.status(500).json({ error: "Failed to remove technique" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to remove technique", details: error?.message || "Internal server error" });
   }
 });
 

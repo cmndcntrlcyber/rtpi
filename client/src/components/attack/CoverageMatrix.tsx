@@ -83,7 +83,7 @@ export default function CoverageMatrix() {
         }
       }
     } catch (error) {
-      console.error("Failed to fetch operations:", error);
+      // Error already shown via toast
     }
   };
 
@@ -119,7 +119,7 @@ export default function CoverageMatrix() {
         console.error("Failed to fetch coverage data");
       }
     } catch (error) {
-      console.error("Failed to fetch coverage:", error);
+      // Error already shown via toast
     } finally {
       setLoading(false);
     }
@@ -136,7 +136,7 @@ export default function CoverageMatrix() {
         setTactics(data);
       }
     } catch (error) {
-      console.error("Failed to fetch tactics:", error);
+      // Error already shown via toast
     }
   };
 
@@ -156,7 +156,7 @@ export default function CoverageMatrix() {
         })));
       }
     } catch (error) {
-      console.error("Failed to fetch techniques:", error);
+      // Error already shown via toast
     }
   };
 

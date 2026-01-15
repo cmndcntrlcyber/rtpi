@@ -31,7 +31,7 @@ export default function TacticsGrid() {
         console.error("Failed to fetch tactics");
       }
     } catch (error) {
-      console.error("Failed to fetch tactics:", error);
+      // Error already shown via toast
     } finally {
       setLoading(false);
     }

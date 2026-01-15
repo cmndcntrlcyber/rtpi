@@ -79,7 +79,7 @@ export function AIProviderSettings() {
         setConfig(data);
       }
     } catch (error) {
-      console.error("Failed to load settings:", error);
+      // Error already shown via toast
     } finally {
       setLoading(false);
     }
@@ -105,7 +105,7 @@ export function AIProviderSettings() {
         anthropic: anthropicData.available || false,
       });
     } catch (error) {
-      console.error("Failed to check provider status:", error);
+      // Error already shown via toast
     }
   };
 

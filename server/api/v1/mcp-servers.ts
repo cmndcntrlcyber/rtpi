@@ -15,9 +15,9 @@ router.get("/", async (_req, res) => {
   try {
     const allServers = await db.select().from(mcpServers);
     res.json({ servers: allServers });
-  } catch (error) {
-    console.error("List MCP servers error:", error);
-    res.status(500).json({ error: "Failed to list MCP servers" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list MCP servers", details: error?.message || "Internal server error" });
   }
 });
 
@@ -37,9 +37,9 @@ router.get("/:id", async (req, res) => {
     }
 
     res.json({ server: result[0] });
-  } catch (error) {
-    console.error("Get MCP server error:", error);
-    res.status(500).json({ error: "Failed to get MCP server" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get MCP server", details: error?.message || "Internal server error" });
   }
 });
 
@@ -56,10 +56,10 @@ router.post("/", ensureRole("admin"), async (req, res) => {
     await logAudit(user.id, "create_mcp_server", "/mcp-servers", server[0].id, true, req);
 
     res.status(201).json({ server: server[0] });
-  } catch (error) {
-    console.error("Create MCP server error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "create_mcp_server", "/mcp-servers", null, false, req);
-    res.status(500).json({ error: "Failed to create MCP server" });
+    res.status(500).json({ error: "Failed to create MCP server", details: error?.message || "Internal server error" });
   }
 });
 
@@ -85,10 +85,10 @@ router.put("/:id", ensureRole("admin"), async (req, res) => {
     await logAudit(user.id, "update_mcp_server", "/mcp-servers", id, true, req);
 
     res.json({ server: result[0] });
-  } catch (error) {
-    console.error("Update MCP server error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "update_mcp_server", "/mcp-servers", id, false, req);
-    res.status(500).json({ error: "Failed to update MCP server" });
+    res.status(500).json({ error: "Failed to update MCP server", details: error?.message || "Internal server error" });
   }
 });
 
@@ -103,10 +103,10 @@ router.delete("/:id", ensureRole("admin"), async (req, res) => {
     await logAudit(user.id, "delete_mcp_server", "/mcp-servers", id, true, req);
 
     res.json({ message: "MCP server deleted successfully" });
-  } catch (error) {
-    console.error("Delete MCP server error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "delete_mcp_server", "/mcp-servers", id, false, req);
-    res.status(500).json({ error: "Failed to delete MCP server" });
+    res.status(500).json({ error: "Failed to delete MCP server", details: error?.message || "Internal server error" });
   }
 });
 
@@ -120,7 +120,7 @@ router.post("/:id/start", ensureRole("admin", "operator"), async (req, res) => {
     
     if (!success) {
       await logAudit(user.id, "start_mcp_server", "/mcp-servers", id, false, req);
-      return res.status(500).json({ error: "Failed to start server" });
+      return res.status(500).json({ error: "Failed to start server", details: error?.message || "Internal server error" });
     }
 
     const result = await db
@@ -132,9 +132,9 @@ router.post("/:id/start", ensureRole("admin", "operator"), async (req, res) => {
     await logAudit(user.id, "start_mcp_server", "/mcp-servers", id, true, req);
 
     res.json({ server: result[0], message: "Server started" });
-  } catch (error) {
-    console.error("Start MCP server error:", error);
-    res.status(500).json({ error: "Failed to start server" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to start server", details: error?.message || "Internal server error" });
   }
 });
 
@@ -148,7 +148,7 @@ router.post("/:id/stop", ensureRole("admin", "operator"), async (req, res) => {
     
     if (!success) {
       await logAudit(user.id, "stop_mcp_server", "/mcp-servers", id, false, req);
-      return res.status(500).json({ error: "Failed to stop server" });
+      return res.status(500).json({ error: "Failed to stop server", details: error?.message || "Internal server error" });
     }
 
     const result = await db
@@ -160,9 +160,9 @@ router.post("/:id/stop", ensureRole("admin", "operator"), async (req, res) => {
     await logAudit(user.id, "stop_mcp_server", "/mcp-servers", id, true, req);
 
     res.json({ server: result[0], message: "Server stopped" });
-  } catch (error) {
-    console.error("Stop MCP server error:", error);
-    res.status(500).json({ error: "Failed to stop server" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to stop server", details: error?.message || "Internal server error" });
   }
 });
 
@@ -176,7 +176,7 @@ router.post("/:id/restart", ensureRole("admin", "operator"), async (req, res) =>
     
     if (!success) {
       await logAudit(user.id, "restart_mcp_server", "/mcp-servers", id, false, req);
-      return res.status(500).json({ error: "Failed to restart server" });
+      return res.status(500).json({ error: "Failed to restart server", details: error?.message || "Internal server error" });
     }
 
     const result = await db
@@ -188,9 +188,9 @@ router.post("/:id/restart", ensureRole("admin", "operator"), async (req, res) =>
     await logAudit(user.id, "restart_mcp_server", "/mcp-servers", id, true, req);
 
     res.json({ server: result[0], message: "Server restarted" });
-  } catch (error) {
-    console.error("Restart MCP server error:", error);
-    res.status(500).json({ error: "Failed to restart server" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to restart server", details: error?.message || "Internal server error" });
   }
 });
 

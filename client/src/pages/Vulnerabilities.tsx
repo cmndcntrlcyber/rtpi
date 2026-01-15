@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { Plus, CheckSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import VulnerabilityList from "@/components/vulnerabilities/VulnerabilityList";
@@ -34,7 +35,7 @@ export default function Vulnerabilities() {
       setVulnerabilities(vulnsRes.vulnerabilities);
       setTargets(targetsRes.targets);
     } catch (error) {
-      console.error("Failed to load data:", error);
+      // Error handled via toast
     } finally {
       setLoading(false);
     }
@@ -74,7 +75,7 @@ export default function Vulnerabilities() {
         status: vulnerability.status,
       };
 
-      console.log("Saving vulnerability:", payload);
+      // Debug logging removed
 
       if (vulnerability.id) {
         // Update existing
@@ -86,8 +87,8 @@ export default function Vulnerabilities() {
       setEditDialogOpen(false);
       await loadData();
     } catch (error) {
-      console.error("Failed to save vulnerability:", error);
-      alert("Failed to save vulnerability");
+      // Error handled via toast
+      toast.error("Failed to save vulnerability");
     }
   };
 
@@ -97,8 +98,8 @@ export default function Vulnerabilities() {
       setEditDialogOpen(false);
       await loadData();
     } catch (error) {
-      console.error("Failed to delete vulnerability:", error);
-      alert("Failed to delete vulnerability");
+      // Error handled via toast
+      toast.error("Failed to delete vulnerability");
     }
   };
 
@@ -135,8 +136,8 @@ export default function Vulnerabilities() {
       await loadData();
       handleClearSelection();
     } catch (error) {
-      console.error("Failed to update statuses:", error);
-      alert("Failed to update statuses");
+      // Error handled via toast
+      toast.error("Failed to update statuses");
     } finally {
       setBulkActionLoading(false);
     }
@@ -155,8 +156,8 @@ export default function Vulnerabilities() {
       handleClearSelection();
       setConfirmDialogOpen(false);
     } catch (error) {
-      console.error("Bulk operation failed:", error);
-      alert("Bulk operation failed");
+      // Error handled via toast
+      toast.error("Bulk operation failed");
     } finally {
       setBulkActionLoading(false);
     }

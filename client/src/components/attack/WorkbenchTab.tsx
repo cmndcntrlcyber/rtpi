@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -117,7 +118,7 @@ export default function WorkbenchTab() {
         setCollections(data);
       }
     } catch (error) {
-      console.error("Failed to fetch collections:", error);
+      // Error already shown via toast
     } finally {
       setLoading(false);
     }
@@ -151,17 +152,17 @@ export default function WorkbenchTab() {
         setNewCollectionDesc("");
         fetchCollections();
       } else {
-        alert("Failed to create collection");
+        toast.error("Failed to create collection");
       }
     } catch (error) {
-      console.error("Failed to create collection:", error);
-      alert("Failed to create collection");
+      // Error already shown via toast
+      toast.error("Failed to create collection");
     }
   };
 
   const pushTechniques = async () => {
     if (selectedTechniques.length === 0) {
-      alert("Please select techniques to push");
+      toast.warning("Please select techniques to push");
       return;
     }
 
@@ -185,11 +186,11 @@ export default function WorkbenchTab() {
           errors: data.errors || [],
         });
       } else {
-        alert(data.error || "Failed to push techniques");
+        toast.error(data.error || "Failed to push techniques");
       }
     } catch (error) {
-      console.error("Failed to push techniques:", error);
-      alert("Failed to push techniques");
+      // Error already shown via toast
+      toast.error("Failed to push techniques");
     } finally {
       setSyncing(false);
     }
@@ -214,11 +215,11 @@ export default function WorkbenchTab() {
           errors: data.errors || [],
         });
       } else {
-        alert(data.error || "Failed to pull techniques");
+        toast.error(data.error || "Failed to pull techniques");
       }
     } catch (error) {
-      console.error("Failed to pull techniques:", error);
-      alert("Failed to pull techniques");
+      // Error already shown via toast
+      toast.error("Failed to pull techniques");
     } finally {
       setSyncing(false);
     }

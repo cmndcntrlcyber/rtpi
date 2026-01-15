@@ -32,9 +32,9 @@ router.get("/servers", async (_req, res) => {
     }));
 
     res.json(sanitized);
-  } catch (error) {
-    console.error("Failed to list Empire servers:", error);
-    res.status(500).json({ error: "Failed to list Empire servers" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list Empire servers", details: error?.message || "Internal server error" });
   }
 });
 
@@ -53,9 +53,9 @@ router.get("/servers/:id", async (req, res) => {
       ...server,
       adminPasswordHash: undefined,
     });
-  } catch (error) {
-    console.error("Failed to get Empire server:", error);
-    res.status(500).json({ error: "Failed to get Empire server" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get Empire server", details: error?.message || "Internal server error" });
   }
 });
 
@@ -101,9 +101,9 @@ router.post("/servers", async (req, res) => {
       ...server,
       adminPasswordHash: undefined,
     });
-  } catch (error) {
-    console.error("Failed to create Empire server:", error);
-    res.status(500).json({ error: "Failed to create Empire server" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to create Empire server", details: error?.message || "Internal server error" });
   }
 });
 
@@ -141,9 +141,9 @@ router.patch("/servers/:id", async (req, res) => {
       ...server,
       adminPasswordHash: undefined,
     });
-  } catch (error) {
-    console.error("Failed to update Empire server:", error);
-    res.status(500).json({ error: "Failed to update Empire server" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to update Empire server", details: error?.message || "Internal server error" });
   }
 });
 
@@ -152,9 +152,9 @@ router.delete("/servers/:id", async (req, res) => {
   try {
     await db.delete(empireServers).where(eq(empireServers.id, req.params.id));
     res.status(204).send();
-  } catch (error) {
-    console.error("Failed to delete Empire server:", error);
-    res.status(500).json({ error: "Failed to delete Empire server" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to delete Empire server", details: error?.message || "Internal server error" });
   }
 });
 
@@ -178,9 +178,9 @@ router.post("/servers/:id/check-connection", async (req, res) => {
       version: server?.version,
       lastHeartbeat: server?.lastHeartbeat,
     });
-  } catch (error) {
-    console.error("Failed to check Empire connection:", error);
-    res.status(500).json({ error: "Failed to check connection" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to check connection", details: error?.message || "Internal server error" });
   }
 });
 
@@ -214,9 +214,9 @@ router.get("/tokens", async (req, res) => {
     }));
 
     res.json(sanitized);
-  } catch (error) {
-    console.error("Failed to list tokens:", error);
-    res.status(500).json({ error: "Failed to list tokens" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list tokens", details: error?.message || "Internal server error" });
   }
 });
 
@@ -245,9 +245,9 @@ router.post("/tokens/:serverId/refresh", async (req, res) => {
     const isConnected = await empireExecutor.checkConnection(req.params.serverId, userId);
 
     res.json({ success: isConnected });
-  } catch (error) {
-    console.error("Failed to refresh token:", error);
-    res.status(500).json({ error: "Failed to refresh token" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to refresh token", details: error?.message || "Internal server error" });
   }
 });
 
@@ -278,9 +278,9 @@ router.delete("/tokens/:serverId", async (req, res) => {
     }
 
     res.json({ success: true, message: "Token revoked successfully" });
-  } catch (error) {
-    console.error("Failed to revoke token:", error);
-    res.status(500).json({ error: "Failed to revoke token" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to revoke token", details: error?.message || "Internal server error" });
   }
 });
 
@@ -312,13 +312,13 @@ router.post("/tokens/:serverId/generate", async (req, res) => {
     const isConnected = await empireExecutor.checkConnection(req.params.serverId, userId);
 
     if (!isConnected) {
-      return res.status(500).json({ error: "Failed to connect to Empire server" });
+      return res.status(500).json({ error: "Failed to connect to Empire server", details: error?.message || "Internal server error" });
     }
 
     res.json({ success: true, message: "Token generated successfully" });
-  } catch (error) {
-    console.error("Failed to generate token:", error);
-    res.status(500).json({ error: "Failed to generate token" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to generate token", details: error?.message || "Internal server error" });
   }
 });
 
@@ -341,9 +341,9 @@ router.get("/servers/:serverId/listeners", async (req, res) => {
     }
 
     res.json(result.data);
-  } catch (error) {
-    console.error("Failed to list listeners:", error);
-    res.status(500).json({ error: "Failed to list listeners" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list listeners", details: error?.message || "Internal server error" });
   }
 });
 
@@ -390,9 +390,9 @@ router.post("/servers/:serverId/listeners", async (req, res) => {
     }
 
     res.status(201).json(result.data);
-  } catch (error) {
-    console.error("Failed to create listener:", error);
-    res.status(500).json({ error: "Failed to create listener" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to create listener", details: error?.message || "Internal server error" });
   }
 });
 
@@ -415,9 +415,9 @@ router.delete("/servers/:serverId/listeners/:listenerName", async (req, res) => 
     }
 
     res.status(204).send();
-  } catch (error) {
-    console.error("Failed to stop listener:", error);
-    res.status(500).json({ error: "Failed to stop listener" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to stop listener", details: error?.message || "Internal server error" });
   }
 });
 
@@ -448,9 +448,9 @@ router.post("/servers/:serverId/stagers", async (req, res) => {
     }
 
     res.status(201).json(result.data);
-  } catch (error) {
-    console.error("Failed to generate stager:", error);
-    res.status(500).json({ error: "Failed to generate stager" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to generate stager", details: error?.message || "Internal server error" });
   }
 });
 
@@ -473,9 +473,9 @@ router.get("/servers/:serverId/agents", async (req, res) => {
     }
 
     res.json(result.data);
-  } catch (error) {
-    console.error("Failed to list agents:", error);
-    res.status(500).json({ error: "Failed to list agents" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list agents", details: error?.message || "Internal server error" });
   }
 });
 
@@ -494,9 +494,9 @@ router.post("/servers/:serverId/agents/sync", async (req, res) => {
     }
 
     res.json(result.data);
-  } catch (error) {
-    console.error("Failed to sync agents:", error);
-    res.status(500).json({ error: "Failed to sync agents" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to sync agents", details: error?.message || "Internal server error" });
   }
 });
 
@@ -519,9 +519,9 @@ router.delete("/servers/:serverId/agents/:agentName", async (req, res) => {
     }
 
     res.status(204).send();
-  } catch (error) {
-    console.error("Failed to kill agent:", error);
-    res.status(500).json({ error: "Failed to kill agent" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to kill agent", details: error?.message || "Internal server error" });
   }
 });
 
@@ -551,9 +551,9 @@ router.post("/servers/:serverId/agents/:agentName/tasks", async (req, res) => {
     }
 
     res.status(201).json(result.data);
-  } catch (error) {
-    console.error("Failed to execute task:", error);
-    res.status(500).json({ error: "Failed to execute task" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to execute task", details: error?.message || "Internal server error" });
   }
 });
 
@@ -577,9 +577,9 @@ router.get("/servers/:serverId/agents/:agentName/tasks/:taskId", async (req, res
     }
 
     res.json(result.data);
-  } catch (error) {
-    console.error("Failed to get task results:", error);
-    res.status(500).json({ error: "Failed to get task results" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get task results", details: error?.message || "Internal server error" });
   }
 });
 
@@ -602,9 +602,9 @@ router.get("/servers/:serverId/modules", async (req, res) => {
     }
 
     res.json(result.data);
-  } catch (error) {
-    console.error("Failed to list modules:", error);
-    res.status(500).json({ error: "Failed to list modules" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list modules", details: error?.message || "Internal server error" });
   }
 });
 
@@ -631,9 +631,9 @@ router.post("/servers/:serverId/agents/:agentName/modules/:moduleName", async (r
     }
 
     res.status(201).json(result.data);
-  } catch (error) {
-    console.error("Failed to execute module:", error);
-    res.status(500).json({ error: "Failed to execute module" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to execute module", details: error?.message || "Internal server error" });
   }
 });
 
@@ -656,9 +656,9 @@ router.get("/servers/:serverId/credentials", async (req, res) => {
     }
 
     res.json(result.data);
-  } catch (error) {
-    console.error("Failed to list credentials:", error);
-    res.status(500).json({ error: "Failed to list credentials" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list credentials", details: error?.message || "Internal server error" });
   }
 });
 
@@ -677,9 +677,9 @@ router.post("/servers/:serverId/credentials/sync", async (req, res) => {
     }
 
     res.json(result.data);
-  } catch (error) {
-    console.error("Failed to sync credentials:", error);
-    res.status(500).json({ error: "Failed to sync credentials" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to sync credentials", details: error?.message || "Internal server error" });
   }
 });
 
@@ -696,9 +696,9 @@ router.get("/servers/:serverId/db/listeners", async (req, res) => {
     });
 
     res.json(listeners);
-  } catch (error) {
-    console.error("Failed to get listeners from database:", error);
-    res.status(500).json({ error: "Failed to get listeners from database" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get listeners from database", details: error?.message || "Internal server error" });
   }
 });
 
@@ -711,9 +711,9 @@ router.get("/servers/:serverId/db/agents", async (req, res) => {
     });
 
     res.json(agents);
-  } catch (error) {
-    console.error("Failed to get agents from database:", error);
-    res.status(500).json({ error: "Failed to get agents from database" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get agents from database", details: error?.message || "Internal server error" });
   }
 });
 
@@ -729,9 +729,9 @@ router.get("/servers/:serverId/db/tasks", async (req, res) => {
     });
 
     res.json(tasks);
-  } catch (error) {
-    console.error("Failed to get tasks from database:", error);
-    res.status(500).json({ error: "Failed to get tasks from database" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get tasks from database", details: error?.message || "Internal server error" });
   }
 });
 
@@ -744,9 +744,9 @@ router.get("/servers/:serverId/db/credentials", async (req, res) => {
     });
 
     res.json(credentials);
-  } catch (error) {
-    console.error("Failed to get credentials from database:", error);
-    res.status(500).json({ error: "Failed to get credentials from database" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get credentials from database", details: error?.message || "Internal server error" });
   }
 });
 

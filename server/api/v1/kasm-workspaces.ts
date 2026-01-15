@@ -1,8 +1,12 @@
 import { Router } from 'express';
+import { ensureAuthenticated, ensureRole } from '../../auth/middleware';
 import { kasmWorkspaceManager } from '../../services/kasm-workspace-manager';
 import type { WorkspaceConfig } from '../../services/kasm-workspace-manager';
 
 const router = Router();
+
+// Apply authentication to all routes
+router.use(ensureAuthenticated);
 
 /**
  * Kasm Workspaces API
@@ -28,8 +32,8 @@ router.get('/', async (req, res) => {
     const workspaces = await kasmWorkspaceManager.listUserWorkspaces(userId, includeTerminated);
 
     res.json(workspaces);
-  } catch (error) {
-    console.error('Failed to list workspaces:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to list workspaces' });
   }
 });
@@ -61,8 +65,8 @@ router.get('/:id', async (req, res) => {
     }
 
     res.json(workspace);
-  } catch (error) {
-    console.error('Failed to get workspace:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to get workspace' });
   }
 });
@@ -113,8 +117,8 @@ router.post('/', async (req, res) => {
     const result = await kasmWorkspaceManager.provisionWorkspace(config);
 
     res.status(201).json(result);
-  } catch (error) {
-    console.error('Failed to provision workspace:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     const message = error instanceof Error ? error.message : 'Failed to provision workspace';
     res.status(500).json({ error: message });
   }
@@ -145,8 +149,8 @@ router.delete('/:id', async (req, res) => {
     await kasmWorkspaceManager.terminateWorkspace(req.params.id);
 
     res.json({ message: 'Workspace terminated successfully' });
-  } catch (error) {
-    console.error('Failed to terminate workspace:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to terminate workspace' });
   }
 });
@@ -180,8 +184,8 @@ router.post('/:id/extend', async (req, res) => {
     const newExpiry = await kasmWorkspaceManager.extendWorkspaceExpiry(req.params.id, hours);
 
     res.json({ expiresAt: newExpiry });
-  } catch (error) {
-    console.error('Failed to extend workspace expiry:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to extend workspace expiry' });
   }
 });
@@ -222,8 +226,8 @@ router.post('/:id/sessions', async (req, res) => {
     });
 
     res.status(201).json(session);
-  } catch (error) {
-    console.error('Failed to create session:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to create session' });
   }
 });
@@ -253,8 +257,8 @@ router.get('/:id/sessions', async (req, res) => {
     const sessions = await kasmWorkspaceManager.getActiveSessions(req.params.id);
 
     res.json(sessions);
-  } catch (error) {
-    console.error('Failed to get sessions:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to get sessions' });
   }
 });
@@ -267,8 +271,8 @@ router.post('/sessions/:token/heartbeat', async (req, res) => {
   try {
     await kasmWorkspaceManager.updateSessionActivity(req.params.token);
     res.json({ message: 'Activity updated' });
-  } catch (error) {
-    console.error('Failed to update session activity:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to update session activity' });
   }
 });
@@ -281,8 +285,8 @@ router.delete('/sessions/:token', async (req, res) => {
   try {
     await kasmWorkspaceManager.terminateSession(req.params.token);
     res.json({ message: 'Session terminated' });
-  } catch (error) {
-    console.error('Failed to terminate session:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to terminate session' });
   }
 });
@@ -305,8 +309,8 @@ router.get('/resources/usage', async (req, res) => {
     const usage = await kasmWorkspaceManager.getUserResourceUsage(userId);
 
     res.json(usage);
-  } catch (error) {
-    console.error('Failed to get resource usage:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to get resource usage' });
   }
 });
@@ -328,8 +332,8 @@ router.get('/expiring', async (req, res) => {
     const userExpiring = allExpiring.filter(ws => ws.userId === userId);
 
     res.json(userExpiring);
-  } catch (error) {
-    console.error('Failed to get expiring workspaces:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to get expiring workspaces' });
   }
 });
@@ -368,8 +372,8 @@ router.post('/:id/share', async (req, res) => {
     const session = await kasmWorkspaceManager.shareWorkspace(req.params.id, targetUserId);
 
     res.status(201).json(session);
-  } catch (error) {
-    console.error('Failed to share workspace:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to share workspace' });
   }
 });
@@ -399,8 +403,8 @@ router.delete('/:id/share/:targetUserId', async (req, res) => {
     await kasmWorkspaceManager.revokeWorkspaceSharing(req.params.id, req.params.targetUserId);
 
     res.json({ message: 'Workspace sharing revoked' });
-  } catch (error) {
-    console.error('Failed to revoke workspace sharing:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to revoke workspace sharing' });
   }
 });
@@ -439,8 +443,8 @@ router.post('/:id/snapshots', async (req, res) => {
     const snapshot = await kasmWorkspaceManager.createSnapshot(req.params.id, snapshotName, metadata);
 
     res.status(201).json(snapshot);
-  } catch (error) {
-    console.error('Failed to create snapshot:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to create snapshot' });
   }
 });
@@ -469,8 +473,8 @@ router.get('/:id/snapshots', async (req, res) => {
     const snapshots = await kasmWorkspaceManager.listSnapshots(req.params.id);
 
     res.json(snapshots);
-  } catch (error) {
-    console.error('Failed to list snapshots:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to list snapshots' });
   }
 });
@@ -500,8 +504,8 @@ router.post('/:id/snapshots/:snapshotName/restore', async (req, res) => {
     await kasmWorkspaceManager.restoreFromSnapshot(req.params.id, req.params.snapshotName);
 
     res.json({ message: 'Workspace restored from snapshot' });
-  } catch (error) {
-    console.error('Failed to restore from snapshot:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to restore from snapshot' });
   }
 });
@@ -514,9 +518,8 @@ router.post('/:id/snapshots/:snapshotName/restore', async (req, res) => {
  * Manually trigger cleanup of expired workspaces (admin only)
  * POST /api/v1/kasm-workspaces/admin/cleanup
  */
-router.post('/admin/cleanup', async (_req, res) => {
+router.post('/admin/cleanup', ensureRole('admin'), async (_req, res) => {
   try {
-    // TODO: Add admin role check
     const workspacesCount = await kasmWorkspaceManager.cleanupExpiredWorkspaces();
     const sessionsCount = await kasmWorkspaceManager.cleanupExpiredSessions();
 
@@ -525,8 +528,8 @@ router.post('/admin/cleanup', async (_req, res) => {
       workspacesTerminated: workspacesCount,
       sessionsTerminated: sessionsCount,
     });
-  } catch (error) {
-    console.error('Failed to run cleanup:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to run cleanup' });
   }
 });

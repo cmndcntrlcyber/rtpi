@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -88,8 +89,8 @@ export default function OperationCard({
         onWorkflowsChange();
       }
     } catch (error) {
-      console.error("Failed to update status:", error);
-      alert("Failed to update operation status. Please try again.");
+      // Error already shown via toast
+      toast.error("Failed to update operation status. Please try again.");
     } finally {
       setUpdatingStatus(false);
     }
@@ -152,8 +153,8 @@ export default function OperationCard({
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (error) {
-      console.error("Failed to download report:", error);
-      alert("Failed to download report. Please try again.");
+      // Error already shown via toast
+      toast.error("Failed to download report. Please try again.");
     } finally {
       setDownloading(false);
     }
@@ -177,8 +178,8 @@ export default function OperationCard({
         onWorkflowsChange();
       }
     } catch (error) {
-      console.error("Failed to delete workflow:", error);
-      alert("Failed to delete workflow. Please try again.");
+      // Error already shown via toast
+      toast.error("Failed to delete workflow. Please try again.");
     } finally {
       setDeleting(false);
     }

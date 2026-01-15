@@ -28,7 +28,7 @@ export function useAgents() {
       setAgents(response.agents || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch agents");
-      console.error("Error fetching agents:", err);
+      // Error handled by component
     } finally {
       setLoading(false);
     }

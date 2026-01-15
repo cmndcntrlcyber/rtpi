@@ -52,8 +52,8 @@ router.post("/start", ensureRole("admin", "operator"), async (req, res) => {
       workflow: workflow.workflow,
       tasks: workflow.tasks,
     });
-  } catch (error) {
-    console.error("Start workflow error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     const errorMsg = error instanceof Error ? error.message : String(error);
 
     await logAudit(
@@ -111,9 +111,9 @@ router.get("/", async (req, res) => {
       workflows,
       count: workflows.length,
     });
-  } catch (error) {
-    console.error("List workflows error:", error);
-    res.status(500).json({ error: "Failed to list workflows" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list workflows", details: error?.message || "Internal server error" });
   }
 });
 
@@ -132,9 +132,9 @@ router.get("/:id", async (req, res) => {
     }
 
     res.json(result);
-  } catch (error) {
-    console.error("Get workflow error:", error);
-    res.status(500).json({ error: "Failed to get workflow" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get workflow", details: error?.message || "Internal server error" });
   }
 });
 
@@ -152,9 +152,9 @@ router.get("/:id/tasks", async (req, res) => {
       .where(eq(workflowTasks.workflowId, id));
 
     res.json({ tasks });
-  } catch (error) {
-    console.error("Get workflow tasks error:", error);
-    res.status(500).json({ error: "Failed to get workflow tasks" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get workflow tasks", details: error?.message || "Internal server error" });
   }
 });
 
@@ -175,9 +175,9 @@ router.get("/:id/logs", async (req, res) => {
       .limit(Number(limit));
 
     res.json({ logs });
-  } catch (error) {
-    console.error("Get workflow logs error:", error);
-    res.status(500).json({ error: "Failed to get workflow logs" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get workflow logs", details: error?.message || "Internal server error" });
   }
 });
 
@@ -198,12 +198,12 @@ router.post("/:id/cancel", ensureRole("admin", "operator"), async (req, res) => 
       success: true,
       message: "Workflow cancelled",
     });
-  } catch (error) {
-    console.error("Cancel workflow error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     
     await logAudit(user.id, "cancel_agent_workflow", "/agent-workflows", id, false, req);
 
-    res.status(500).json({ error: "Failed to cancel workflow" });
+    res.status(500).json({ error: "Failed to cancel workflow", details: error?.message || "Internal server error" });
   }
 });
 
@@ -237,12 +237,12 @@ router.delete("/:id", ensureRole("admin", "operator"), async (req, res) => {
       success: true,
       message: "Workflow deleted successfully",
     });
-  } catch (error) {
-    console.error("Delete workflow error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     
     await logAudit(user.id, "delete_agent_workflow", "/agent-workflows", id, false, req);
 
-    res.status(500).json({ error: "Failed to delete workflow" });
+    res.status(500).json({ error: "Failed to delete workflow", details: error?.message || "Internal server error" });
   }
 });
 
@@ -276,9 +276,9 @@ router.get("/target/:targetId/latest", async (req, res) => {
       workflow,
       tasks,
     });
-  } catch (error) {
-    console.error("Get latest workflow error:", error);
-    res.status(500).json({ error: "Failed to get latest workflow" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get latest workflow", details: error?.message || "Internal server error" });
   }
 });
 

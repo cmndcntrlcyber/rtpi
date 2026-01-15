@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Plus, RotateCcw, CheckSquare } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -44,8 +45,8 @@ export default function Targets() {
       setTargets(targetsRes.targets);
       setOperations(operationsRes.operations);
       setAgents(agentsRes.agents || []);
-    } catch (error) {
-      console.error("Failed to load data:", error);
+    } catch (error: any) {
+      toast.error(`Failed to load data: ${error.message || "Unknown error"}`);
     } finally {
       setLoading(false);
     }
@@ -66,13 +67,12 @@ export default function Targets() {
         targetId: selectedTarget.id,
         initialInput: `Analyze target ${selectedTarget.name} (${selectedTarget.value}) for security vulnerabilities`,
       });
-      
-      alert(`Agent loop started successfully for target: ${selectedTarget.name}`);
+
+      toast.success(`Agent loop started successfully for target: ${selectedTarget.name}`);
       setLoopDialogOpen(false);
       setSelectedAgent("");
-    } catch (error) {
-      console.error("Failed to start agent loop:", error);
-      alert("Failed to start agent loop");
+    } catch (error: any) {
+      toast.error(`Failed to start agent loop: ${error.message || "Unknown error"}`);
     } finally {
       setRunningLoop(false);
     }
@@ -98,15 +98,16 @@ export default function Targets() {
       if (target.id) {
         // Update existing
         await api.put(`/targets/${target.id}`, target);
+        toast.success("Target updated successfully");
       } else {
         // Create new
         await api.post("/targets", target);
+        toast.success("Target created successfully");
       }
       setEditDialogOpen(false);
       await loadData();
-    } catch (error) {
-      console.error("Failed to save target:", error);
-      alert("Failed to save target");
+    } catch (error: any) {
+      toast.error(`Failed to save target: ${error.message || "Unknown error"}`);
     }
   };
 
@@ -115,9 +116,9 @@ export default function Targets() {
       await api.delete(`/targets/${id}`);
       setEditDialogOpen(false);
       await loadData();
-    } catch (error) {
-      console.error("Failed to delete target:", error);
-      alert("Failed to delete target");
+      toast.success("Target deleted successfully");
+    } catch (error: any) {
+      toast.error(`Failed to delete target: ${error.message || "Unknown error"}`);
     }
   };
 
@@ -127,34 +128,25 @@ export default function Targets() {
     }
 
     try {
-      console.log("Starting scan for target:", target);
-      
       // Show loading state
-      const loadingAlert = `Scanning ${target.name}...\nThis may take up to 10 minutes for a full port scan.`;
-      alert(loadingAlert);
+      toast.info(`Scanning ${target.name}... This may take up to 10 minutes for a full port scan.`);
 
       // Call scan API
       const response = await api.post(`/targets/${target.id}/scan`);
-      
+
       // Show results
       const { openPorts, scanDuration } = response;
       const durationSeconds = (scanDuration / 1000).toFixed(2);
-      
-      alert(
-        `Scan Completed!\n\n` +
-        `Target: ${target.name}\n` +
-        `Duration: ${durationSeconds} seconds\n` +
-        `Open Ports Found: ${openPorts}\n\n` +
-        `Full scan results have been saved to the target metadata.\n` +
-        `Check the target details to view the complete nmap output.`
+
+      toast.success(
+        `Scan completed! Target: ${target.name} | Duration: ${durationSeconds}s | Open Ports: ${openPorts}`
       );
 
       // Refresh targets to show updated data
       await loadData();
     } catch (error: any) {
-      console.error("Scan failed:", error);
       const errorMsg = error.response?.data?.details || error.message || "Unknown error";
-      alert(`Scan failed: ${errorMsg}`);
+      toast.error(`Scan failed: ${errorMsg}`);
     }
   };
 
@@ -201,13 +193,13 @@ export default function Targets() {
         await Promise.all(
           Array.from(selectedIds).map((id) => api.delete(`/targets/${id}`))
         );
+        toast.success(`Successfully deleted ${selectedIds.size} target(s)`);
       }
       await loadData();
       handleClearSelection();
       setConfirmDialogOpen(false);
-    } catch (error) {
-      console.error("Bulk operation failed:", error);
-      alert("Bulk operation failed");
+    } catch (error: any) {
+      toast.error(`Bulk operation failed: ${error.message || "Unknown error"}`);
     } finally {
       setBulkActionLoading(false);
     }

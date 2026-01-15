@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { toast } from "sonner";
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -59,7 +60,7 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
 
   const handleBBOTScan = async () => {
     if (!targets.trim()) {
-      alert('Please enter at least one target');
+      toast.warning("Please enter at least one target");
       return;
     }
 
@@ -77,7 +78,7 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
         }
       });
       
-      alert(`BBOT scan started successfully! Scan is running in the background.`);
+      toast.success("BBOT scan started successfully! Scan is running in the background.");
       setTargets(''); // Clear targets after successful start
       
       // Reload scan history after a short delay
@@ -86,7 +87,7 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
       }, 2000);
     } catch (error) {
       console.error('Failed to start BBOT scan:', error);
-      alert(`Failed to start BBOT scan: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`Failed to start BBOT scan: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
@@ -94,7 +95,7 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
 
   const handleNucleiScan = async () => {
     if (!targets.trim()) {
-      alert('Please enter at least one target');
+      toast.warning("Please enter at least one target");
       return;
     }
 
@@ -108,11 +109,11 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
         config: nucleiConfig
       });
       
-      alert('Nuclei scan started successfully');
+      toast.success("Nuclei scan started successfully");
       await loadScanHistory();
     } catch (error) {
       console.error('Failed to start Nuclei scan:', error);
-      alert('Failed to start Nuclei scan');
+      toast.error("Failed to start Nuclei scan");
     } finally {
       setLoading(false);
     }

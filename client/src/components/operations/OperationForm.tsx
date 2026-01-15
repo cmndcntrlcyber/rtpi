@@ -221,9 +221,9 @@ export default function OperationForm({
       // Add metadata last
       submitData.metadata = metadata;
 
-      console.log("Submitting operation data:", submitData);
-      console.log("Start date type:", typeof submitData.startDate, submitData.startDate);
-      console.log("End date type:", typeof submitData.endDate, submitData.endDate);
+      // Debug logging removed
+      // Debug logging removed
+      // Debug logging removed
       
       await onSubmit(submitData);
       

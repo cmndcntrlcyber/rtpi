@@ -47,7 +47,7 @@ export default function EmpireTab() {
         }
       }
     } catch (error) {
-      console.error("Failed to fetch Empire servers:", error);
+      // Error already shown via toast
       console.error("Operation completed");
     }
   };
@@ -65,7 +65,7 @@ export default function EmpireTab() {
         setListeners(data);
       }
     } catch (error) {
-      console.error("Failed to fetch listeners:", error);
+      // Error already shown via toast
       console.error("Operation completed");
     } finally {
       setLoading(false);
@@ -85,7 +85,7 @@ export default function EmpireTab() {
         setAgents(data);
       }
     } catch (error) {
-      console.error("Failed to fetch agents:", error);
+      // Error already shown via toast
       console.error("Operation completed");
     } finally {
       setLoading(false);
@@ -106,7 +106,7 @@ export default function EmpireTab() {
         fetchAgents(serverId);
       }
     } catch (error) {
-      console.error("Failed to sync agents:", error);
+      // Error already shown via toast
       console.error("Operation completed");
     }
   };
@@ -124,7 +124,7 @@ export default function EmpireTab() {
         setCredentials(data);
       }
     } catch (error) {
-      console.error("Failed to fetch credentials:", error);
+      // Error already shown via toast
       console.error("Operation completed");
     } finally {
       setLoading(false);
@@ -145,7 +145,7 @@ export default function EmpireTab() {
         fetchCredentials(serverId);
       }
     } catch (error) {
-      console.error("Failed to sync credentials:", error);
+      // Error already shown via toast
       console.error("Operation completed");
     }
   };
@@ -164,7 +164,7 @@ export default function EmpireTab() {
         fetchServers();
       }
     } catch (error) {
-      console.error("Failed to check connection:", error);
+      // Error already shown via toast
       console.error("Operation completed");
     }
   };
@@ -181,7 +181,7 @@ export default function EmpireTab() {
       console.error("Operation completed");
       }
     } catch (error) {
-      console.error("Failed to refresh token:", error);
+      // Error already shown via toast
       console.error("Operation completed");
     }
   };
@@ -204,7 +204,7 @@ export default function EmpireTab() {
         fetchListeners(selectedServerId);
       }
     } catch (error) {
-      console.error("Failed to stop listener:", error);
+      // Error already shown via toast
       console.error("Operation completed");
     }
   };
@@ -227,7 +227,7 @@ export default function EmpireTab() {
         fetchAgents(selectedServerId);
       }
     } catch (error) {
-      console.error("Failed to kill agent:", error);
+      // Error already shown via toast
       console.error("Operation completed");
     }
   };

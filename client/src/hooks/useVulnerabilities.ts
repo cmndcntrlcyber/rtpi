@@ -28,7 +28,7 @@ export function useVulnerabilities() {
       setVulnerabilities(response.vulnerabilities || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch vulnerabilities");
-      console.error("Error fetching vulnerabilities:", err);
+      // Error handled by component
     } finally {
       setLoading(false);
     }

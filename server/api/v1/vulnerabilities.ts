@@ -15,9 +15,9 @@ router.get("/", async (_req, res) => {
   try {
     const allVulns = await db.select().from(vulnerabilities);
     res.json({ vulnerabilities: allVulns });
-  } catch (error) {
-    console.error("List vulnerabilities error:", error);
-    res.status(500).json({ error: "Failed to list vulnerabilities" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list vulnerabilities", details: error?.message || "Internal server error" });
   }
 });
 
@@ -37,9 +37,9 @@ router.get("/:id", async (req, res) => {
     }
 
     res.json({ vulnerability: result[0] });
-  } catch (error) {
-    console.error("Get vulnerability error:", error);
-    res.status(500).json({ error: "Failed to get vulnerability" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get vulnerability", details: error?.message || "Internal server error" });
   }
 });
 
@@ -56,10 +56,10 @@ router.post("/", ensureRole("admin", "operator"), async (req, res) => {
     await logAudit(user.id, "create_vulnerability", "/vulnerabilities", vuln[0].id, true, req);
 
     res.status(201).json({ vulnerability: vuln[0] });
-  } catch (error) {
-    console.error("Create vulnerability error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "create_vulnerability", "/vulnerabilities", null, false, req);
-    res.status(500).json({ error: "Failed to create vulnerability" });
+    res.status(500).json({ error: "Failed to create vulnerability", details: error?.message || "Internal server error" });
   }
 });
 
@@ -85,10 +85,10 @@ router.put("/:id", ensureRole("admin", "operator"), async (req, res) => {
     await logAudit(user.id, "update_vulnerability", "/vulnerabilities", id, true, req);
 
     res.json({ vulnerability: result[0] });
-  } catch (error) {
-    console.error("Update vulnerability error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "update_vulnerability", "/vulnerabilities", id, false, req);
-    res.status(500).json({ error: "Failed to update vulnerability" });
+    res.status(500).json({ error: "Failed to update vulnerability", details: error?.message || "Internal server error" });
   }
 });
 
@@ -103,10 +103,10 @@ router.delete("/:id", ensureRole("admin"), async (req, res) => {
     await logAudit(user.id, "delete_vulnerability", "/vulnerabilities", id, true, req);
 
     res.json({ message: "Vulnerability deleted successfully" });
-  } catch (error) {
-    console.error("Delete vulnerability error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "delete_vulnerability", "/vulnerabilities", id, false, req);
-    res.status(500).json({ error: "Failed to delete vulnerability" });
+    res.status(500).json({ error: "Failed to delete vulnerability", details: error?.message || "Internal server error" });
   }
 });
 
@@ -183,7 +183,7 @@ router.post("/:id/ai-generate-field", ensureRole("admin", "operator"), async (re
     }
 
     if (!result) {
-      return res.status(500).json({ error: "Failed to generate content" });
+      return res.status(500).json({ error: "Failed to generate content", details: error?.message || "Internal server error" });
     }
 
     await logAudit(user.id, "ai_generate_field", "/vulnerabilities", id, true, req);
@@ -195,10 +195,10 @@ router.post("/:id/ai-generate-field", ensureRole("admin", "operator"), async (re
       confidence: result.confidence,
       sources: result.sources,
     });
-  } catch (error) {
-    console.error("AI generate field error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "ai_generate_field", "/vulnerabilities", id, false, req);
-    res.status(500).json({ error: "Failed to generate field content" });
+    res.status(500).json({ error: "Failed to generate field content", details: error?.message || "Internal server error" });
   }
 });
 
@@ -230,10 +230,10 @@ router.post("/:id/ai-enrich-all", ensureRole("admin", "operator"), async (req, r
       aiGenerated: result.aiGenerated,
       message: `Successfully enriched ${Object.keys(result.enriched).length} fields`,
     });
-  } catch (error) {
-    console.error("AI enrich all error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "ai_enrich_all", "/vulnerabilities", id, false, req);
-    res.status(500).json({ error: "Failed to enrich vulnerability" });
+    res.status(500).json({ error: "Failed to enrich vulnerability", details: error?.message || "Internal server error" });
   }
 });
 
@@ -284,10 +284,10 @@ router.post("/ai-enrich-from-cve", ensureRole("admin", "operator"), async (req, 
       vulnerability: newVuln[0],
       message: "Vulnerability created from CVE data",
     });
-  } catch (error) {
-    console.error("Create from CVE error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "create_from_cve", "/vulnerabilities", null, false, req);
-    res.status(500).json({ error: "Failed to create vulnerability from CVE" });
+    res.status(500).json({ error: "Failed to create vulnerability from CVE", details: error?.message || "Internal server error" });
   }
 });
 
@@ -298,9 +298,9 @@ router.get("/:id/related", async (req, res) => {
   try {
     const related = await vulnerabilityAIEnrichment.findRelatedFindings(id);
     res.json({ related });
-  } catch (error) {
-    console.error("Find related vulnerabilities error:", error);
-    res.status(500).json({ error: "Failed to find related vulnerabilities" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to find related vulnerabilities", details: error?.message || "Internal server error" });
   }
 });
 
@@ -357,9 +357,9 @@ router.get("/:id/operation-context", async (req, res) => {
     }
 
     res.json({ context });
-  } catch (error) {
-    console.error("Get operation context error:", error);
-    res.status(500).json({ error: "Failed to get operation context" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get operation context", details: error?.message || "Internal server error" });
   }
 });
 

@@ -1,13 +1,13 @@
-import type { Config } from "drizzle-kit";
+import { defineConfig } from "drizzle-kit";
 import * as dotenv from "dotenv";
 
 dotenv.config();
 
-export default {
+export default defineConfig({
   schema: "./shared/schema.ts",
   out: "./migrations",
-  driver: "pg",
+  dialect: "postgresql",
   dbCredentials: {
-    connectionString: process.env.DATABASE_URL || "postgresql://rtpi:rtpi@localhost:5432/rtpi_main",
+    url: process.env.DATABASE_URL || "postgresql://rtpi:rtpi@localhost:5434/rtpi_main",
   },
-} satisfies Config;
+});

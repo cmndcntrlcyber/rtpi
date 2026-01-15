@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -47,17 +48,17 @@ export default function Tools() {
   const handleDelete = async (toolId: string) => {
     try {
       await deleteTool(toolId);
-      alert("Tool deleted successfully");
+      toast.success("Tool deleted successfully");
       await refetch();
     } catch (err) {
-      console.error("Failed to delete tool:", err);
-      alert("Failed to delete tool: " + (err instanceof Error ? err.message : "Unknown error"));
+      // Error handled via toast
+      toast.error(`Failed to delete tool: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
   };
 
   const handleSaveConfig = async (toolId: string, targetId: string, params: any) => {
     // TODO: Implement saving parameters to tool metadata
-    console.log("Saving config:", { toolId, targetId, params });
+    // Debug logging removed
   };
 
 
@@ -67,13 +68,13 @@ export default function Tools() {
 
     try {
       await upload(selectedTool.id, file);
-      alert(`File uploaded successfully for ${selectedTool.name}`);
+      toast.success(`File uploaded successfully for ${selectedTool.name}`);
       await refetch();
       setUploadDialogOpen(false);
       setSelectedTool(null);
     } catch (err) {
-      console.error("Upload failed:", err);
-      alert("Upload failed: " + (err instanceof Error ? err.message : "Unknown error"));
+      // Error handled via toast
+      toast.error(`Upload failed: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
   };
 

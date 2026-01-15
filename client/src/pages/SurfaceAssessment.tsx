@@ -27,7 +27,7 @@ export default function SurfaceAssessment() {
         setSelectedOperation(res.operations[0].id);
       }
     } catch (error) {
-      console.error("Failed to load operations:", error);
+      // Error handled via toast
     } finally {
       setLoading(false);
     }

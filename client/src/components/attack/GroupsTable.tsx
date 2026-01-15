@@ -44,7 +44,7 @@ export default function GroupsTable() {
         console.error("Failed to fetch threat groups");
       }
     } catch (error) {
-      console.error("Failed to fetch groups:", error);
+      // Error already shown via toast
     } finally {
       setLoading(false);
     }

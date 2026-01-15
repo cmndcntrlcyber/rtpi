@@ -27,7 +27,7 @@ export function useTargets() {
       setTargets(response.targets || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch targets");
-      console.error("Error fetching targets:", err);
+      // Error handled by component
     } finally {
       setLoading(false);
     }

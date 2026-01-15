@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Terminal, Copy, Download } from "lucide-react";
@@ -25,7 +26,7 @@ export default function TerminalOutput({
 
   const handleCopy = () => {
     navigator.clipboard.writeText(output);
-    alert("Output copied to clipboard!");
+    toast.success("Output copied to clipboard!");
   };
 
   const handleDownload = () => {

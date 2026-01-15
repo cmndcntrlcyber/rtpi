@@ -27,7 +27,7 @@ export function useOperations() {
       setOperations(response.operations || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch operations");
-      console.error("Error fetching operations:", err);
+      // Error handled by component
     } finally {
       setLoading(false);
     }
@@ -57,7 +57,7 @@ export function useCreateOperation() {
       return response.operation;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create operation");
-      console.error("Error creating operation:", err);
+      // Error handled by component
       throw err;
     } finally {
       setCreating(false);
@@ -83,7 +83,7 @@ export function useUpdateOperation() {
       return response.operation;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update operation");
-      console.error("Error updating operation:", err);
+      // Error handled by component
       throw err;
     } finally {
       setUpdating(false);
@@ -108,7 +108,7 @@ export function useDeleteOperation() {
       await operationsService.delete(id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete operation");
-      console.error("Error deleting operation:", err);
+      // Error handled by component
       throw err;
     } finally {
       setDeleting(false);

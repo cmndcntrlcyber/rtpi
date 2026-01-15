@@ -14,7 +14,7 @@ export function useTools() {
       setTools(response.tools || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch tools");
-      console.error("Error fetching tools:", err);
+      // Error handled by component
     } finally {
       setLoading(false);
     }
@@ -44,7 +44,7 @@ export function useExecuteTool() {
       return response;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to execute tool");
-      console.error("Error executing tool:", err);
+      // Error handled by component
       throw err;
     } finally {
       setExecuting(false);
@@ -76,7 +76,7 @@ export function useLaunchTool() {
       return response;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to launch tool");
-      console.error("Error launching tool:", err);
+      // Error handled by component
       throw err;
     } finally {
       setLaunching(false);
@@ -102,7 +102,7 @@ export function useUploadToolFile() {
       return response;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to upload file");
-      console.error("Error uploading file:", err);
+      // Error handled by component
       throw err;
     } finally {
       setUploading(false);
@@ -131,7 +131,7 @@ export function useExecuteDockerTool() {
       return response;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to execute tool");
-      console.error("Error executing tool:", err);
+      // Error handled by component
       throw err;
     } finally {
       setExecuting(false);
@@ -157,7 +157,7 @@ export function useDeleteTool() {
       return response;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete tool");
-      console.error("Error deleting tool:", err);
+      // Error handled by component
       throw err;
     } finally {
       setDeleting(false);

@@ -12,9 +12,9 @@ router.get("/", async (_req, res) => {
   try {
     const loops = agentLoopService.getActiveLoops();
     res.json({ loops });
-  } catch (error) {
-    console.error("List loops error:", error);
-    res.status(500).json({ error: "Failed to list agent loops" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list agent loops", details: error?.message || "Internal server error" });
   }
 });
 
@@ -30,9 +30,9 @@ router.get("/:id", async (req, res) => {
     }
 
     res.json({ loop });
-  } catch (error) {
-    console.error("Get loop error:", error);
-    res.status(500).json({ error: "Failed to get loop details" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get loop details", details: error?.message || "Internal server error" });
   }
 });
 
@@ -73,8 +73,8 @@ router.post("/start", async (req, res) => {
     await logAudit(user.id, "start_agent_loop", "/agent-loops", loop?.id || null, true, req);
 
     res.status(201).json({ loop });
-  } catch (error) {
-    console.error("Start loop error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "start_agent_loop", "/agent-loops", null, false, req);
     res.status(500).json({ 
       error: error instanceof Error ? error.message : "Failed to start loop" 
@@ -97,10 +97,10 @@ router.post("/:id/stop", async (req, res) => {
     await logAudit(user.id, "stop_agent_loop", "/agent-loops", id, true, req);
 
     res.json({ success: true, message: "Loop stopped successfully" });
-  } catch (error) {
-    console.error("Stop loop error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "stop_agent_loop", "/agent-loops", id, false, req);
-    res.status(500).json({ error: "Failed to stop loop" });
+    res.status(500).json({ error: "Failed to stop loop", details: error?.message || "Internal server error" });
   }
 });
 

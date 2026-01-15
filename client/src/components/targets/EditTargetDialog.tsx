@@ -1,4 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect */
+import { toast } from "sonner";
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -105,7 +106,7 @@ export default function EditTargetDialog({
         discoveredServices = JSON.parse(servicesJson);
       }
     } catch (err) {
-      alert("Invalid JSON in Discovered Services field");
+      toast.error("Invalid JSON in Discovered Services field");
       return;
     }
 
@@ -114,7 +115,7 @@ export default function EditTargetDialog({
         metadata = JSON.parse(metadataJson);
       }
     } catch (err) {
-      alert("Invalid JSON in Metadata field");
+      toast.error("Invalid JSON in Metadata field");
       return;
     }
 

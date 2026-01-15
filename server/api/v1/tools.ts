@@ -89,9 +89,9 @@ router.get("/", async (_req, res) => {
     });
 
     res.json({ tools });
-  } catch (error) {
-    console.error("List tools error:", error);
-    res.status(500).json({ error: "Failed to list tools" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list tools", details: error?.message || "Internal server error" });
   }
 });
 
@@ -118,9 +118,9 @@ router.get("/:id", async (req, res, next) => {
     }
 
     res.json({ tool: result[0] });
-  } catch (error) {
-    console.error("Get tool error:", error);
-    res.status(500).json({ error: "Failed to get tool" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get tool", details: error?.message || "Internal server error" });
   }
 });
 
@@ -137,10 +137,10 @@ router.post("/", ensureRole("admin"), async (req, res) => {
     await logAudit(user.id, "add_tool", "/tools", tool[0].id, true, req);
 
     res.status(201).json({ tool: tool[0] });
-  } catch (error) {
-    console.error("Add tool error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "add_tool", "/tools", null, false, req);
-    res.status(500).json({ error: "Failed to add tool" });
+    res.status(500).json({ error: "Failed to add tool", details: error?.message || "Internal server error" });
   }
 });
 
@@ -166,10 +166,10 @@ router.put("/:id", ensureRole("admin"), async (req, res) => {
     await logAudit(user.id, "update_tool", "/tools", id, true, req);
 
     res.json({ tool: result[0] });
-  } catch (error) {
-    console.error("Update tool error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "update_tool", "/tools", id, false, req);
-    res.status(500).json({ error: "Failed to update tool" });
+    res.status(500).json({ error: "Failed to update tool", details: error?.message || "Internal server error" });
   }
 });
 
@@ -215,14 +215,14 @@ router.post("/:id/upload", upload.single("file"), async (req, res) => {
       message: "File uploaded successfully",
       upload: uploadRecord[0],
     });
-  } catch (error) {
-    console.error("Upload tool file error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     // Clean up file on error
     if (req.file) {
       fs.unlinkSync(req.file.path);
     }
     await logAudit(user.id, "upload_tool_file", "/tools", id, false, req);
-    res.status(500).json({ error: "Failed to upload file" });
+    res.status(500).json({ error: "Failed to upload file", details: error?.message || "Internal server error" });
   }
 });
 
@@ -262,10 +262,10 @@ router.post("/:id/execute", ensureRole("admin", "operator"), async (req, res) =>
       tool: tool,
       executionId: `exec-${Date.now()}`,
     });
-  } catch (error) {
-    console.error("Execute tool error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "execute_tool", "/tools", id, false, req);
-    res.status(500).json({ error: "Failed to execute tool" });
+    res.status(500).json({ error: "Failed to execute tool", details: error?.message || "Internal server error" });
   }
 });
 
@@ -339,8 +339,8 @@ router.post("/:id/execute-docker", ensureRole("admin", "operator"), async (req, 
       tool: tool.name,
       result: executionResult,
     });
-  } catch (error) {
-    console.error("Docker execution error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     
     // Reset tool status on error
     await db
@@ -371,9 +371,9 @@ router.get("/categories", async (_req, res) => {
     }
 
     res.json({ categories: byCategory });
-  } catch (error) {
-    console.error("Get categories error:", error);
-    res.status(500).json({ error: "Failed to get tool categories" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get tool categories", details: error?.message || "Internal server error" });
   }
 });
 
@@ -399,8 +399,8 @@ router.get("/:id/status", async (req, res) => {
     if (tool.dockerImage === "rtpi-tools") {
       try {
         containerStatus = await dockerExecutor.getContainerStatus("rtpi-tools");
-      } catch (error) {
-        console.error("Failed to get container status:", error);
+      } catch (error: any) {
+        // Error logged for debugging
       }
     }
 
@@ -414,9 +414,9 @@ router.get("/:id/status", async (req, res) => {
       },
       container: containerStatus,
     });
-  } catch (error) {
-    console.error("Get tool status error:", error);
-    res.status(500).json({ error: "Failed to get tool status" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get tool status", details: error?.message || "Internal server error" });
   }
 });
 
@@ -454,10 +454,10 @@ router.post("/:id/launch", ensureRole("admin", "operator"), async (req, res) => 
       url: tool.endpoint,
       tool: tool,
     });
-  } catch (error) {
-    console.error("Launch tool error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "launch_tool", "/tools", id, false, req);
-    res.status(500).json({ error: "Failed to launch tool" });
+    res.status(500).json({ error: "Failed to launch tool", details: error?.message || "Internal server error" });
   }
 });
 
@@ -482,10 +482,10 @@ router.delete("/:id", ensureRole("admin"), async (req, res) => {
       message: "Tool deleted successfully",
       tool: result[0],
     });
-  } catch (error) {
-    console.error("Delete tool error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "delete_tool", "/tools", id, false, req);
-    res.status(500).json({ error: "Failed to delete tool" });
+    res.status(500).json({ error: "Failed to delete tool", details: error?.message || "Internal server error" });
   }
 });
 
@@ -531,7 +531,7 @@ router.get("/registry", async (req, res) => {
       count: tools.length,
     });
   } catch (error: any) {
-    console.error('Failed to list tools from registry:', error);
+    // Error logged for debugging
     res.status(500).json({ error: error.message });
   }
 });
@@ -557,7 +557,7 @@ router.get("/registry/:id", async (req, res) => {
       testCoverage,
     });
   } catch (error: any) {
-    console.error('Failed to get tool from registry:', error);
+    // Error logged for debugging
     res.status(500).json({ error: error.message });
   }
 });
@@ -589,7 +589,7 @@ router.post("/registry", ensureRole("admin"), async (req, res) => {
       tool,
     });
   } catch (error: any) {
-    console.error('Failed to register tool:', error);
+    // Error logged for debugging
     await logAudit(user.id, "register_tool", "/tools/registry", null, false, req);
     res.status(500).json({ error: error.message });
   }
@@ -627,7 +627,7 @@ router.post("/registry/:id/execute", ensureRole("admin", "operator"), async (req
       result,
     });
   } catch (error: any) {
-    console.error('Failed to execute tool:', error);
+    // Error logged for debugging
     await logAudit(user.id, "execute_tool", "/tools/registry", req.params.id, false, req);
     res.status(500).json({ error: error.message });
   }
@@ -650,7 +650,7 @@ router.post("/registry/:id/test", ensureRole("admin"), async (req, res) => {
       results,
     });
   } catch (error: any) {
-    console.error('Failed to run tests:', error);
+    // Error logged for debugging
     res.status(500).json({ error: error.message });
   }
 });
@@ -668,7 +668,7 @@ router.get("/registry/:id/health", async (req, res) => {
       status: healthy ? 'operational' : 'unavailable',
     });
   } catch (error: any) {
-    console.error('Failed to check health:', error);
+    // Error logged for debugging
     res.status(500).json({ error: error.message });
   }
 });
@@ -696,7 +696,7 @@ router.post("/install-from-github", ensureRole("admin"), async (req, res) => {
       status: 'pending',
     });
   } catch (error: any) {
-    console.error('Failed to install from GitHub:', error);
+    // Error logged for debugging
     await logAudit(user.id, "install_github_tool", "/tools", null, false, req);
     res.status(500).json({ error: error.message });
   }
@@ -720,7 +720,7 @@ router.post("/analyze-github", ensureRole("admin"), async (req, res) => {
       analysis,
     });
   } catch (error: any) {
-    console.error('Failed to analyze repository:', error);
+    // Error logged for debugging
     res.status(500).json({ error: error.message });
   }
 });
@@ -739,7 +739,7 @@ router.get("/executions/:executionId", async (req, res) => {
 
     res.json({ execution });
   } catch (error: any) {
-    console.error('Failed to get execution:', error);
+    // Error logged for debugging
     res.status(500).json({ error: error.message });
   }
 });

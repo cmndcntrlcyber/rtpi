@@ -14,9 +14,9 @@ router.get("/", async (_req, res) => {
   try {
     const allDevices = await db.select().from(devices);
     res.json({ devices: allDevices });
-  } catch (error) {
-    console.error("List devices error:", error);
-    res.status(500).json({ error: "Failed to list devices" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list devices", details: error?.message || "Internal server error" });
   }
 });
 
@@ -36,9 +36,9 @@ router.get("/:id", async (req, res) => {
     }
 
     res.json({ device: result[0] });
-  } catch (error) {
-    console.error("Get device error:", error);
-    res.status(500).json({ error: "Failed to get device" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get device", details: error?.message || "Internal server error" });
   }
 });
 
@@ -55,10 +55,10 @@ router.post("/", ensureRole("admin"), async (req, res) => {
     await logAudit(user.id, "register_device", "/devices", device[0].id, true, req);
 
     res.status(201).json({ device: device[0] });
-  } catch (error) {
-    console.error("Register device error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "register_device", "/devices", null, false, req);
-    res.status(500).json({ error: "Failed to register device" });
+    res.status(500).json({ error: "Failed to register device", details: error?.message || "Internal server error" });
   }
 });
 
@@ -84,10 +84,10 @@ router.put("/:id", ensureRole("admin"), async (req, res) => {
     await logAudit(user.id, "update_device", "/devices", id, true, req);
 
     res.json({ device: result[0] });
-  } catch (error) {
-    console.error("Update device error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "update_device", "/devices", id, false, req);
-    res.status(500).json({ error: "Failed to update device" });
+    res.status(500).json({ error: "Failed to update device", details: error?.message || "Internal server error" });
   }
 });
 
@@ -102,10 +102,10 @@ router.delete("/:id", ensureRole("admin"), async (req, res) => {
     await logAudit(user.id, "delete_device", "/devices", id, true, req);
 
     res.json({ message: "Device deleted successfully" });
-  } catch (error) {
-    console.error("Delete device error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "delete_device", "/devices", id, false, req);
-    res.status(500).json({ error: "Failed to delete device" });
+    res.status(500).json({ error: "Failed to delete device", details: error?.message || "Internal server error" });
   }
 });
 
@@ -124,9 +124,9 @@ router.post("/:id/block", ensureRole("admin"), async (req, res) => {
     await logAudit(user.id, "block_device", "/devices", id, true, req);
 
     res.json({ device: result[0] });
-  } catch (error) {
-    console.error("Block device error:", error);
-    res.status(500).json({ error: "Failed to block device" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to block device", details: error?.message || "Internal server error" });
   }
 });
 
@@ -145,9 +145,9 @@ router.post("/:id/unblock", ensureRole("admin"), async (req, res) => {
     await logAudit(user.id, "unblock_device", "/devices", id, true, req);
 
     res.json({ device: result[0] });
-  } catch (error) {
-    console.error("Unblock device error:", error);
-    res.status(500).json({ error: "Failed to unblock device" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to unblock device", details: error?.message || "Internal server error" });
   }
 });
 

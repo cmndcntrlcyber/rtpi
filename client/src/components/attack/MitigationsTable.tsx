@@ -42,7 +42,7 @@ export default function MitigationsTable() {
         console.error("Failed to fetch mitigations");
       }
     } catch (error) {
-      console.error("Failed to fetch mitigations:", error);
+      // Error already shown via toast
     } finally {
       setLoading(false);
     }

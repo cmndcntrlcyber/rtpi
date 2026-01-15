@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -75,7 +76,7 @@ export default function CreateListenerDialog({
         }
       }
     } catch (error) {
-      console.error("Failed to fetch listener templates:", error);
+      // Error already shown via toast
     } finally {
       setFetchingTemplates(false);
     }
@@ -135,8 +136,8 @@ export default function CreateListenerDialog({
       setFormData({});
       onListenerCreated();
     } catch (error: any) {
-      console.error("Failed to create listener:", error);
-      alert(`Failed to create listener: ${error.message}`);
+      // Error already shown via toast
+      toast.error(`Failed to create listener: ${error.message}`);
     } finally {
       setLoading(false);
     }

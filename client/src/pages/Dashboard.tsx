@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { Activity } from "lucide-react";
+import { Activity, Loader2 } from "lucide-react";
 import { useOperations } from "@/hooks/useOperations";
 import { useTargets } from "@/hooks/useTargets";
 import { useVulnerabilities } from "@/hooks/useVulnerabilities";
@@ -7,12 +7,12 @@ import { useAgents } from "@/hooks/useAgents";
 
 export default function Dashboard() {
   const [, navigate] = useLocation();
-  
+
   // Fetch real data
-  const { operations, loading: opsLoading } = useOperations();
-  const { targets, loading: targetsLoading } = useTargets();
-  const { vulnerabilities, loading: vulnLoading } = useVulnerabilities();
-  const { agents, loading: agentsLoading } = useAgents();
+  const { operations, loading: opsLoading, error: opsError } = useOperations();
+  const { targets, loading: targetsLoading, error: targetsError } = useTargets();
+  const { vulnerabilities, loading: vulnLoading, error: vulnError } = useVulnerabilities();
+  const { agents, loading: agentsLoading, error: agentsError } = useAgents();
 
   // Calculate statistics
   const stats = {
@@ -24,11 +24,19 @@ export default function Dashboard() {
 
   // Check if any data is loading
   const loading = opsLoading || targetsLoading || vulnLoading || agentsLoading;
+  const hasError = opsError || targetsError || vulnError || agentsError;
 
   return (
     <div className="p-8">
       <h1 className="text-3xl font-bold mb-8">RTPI Dashboard</h1>
-      
+
+      {hasError && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-800">
+          <p className="font-medium">Failed to load some dashboard data</p>
+          <p className="text-sm">{opsError || targetsError || vulnError || agentsError}</p>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         {/* Active Operations */}
         <div
@@ -36,8 +44,8 @@ export default function Dashboard() {
           onClick={() => navigate("/operations")}
         >
           <h3 className="text-sm font-medium text-muted-foreground mb-2">Active Operations</h3>
-          <p className="text-3xl font-bold text-green-600">
-            {loading ? "..." : stats.activeOperations}
+          <p className="text-3xl font-bold text-green-600 flex items-center gap-2">
+            {loading ? <><Loader2 className="h-6 w-6 animate-spin" /> Loading...</> : stats.activeOperations}
           </p>
         </div>
 
@@ -47,8 +55,8 @@ export default function Dashboard() {
           onClick={() => navigate("/targets")}
         >
           <h3 className="text-sm font-medium text-muted-foreground mb-2">Targets</h3>
-          <p className="text-3xl font-bold text-blue-600">
-            {loading ? "..." : stats.targets}
+          <p className="text-3xl font-bold text-blue-600 flex items-center gap-2">
+            {loading ? <><Loader2 className="h-6 w-6 animate-spin" /> Loading...</> : stats.targets}
           </p>
         </div>
 
@@ -58,8 +66,8 @@ export default function Dashboard() {
           onClick={() => navigate("/vulnerabilities")}
         >
           <h3 className="text-sm font-medium text-muted-foreground mb-2">Vulnerabilities</h3>
-          <p className="text-3xl font-bold text-red-600">
-            {loading ? "..." : stats.vulnerabilities}
+          <p className="text-3xl font-bold text-red-600 flex items-center gap-2">
+            {loading ? <><Loader2 className="h-6 w-6 animate-spin" /> Loading...</> : stats.vulnerabilities}
           </p>
         </div>
 
@@ -69,8 +77,8 @@ export default function Dashboard() {
           onClick={() => navigate("/agents")}
         >
           <h3 className="text-sm font-medium text-muted-foreground mb-2">Active Agents</h3>
-          <p className="text-3xl font-bold text-purple-600">
-            {loading ? "..." : stats.activeAgents}
+          <p className="text-3xl font-bold text-purple-600 flex items-center gap-2">
+            {loading ? <><Loader2 className="h-6 w-6 animate-spin" /> Loading...</> : stats.activeAgents}
           </p>
         </div>
       </div>

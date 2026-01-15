@@ -14,7 +14,7 @@ export function useReports() {
       setReports(response.reports || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch reports");
-      console.error("Error fetching reports:", err);
+      // Error handled by component
     } finally {
       setLoading(false);
     }
@@ -45,7 +45,7 @@ export function useReportTemplates() {
       setTemplates(response.templates || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch templates");
-      console.error("Error fetching templates:", err);
+      // Error handled by component
     } finally {
       setLoading(false);
     }
@@ -75,7 +75,7 @@ export function useCreateReport() {
       return response.report;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create report");
-      console.error("Error creating report:", err);
+      // Error handled by component
       throw err;
     } finally {
       setCreating(false);
@@ -101,7 +101,7 @@ export function useCreateTemplate() {
       return response.template;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create template");
-      console.error("Error creating template:", err);
+      // Error handled by component
       throw err;
     } finally {
       setCreating(false);
@@ -126,7 +126,7 @@ export function useDeleteReport() {
       await reportsService.delete(id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete report");
-      console.error("Error deleting report:", err);
+      // Error handled by component
       throw err;
     } finally {
       setDeleting(false);

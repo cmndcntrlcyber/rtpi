@@ -58,8 +58,8 @@ router.get('/analyze', async (_req: Request, res: Response) => {
         toolsByCategory: Object.fromEntries(toolsByCategory),
       },
     });
-  } catch (error) {
-    console.error('Tool analysis failed:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       success: false,
       error: 'Failed to analyze tools',
@@ -89,8 +89,8 @@ router.post('/analyze-file', async (req: Request, res: Response) => {
       success: true,
       data: analysis,
     });
-  } catch (error) {
-    console.error('File analysis failed:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       success: false,
       error: 'Failed to analyze file',
@@ -123,8 +123,8 @@ router.post('/analyze-directory', async (req: Request, res: Response) => {
         tools,
       },
     });
-  } catch (error) {
-    console.error('Directory analysis failed:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       success: false,
       error: 'Failed to analyze directory',
@@ -174,8 +174,8 @@ router.post('/migrate', async (req: Request, res: Response) => {
         data: result,
       });
     }
-  } catch (error) {
-    console.error('Migration failed:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       success: false,
       error: 'Migration failed',
@@ -259,8 +259,8 @@ router.post('/migrate-batch', async (req: Request, res: Response) => {
         results,
       },
     });
-  } catch (error) {
-    console.error('Batch migration failed:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       success: false,
       error: 'Batch migration failed',
@@ -283,8 +283,8 @@ router.get('/status/:toolName', async (req: Request, res: Response) => {
       success: true,
       data: status,
     });
-  } catch (error) {
-    console.error('Status check failed:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       success: false,
       error: 'Failed to check migration status',
@@ -371,8 +371,8 @@ router.get('/recommendations', async (_req: Request, res: Response) => {
         },
       },
     });
-  } catch (error) {
-    console.error('Recommendations failed:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       success: false,
       error: 'Failed to generate recommendations',

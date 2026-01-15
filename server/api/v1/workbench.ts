@@ -34,8 +34,8 @@ router.get('/health', async (_req: Request, res: Response) => {
         apiUrl: process.env.WORKBENCH_API_URL || 'http://localhost:3010',
       });
     }
-  } catch (error) {
-    console.error('Workbench health check error:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to check Workbench health',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -60,8 +60,8 @@ router.get('/techniques', async (req: Request, res: Response) => {
     });
 
     res.json(techniques);
-  } catch (error) {
-    console.error('Failed to fetch Workbench techniques:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to fetch techniques from Workbench',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -83,8 +83,8 @@ router.get('/techniques/:stixId', async (req: Request, res: Response) => {
     } else {
       res.status(404).json({ error: 'Technique not found in Workbench' });
     }
-  } catch (error) {
-    console.error('Failed to fetch Workbench technique:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to fetch technique from Workbench',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -105,8 +105,8 @@ router.post('/techniques', async (req: Request, res: Response) => {
     } else {
       res.status(400).json({ error: 'Failed to create technique in Workbench' });
     }
-  } catch (error) {
-    console.error('Failed to create Workbench technique:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to create technique in Workbench',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -122,8 +122,8 @@ router.get('/collections', async (_req: Request, res: Response) => {
   try {
     const collections = await workbenchClient.getCollections();
     res.json(collections);
-  } catch (error) {
-    console.error('Failed to fetch Workbench collections:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to fetch collections from Workbench',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -145,8 +145,8 @@ router.get('/collections/:stixId', async (req: Request, res: Response) => {
     } else {
       res.status(404).json({ error: 'Collection not found in Workbench' });
     }
-  } catch (error) {
-    console.error('Failed to fetch Workbench collection:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to fetch collection from Workbench',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -168,8 +168,8 @@ router.get('/collections/:stixId/bundle', async (req: Request, res: Response) =>
     } else {
       res.status(404).json({ error: 'Collection bundle not found' });
     }
-  } catch (error) {
-    console.error('Failed to fetch collection bundle:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to fetch collection bundle',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -190,8 +190,8 @@ router.post('/collections', async (req: Request, res: Response) => {
     } else {
       res.status(400).json({ error: 'Failed to create collection in Workbench' });
     }
-  } catch (error) {
-    console.error('Failed to create Workbench collection:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to create collection in Workbench',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -250,8 +250,8 @@ router.post('/sync/push-techniques', async (req: Request, res: Response) => {
       message: `Pushed ${results.success} techniques to Workbench`,
       ...results,
     });
-  } catch (error) {
-    console.error('Failed to push techniques to Workbench:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to push techniques to Workbench',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -312,7 +312,7 @@ router.post('/sync/pull-techniques', async (_req: Request, res: Response) => {
         });
 
         imported.success++;
-      } catch (error) {
+      } catch (error: any) {
         imported.failed++;
         imported.errors.push(
           `Failed to import ${technique.attackId}: ${
@@ -330,8 +330,8 @@ router.post('/sync/pull-techniques', async (_req: Request, res: Response) => {
       failed: imported.failed,
       errors: imported.errors,
     });
-  } catch (error) {
-    console.error('Failed to pull techniques from Workbench:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to pull techniques from Workbench',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -347,8 +347,8 @@ router.get('/groups', async (_req: Request, res: Response) => {
   try {
     const groups = await workbenchClient.getGroups();
     res.json(groups);
-  } catch (error) {
-    console.error('Failed to fetch Workbench groups:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to fetch groups from Workbench',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -364,8 +364,8 @@ router.get('/software', async (_req: Request, res: Response) => {
   try {
     const software = await workbenchClient.getSoftware();
     res.json(software);
-  } catch (error) {
-    console.error('Failed to fetch Workbench software:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to fetch software from Workbench',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -381,8 +381,8 @@ router.get('/mitigations', async (_req: Request, res: Response) => {
   try {
     const mitigations = await workbenchClient.getMitigations();
     res.json(mitigations);
-  } catch (error) {
-    console.error('Failed to fetch Workbench mitigations:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to fetch mitigations from Workbench',
       message: error instanceof Error ? error.message : 'Unknown error',

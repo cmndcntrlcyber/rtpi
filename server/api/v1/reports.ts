@@ -16,9 +16,9 @@ router.get("/", async (_req, res) => {
   try {
     const allReports = await db.select().from(reports);
     res.json({ reports: allReports });
-  } catch (error) {
-    console.error("List reports error:", error);
-    res.status(500).json({ error: "Failed to list reports" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list reports", details: error?.message || "Internal server error" });
   }
 });
 
@@ -38,9 +38,9 @@ router.get("/:id", async (req, res) => {
     }
 
     res.json({ report: result[0] });
-  } catch (error) {
-    console.error("Get report error:", error);
-    res.status(500).json({ error: "Failed to get report" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get report", details: error?.message || "Internal server error" });
   }
 });
 
@@ -69,10 +69,10 @@ router.post("/", ensureRole("admin", "operator"), async (req, res) => {
     await logAudit(user.id, "generate_report", "/reports", report[0].id, true, req);
 
     res.status(201).json({ report: report[0] });
-  } catch (error) {
-    console.error("Generate report error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "generate_report", "/reports", null, false, req);
-    res.status(500).json({ error: "Failed to generate report" });
+    res.status(500).json({ error: "Failed to generate report", details: error?.message || "Internal server error" });
   }
 });
 
@@ -98,10 +98,10 @@ router.put("/:id", ensureRole("admin", "operator"), async (req, res) => {
     await logAudit(user.id, "update_report", "/reports", id, true, req);
 
     res.json({ report: result[0] });
-  } catch (error) {
-    console.error("Update report error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "update_report", "/reports", id, false, req);
-    res.status(500).json({ error: "Failed to update report" });
+    res.status(500).json({ error: "Failed to update report", details: error?.message || "Internal server error" });
   }
 });
 
@@ -116,10 +116,10 @@ router.delete("/:id", ensureRole("admin"), async (req, res) => {
     await logAudit(user.id, "delete_report", "/reports", id, true, req);
 
     res.json({ message: "Report deleted successfully" });
-  } catch (error) {
-    console.error("Delete report error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "delete_report", "/reports", id, false, req);
-    res.status(500).json({ error: "Failed to delete report" });
+    res.status(500).json({ error: "Failed to delete report", details: error?.message || "Internal server error" });
   }
 });
 
@@ -132,9 +132,9 @@ router.get("/templates/list", async (_req, res) => {
       .where(eq(reportTemplates.isActive, true));
     
     res.json({ templates });
-  } catch (error) {
-    console.error("List templates error:", error);
-    res.status(500).json({ error: "Failed to list templates" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list templates", details: error?.message || "Internal server error" });
   }
 });
 
@@ -154,10 +154,10 @@ router.post("/templates", ensureRole("admin"), async (req, res) => {
     await logAudit(user.id, "create_template", "/reports/templates", template[0].id, true, req);
 
     res.status(201).json({ template: template[0] });
-  } catch (error) {
-    console.error("Create template error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "create_template", "/reports/templates", null, false, req);
-    res.status(500).json({ error: "Failed to create template" });
+    res.status(500).json({ error: "Failed to create template", details: error?.message || "Internal server error" });
   }
 });
 
@@ -175,10 +175,10 @@ router.delete("/templates/:id", ensureRole("admin"), async (req, res) => {
     await logAudit(user.id, "delete_template", "/reports/templates", id, true, req);
 
     res.json({ message: "Template deleted successfully" });
-  } catch (error) {
-    console.error("Delete template error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "delete_template", "/reports/templates", id, false, req);
-    res.status(500).json({ error: "Failed to delete template" });
+    res.status(500).json({ error: "Failed to delete template", details: error?.message || "Internal server error" });
   }
 });
 
@@ -208,9 +208,9 @@ router.get("/workflow/:workflowId", async (req, res) => {
     )[0];
 
     res.json({ report });
-  } catch (error) {
-    console.error("Get report by workflow error:", error);
-    res.status(500).json({ error: "Failed to get report for workflow" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get report for workflow", details: error?.message || "Internal server error" });
   }
 });
 
@@ -262,9 +262,9 @@ router.get("/:id/download", async (req, res) => {
 
     const fileContent = await fs.readFile(fullPath);
     res.send(fileContent);
-  } catch (error) {
-    console.error("Download report error:", error);
-    res.status(500).json({ error: "Failed to download report" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to download report", details: error?.message || "Internal server error" });
   }
 });
 

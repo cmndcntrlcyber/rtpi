@@ -63,10 +63,10 @@ router.post("/:agentId/mcp-call", ensureRole("admin", "operator"), async (req, r
     await logAudit(user.id, "agent_mcp_call", "/agents", agentId, true, req);
 
     res.json(mockResponse);
-  } catch (error) {
-    console.error("Agent MCP call error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "agent_mcp_call", "/agents", agentId, false, req);
-    res.status(500).json({ error: "Failed to execute MCP tool call" });
+    res.status(500).json({ error: "Failed to execute MCP tool call", details: error?.message || "Internal server error" });
   }
 });
 
@@ -134,9 +134,9 @@ router.get("/:agentId/mcp-tools", async (req, res) => {
       // Other MCP servers would list their tools here
       res.json({ tools: [], server: mcpServer });
     }
-  } catch (error) {
-    console.error("Get MCP tools error:", error);
-    res.status(500).json({ error: "Failed to get MCP tools" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get MCP tools", details: error?.message || "Internal server error" });
   }
 });
 

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -84,7 +85,7 @@ export default function PlannerTab() {
         setFilteredTechniques(data);
       }
     } catch (error) {
-      console.error("Failed to fetch techniques:", error);
+      // Error already shown via toast
     } finally {
       setLoading(false);
     }
@@ -102,7 +103,7 @@ export default function PlannerTab() {
         setOperations(data);
       }
     } catch (error) {
-      console.error("Failed to fetch operations:", error);
+      // Error already shown via toast
     }
   };
 
@@ -241,12 +242,12 @@ export default function PlannerTab() {
         });
       }
 
-      alert("Kill chain saved to operation successfully!");
+      toast.success("Kill chain saved to operation successfully!");
       setSaveDialogOpen(false);
       setSelectedTechniques([]);
     } catch (error) {
-      console.error("Failed to save kill chain:", error);
-      alert("Failed to save kill chain");
+      // Error already shown via toast
+      toast.error("Failed to save kill chain");
     } finally {
       setSaving(false);
     }
@@ -272,7 +273,7 @@ export default function PlannerTab() {
     setNewCollectionName("");
     setNewCollectionDescription("");
     setCollectionDialogOpen(false);
-    alert("Collection created successfully!");
+    toast.success("Collection created successfully!");
   };
 
   // Load collection

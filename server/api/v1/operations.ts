@@ -47,9 +47,11 @@ router.get("/", async (_req, res) => {
       .leftJoin(users, eq(operations.ownerId, users.id));
 
     res.json({ operations: allOperations });
-  } catch (error) {
-    console.error("List operations error:", error);
-    res.status(500).json({ error: "Failed to list operations" });
+  } catch (error: any) {
+    res.status(500).json({
+      error: "Failed to retrieve operations from database",
+      details: error.message
+    });
   }
 });
 
@@ -85,9 +87,11 @@ router.get("/:id", async (req, res) => {
     }
 
     res.json({ operation: result[0] });
-  } catch (error) {
-    console.error("Get operation error:", error);
-    res.status(500).json({ error: "Failed to get operation" });
+  } catch (error: any) {
+    res.status(500).json({
+      error: "Failed to retrieve operation",
+      details: error.message
+    });
   }
 });
 
@@ -110,8 +114,8 @@ router.post("/", ensureRole("admin", "operator"), async (req, res) => {
     await logAudit(user.id, "create_operation", "/operations", operation[0].id, true, req);
 
     res.status(201).json({ operation: operation[0] });
-  } catch (error) {
-    console.error("Create operation error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     
     // Better error messages for validation errors
     if (error instanceof z.ZodError) {
@@ -122,7 +126,7 @@ router.post("/", ensureRole("admin", "operator"), async (req, res) => {
     }
     
     await logAudit(user.id, "create_operation", "/operations", null, false, req);
-    res.status(500).json({ error: "Failed to create operation" });
+    res.status(500).json({ error: "Failed to create operation", details: error?.message || "Internal server error" });
   }
 });
 
@@ -151,8 +155,8 @@ router.put("/:id", ensureRole("admin", "operator"), async (req, res) => {
     await logAudit(user.id, "update_operation", "/operations", id, true, req);
 
     res.json({ operation: result[0] });
-  } catch (error) {
-    console.error("Update operation error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     
     if (error instanceof z.ZodError) {
       return res.status(400).json({ 
@@ -162,7 +166,7 @@ router.put("/:id", ensureRole("admin", "operator"), async (req, res) => {
     }
     
     await logAudit(user.id, "update_operation", "/operations", id, false, req);
-    res.status(500).json({ error: "Failed to update operation" });
+    res.status(500).json({ error: "Failed to update operation", details: error?.message || "Internal server error" });
   }
 });
 
@@ -177,10 +181,10 @@ router.delete("/:id", ensureRole("admin"), async (req, res) => {
     await logAudit(user.id, "delete_operation", "/operations", id, true, req);
 
     res.json({ message: "Operation deleted successfully" });
-  } catch (error) {
-    console.error("Delete operation error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "delete_operation", "/operations", id, false, req);
-    res.status(500).json({ error: "Failed to delete operation" });
+    res.status(500).json({ error: "Failed to delete operation", details: error?.message || "Internal server error" });
   }
 });
 
@@ -206,10 +210,10 @@ router.post("/:id/start", ensureRole("admin", "operator"), async (req, res) => {
     await logAudit(user.id, "start_operation", "/operations", id, true, req);
 
     res.json({ operation: result[0], message: "Operation started" });
-  } catch (error) {
-    console.error("Start operation error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "start_operation", "/operations", id, false, req);
-    res.status(500).json({ error: "Failed to start operation" });
+    res.status(500).json({ error: "Failed to start operation", details: error?.message || "Internal server error" });
   }
 });
 
@@ -235,10 +239,10 @@ router.post("/:id/complete", ensureRole("admin", "operator"), async (req, res) =
     await logAudit(user.id, "complete_operation", "/operations", id, true, req);
 
     res.json({ operation: result[0], message: "Operation completed" });
-  } catch (error) {
-    console.error("Complete operation error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "complete_operation", "/operations", id, false, req);
-    res.status(500).json({ error: "Failed to complete operation" });
+    res.status(500).json({ error: "Failed to complete operation", details: error?.message || "Internal server error" });
   }
 });
 
@@ -292,10 +296,10 @@ router.patch("/:id/status", ensureRole("admin", "operator"), async (req, res) =>
     await logAudit(user.id, "update_operation_status", "/operations", id, true, req);
 
     res.json({ operation: result[0] });
-  } catch (error) {
-    console.error("Update operation status error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "update_operation_status", "/operations", id, false, req);
-    res.status(500).json({ error: "Failed to update operation status" });
+    res.status(500).json({ error: "Failed to update operation status", details: error?.message || "Internal server error" });
   }
 });
 

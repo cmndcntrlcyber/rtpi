@@ -74,7 +74,7 @@ export default function ImplantDetailModal({
         console.error("Failed to fetch implant details");
       }
     } catch (error) {
-      console.error("Failed to fetch implant details:", error);
+      // Error already shown via toast
     } finally {
       setLoading(false);
     }

@@ -38,6 +38,7 @@ import kasmProxyRoutes from "./api/v1/kasm-proxy";
 import sslCertificatesRoutes from "./api/v1/ssl-certificates";
 import burpBuilderRoutes from "./api/v1/burp-builder";
 import rustNexusRoutes from "./api/v1/rust-nexus";
+import agentPublicRoutes from "./api/v1/agent-public";
 import ollamaRoutes from "./api/v1/ollama";
 import { initializeDefaultAdmin } from "./services/admin-initialization";
 
@@ -103,6 +104,7 @@ app.use("/api/v1/kasm-proxy", kasmProxyRoutes);
 app.use("/api/v1/ssl-certificates", sslCertificatesRoutes);
 app.use("/api/v1/burp-builder", burpBuilderRoutes);
 app.use("/api/v1/rust-nexus", rustNexusRoutes);
+app.use("/api/v1/public", agentPublicRoutes); // Public endpoints (no auth)
 app.use("/api/v1/ollama", ollamaRoutes);
 
 // Root endpoint

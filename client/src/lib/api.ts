@@ -57,7 +57,7 @@ function startSessionRefresh() {
           credentials: "include",
         });
       } catch (error) {
-        console.error("Session refresh failed:", error);
+        // Session refresh error handled
       }
     }
   }, SESSION_REFRESH_INTERVAL);

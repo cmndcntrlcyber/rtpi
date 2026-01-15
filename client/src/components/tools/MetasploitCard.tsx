@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -70,7 +71,7 @@ export default function MetasploitCard({ tool }: MetasploitCardProps) {
       
       setModules(modulesData);
     } catch (error) {
-      console.error("Failed to load modules:", error);
+      // Error already shown via toast
       setModules({ modules: {} });
     } finally {
       setLoading(false);
@@ -93,7 +94,7 @@ export default function MetasploitCard({ tool }: MetasploitCardProps) {
 
   const handleAutoSelect = async () => {
     if (!selectedTarget) {
-      alert("Please select a target first");
+      toast.warning("Please select a target first");
       return;
     }
 
@@ -112,21 +113,21 @@ export default function MetasploitCard({ tool }: MetasploitCardProps) {
       // Set parameters
       setParameters(selectedModule.parameters || {});
 
-      alert(`Auto-selected: ${selectedModule.type}/${selectedModule.path}`);
+      toast.info(`Auto-selected: ${selectedModule.type}/${selectedModule.path}`);
     } catch (error) {
       console.error("Auto-select failed:", error);
-      alert("Failed to auto-select module");
+      toast.error("Failed to auto-select module");
     }
   };
 
   const handleExecute = async () => {
     if (!selectedTarget) {
-      alert("Please select a target");
+      toast.warning("Please select a target");
       return;
     }
 
     if (!primaryModule) {
-      alert("Please select at least one module");
+      toast.warning("Please select at least one module");
       return;
     }
 

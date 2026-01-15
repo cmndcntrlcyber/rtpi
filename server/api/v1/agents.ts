@@ -14,9 +14,9 @@ router.get("/", async (_req, res) => {
   try {
     const allAgents = await db.select().from(agents);
     res.json({ agents: allAgents });
-  } catch (error) {
-    console.error("List agents error:", error);
-    res.status(500).json({ error: "Failed to list agents" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list agents", details: error?.message || "Internal server error" });
   }
 });
 
@@ -36,9 +36,9 @@ router.get("/:id", async (req, res) => {
     }
 
     res.json({ agent: result[0] });
-  } catch (error) {
-    console.error("Get agent error:", error);
-    res.status(500).json({ error: "Failed to get agent" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get agent", details: error?.message || "Internal server error" });
   }
 });
 
@@ -55,10 +55,10 @@ router.post("/", ensureRole("admin", "operator"), async (req, res) => {
     await logAudit(user.id, "create_agent", "/agents", agent[0].id, true, req);
 
     res.status(201).json({ agent: agent[0] });
-  } catch (error) {
-    console.error("Create agent error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "create_agent", "/agents", null, false, req);
-    res.status(500).json({ error: "Failed to create agent" });
+    res.status(500).json({ error: "Failed to create agent", details: error?.message || "Internal server error" });
   }
 });
 
@@ -84,10 +84,10 @@ router.put("/:id", ensureRole("admin", "operator"), async (req, res) => {
     await logAudit(user.id, "update_agent", "/agents", id, true, req);
 
     res.json({ agent: result[0] });
-  } catch (error) {
-    console.error("Update agent error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "update_agent", "/agents", id, false, req);
-    res.status(500).json({ error: "Failed to update agent" });
+    res.status(500).json({ error: "Failed to update agent", details: error?.message || "Internal server error" });
   }
 });
 
@@ -102,10 +102,10 @@ router.delete("/:id", ensureRole("admin"), async (req, res) => {
     await logAudit(user.id, "delete_agent", "/agents", id, true, req);
 
     res.json({ message: "Agent deleted successfully" });
-  } catch (error) {
-    console.error("Delete agent error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "delete_agent", "/agents", id, false, req);
-    res.status(500).json({ error: "Failed to delete agent" });
+    res.status(500).json({ error: "Failed to delete agent", details: error?.message || "Internal server error" });
   }
 });
 

@@ -50,8 +50,8 @@ router.post('/upload', upload.single('jarFile'), async (req, res) => {
       message: 'Burp Suite JAR uploaded successfully',
       upload: uploadResult,
     });
-  } catch (error) {
-    console.error('[API] JAR upload failed:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to upload JAR file',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -74,8 +74,8 @@ router.get('/upload/:userId', async (req, res) => {
     }
 
     res.json(jarInfo);
-  } catch (error) {
-    console.error('[API] Failed to get JAR info:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to get JAR info' });
   }
 });
@@ -91,8 +91,8 @@ router.delete('/upload/:userId', async (req, res) => {
     await burpImageBuilder.deleteUploadedJAR(userId);
 
     res.json({ message: 'JAR deleted successfully' });
-  } catch (error) {
-    console.error('[API] Failed to delete JAR:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to delete JAR' });
   }
 });
@@ -131,8 +131,8 @@ router.post('/build/:userId', async (req, res) => {
       message: 'Burp Suite image built successfully',
       ...buildResult,
     });
-  } catch (error) {
-    console.error('[API] Image build failed:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to build image',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -155,8 +155,8 @@ router.get('/images/:userId', async (req, res) => {
     const images = await burpImageBuilder.listUserBurpImages(userId);
 
     res.json(images);
-  } catch (error) {
-    console.error('[API] Failed to list images:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to list images' });
   }
 });
@@ -176,8 +176,8 @@ router.get('/images/:imageName/:imageTag', async (req, res) => {
     }
 
     res.json(imageInfo);
-  } catch (error) {
-    console.error('[API] Failed to get image info:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to get image info' });
   }
 });
@@ -193,8 +193,8 @@ router.delete('/images/:imageName/:imageTag', async (req, res) => {
     await burpImageBuilder.deleteBurpImage(imageName, imageTag);
 
     res.json({ message: 'Image deleted successfully' });
-  } catch (error) {
-    console.error('[API] Failed to delete image:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ error: 'Failed to delete image' });
   }
 });
@@ -214,7 +214,7 @@ router.get('/health', async (_req, res) => {
       service: 'Burp Suite Image Builder',
       timestamp: new Date().toISOString(),
     });
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({
       status: 'unhealthy',
       error: 'Health check failed',

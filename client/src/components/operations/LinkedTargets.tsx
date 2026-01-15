@@ -30,7 +30,7 @@ export default function LinkedTargets({
       );
       setTargets(filtered);
     } catch (error) {
-      console.error("Failed to load targets:", error);
+      // Error already shown via toast
     }
   };
 

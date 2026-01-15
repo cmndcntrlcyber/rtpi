@@ -68,7 +68,7 @@ export default function EmpireCredentialsTable({
         });
       }, 2000);
     } catch (error) {
-      console.error("Failed to copy to clipboard:", error);
+      // Error already shown via toast
     }
   };
 

@@ -1,4 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect */
+import { toast } from "sonner";
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -68,7 +69,7 @@ export default function ConfigureToolDialog({
 
   const handleSave = () => {
     if (!tool || !selectedTargetId) {
-      alert("Please select a target");
+      toast.warning("Please select a target");
       return;
     }
 
@@ -76,7 +77,7 @@ export default function ConfigureToolDialog({
       onSave(tool.id, selectedTargetId, params);
     }
     
-    alert("Configuration saved successfully");
+    toast.success("Configuration saved successfully");
   };
 
   const handleExecute = async () => {
@@ -89,12 +90,12 @@ export default function ConfigureToolDialog({
       .map(([name]) => name);
 
     if (!selectedTargetId && !agentId) {
-      alert("Please select a target");
+      toast.warning("Please select a target");
       return;
     }
 
     if (missingRequired.length > 0) {
-      alert(`Please fill in required fields: ${missingRequired.join(", ")}`);
+      toast.warning(`Please fill in required fields: ${missingRequired.join(", ")}`);
       return;
     }
 
@@ -106,7 +107,7 @@ export default function ConfigureToolDialog({
       });
       
       setExecutionResult(result);
-      alert(`Tool ${tool.name} executed successfully!`);
+      toast.success(`Tool ${tool.name} executed successfully!`);
       
       // Auto-save params after successful execution
       if (onSave && selectedTargetId) {
@@ -114,7 +115,7 @@ export default function ConfigureToolDialog({
       }
     } catch (err) {
       console.error("Execution error:", err);
-      alert("Execution failed: " + (err instanceof Error ? err.message : "Unknown error"));
+      toast.error(`Execution failed: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
   };
 

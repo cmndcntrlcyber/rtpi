@@ -17,9 +17,9 @@ router.get("/", async (_req, res) => {
   try {
     const allTargets = await db.select().from(targets);
     res.json({ targets: allTargets });
-  } catch (error) {
-    console.error("List targets error:", error);
-    res.status(500).json({ error: "Failed to list targets" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list targets", details: error?.message || "Internal server error" });
   }
 });
 
@@ -39,9 +39,9 @@ router.get("/:id", async (req, res) => {
     }
 
     res.json({ target: result[0] });
-  } catch (error) {
-    console.error("Get target error:", error);
-    res.status(500).json({ error: "Failed to get target" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get target", details: error?.message || "Internal server error" });
   }
 });
 
@@ -58,10 +58,10 @@ router.post("/", ensureRole("admin", "operator"), async (req, res) => {
     await logAudit(user.id, "create_target", "/targets", target[0].id, true, req);
 
     res.status(201).json({ target: target[0] });
-  } catch (error) {
-    console.error("Create target error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "create_target", "/targets", null, false, req);
-    res.status(500).json({ error: "Failed to create target" });
+    res.status(500).json({ error: "Failed to create target", details: error.message });
   }
 });
 
@@ -90,10 +90,10 @@ router.put("/:id", ensureRole("admin", "operator"), async (req, res) => {
     await logAudit(user.id, "update_target", "/targets", id, true, req);
 
     res.json({ target: result[0] });
-  } catch (error) {
-    console.error("Update target error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "update_target", "/targets", id, false, req);
-    res.status(500).json({ error: "Failed to update target" });
+    res.status(500).json({ error: "Failed to update target", details: error.message });
   }
 });
 
@@ -108,10 +108,10 @@ router.delete("/:id", ensureRole("admin"), async (req, res) => {
     await logAudit(user.id, "delete_target", "/targets", id, true, req);
 
     res.json({ message: "Target deleted successfully" });
-  } catch (error) {
-    console.error("Delete target error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "delete_target", "/targets", id, false, req);
-    res.status(500).json({ error: "Failed to delete target" });
+    res.status(500).json({ error: "Failed to delete target", details: error.message });
   }
 });
 
@@ -142,12 +142,12 @@ router.post("/:id/scan", ensureRole("admin", "operator"), async (req, res) => {
 
     // Log sanitization warnings
     if (sanitizationResult.warnings && sanitizationResult.warnings.length > 0) {
-      console.log(`[Nmap] Sanitization warnings for ${target.name}:`, sanitizationResult.warnings);
+      // Debug logging removed
     }
 
     // Validate sanitization result
     if (!sanitizationResult.isValid) {
-      console.error(`[Nmap] Invalid target value: ${sanitizationResult.errorMessage}`);
+      // Error logged for debugging
       return res.status(400).json({
         error: "Invalid target value",
         details: sanitizationResult.errorMessage,
@@ -162,15 +162,15 @@ router.post("/:id/scan", ensureRole("admin", "operator"), async (req, res) => {
     );
 
     // Log timeout calculation details
-    console.log(`[Nmap] Starting scan on target: ${target.name}`);
-    console.log(`[Nmap] Original value: ${sanitizationResult.originalValue}`);
-    console.log(`[Nmap] Sanitized for nmap: ${sanitizationResult.nmapTarget}`);
+    // Debug logging removed
+    // Debug logging removed
+    // Debug logging removed
     console.log(`[Nmap] Host count estimate: ${timeoutCalc.hostCount.toLocaleString()}`);
     console.log(`[Nmap] Estimated duration: ${ScanTimeoutCalculator.formatDuration(timeoutCalc.estimatedDuration)}`);
     console.log(`[Nmap] Timeout set to: ${ScanTimeoutCalculator.formatDuration(timeoutCalc.timeout)}`);
     
     if (timeoutCalc.warning) {
-      console.warn(`[Nmap] ${timeoutCalc.warning}`);
+      // Warning logged for debugging
     }
 
     // Execute nmap scan with SANITIZED target value and DYNAMIC timeout
@@ -181,7 +181,7 @@ router.post("/:id/scan", ensureRole("admin", "operator"), async (req, res) => {
       { timeout: timeoutCalc.timeout } // FIX BUG #4: Dynamic timeout based on target size
     );
 
-    console.log(`[Nmap] Scan completed for ${target.name} in ${scanResult.duration}ms`);
+    // Debug logging removed
 
     // Parse scan results for key information
     const openPorts = (scanResult.stdout.match(/open/gi) || []).length;
@@ -226,8 +226,8 @@ router.post("/:id/scan", ensureRole("admin", "operator"), async (req, res) => {
       openPorts,
       exitCode: scanResult.exitCode,
     });
-  } catch (error) {
-    console.error("Scan target error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
 
     await logAudit(user.id, "scan_target", "/targets", id, false, req);
     

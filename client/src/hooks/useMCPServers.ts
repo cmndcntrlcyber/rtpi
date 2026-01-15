@@ -32,7 +32,7 @@ export function useMCPServers() {
       setServers(response.servers || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch MCP servers");
-      console.error("Error fetching MCP servers:", err);
+      // Error handled by component
     } finally {
       setLoading(false);
     }

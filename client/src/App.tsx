@@ -97,16 +97,37 @@ function AppContent() {
 
   // Handle unauthorized events (session expired)
   useEffect(() => {
+    // Track if logout is in progress to prevent multiple calls
+    let isLoggingOut = false;
+
     const handleUnauthorized = () => {
+      // Guard: don't trigger logout if already in progress
+      if (isLoggingOut) {
+        console.log("Logout already in progress, skipping duplicate logout");
+        return;
+      }
+
+      isLoggingOut = true;
+
       toast.error("Session Expired", {
         description: "Your login session has expired. Please log in again.",
         duration: 5000,
       });
-      logout();
+
+      // Execute logout and reset guard after completion
+      logout().finally(() => {
+        // Reset flag after a short delay to prevent rapid re-triggers
+        setTimeout(() => {
+          isLoggingOut = false;
+        }, 1000);
+      });
     };
 
     window.addEventListener("auth:unauthorized", handleUnauthorized);
-    return () => window.removeEventListener("auth:unauthorized", handleUnauthorized);
+    return () => {
+      window.removeEventListener("auth:unauthorized", handleUnauthorized);
+      isLoggingOut = false; // Reset on cleanup
+    };
   }, [logout]);
 
   if (loading) {

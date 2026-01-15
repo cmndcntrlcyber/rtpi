@@ -83,7 +83,7 @@ export default function ExecuteTaskDialog({
         setModules(data);
       }
     } catch (error) {
-      console.error("Failed to fetch modules:", error);
+      // Error already shown via toast
     } finally {
       setFetchingModules(false);
     }
@@ -144,7 +144,7 @@ export default function ExecuteTaskDialog({
       });
       setShellCommand("");
     } catch (error: any) {
-      console.error("Failed to execute shell command:", error);
+      // Error already shown via toast
       setTaskResult({
         id: "",
         status: "error",
@@ -191,7 +191,7 @@ export default function ExecuteTaskDialog({
       setSelectedModule("");
       setFormData({});
     } catch (error: any) {
-      console.error("Failed to execute module:", error);
+      // Error already shown via toast
       setTaskResult({
         id: "",
         status: "error",

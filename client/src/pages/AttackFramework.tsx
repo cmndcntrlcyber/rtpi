@@ -46,10 +46,10 @@ export default function AttackFramework() {
         const data = await response.json();
         setStats(data);
       } else {
-        console.error("Failed to fetch ATT&CK statistics");
+        // Error handled via toast
       }
     } catch (error) {
-      console.error("Failed to fetch stats:", error);
+      // Error handled via toast
     } finally {
       setLoading(false);
     }

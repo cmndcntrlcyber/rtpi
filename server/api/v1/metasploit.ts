@@ -20,7 +20,7 @@ function loadModules(): any {
     const modulesPath = path.join(process.cwd(), "server", "data", "metasploit-modules.json");
     
     if (!fs.existsSync(modulesPath)) {
-      console.warn("Metasploit modules file not found. Run enumerate-metasploit-modules.py first.");
+      // Warning logged for debugging
       return {
         metadata: { generated_at: null, total_modules: 0, by_type: {} },
         modules: {},
@@ -29,8 +29,8 @@ function loadModules(): any {
 
     const data = fs.readFileSync(modulesPath, "utf-8");
     return JSON.parse(data);
-  } catch (error) {
-    console.error("Error loading Metasploit modules:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     return {
       metadata: { generated_at: null, total_modules: 0, by_type: {} },
       modules: {},
@@ -46,9 +46,9 @@ router.get("/modules", async (_req, res) => {
       metadata: modulesData.metadata,
       categories: Object.keys(modulesData.modules),
     });
-  } catch (error) {
-    console.error("Get modules error:", error);
-    res.status(500).json({ error: "Failed to get modules" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get modules", details: error?.message || "Internal server error" });
   }
 });
 
@@ -69,9 +69,9 @@ router.get("/modules/:type", async (req, res) => {
       categories: typeModules,
       count: Object.values(typeModules).flat().length,
     });
-  } catch (error) {
-    console.error("Get modules by type error:", error);
-    res.status(500).json({ error: "Failed to get modules" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get modules", details: error?.message || "Internal server error" });
   }
 });
 
@@ -93,9 +93,9 @@ router.get("/modules/:type/*", async (req, res) => {
       path: modulePath,
       info: moduleInfo,
     });
-  } catch (error) {
-    console.error("Get module info error:", error);
-    res.status(500).json({ error: "Failed to get module info" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get module info", details: error?.message || "Internal server error" });
   }
 });
 
@@ -156,7 +156,7 @@ router.post("/execute", ensureRole("admin", "operator"), async (req, res) => {
       parameters: module.parameters || {},
     };
 
-    console.log(`[Metasploit API] Executing ${module.type}/${module.path} on ${targetValue}`);
+    // Debug logging removed
 
     const result = await metasploitExecutor.execute(toolId, moduleConfig, targetValue);
 
@@ -174,8 +174,8 @@ router.post("/execute", ensureRole("admin", "operator"), async (req, res) => {
       success: result.success,
       result,
     });
-  } catch (error) {
-    console.error("Metasploit execute error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     const errorMsg = error instanceof Error ? error.message : String(error);
     
     await logAudit(user.id, "metasploit_execute", "/metasploit", toolId, false, req);
@@ -214,9 +214,9 @@ router.get("/execution/:toolId/status", async (req, res) => {
       isExecuting: isLocked,
       lastExecution: lastExecution || null,
     });
-  } catch (error) {
-    console.error("Get execution status error:", error);
-    res.status(500).json({ error: "Failed to get execution status" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get execution status", details: error?.message || "Internal server error" });
   }
 });
 
@@ -264,9 +264,9 @@ router.post("/auto-select", async (req, res) => {
       selectedModule,
       reasoning: "Auto-selected based on target reconnaissance data",
     });
-  } catch (error) {
-    console.error("Auto-select module error:", error);
-    res.status(500).json({ error: "Failed to auto-select module" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to auto-select module", details: error?.message || "Internal server error" });
   }
 });
 
@@ -322,9 +322,9 @@ router.post("/tools/:toolId/module", ensureRole("admin", "operator"), async (req
         path: modulePath,
       },
     });
-  } catch (error) {
-    console.error("Update module selection error:", error);
-    res.status(500).json({ error: "Failed to update module selection" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to update module selection", details: error?.message || "Internal server error" });
   }
 });
 

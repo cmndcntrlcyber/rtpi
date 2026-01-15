@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Plus, CheckSquare } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import OperationList from "@/components/operations/OperationList";
 import OperationForm from "@/components/operations/OperationForm";
@@ -30,32 +31,23 @@ export default function Operations() {
 
   const handleCreateOperation = async (data: any) => {
     try {
-      console.log("Saving operation:", data);
-      
       if (editingOperation) {
-        console.log("Updating operation:", editingOperation.id);
         await update(editingOperation.id, data);
+        toast.success("Operation updated successfully");
         setEditingOperation(null);
       } else {
-        console.log("Creating new operation");
-        const result = await create(data);
-        console.log("Operation created:", result);
+        await create(data);
+        toast.success("Operation created successfully");
       }
-      
-      console.log("Refetching operations list...");
-      
-      // Add small delay to ensure database has committed
+
+      // Small delay to ensure database consistency
       await new Promise(resolve => setTimeout(resolve, 200));
-      
+
       await refetch();
-      
-      console.log("Operations refetched successfully");
-      console.log("Current operations count:", operations.length);
-      
+
       // Don't close form here - let the form handle its own closing
     } catch (err: any) {
-      console.error("Failed to save operation:", err);
-      alert(`Failed to save operation: ${err.message || "Unknown error"}`);
+      toast.error(`Failed to save operation: ${err.message || "Unknown error"}`);
       throw err; // Re-throw so form can show error
     }
   };
@@ -69,9 +61,9 @@ export default function Operations() {
     try {
       await deleteOp(id);
       await refetch();
-    } catch (err) {
-      console.error("Failed to delete operation:", err);
-      alert("Failed to delete operation");
+      toast.success("Operation deleted successfully");
+    } catch (err: any) {
+      toast.error(`Failed to delete operation: ${err.message || "Unknown error"}`);
     }
   };
 
@@ -105,7 +97,6 @@ export default function Operations() {
 
       setOperationsWithWorkflows(enriched);
     } catch (error) {
-      console.error("Failed to fetch workflows for operations:", error);
       // Fallback to operations without workflow data
       setOperationsWithWorkflows(operations);
     }
@@ -118,8 +109,9 @@ export default function Operations() {
       await refetch();
       // Re-enrich with workflows after status change
       await enrichOperationsWithWorkflows();
-    } catch (err) {
-      console.error("Failed to update operation status:", err);
+      toast.success("Operation status updated successfully");
+    } catch (err: any) {
+      toast.error(`Failed to update operation status: ${err.message || "Unknown error"}`);
       throw err; // Re-throw for component error handling
     }
   };
@@ -144,7 +136,7 @@ export default function Operations() {
 
   const handleSelectOperation = (operation: any) => {
     // TODO: Navigate to operation details or open details view
-    console.log("Selected operation:", operation);
+    // Operation selection handler - currently not implemented
   };
 
   // Bulk selection handlers
@@ -180,9 +172,9 @@ export default function Operations() {
       await refetch();
       await enrichOperationsWithWorkflows();
       handleClearSelection();
-    } catch (error) {
-      console.error("Failed to update statuses:", error);
-      alert("Failed to update statuses");
+      toast.success(`Successfully updated ${selectedIds.size} operation(s)`);
+    } catch (error: any) {
+      toast.error(`Failed to update statuses: ${error.message || "Unknown error"}`);
     } finally {
       setBulkActionLoading(false);
     }
@@ -196,13 +188,13 @@ export default function Operations() {
         await Promise.all(
           Array.from(selectedIds).map((id) => deleteOp(id))
         );
+        toast.success(`Successfully deleted ${selectedIds.size} operation(s)`);
       }
       await refetch();
       handleClearSelection();
       setConfirmDialogOpen(false);
-    } catch (error) {
-      console.error("Bulk operation failed:", error);
-      alert("Bulk operation failed");
+    } catch (error: any) {
+      toast.error(`Bulk operation failed: ${error.message || "Unknown error"}`);
     } finally {
       setBulkActionLoading(false);
     }

@@ -74,10 +74,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
-      await api.post("/auth/logout");
+      // Use plain fetch() instead of api.post() to avoid triggering
+      // the 401 handler if session is already expired
+      const response = await fetch("/api/v1/auth/logout", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      // Log response for debugging (non-blocking)
+      if (!response.ok) {
+        console.warn("Logout request returned non-OK status:", response.status);
+      }
     } catch (error) {
+      // Non-fatal: session might already be expired or network issue
       console.error("Logout error:", error);
     } finally {
+      // Always clear local user state, regardless of API call result
       setUser(null);
     }
   };

@@ -1,4 +1,6 @@
 import { Router } from "express";
+import { promises as fs } from "fs";
+import path from "path";
 import { db } from "../../db";
 import {
   rustNexusImplants,
@@ -6,11 +8,17 @@ import {
   rustNexusTaskResults,
   rustNexusCertificates,
   rustNexusTelemetry,
+  agentBuilds,
+  agentBundles,
+  agentDownloadTokens,
 } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { rustNexusController } from "../../services/rust-nexus-controller";
 import { taskDistributor } from "../../services/rust-nexus-task-distributor";
 import { distributedWorkflowOrchestrator, KillSwitchReason } from "../../services/distributed-workflow-orchestrator";
+import { agentBuildService, AVAILABLE_FEATURES } from "../../services/agent-build-service";
+import { agentBundleGenerator } from "../../services/agent-bundle-generator";
+import { agentTokenService } from "../../services/agent-token-service";
 
 const router = Router();
 
@@ -44,9 +52,9 @@ router.get("/implants", async (req, res) => {
     });
 
     res.json(implants);
-  } catch (error) {
-    console.error("Failed to list implants:", error);
-    res.status(500).json({ error: "Failed to list implants" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list implants", details: error?.message || "Internal server error" });
   }
 });
 
@@ -84,9 +92,9 @@ router.get("/implants/:id", async (req, res) => {
       taskStats: taskStats[0],
       latestTelemetry,
     });
-  } catch (error) {
-    console.error("Failed to get implant:", error);
-    res.status(500).json({ error: "Failed to get implant" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get implant", details: error?.message || "Internal server error" });
   }
 });
 
@@ -115,9 +123,9 @@ router.patch("/implants/:id", async (req, res) => {
     }
 
     res.json(updated);
-  } catch (error) {
-    console.error("Failed to update implant:", error);
-    res.status(500).json({ error: "Failed to update implant" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to update implant", details: error?.message || "Internal server error" });
   }
 });
 
@@ -126,9 +134,9 @@ router.delete("/implants/:id", async (req, res) => {
   try {
     await rustNexusController.terminateImplant(req.params.id);
     res.json({ success: true, message: "Implant terminated" });
-  } catch (error) {
-    console.error("Failed to terminate implant:", error);
-    res.status(500).json({ error: "Failed to terminate implant" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to terminate implant", details: error?.message || "Internal server error" });
   }
 });
 
@@ -160,9 +168,9 @@ router.get("/implants/:id/status", async (req, res) => {
       lastHeartbeat: implant.lastHeartbeat,
       connectionQuality: implant.connectionQuality,
     });
-  } catch (error) {
-    console.error("Failed to get implant status:", error);
-    res.status(500).json({ error: "Failed to get implant status" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get implant status", details: error?.message || "Internal server error" });
   }
 });
 
@@ -188,9 +196,9 @@ router.get("/implants/:implantId/tasks", async (req, res) => {
 
     const tasks = await query;
     res.json(tasks);
-  } catch (error) {
-    console.error("Failed to list tasks:", error);
-    res.status(500).json({ error: "Failed to list tasks" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list tasks", details: error?.message || "Internal server error" });
   }
 });
 
@@ -232,9 +240,9 @@ router.post("/implants/:implantId/tasks", async (req, res) => {
       .returning();
 
     res.status(201).json(task);
-  } catch (error) {
-    console.error("Failed to create task:", error);
-    res.status(500).json({ error: "Failed to create task" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to create task", details: error?.message || "Internal server error" });
   }
 });
 
@@ -259,9 +267,9 @@ router.get("/tasks/:id", async (req, res) => {
       ...task,
       results,
     });
-  } catch (error) {
-    console.error("Failed to get task:", error);
-    res.status(500).json({ error: "Failed to get task" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get task", details: error?.message || "Internal server error" });
   }
 });
 
@@ -282,9 +290,9 @@ router.delete("/tasks/:id", async (req, res) => {
     }
 
     res.json(updated);
-  } catch (error) {
-    console.error("Failed to cancel task:", error);
-    res.status(500).json({ error: "Failed to cancel task" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to cancel task", details: error?.message || "Internal server error" });
   }
 });
 
@@ -298,9 +306,9 @@ router.post("/tasks/:id/cancel-cascade", async (req, res) => {
       alreadyCompleted: result.alreadyCompleted,
       totalCancelled: result.cancelled.length,
     });
-  } catch (error) {
-    console.error("Failed to cascade cancel task:", error);
-    res.status(500).json({ error: "Failed to cascade cancel task" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to cascade cancel task", details: error?.message || "Internal server error" });
   }
 });
 
@@ -316,9 +324,9 @@ router.get("/tasks/queue/prioritized", async (req, res) => {
     });
 
     res.json(queue);
-  } catch (error) {
-    console.error("Failed to get prioritized queue:", error);
-    res.status(500).json({ error: "Failed to get prioritized queue" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get prioritized queue", details: error?.message || "Internal server error" });
   }
 });
 
@@ -327,9 +335,9 @@ router.get("/tasks/queue/stats", async (req, res) => {
   try {
     const stats = await taskDistributor.getQueueStats();
     res.json(stats);
-  } catch (error) {
-    console.error("Failed to get queue stats:", error);
-    res.status(500).json({ error: "Failed to get queue stats" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get queue stats", details: error?.message || "Internal server error" });
   }
 });
 
@@ -347,9 +355,9 @@ router.post("/tasks/assign", async (req, res) => {
       assignments,
       totalAssigned: assignments.length,
     });
-  } catch (error) {
-    console.error("Failed to assign tasks:", error);
-    res.status(500).json({ error: "Failed to assign tasks" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to assign tasks", details: error?.message || "Internal server error" });
   }
 });
 
@@ -361,9 +369,9 @@ router.post("/tasks/retry-failed", async (req, res) => {
       success: true,
       retriedCount,
     });
-  } catch (error) {
-    console.error("Failed to retry tasks:", error);
-    res.status(500).json({ error: "Failed to retry tasks" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to retry tasks", details: error?.message || "Internal server error" });
   }
 });
 
@@ -380,9 +388,9 @@ router.get("/tasks/:taskId/results", async (req, res) => {
     });
 
     res.json(results);
-  } catch (error) {
-    console.error("Failed to get task results:", error);
-    res.status(500).json({ error: "Failed to get task results" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get task results", details: error?.message || "Internal server error" });
   }
 });
 
@@ -411,9 +419,9 @@ router.get("/implants/:implantId/telemetry", async (req, res) => {
     });
 
     res.json(telemetry);
-  } catch (error) {
-    console.error("Failed to get telemetry:", error);
-    res.status(500).json({ error: "Failed to get telemetry" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get telemetry", details: error?.message || "Internal server error" });
   }
 });
 
@@ -443,9 +451,9 @@ router.get("/implants/:implantId/telemetry/stats", async (req, res) => {
       );
 
     res.json(stats[0]);
-  } catch (error) {
-    console.error("Failed to get telemetry stats:", error);
-    res.status(500).json({ error: "Failed to get telemetry stats" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get telemetry stats", details: error?.message || "Internal server error" });
   }
 });
 
@@ -478,9 +486,9 @@ router.get("/certificates", async (req, res) => {
     }));
 
     res.json(sanitized);
-  } catch (error) {
-    console.error("Failed to list certificates:", error);
-    res.status(500).json({ error: "Failed to list certificates" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list certificates", details: error?.message || "Internal server error" });
   }
 });
 
@@ -497,9 +505,9 @@ router.get("/certificates/:id", async (req, res) => {
 
     // Include full certificate for download
     res.json(certificate);
-  } catch (error) {
-    console.error("Failed to get certificate:", error);
-    res.status(500).json({ error: "Failed to get certificate" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get certificate", details: error?.message || "Internal server error" });
   }
 });
 
@@ -530,9 +538,9 @@ router.post("/certificates/:id/revoke", async (req, res) => {
     }
 
     res.json(updated);
-  } catch (error) {
-    console.error("Failed to revoke certificate:", error);
-    res.status(500).json({ error: "Failed to revoke certificate" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to revoke certificate", details: error?.message || "Internal server error" });
   }
 });
 
@@ -551,9 +559,9 @@ router.get("/tasks/aggregations", async (req, res) => {
     });
 
     res.json(aggregations);
-  } catch (error) {
-    console.error("Failed to get task aggregations:", error);
-    res.status(500).json({ error: "Failed to get task aggregations" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get task aggregations", details: error?.message || "Internal server error" });
   }
 });
 
@@ -614,9 +622,9 @@ router.get("/stats", async (req, res) => {
         authenticated: activeConnections.filter((c) => c.implantId).length,
       },
     });
-  } catch (error) {
-    console.error("Failed to get stats:", error);
-    res.status(500).json({ error: "Failed to get stats" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get stats", details: error?.message || "Internal server error" });
   }
 });
 
@@ -625,9 +633,9 @@ router.get("/connections", async (_req, res) => {
   try {
     const connections = rustNexusController.getConnectedImplants();
     res.json(connections);
-  } catch (error) {
-    console.error("Failed to get connections:", error);
-    res.status(500).json({ error: "Failed to get connections" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get connections", details: error?.message || "Internal server error" });
   }
 });
 
@@ -665,9 +673,9 @@ router.post("/implants/match", async (req, res) => {
       score: match.score,
       matchedCapabilities: match.matchedCapabilities,
     });
-  } catch (error) {
-    console.error("Failed to match implant:", error);
-    res.status(500).json({ error: "Failed to match implant" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to match implant", details: error?.message || "Internal server error" });
   }
 });
 
@@ -697,9 +705,9 @@ router.post("/workflows/distributed", async (req, res) => {
     );
 
     res.json(result);
-  } catch (error) {
-    console.error("Failed to execute distributed workflow:", error);
-    res.status(500).json({ error: "Failed to execute distributed workflow" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to execute distributed workflow", details: error?.message || "Internal server error" });
   }
 });
 
@@ -726,9 +734,9 @@ router.post("/workflows/:workflow_id/tasks/:task_id/execute", async (req, res) =
     );
 
     res.json(result);
-  } catch (error) {
-    console.error("Failed to execute task on implant:", error);
-    res.status(500).json({ error: "Failed to execute task on implant" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to execute task on implant", details: error?.message || "Internal server error" });
   }
 });
 
@@ -764,9 +772,9 @@ router.post("/implants/:implant_id/exfiltrate", async (req, res) => {
     );
 
     res.json(result);
-  } catch (error) {
-    console.error("Failed to exfiltrate data:", error);
-    res.status(500).json({ error: "Failed to exfiltrate data" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to exfiltrate data", details: error?.message || "Internal server error" });
   }
 });
 
@@ -787,9 +795,302 @@ router.post("/workflows/:workflow_id/kill-switch", async (req, res) => {
       message: `Kill switch activated for workflow ${workflow_id}`,
       reason,
     });
-  } catch (error) {
-    console.error("Failed to activate kill switch:", error);
-    res.status(500).json({ error: "Failed to activate kill switch" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to activate kill switch", details: error?.message || "Internal server error" });
+  }
+});
+
+// ============================================================================
+// AGENT DEPLOYMENT (Phase 5)
+// Enhancement #04 - Agentic Implants Deployment
+// ============================================================================
+
+// Get available build features
+router.get("/agents/features", async (req, res) => {
+  try {
+    res.json({
+      features: AVAILABLE_FEATURES,
+    });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get features", details: error?.message || "Internal server error" });
+  }
+});
+
+// Generate a new agent bundle
+router.post("/agents/generate", async (req, res) => {
+  try {
+    const {
+      name,
+      platform,
+      architecture = "x64",
+      features = [],
+      implantType = "general",
+      controllerUrl,
+      autonomyLevel = 1,
+      heartbeatInterval = 30,
+      expiresAt,
+    } = req.body;
+
+    // Validation
+    if (!name || typeof name !== "string") {
+      return res.status(400).json({ error: "Name is required" });
+    }
+
+    if (!platform || !["windows", "linux"].includes(platform)) {
+      return res.status(400).json({ error: "Platform must be 'windows' or 'linux'" });
+    }
+
+    if (!controllerUrl || typeof controllerUrl !== "string") {
+      return res.status(400).json({ error: "Controller URL is required" });
+    }
+
+    // Get user ID from session
+    const userId = (req as any).session?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // Generate bundle
+    const bundle = await agentBundleGenerator.generateBundle({
+      name,
+      platform,
+      architecture,
+      features,
+      implantType,
+      controllerUrl,
+      userId,
+      autonomyLevel,
+      heartbeatInterval,
+      expiresAt: expiresAt ? new Date(expiresAt) : undefined,
+    });
+
+    res.json({
+      success: true,
+      bundle: {
+        id: bundle.bundleId,
+        downloadUrl: bundle.downloadUrl,
+        fileSize: bundle.fileSize,
+        fileHash: bundle.fileHash,
+        certificateSerial: bundle.certificateSerial,
+        certificateFingerprint: bundle.certificateFingerprint,
+      },
+    });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to generate agent bundle", details: error?.message || "Internal server error" });
+  }
+});
+
+// List all agent bundles
+router.get("/agents/bundles", async (req, res) => {
+  try {
+    const { platform, isActive, limit = 50 } = req.query;
+
+    const bundles = await db.query.agentBundles.findMany({
+      orderBy: [desc(agentBundles.createdAt)],
+      limit: Number(limit),
+    });
+
+    res.json(bundles);
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list bundles", details: error?.message || "Internal server error" });
+  }
+});
+
+// Get bundle by ID
+router.get("/agents/bundles/:id", async (req, res) => {
+  try {
+    const bundle = await agentBundleGenerator.getBundle(req.params.id);
+
+    if (!bundle) {
+      return res.status(404).json({ error: "Bundle not found" });
+    }
+
+    res.json(bundle);
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get bundle", details: error?.message || "Internal server error" });
+  }
+});
+
+// Download bundle (authenticated)
+router.get("/agents/bundles/:id/download", async (req, res) => {
+  try {
+    const bundle = await agentBundleGenerator.getBundle(req.params.id);
+
+    if (!bundle) {
+      return res.status(404).json({ error: "Bundle not found" });
+    }
+
+    if (!bundle.isActive) {
+      return res.status(410).json({ error: "Bundle is no longer available" });
+    }
+
+    // Check file exists
+    try {
+      await fs.access(bundle.filePath);
+    } catch {
+      return res.status(404).json({ error: "Bundle file not found" });
+    }
+
+    // Increment download count
+    await agentBundleGenerator.incrementDownloadCount(bundle.id);
+
+    // Set headers and stream file
+    const fileName = `${bundle.name}-${bundle.platform}-${bundle.architecture}.zip`;
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    res.setHeader("Content-Length", bundle.fileSize);
+
+    const fileContent = await fs.readFile(bundle.filePath);
+    res.send(fileContent);
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to download bundle", details: error?.message || "Internal server error" });
+  }
+});
+
+// Deactivate/delete bundle
+router.delete("/agents/bundles/:id", async (req, res) => {
+  try {
+    const bundle = await agentBundleGenerator.getBundle(req.params.id);
+
+    if (!bundle) {
+      return res.status(404).json({ error: "Bundle not found" });
+    }
+
+    await agentBundleGenerator.deactivateBundle(req.params.id);
+
+    res.json({ success: true, message: "Bundle deactivated" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to deactivate bundle", details: error?.message || "Internal server error" });
+  }
+});
+
+// Generate shareable download token
+router.post("/agents/bundles/:bundleId/generate-token", async (req, res) => {
+  try {
+    const { bundleId } = req.params;
+    const {
+      maxDownloads = 1,
+      expiresInHours = 24,
+      description,
+      allowedIpRanges,
+    } = req.body;
+
+    // Get user ID from session
+    const userId = (req as any).session?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const token = await agentTokenService.generateToken({
+      bundleId,
+      userId,
+      maxDownloads,
+      expiresInHours,
+      description,
+      allowedIpRanges,
+    });
+
+    res.json({
+      success: true,
+      token: {
+        id: token.tokenId,
+        downloadUrl: token.downloadUrl,
+        expiresAt: token.expiresAt,
+        maxDownloads: token.maxDownloads,
+      },
+    });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to generate token", details: error?.message || "Internal server error" });
+  }
+});
+
+// List tokens for a bundle
+router.get("/agents/bundles/:bundleId/tokens", async (req, res) => {
+  try {
+    const tokens = await agentTokenService.listTokensForBundle(req.params.bundleId);
+    res.json(tokens);
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list tokens", details: error?.message || "Internal server error" });
+  }
+});
+
+// List all active tokens
+router.get("/agents/tokens", async (req, res) => {
+  try {
+    const { limit = 50 } = req.query;
+    const tokens = await agentTokenService.listActiveTokens(Number(limit));
+    res.json(tokens);
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list tokens", details: error?.message || "Internal server error" });
+  }
+});
+
+// Revoke a token
+router.delete("/agents/tokens/:id", async (req, res) => {
+  try {
+    const userId = (req as any).session?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    await agentTokenService.revokeToken(req.params.id, userId);
+    res.json({ success: true, message: "Token revoked" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to revoke token", details: error?.message || "Internal server error" });
+  }
+});
+
+// List agent builds
+router.get("/agents/builds", async (req, res) => {
+  try {
+    const { limit = 20, status, platform } = req.query;
+    const builds = await agentBuildService.listBuilds({
+      limit: Number(limit),
+      platform: platform as any,
+      status: status as string,
+    });
+    res.json(builds);
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list builds", details: error?.message || "Internal server error" });
+  }
+});
+
+// Get build status
+router.get("/agents/builds/:id", async (req, res) => {
+  try {
+    const build = await agentBuildService.getBuildStatus(req.params.id);
+
+    if (!build) {
+      return res.status(404).json({ error: "Build not found" });
+    }
+
+    res.json(build);
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get build status", details: error?.message || "Internal server error" });
+  }
+});
+
+// Cancel a build
+router.delete("/agents/builds/:id", async (req, res) => {
+  try {
+    await agentBuildService.cancelBuild(req.params.id);
+    res.json({ success: true, message: "Build cancelled" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to cancel build", details: error?.message || "Internal server error" });
   }
 });
 

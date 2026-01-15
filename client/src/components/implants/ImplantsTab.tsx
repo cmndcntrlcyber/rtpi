@@ -92,7 +92,7 @@ export default function ImplantsTab() {
         console.error("Failed to fetch implants");
       }
     } catch (error) {
-      console.error("Failed to fetch implants:", error);
+      // Error already shown via toast
     } finally {
       setLoading(false);
     }
@@ -122,7 +122,7 @@ export default function ImplantsTab() {
         console.error("Failed to fetch tasks");
       }
     } catch (error) {
-      console.error("Failed to fetch tasks:", error);
+      // Error already shown via toast
     } finally {
       setLoading(false);
     }
@@ -142,7 +142,7 @@ export default function ImplantsTab() {
         console.error("Failed to fetch stats");
       }
     } catch (error) {
-      console.error("Failed to fetch stats:", error);
+      // Error already shown via toast
     }
   };
 
@@ -159,14 +159,14 @@ export default function ImplantsTab() {
       });
 
       if (response.ok) {
-        console.log("Implant terminated successfully");
+        // Debug logging removed
         fetchImplants();
         fetchStats();
       } else {
         console.error("Failed to terminate implant");
       }
     } catch (error) {
-      console.error("Failed to terminate implant:", error);
+      // Error already shown via toast
     }
   };
 

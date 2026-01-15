@@ -104,7 +104,7 @@ export default function ImplantsTable({
 
   const handleUpdateConfig = (implant: RustNexusImplant) => {
     // TODO: Open configuration dialog
-    console.log("Update config for", implant.implantName);
+    // Debug logging removed
   };
 
   return (

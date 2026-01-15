@@ -68,15 +68,15 @@ export default function Infrastructure() {
   ];
 
   const handleStartContainer = (container: any) => {
-    console.log("Start container:", container);
+    // Debug logging removed
   };
 
   const handleStopContainer = (container: any) => {
-    console.log("Stop container:", container);
+    // Debug logging removed
   };
 
   const handleRestartContainer = (container: any) => {
-    console.log("Restart container:", container);
+    // Debug logging removed
   };
 
   // Stats

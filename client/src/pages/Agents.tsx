@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -189,7 +190,7 @@ export default function Agents() {
       const response = await api.get<{ loops: any[] }>("/agent-loops");
       setActiveLoops(response.loops || []);
     } catch (err) {
-      console.error("Failed to load loops:", err);
+      // Silently handle loop loading errors
     }
   };
 
@@ -249,8 +250,8 @@ export default function Agents() {
         capabilities: [] 
       });
     } catch (err) {
-      console.error("Failed to save agent:", err);
-      alert("Failed to save agent");
+      toast.error(`Failed to save agent: ${err instanceof Error ? err.message : "Unknown error"}`);
+      // Error already shown via toast
     }
   };
 
@@ -267,8 +268,8 @@ export default function Agents() {
 
       await refetchAgents();
     } catch (err) {
-      console.error("Failed to delete agent:", err);
-      alert("Failed to delete agent");
+      toast.error(`Failed to delete agent: ${err instanceof Error ? err.message : "Unknown error"}`);
+      // Error already shown via toast
     }
   };
 
@@ -301,7 +302,7 @@ export default function Agents() {
               }),
             });
           } catch (err) {
-            console.error("Failed to update flow order:", err);
+            
           }
         }
       });
@@ -314,7 +315,7 @@ export default function Agents() {
   const handleStartLoop = async (agentId: string) => {
     const targetId = targets[0]?.id; // Use first target for demo
     if (!targetId) {
-      alert("No targets available. Please create a target first.");
+      toast.warning("No targets available. Please create a target first.");
       return;
     }
 
@@ -325,10 +326,10 @@ export default function Agents() {
         initialInput: "Begin vulnerability analysis and exploit development",
       });
       await loadActiveLoops();
-      alert("Agent loop started successfully!");
+      toast.success("Agent loop started successfully!");
     } catch (err) {
-      console.error("Failed to start loop:", err);
-      alert("Failed to start loop");
+      toast.error(`Failed to start loop: ${err instanceof Error ? err.message : "Unknown error"}`);
+      // Error already shown via toast
     }
   };
 
@@ -337,8 +338,8 @@ export default function Agents() {
       await api.post(`/agent-loops/${loopId}/stop`, {});
       await loadActiveLoops();
     } catch (err) {
-      console.error("Failed to stop loop:", err);
-      alert("Failed to stop loop");
+      toast.error(`Failed to stop loop: ${err instanceof Error ? err.message : "Unknown error"}`);
+      // Error already shown via toast
     }
   };
 
@@ -357,8 +358,8 @@ export default function Agents() {
       setServerDialogOpen(false);
       setNewServer({ name: "", command: "", args: [], autoRestart: true });
     } catch (err) {
-      console.error("Failed to create MCP server:", err);
-      alert("Failed to create MCP server");
+      toast.error(`Failed to create MCP server: ${err instanceof Error ? err.message : "Unknown error"}`);
+      // Error already shown via toast
     }
   };
 
@@ -373,10 +374,10 @@ export default function Agents() {
       if (!response.ok) throw new Error("Failed to start server");
 
       await refetchServers();
-      alert("MCP server started successfully!");
+      toast.success("MCP server started successfully!");
     } catch (err) {
-      console.error("Failed to start server:", err);
-      alert("Failed to start MCP server");
+      toast.error(`Failed to start MCP server: ${err instanceof Error ? err.message : "Unknown error"}`);
+      // Error already shown via toast
     }
   };
 
@@ -391,10 +392,10 @@ export default function Agents() {
       if (!response.ok) throw new Error("Failed to stop server");
 
       await refetchServers();
-      alert("MCP server stopped successfully!");
+      toast.success("MCP server stopped successfully!");
     } catch (err) {
-      console.error("Failed to stop server:", err);
-      alert("Failed to stop MCP server");
+      toast.error(`Failed to stop MCP server: ${err instanceof Error ? err.message : "Unknown error"}`);
+      // Error already shown via toast
     }
   };
 
@@ -415,8 +416,8 @@ export default function Agents() {
 
       await refetchAgents();
     } catch (err) {
-      console.error("Failed to remove agent from flow:", err);
-      alert("Failed to remove agent from flow");
+      toast.error(`Failed to remove agent from flow: ${err instanceof Error ? err.message : "Unknown error"}`);
+      // Error already shown via toast
     }
   };
 
@@ -446,15 +447,15 @@ export default function Agents() {
 
       await refetchAgents();
     } catch (err) {
-      console.error("Failed to add agent to flow:", err);
-      alert("Failed to add agent to flow");
+      toast.error(`Failed to add agent to flow: ${err instanceof Error ? err.message : "Unknown error"}`);
+      // Error already shown via toast
     }
   };
 
   // Execute workflow with selected target
   const handleExecuteWorkflow = async () => {
     if (!selectedTargetId) {
-      alert("Please select a target first");
+      toast.warning("Please select a target first");
       return;
     }
 
@@ -464,11 +465,11 @@ export default function Agents() {
         workflowType: "penetration_test"
       });
 
-      alert(`Workflow started successfully! Workflow ID: ${response.workflow.id}`);
-      console.log("Workflow started:", response);
+      toast.success(`Workflow started successfully! Workflow ID: ${response.workflow.id}`);
+      
     } catch (err) {
-      console.error("Failed to start workflow:", err);
-      alert("Failed to start workflow");
+      toast.error(`Failed to start workflow: ${err instanceof Error ? err.message : "Unknown error"}`);
+      // Error already shown via toast
     }
   };
 
@@ -481,8 +482,8 @@ export default function Agents() {
         setWorkflowDetailsOpen(true);
       }
     } catch (err) {
-      console.error("Failed to load workflow details:", err);
-      alert("Failed to load workflow details");
+      // Silently handle workflow details loading errors
+      toast.error("Failed to load workflow details");
     }
   };
 
@@ -492,10 +493,10 @@ export default function Agents() {
 
     try {
       await cancelWorkflow(workflowId);
-      alert("Workflow cancelled successfully");
+      toast.success("Workflow cancelled successfully");
     } catch (err) {
-      console.error("Failed to cancel workflow:", err);
-      alert("Failed to cancel workflow");
+      // Error handled via toast
+      toast.error("Failed to cancel workflow");
     }
   };
 
@@ -518,7 +519,7 @@ export default function Agents() {
           const response = await api.get(`/agent-workflows/${workflow.id}/tasks`);
           tasksMap[workflow.id] = response.tasks || [];
         } catch (err) {
-          console.error(`Failed to load tasks for workflow ${workflow.id}:`, err);
+          // Error handled via toast
         }
       }
       

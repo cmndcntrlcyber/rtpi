@@ -50,6 +50,11 @@ export const healthStatusEnum = pgEnum("health_status", ["healthy", "degraded", 
 export const ollamaModelStatusEnum = pgEnum("ollama_model_status", ["available", "downloading", "loading", "loaded", "unloaded", "error"]);
 export const aiProviderEnum = pgEnum("ai_provider", ["ollama", "openai", "anthropic", "llama.cpp"]);
 
+// Agent deployment enums
+export const agentBuildStatusEnum = pgEnum("agent_build_status", ["pending", "building", "completed", "failed", "cancelled"]);
+export const agentPlatformEnum = pgEnum("agent_platform", ["windows", "linux"]);
+export const agentArchitectureEnum = pgEnum("agent_architecture", ["x64", "x86", "arm64"]);
+
 // Empire C2 enums
 export const empireListenerTypeEnum = pgEnum("empire_listener_type", [
   "http",
@@ -1596,4 +1601,107 @@ export const aiEnrichmentLogs = pgTable("ai_enrichment_logs", {
   errorMessage: text("error_message"),
   metadata: json("metadata").default({}),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// ============================================================================
+// AGENT DEPLOYMENT TABLES
+// Enhancement #04 - Agentic Implants Deployment
+// ============================================================================
+
+// Agent builds table - tracks Docker-based compilation jobs
+export const agentBuilds = pgTable("agent_builds", {
+  id: uuid("id").primaryKey().defaultRandom(),
+
+  // Build configuration
+  status: agentBuildStatusEnum("status").notNull().default("pending"),
+  platform: agentPlatformEnum("platform").notNull(),
+  architecture: agentArchitectureEnum("architecture").notNull().default("x64"),
+  features: json("features").default([]), // Cargo feature flags: anti-debug, anti-vm, etc.
+
+  // Build output
+  binaryPath: text("binary_path"),
+  binarySize: integer("binary_size"),
+  binaryHash: text("binary_hash"), // SHA256 hash
+
+  // Build logs and metrics
+  buildLog: text("build_log"),
+  buildDurationMs: integer("build_duration_ms"),
+
+  // Error handling
+  errorMessage: text("error_message"),
+
+  // Metadata
+  metadata: json("metadata").default({}),
+
+  // Audit
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
+
+// Agent bundles table - stores generated agent packages (binary + certs + config)
+export const agentBundles = pgTable("agent_bundles", {
+  id: uuid("id").primaryKey().defaultRandom(),
+
+  // Bundle identification
+  name: text("name").notNull(),
+  platform: agentPlatformEnum("platform").notNull(),
+  architecture: agentArchitectureEnum("architecture").notNull().default("x64"),
+
+  // Associated build
+  buildId: uuid("build_id").references(() => agentBuilds.id, { onDelete: "set null" }),
+
+  // Certificate info
+  certificateId: uuid("certificate_id").references(() => rustNexusCertificates.id, { onDelete: "set null" }),
+  certificateSerial: text("certificate_serial").notNull(),
+  certificateFingerprint: text("certificate_fingerprint").notNull(),
+
+  // Bundle file
+  filePath: text("file_path").notNull(),
+  fileSize: integer("file_size").notNull(),
+  fileHash: text("file_hash").notNull(), // SHA256 hash
+
+  // Configuration
+  controllerUrl: text("controller_url").notNull(),
+  implantType: implantTypeEnum("implant_type").default("general"),
+
+  // Status
+  isActive: boolean("is_active").notNull().default(true),
+  downloadCount: integer("download_count").notNull().default(0),
+
+  // Metadata
+  metadata: json("metadata").default({}),
+
+  // Audit
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at"),
+});
+
+// Agent download tokens table - shareable download links for customers
+export const agentDownloadTokens = pgTable("agent_download_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+
+  // Token identification
+  token: text("token").notNull().unique(),
+  bundleId: uuid("bundle_id").notNull().references(() => agentBundles.id, { onDelete: "cascade" }),
+
+  // Token constraints
+  maxDownloads: integer("max_downloads").notNull().default(1),
+  currentDownloads: integer("current_downloads").notNull().default(0),
+  expiresAt: timestamp("expires_at").notNull(),
+
+  // Access control (optional)
+  allowedIpRanges: json("allowed_ip_ranges").default([]), // CIDR ranges
+
+  // Metadata
+  description: text("description"),
+  metadata: json("metadata").default({}),
+
+  // Audit
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  lastUsedAt: timestamp("last_used_at"),
+  revokedAt: timestamp("revoked_at"),
+  revokedBy: uuid("revoked_by").references(() => users.id),
 });

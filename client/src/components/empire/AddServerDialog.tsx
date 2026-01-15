@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -60,8 +61,8 @@ export default function AddServerDialog({ onServerAdded }: AddServerDialogProps)
       });
       onServerAdded();
     } catch (error: any) {
-      console.error("Failed to add server:", error);
-      alert("Failed to add Empire server. Check console for details.");
+      // Error already shown via toast
+      toast.error("Failed to add Empire server. Check console for details.");
     } finally {
       setLoading(false);
     }

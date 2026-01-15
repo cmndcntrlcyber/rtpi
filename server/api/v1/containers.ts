@@ -15,9 +15,9 @@ router.get("/", async (_req, res) => {
   try {
     const allContainers = await db.select().from(containers);
     res.json({ containers: allContainers });
-  } catch (error) {
-    console.error("List containers error:", error);
-    res.status(500).json({ error: "Failed to list containers" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to list containers", details: error?.message || "Internal server error" });
   }
 });
 
@@ -37,9 +37,9 @@ router.get("/:id", async (req, res) => {
     }
 
     res.json({ container: result[0] });
-  } catch (error) {
-    console.error("Get container error:", error);
-    res.status(500).json({ error: "Failed to get container" });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get container", details: error?.message || "Internal server error" });
   }
 });
 
@@ -56,10 +56,10 @@ router.post("/", ensureRole("admin"), async (req, res) => {
     await logAudit(user.id, "register_container", "/containers", container[0].id, true, req);
 
     res.status(201).json({ container: container[0] });
-  } catch (error) {
-    console.error("Register container error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "register_container", "/containers", null, false, req);
-    res.status(500).json({ error: "Failed to register container" });
+    res.status(500).json({ error: "Failed to register container", details: error?.message || "Internal server error" });
   }
 });
 
@@ -85,10 +85,10 @@ router.put("/:id", ensureRole("admin", "operator"), async (req, res) => {
     await logAudit(user.id, "update_container", "/containers", id, true, req);
 
     res.json({ container: result[0] });
-  } catch (error) {
-    console.error("Update container error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "update_container", "/containers", id, false, req);
-    res.status(500).json({ error: "Failed to update container" });
+    res.status(500).json({ error: "Failed to update container", details: error?.message || "Internal server error" });
   }
 });
 
@@ -103,10 +103,10 @@ router.delete("/:id", ensureRole("admin"), async (req, res) => {
     await logAudit(user.id, "delete_container", "/containers", id, true, req);
 
     res.json({ message: "Container deleted successfully" });
-  } catch (error) {
-    console.error("Delete container error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "delete_container", "/containers", id, false, req);
-    res.status(500).json({ error: "Failed to delete container" });
+    res.status(500).json({ error: "Failed to delete container", details: error?.message || "Internal server error" });
   }
 });
 
@@ -115,8 +115,8 @@ router.get("/rtpi-tools/status", async (_req, res) => {
   try {
     const status = await dockerExecutor.getContainerStatus("rtpi-tools");
     res.json({ status });
-  } catch (error) {
-    console.error("Get rtpi-tools status error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: "Failed to get container status",
       details: error instanceof Error ? error.message : String(error)
@@ -132,8 +132,8 @@ router.post("/rtpi-tools/restart", ensureRole("admin"), async (req, res) => {
     await dockerExecutor.restartContainer("rtpi-tools");
     await logAudit(user.id, "restart_container", "/containers", "rtpi-tools", true, req);
     res.json({ message: "Container restarted successfully" });
-  } catch (error) {
-    console.error("Restart rtpi-tools error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     await logAudit(user.id, "restart_container", "/containers", "rtpi-tools", false, req);
     res.status(500).json({ 
       error: "Failed to restart container",
@@ -149,8 +149,8 @@ router.get("/rtpi-tools/logs", async (req, res) => {
   try {
     const logs = await dockerExecutor.getContainerLogs("rtpi-tools", parseInt(tail as string));
     res.json({ logs });
-  } catch (error) {
-    console.error("Get rtpi-tools logs error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({ 
       error: "Failed to get container logs",
       details: error instanceof Error ? error.message : String(error)
@@ -163,8 +163,8 @@ router.get("/docker/list", async (_req, res) => {
   try {
     const containersList = await dockerExecutor.listContainers();
     res.json({ containers: containersList });
-  } catch (error) {
-    console.error("List Docker containers error:", error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: "Failed to list Docker containers",
       details: error instanceof Error ? error.message : String(error)

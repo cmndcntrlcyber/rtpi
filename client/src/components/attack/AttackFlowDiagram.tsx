@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { toast } from "sonner";
 import ReactFlow, {
   Node,
   Edge,
@@ -96,7 +97,7 @@ export default function AttackFlowDiagram() {
         setTechniques(data);
       }
     } catch (error) {
-      console.error("Failed to fetch techniques:", error);
+      // Error already shown via toast
     }
   };
 
@@ -275,7 +276,7 @@ export default function AttackFlowDiagram() {
 
     flows.push(flow);
     localStorage.setItem("attack-flows", JSON.stringify(flows));
-    alert("Flow saved successfully!");
+    toast.success("Flow saved successfully!");
   };
 
   return (

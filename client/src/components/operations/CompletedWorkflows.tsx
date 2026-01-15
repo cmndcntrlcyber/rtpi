@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -39,7 +40,7 @@ export default function CompletedWorkflows({
       // Load reports for completed workflows
       await loadReportsForWorkflows(filtered);
     } catch (error) {
-      console.error("Failed to load workflows:", error);
+      // Error already shown via toast
     }
   };
 
@@ -100,8 +101,8 @@ export default function CompletedWorkflows({
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (error) {
-      console.error("Failed to download report:", error);
-      alert("Failed to download report. Please try again.");
+      // Error already shown via toast
+      toast.error("Failed to download report. Please try again.");
     } finally {
       setDownloading(prev => ({ ...prev, [workflowId]: false }));
     }
@@ -128,8 +129,8 @@ export default function CompletedWorkflows({
         return newReports;
       });
     } catch (error) {
-      console.error("Failed to delete workflow:", error);
-      alert("Failed to delete workflow. Please try again.");
+      // Error already shown via toast
+      toast.error("Failed to delete workflow. Please try again.");
     } finally {
       setDeleting(prev => ({ ...prev, [workflowId]: false }));
     }

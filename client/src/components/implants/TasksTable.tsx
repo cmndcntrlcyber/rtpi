@@ -87,20 +87,20 @@ export default function TasksTable({
       });
 
       if (response.ok) {
-        console.log("Task cancelled successfully");
+        // Debug logging removed
         onRefresh();
       } else {
         console.error("Failed to cancel task");
       }
     } catch (error) {
-      console.error("Failed to cancel task:", error);
+      // Error already shown via toast
     }
   };
 
   const handleViewResults = async (taskId: string) => {
     setViewingTaskId(taskId);
     // TODO: Open results modal
-    console.log("View results for task:", taskId);
+    // Debug logging removed
   };
 
   return (

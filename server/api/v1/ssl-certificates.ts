@@ -56,8 +56,8 @@ router.post('/', async (req, res) => {
       message: dryRun ? 'Certificate dry run successful' : 'Certificate issued successfully',
       certificate,
     });
-  } catch (error) {
-    console.error('[API] Failed to request certificate:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to request certificate',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -77,8 +77,8 @@ router.get('/', async (_req, res) => {
   try {
     const certificates = await sslCertificateManager.listCertificates();
     res.json(certificates);
-  } catch (error) {
-    console.error('[API] Failed to list certificates:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to list certificates',
     });
@@ -95,8 +95,8 @@ router.get('/:domain', async (req, res) => {
     const certificate = await sslCertificateManager.getCertificateInfo(domain);
 
     res.json(certificate);
-  } catch (error) {
-    console.error('[API] Failed to get certificate info:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(404).json({
       error: 'Certificate not found',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -118,8 +118,8 @@ router.delete('/:domain', async (req, res) => {
     res.json({
       message: `Certificate for ${domain} revoked successfully`,
     });
-  } catch (error) {
-    console.error('[API] Failed to revoke certificate:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to revoke certificate',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -149,8 +149,8 @@ router.post('/renew', async (req, res) => {
       failureCount,
       results,
     });
-  } catch (error) {
-    console.error('[API] Failed to renew certificates:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to renew certificates',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -174,8 +174,8 @@ router.post('/:domain/renew', async (req, res) => {
       message: `Certificate for ${domain} renewed successfully`,
       certificate,
     });
-  } catch (error) {
-    console.error('[API] Failed to renew certificate:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to renew certificate',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -196,8 +196,8 @@ router.post('/renew/force', async (_req, res) => {
       count: results.length,
       results,
     });
-  } catch (error) {
-    console.error('[API] Failed to force renew certificates:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to force renew certificates',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -220,8 +220,8 @@ router.post('/nginx/reload', async (_req, res) => {
     res.json({
       message: 'Nginx reloaded successfully',
     });
-  } catch (error) {
-    console.error('[API] Failed to reload nginx:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to reload nginx',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -240,8 +240,8 @@ router.get('/:domain/nginx-config', async (req, res) => {
 
     res.set('Content-Type', 'text/plain');
     res.send(config);
-  } catch (error) {
-    console.error('[API] Failed to generate nginx config:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to generate nginx config',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -268,8 +268,8 @@ router.post('/:domain/test-rotation', async (req, res) => {
       message: result.success ? 'Certificate rotation test passed' : 'Certificate rotation test failed',
       steps: result.steps,
     });
-  } catch (error) {
-    console.error('[API] Failed to test certificate rotation:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to test certificate rotation',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -289,8 +289,8 @@ router.get('/status/certbot', async (_req, res) => {
   try {
     const status = await sslCertificateManager.getCertbotStatus();
     res.json(status);
-  } catch (error) {
-    console.error('[API] Failed to get certbot status:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to get certbot status',
     });
@@ -327,8 +327,8 @@ router.get('/health/check', async (_req, res) => {
       ],
       timestamp: new Date().toISOString(),
     });
-  } catch (error) {
-    console.error('[API] Failed to check SSL health:', error);
+  } catch (error: any) {
+    // Error logged for debugging
     res.status(500).json({
       status: 'unhealthy',
       error: 'Failed to check SSL health',

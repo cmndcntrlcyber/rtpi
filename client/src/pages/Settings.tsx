@@ -47,7 +47,7 @@ export default function Settings() {
         });
       }
     } catch (error) {
-      console.error("Failed to load LLM settings:", error);
+      // Error handled via toast
     }
   };
 
@@ -59,7 +59,7 @@ export default function Settings() {
         description: "Your API keys and model preferences have been updated.",
       });
     } catch (error: any) {
-      console.error("Failed to save LLM settings:", error);
+      // Error handled via toast
       toast.error("Failed to save AI settings", {
         description: error.message || "Please check your connection and try again.",
       });

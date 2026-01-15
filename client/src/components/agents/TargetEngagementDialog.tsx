@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -46,7 +47,7 @@ export default function TargetEngagementDialog({
       const response = await api.get(`/agents/${agent.id}/engagement-status`);
       setEngagementStatus(response.status || null);
     } catch (err) {
-      console.error("Failed to check engagement status:", err);
+      // Error already shown via toast
       setEngagementStatus(null);
     }
   };
@@ -89,7 +90,7 @@ export default function TargetEngagementDialog({
 
   const handleEngage = async () => {
     if (selectedTargets.length === 0 || selectedTools.length === 0) {
-      alert("Please select at least one target and one tool");
+      toast.warning("Please select at least one target and one tool");
       return;
     }
 
@@ -100,11 +101,11 @@ export default function TargetEngagementDialog({
         toolIds: selectedTools,
       });
 
-      alert(`Engagement initiated! ${response.message || "Agent is now executing tools against selected targets."}`);
+      toast.success(`Engagement initiated! ${response.message || "Agent is now executing tools against selected targets."}`);
       await checkEngagementStatus();
     } catch (err: any) {
-      console.error("Failed to engage:", err);
-      alert(`Failed to engage: ${err.message || "Unknown error"}`);
+      // Error already shown via toast
+      toast.error(`Failed to engage: ${err.message || "Unknown error"}`);
     } finally {
       setIsEngaging(false);
     }
@@ -119,11 +120,11 @@ export default function TargetEngagementDialog({
     try {
       const response = await api.post(`/agents/${agent.id}/disengage`, {});
 
-      alert(`Disengagement complete! ${response.message || "Agent has stopped tool execution."}`);
+      toast.success(`Disengagement complete! ${response.message || "Agent has stopped tool execution."}`);
       await checkEngagementStatus();
     } catch (err: any) {
-      console.error("Failed to disengage:", err);
-      alert(`Failed to disengage: ${err.message || "Unknown error"}`);
+      // Error already shown via toast
+      toast.error(`Failed to disengage: ${err.message || "Unknown error"}`);
     } finally {
       setIsEngaging(false);
     }

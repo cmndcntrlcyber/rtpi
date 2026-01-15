@@ -302,20 +302,40 @@ export class OllamaAIClient {
   private readonly DEFAULT_MODEL = "llama3:8b";
   private readonly CODE_MODEL = "qwen2.5-coder:7b";
   private readonly cache = new ResponseCache();
-  private anthropic: Anthropic | null = null;
-  private openai: OpenAI | null = null;
+  private _anthropic: Anthropic | null = null;
+  private _openai: OpenAI | null = null;
+  private _anthropicInitialized = false;
+  private _openaiInitialized = false;
 
   constructor(host: string = process.env.OLLAMA_HOST || "http://localhost:11434") {
     this.OLLAMA_HOST = host.replace(/\/$/, "");
+    // Cloud providers are now lazily initialized on first access
+  }
 
-    // Initialize cloud providers if API keys are available
-    if (process.env.ANTHROPIC_API_KEY) {
-      this.anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  // Lazy getter for Anthropic client
+  private get anthropic(): Anthropic | null {
+    if (!this._anthropicInitialized) {
+      this._anthropicInitialized = true;
+      if (process.env.ANTHROPIC_API_KEY) {
+        this._anthropic = new Anthropic({
+          apiKey: process.env.ANTHROPIC_API_KEY,
+        });
+      }
     }
+    return this._anthropic;
+  }
 
-    if (process.env.OPENAI_API_KEY) {
-      this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  // Lazy getter for OpenAI client
+  private get openai(): OpenAI | null {
+    if (!this._openaiInitialized) {
+      this._openaiInitialized = true;
+      if (process.env.OPENAI_API_KEY) {
+        this._openai = new OpenAI({
+          apiKey: process.env.OPENAI_API_KEY,
+        });
+      }
     }
+    return this._openai;
   }
 
   // ==========================================================================

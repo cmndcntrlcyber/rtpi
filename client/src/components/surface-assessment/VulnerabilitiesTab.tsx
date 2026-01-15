@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { toast } from "sonner";
 import { api } from '@/lib/api';
 import VulnerabilityFilters from './VulnerabilityFilters';
 import VulnerabilityBulkActions from './VulnerabilityBulkActions';
@@ -124,7 +125,7 @@ export default function VulnerabilitiesTab({ operationId }: VulnerabilitiesTabPr
       setSelected(new Set());
     } catch (error) {
       console.error('Failed to update status:', error);
-      alert('Failed to update vulnerability status');
+      toast.error("Failed to update vulnerability status");
     }
   };
 

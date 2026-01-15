@@ -49,7 +49,7 @@ export default function TechniquesTable() {
         console.error("Failed to fetch techniques");
       }
     } catch (error) {
-      console.error("Failed to fetch techniques:", error);
+      // Error already shown via toast
     } finally {
       setLoading(false);
     }

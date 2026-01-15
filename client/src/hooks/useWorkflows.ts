@@ -51,7 +51,7 @@ export function useWorkflows(autoRefresh = true) {
       setWorkflows(response.workflows || []);
       setError(null);
     } catch (err) {
-      console.error("Failed to load workflows:", err);
+      // Error handled by component
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
@@ -63,7 +63,7 @@ export function useWorkflows(autoRefresh = true) {
       const response = await api.get<WorkflowDetails>(`/agent-workflows/${id}`);
       return response;
     } catch (err) {
-      console.error("Failed to get workflow details:", err);
+      // Error handled by component
       return null;
     }
   };
@@ -73,7 +73,7 @@ export function useWorkflows(autoRefresh = true) {
       await api.post(`/agent-workflows/${id}/cancel`, {});
       await loadWorkflows();
     } catch (err) {
-      console.error("Failed to cancel workflow:", err);
+      // Error handled by component
       throw err;
     }
   };

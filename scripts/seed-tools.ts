@@ -45,6 +45,57 @@ const toolsData = [
       outputParser: "text",
     },
   },
+  {
+    name: "BBOT",
+    category: "reconnaissance",
+    description: "OSINT automation tool for attack surface reconnaissance. Discovers subdomains, IPs, URLs, and more through recursive scanning.",
+    command: "bbot",
+    dockerImage: "rtpi-tools",
+    status: "available" as const,
+    metadata: {
+      parameterSchema: {
+        targets: { required: true, type: "array", description: "Target domains or IPs" },
+        preset: { required: false, type: "string", description: "Scan preset (subdomain-enum, cloud-enum, web-thorough, etc.)" },
+        modules: { required: false, type: "string", description: "Comma-separated list of modules" },
+        flags: { required: false, type: "string", description: "Comma-separated list of flags" },
+        args: { required: false, type: "string", description: "Additional arguments (e.g., --allow-deadly)" },
+      },
+      commandTemplate: "bbot -t {targets} -p {preset} -m {modules} -f {flags} {args} -y --no-deps --json",
+      examples: [
+        "bbot -t example.com -p subdomain-enum -y --no-deps --json",
+        "bbot -t 10.0.0.0/24 -p cloud-enum -y --no-deps",
+        "bbot -t example.com -m httpx,nuclei -y --no-deps --json",
+      ],
+      outputParser: "json",
+    },
+  },
+
+  // ===== VULNERABILITY SCANNING TOOLS =====
+  {
+    name: "Nuclei",
+    category: "vulnerability_scanning",
+    description: "Fast and customizable vulnerability scanner. Uses YAML templates to detect security vulnerabilities, misconfigurations, and more.",
+    command: "nuclei",
+    dockerImage: "rtpi-tools",
+    status: "available" as const,
+    metadata: {
+      parameterSchema: {
+        targets: { required: true, type: "array", description: "Target URLs or hosts" },
+        severity: { required: false, type: "string", description: "Severity filter (critical,high,medium,low,info)" },
+        rateLimit: { required: false, type: "number", description: "Rate limit (requests per second)" },
+        templates: { required: false, type: "string", description: "Template paths or tags" },
+        tags: { required: false, type: "string", description: "Template tags to include" },
+        excludeTags: { required: false, type: "string", description: "Template tags to exclude" },
+      },
+      commandTemplate: "nuclei -u {targets} -severity {severity} -rate-limit {rateLimit} -t {templates} -tags {tags} -exclude-tags {excludeTags} -json -silent",
+      examples: [
+        "nuclei -u https://example.com -severity critical,high,medium -json -silent",
+        "nuclei -u https://example.com -tags cve -json -silent",
+        "nuclei -l targets.txt -severity critical,high -rate-limit 100 -json",
+      ],
+      outputParser: "json",
+    },
+  },
 
   // ===== EXPLOITATION TOOLS =====
   {

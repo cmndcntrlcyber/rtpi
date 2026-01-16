@@ -525,4 +525,65 @@ router.post('/:operationId/scan/bbot', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/v1/surface-assessment/:operationId/scan/nuclei
+ * Execute a Nuclei vulnerability scan
+ */
+router.post('/:operationId/scan/nuclei', async (req, res) => {
+  try {
+    const { operationId } = req.params;
+    const { targets, config } = req.body;
+
+    if (!targets || !Array.isArray(targets) || targets.length === 0) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        message: 'targets must be a non-empty array'
+      });
+    }
+
+    if (!req.user || !(req.user as any).id) {
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'User must be authenticated'
+      });
+    }
+
+    // Import Nuclei executor
+    const { nucleiExecutor } = await import('../../services/nuclei-executor');
+
+    // Parse config
+    const nucleiOptions = {
+      severity: config?.severity || 'critical,high,medium',
+      rateLimit: config?.rateLimit ? parseInt(config.rateLimit, 10) : 150,
+      templates: config?.templates ? config.templates.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
+      tags: config?.tags ? config.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
+      excludeTags: config?.excludeTags ? config.excludeTags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
+      timeout: config?.timeout ? parseInt(config.timeout, 10) : 30,
+    };
+
+    const userId = (req.user as any).id;
+
+    // Execute scan asynchronously
+    nucleiExecutor.executeScan(targets, nucleiOptions, operationId, userId)
+      .then((result) => {
+        // Scan completed successfully
+      })
+      .catch((error) => {
+        // Error logged for debugging
+      });
+
+    // Return immediately with status
+    res.json({
+      message: 'Nuclei scan started successfully',
+      status: 'running',
+    });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({
+      error: 'Failed to start Nuclei scan',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
 export default router;

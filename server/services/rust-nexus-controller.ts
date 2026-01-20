@@ -55,6 +55,7 @@ export interface ImplantRegistration {
   certificateSerial: string;
   certificateFingerprint: string;
   capabilities: string[];
+  operationId?: string; // Optional operation ID from config.toml
   metadata?: Record<string, any>;
 }
 
@@ -350,6 +351,7 @@ class RustNexusController {
             certificateFingerprint: payload.certificateFingerprint,
             authToken: this.generateAuthToken(),
             capabilities: payload.capabilities,
+            operationId: payload.operationId || null, // Auto-assign to operation if provided
             status: "connected",
             lastHeartbeat: new Date(),
             firstConnectionAt: new Date(),
@@ -361,7 +363,10 @@ class RustNexusController {
           .returning();
 
         implantId = newImplant.id;
-        console.log(`[RustNexusController] New implant registered: ${payload.implantName}`);
+        const operationMsg = payload.operationId
+          ? ` (auto-assigned to operation ${payload.operationId})`
+          : '';
+        console.log(`[RustNexusController] New implant registered: ${payload.implantName}${operationMsg}`);
       }
 
       // Update connection

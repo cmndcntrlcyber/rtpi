@@ -26,6 +26,8 @@ This directory contains detailed documentation of issues discovered during deplo
 
 | Date | Issue | Severity | Category | Status |
 |------|-------|----------|----------|--------|
+| 2026-01-19 | [Rust-Nexus Compilation Errors](./2026-01-19-rust-nexus-compilation-errors-complete-analysis.md) | Critical | Build | Open |
+| 2026-01-16 | [Tool Analyzer Missing Directories](./2026-01-16-tool-analyzer-missing-directories.md) | High | Configuration | ✅ Resolved |
 | 2025-12-27 | [Empire Executor Listener Validation Test Failure](./2025-12-27-empire-executor-listener-validation-test-failure.md) | High | Testing | Open |
 | 2025-12-27 | [Rust Nexus Polymorphic Identifier Collision](./2025-12-27-rust-nexus-polymorphic-identifier-collision.md) | High | Security | Open |
 | 2025-12-27 | [Tool Migration Method Extraction Failure](./2025-12-27-tool-migration-method-extraction-failure.md) | Medium | Build | Open |
@@ -37,12 +39,42 @@ This directory contains detailed documentation of issues discovered during deplo
 
 ## Issues by Severity
 
-### Critical (0)
-No critical issues that completely block deployment.
+### Critical (1)
 
-### High (3)
+#### Rust-Nexus Compilation Errors
+**Impact**: Agent build system completely non-functional
+**Files**: Multiple files in `nexus-infra` crate
+**Errors**: 7 compilation errors, 17 warnings
+**Fix Time**: 30-45 minutes
+**Priority**: Must fix to enable agent builds
 
-#### 1. Empire Executor Listener Validation Test Failure
+**Quick Summary**: The rust-nexus agent has 7 compilation errors due to dependency API changes in `rustls-pemfile` (v2.x), `pem` (v3.x), and `time` (v0.3) crates. All errors are well-understood with clear fixes documented.
+
+**Error Categories**:
+- rustls_pemfile API changes (1 error)
+- pem crate API changes (4 errors)
+- time crate feature flags missing (2 errors)
+
+[Full Documentation →](./2026-01-19-rust-nexus-compilation-errors-complete-analysis.md)
+
+### High (4)
+
+#### 1. Tool Analyzer Missing Directories ✅ RESOLVED
+**Impact**: ~~Tool migration API endpoints fail with ENOENT errors~~ Now returns success with informative messages
+**File**: `server/services/tool-analyzer.ts:541`, `server/api/v1/tool-migration.ts:30,302`
+**Status**: **✅ Fixed** - Graceful degradation implemented
+**Fix Time**: 30 minutes (actual)
+
+**Quick Summary**: The tool-analyzer service expects Python tools in `tools/offsec-team/tools/` but the directory is empty. Now gracefully handles missing directories by returning empty results with helpful guidance messages.
+
+**Fix Applied**: Implemented graceful degradation with directory existence checks, helpful console warnings, and informative API responses.
+
+[Issue Documentation →](./2026-01-16-tool-analyzer-missing-directories.md)
+[Fix Documentation →](./2026-01-16-tool-analyzer-fix-applied.md)
+
+---
+
+#### 2. Empire Executor Listener Validation Test Failure
 **Impact**: Empire C2 listener creation may fail in production
 **File**: `tests/unit/services/empire-executor.test.ts`
 **Error**: `expected false to be true` - listener creation returning failure
@@ -55,7 +87,7 @@ No critical issues that completely block deployment.
 
 ---
 
-#### 2. Rust Nexus Polymorphic Identifier Collision
+#### 3. Rust Nexus Polymorphic Identifier Collision
 **Impact**: C2 implant obfuscation weakened, signature detection possible
 **File**: `server/services/rust-nexus-security.ts:355`
 **Error**: Non-unique identifiers when called in rapid succession
@@ -70,7 +102,7 @@ No critical issues that completely block deployment.
 
 ---
 
-#### 3. Distributed Workflow Safety Limits Error
+#### 4. Distributed Workflow Safety Limits Error
 **Impact**: Workflow execution fails with capability restriction errors
 **File**: `server/services/distributed-workflow-orchestrator.ts:754`
 **Error**: Required capabilities not allowed by safety limits
@@ -85,7 +117,7 @@ No critical issues that completely block deployment.
 
 ### Medium (2)
 
-#### 4. Tool Migration Method Extraction Failure
+#### 5. Tool Migration Method Extraction Failure
 **Impact**: Incomplete TypeScript wrappers generated for Python tools
 **File**: `server/services/tool-analyzer.ts:164`
 **Error**: Method extraction returning 0 methods (expected > 0)
@@ -100,7 +132,7 @@ No critical issues that completely block deployment.
 
 ---
 
-#### 5. Frontend Bundle Size Optimization
+#### 6. Frontend Bundle Size Optimization
 **Impact**: Slow initial page load, poor mobile performance
 **File**: `vite.config.ts` (build configuration)
 **Metric**: Main bundle 1,104 kB (296 kB gzipped) - exceeds 500 kB recommendation
@@ -117,7 +149,7 @@ No critical issues that completely block deployment.
 
 ### Low (1)
 
-#### 6. Configuration Warnings
+#### 7. Configuration Warnings
 **Impact**: Warning noise in logs, missing production features
 **Issues**:
 - Docker Compose obsolete `version` attribute
@@ -138,47 +170,56 @@ No critical issues that completely block deployment.
 ### By Category
 | Category | Count | Percentage |
 |----------|-------|------------|
-| Testing | 1 | 16.7% |
-| Security | 1 | 16.7% |
-| Runtime | 1 | 16.7% |
-| Build | 1 | 16.7% |
-| Configuration | 1 | 16.7% |
-| Performance | 1 | 16.7% |
+| Build | 2 | 25.0% |
+| Configuration | 2 | 25.0% |
+| Testing | 1 | 12.5% |
+| Security | 1 | 12.5% |
+| Runtime | 1 | 12.5% |
+| Performance | 1 | 12.5% |
 
 ### By Status
 | Status | Count | Percentage |
 |--------|-------|------------|
-| Open | 6 | 100% |
+| Open | 7 | 87.5% |
 | In Progress | 0 | 0% |
-| Resolved | 0 | 0% |
+| Resolved | 1 | 12.5% |
 
 ### Estimated Fix Effort
-| Severity | Total Time | Average per Issue |
-|----------|------------|-------------------|
-| High | 4-6 hours | 1.3-2 hours |
+| Severity | Total Time (Remaining) | Average per Issue |
+|----------|------------------------|-------------------|
+| Critical | 30-45 minutes (1 issue) | 30-45 minutes |
+| High | 4-6 hours (3 issues) | 1.3-2 hours |
 | Medium | 4.5-8.5 hours | 2.25-4.25 hours |
 | Low | 1 hour | 1 hour |
-| **Total** | **9.5-15.5 hours** | **1.6-2.6 hours** |
+| **Total** | **10-16 hours** | **1.4-2.3 hours** |
+
+**Completed**: Tool Analyzer Missing Directories (0.5 hours)
 
 ---
 
 ## Recommended Fix Priority
 
-### Phase 1: Pre-Production Critical Fixes (6-8 hours)
-1. **Rust Nexus Polymorphic Identifier** (5 min) - Security issue, simple fix
-2. **Distributed Workflow Safety Limits** (2 hours) - Blocks workflow functionality
-3. **Empire Executor Listener Validation** (2 hours) - Blocks C2 functionality
-4. **Configuration Warnings** (1 hour) - Clean up for production
+### Phase 1: Critical Build System Fix (30-45 minutes)
+1. **Rust-Nexus Compilation Errors** (30-45 min) - Completely blocks agent builds
+
+**Outcome**: Agent build system functional
+
+### Phase 2: Pre-Production Critical Fixes (5-8 hours)
+2. **Rust Nexus Polymorphic Identifier** (5 min) - Security issue, simple fix
+3. ~~**Tool Analyzer Missing Directories**~~ ✅ **COMPLETED** - Graceful degradation implemented
+4. **Distributed Workflow Safety Limits** (2 hours) - Blocks workflow functionality
+5. **Empire Executor Listener Validation** (2 hours) - Blocks C2 functionality
+6. **Configuration Warnings** (1 hour) - Clean up for production
 
 **Outcome**: Core security and functionality issues resolved
 
-### Phase 2: Feature Completeness (1-2 hours)
-5. **Tool Migration Method Extraction** (30 min-1 hour) - Complete migration feature
+### Phase 3: Feature Completeness (1-2 hours)
+7. **Tool Migration Method Extraction** (30 min-1 hour) - Complete migration feature
 
 **Outcome**: All features work as intended
 
-### Phase 3: Performance Optimization (4-8 hours)
-6. **Frontend Bundle Size** (4-8 hours, phased) - Improve user experience
+### Phase 4: Performance Optimization (4-8 hours)
+8. **Frontend Bundle Size** (4-8 hours, phased) - Improve user experience
 
 **Outcome**: Production-grade performance
 
@@ -299,6 +340,27 @@ When documenting new issues:
 
 ## Change Log
 
+### 2026-01-19
+- **NEW ISSUE**: Rust-Nexus Compilation Errors (Critical)
+- Documented 7 compilation errors in rust-nexus agent build
+- All errors traced to dependency API changes (rustls-pemfile, pem, time crates)
+- Complete fix guidance provided with two approaches (pin old versions vs update APIs)
+- Updated statistics: 7 open, 1 resolved (8 total issues)
+- Updated estimated fix effort: 10-16 hours total
+- Created analysis: [2026-01-19-rust-nexus-compilation-errors-complete-analysis.md](./2026-01-19-rust-nexus-compilation-errors-complete-analysis.md)
+
+### 2026-01-16 (Update 2)
+- **✅ RESOLVED**: Tool Analyzer Missing Directories issue
+- Implemented graceful degradation with helpful warnings
+- Updated statistics: 6 open, 1 resolved
+- Updated estimated fix effort: 9.5-15.5 hours remaining
+- Created fix documentation: [2026-01-16-tool-analyzer-fix-applied.md](./2026-01-16-tool-analyzer-fix-applied.md)
+
+### 2026-01-16 (Initial)
+- Added Tool Analyzer Missing Directories issue
+- Updated statistics: 7 total issues (4 High, 2 Medium, 1 Low)
+- Updated estimated fix effort: 10-17.5 hours total
+
 ### 2025-12-27
 - Initial deployment testing completed
 - 6 issue documents created
@@ -307,6 +369,6 @@ When documenting new issues:
 
 ---
 
-**Last Updated**: 2025-12-27 09:55 UTC
+**Last Updated**: 2026-01-19 (Rust-Nexus build errors documented)
 **Next Review**: Before production deployment
 **Maintained By**: RTPI DevOps Team

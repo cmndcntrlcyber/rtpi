@@ -1,0 +1,13 @@
+{
+    "platform": "windows",
+    "architecture": "x64",
+    "target": "x86_64-pc-windows-gnu",
+    "features": "",
+    "binary": "nexus-agent.exe",
+    "originalSize": 775680,
+    "finalSize": 775680,
+    "sha256": "49dd4222b349a8e2cfc530f414af3f671c8dfe5b4404df7589ac1007ee391777",
+    "buildTime": "2026-01-20T02:23:04+00:00",
+    "rustVersion": "rustc 1.84.1 (e71f9a9a9 2025-01-27)",
+    "cargoVersion": "cargo 1.84.1 (66221abde 2024-11-19)"
+}

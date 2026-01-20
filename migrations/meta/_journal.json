@@ -15,6 +15,34 @@
       "when": 1765379644267,
       "tag": "0001_overrated_komodo",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1768583466154,
+      "tag": "0002_premium_sandman",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1768594422016,
+      "tag": "0003_simple_mariko_yashida",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1768888197652,
+      "tag": "0004_gorgeous_meteorite",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1768888673456,
+      "tag": "0005_strong_corsair",
+      "breakpoints": true
     }
   ]
 }

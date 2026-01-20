@@ -134,10 +134,14 @@ export class AttackWorkbenchClient {
    */
   async testConnection(): Promise<boolean> {
     try {
-      const response = await this.client.get('/health');
+      const response = await this.client.get('/collections');
       return response.status === 200;
-    } catch (error) {
-      console.error('Failed to connect to Workbench:', error);
+    } catch (error: any) {
+      // 401 means the API is responding (just needs auth), so connection is good
+      if (error.response && error.response.status === 401) {
+        return true;
+      }
+      console.error('Failed to connect to Workbench:', error.message);
       return false;
     }
   }

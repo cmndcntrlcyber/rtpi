@@ -1,6 +1,10 @@
 import { useState, useEffect } from "react";
 import Header from "./Header";
 import Sidebar from "./Sidebar";
+import CommandPalette from "@/components/shared/CommandPalette";
+import KeyboardShortcutsHelp from "@/components/shared/KeyboardShortcutsHelp";
+import { useSidebarCollapse } from "@/hooks/useSidebarCollapse";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -8,7 +12,9 @@ interface MainLayoutProps {
 
 export default function MainLayout({ children }: MainLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false); // Start closed on mobile
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const { isCollapsed: sidebarCollapsed, toggleCollapse } = useSidebarCollapse();
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
 
   // Detect if we're on desktop on mount
   useEffect(() => {
@@ -24,19 +30,34 @@ export default function MainLayout({ children }: MainLayoutProps) {
     return () => window.removeEventListener('resize', checkDesktop);
   }, []);
 
-  // Keyboard shortcut: Ctrl+B to toggle sidebar collapse
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Check for Ctrl+B (or Cmd+B on Mac)
-      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
-        e.preventDefault();
-        setSidebarCollapsed((prev) => !prev);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  // Global keyboard shortcuts
+  useKeyboardShortcuts({
+    shortcuts: [
+      {
+        key: 'k',
+        ctrl: true,
+        meta: true,
+        description: 'Open command palette',
+        action: () => setCommandPaletteOpen(true),
+      },
+      {
+        key: '/',
+        ctrl: true,
+        meta: true,
+        description: 'Show keyboard shortcuts',
+        action: () => setShortcutsHelpOpen(true),
+      },
+      {
+        key: 'Escape',
+        description: 'Close modals',
+        action: () => {
+          setCommandPaletteOpen(false);
+          setShortcutsHelpOpen(false);
+        },
+        preventDefault: false,
+      },
+    ],
+  });
 
   const getSidebarWidth = () => {
     return sidebarCollapsed ? "lg:ml-20" : "lg:ml-64";
@@ -59,7 +80,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
       <Sidebar
         isOpen={sidebarOpen}
         isCollapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+        onToggleCollapse={toggleCollapse}
         onClose={handleSidebarClose}
       />
       <main
@@ -67,6 +88,10 @@ export default function MainLayout({ children }: MainLayoutProps) {
       >
         {children}
       </main>
+
+      {/* Global Components */}
+      <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
+      <KeyboardShortcutsHelp open={shortcutsHelpOpen} onOpenChange={setShortcutsHelpOpen} />
     </div>
   );
 }

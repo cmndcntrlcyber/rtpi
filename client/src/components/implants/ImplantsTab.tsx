@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Activity, Cpu, ListTodo, BarChart3 } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { RefreshCw, Activity, Cpu, ListTodo, Package, Hammer } from "lucide-react";
 import ImplantsTable from "./ImplantsTable";
 import TasksTable from "./TasksTable";
 import ImplantStatsCards from "./ImplantStatsCards";
+import { BundlesTab } from "./BundlesTab";
+import MultiArchBuildPanel from "./MultiArchBuildPanel";
 
 export interface RustNexusImplant {
   id: string;
@@ -69,7 +70,11 @@ export interface ImplantStats {
   };
 }
 
-export default function ImplantsTab() {
+interface ImplantsTabProps {
+  bundlesRefreshTrigger?: number;
+}
+
+export default function ImplantsTab({ bundlesRefreshTrigger }: ImplantsTabProps) {
   const [implants, setImplants] = useState<RustNexusImplant[]>([]);
   const [tasks, setTasks] = useState<RustNexusTask[]>([]);
   const [stats, setStats] = useState<ImplantStats | null>(null);
@@ -258,7 +263,7 @@ export default function ImplantsTab() {
 
       {/* Tabs */}
       <Tabs defaultValue="implants" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="implants" className="flex items-center gap-2">
             <Cpu className="h-4 w-4" />
             Implants ({implants.length})
@@ -266,6 +271,14 @@ export default function ImplantsTab() {
           <TabsTrigger value="tasks" className="flex items-center gap-2">
             <ListTodo className="h-4 w-4" />
             Tasks ({tasks.length})
+          </TabsTrigger>
+          <TabsTrigger value="bundles" className="flex items-center gap-2">
+            <Package className="h-4 w-4" />
+            Bundles
+          </TabsTrigger>
+          <TabsTrigger value="builds" className="flex items-center gap-2">
+            <Hammer className="h-4 w-4" />
+            Multi-Arch Builds
           </TabsTrigger>
         </TabsList>
 
@@ -288,6 +301,14 @@ export default function ImplantsTab() {
             selectedImplantId={selectedImplantId}
             onSelectImplant={setSelectedImplantId}
           />
+        </TabsContent>
+
+        <TabsContent value="bundles" className="space-y-4">
+          <BundlesTab refreshTrigger={bundlesRefreshTrigger} />
+        </TabsContent>
+
+        <TabsContent value="builds" className="space-y-4">
+          <MultiArchBuildPanel />
         </TabsContent>
       </Tabs>
     </div>

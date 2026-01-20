@@ -36,7 +36,7 @@ export interface ExecutionOptions {
  * Handles command execution in Docker containers with security controls
  */
 export class DockerExecutor {
-  private readonly MAX_OUTPUT_SIZE = 10 * 1024 * 1024; // 10MB
+  private readonly MAX_OUTPUT_SIZE = 100 * 1024 * 1024; // 100MB
   private readonly DEFAULT_TIMEOUT = 300000; // 5 minutes
   private readonly DEFAULT_USER = "rtpi-tools";
 
@@ -81,9 +81,26 @@ export class DockerExecutor {
         options.timeout || this.DEFAULT_TIMEOUT
       );
 
-      // Get exit code
-      const inspectResult = await exec.inspect();
-      const exitCode = inspectResult.ExitCode || 0;
+      // Verify process actually exited - wait for confirmed exit code
+      let exitCode = 0;
+      let attempts = 0;
+      const maxAttempts = 10;
+
+      while (attempts < maxAttempts) {
+        const inspectResult = await exec.inspect();
+
+        if (inspectResult.ExitCode !== null && inspectResult.ExitCode !== undefined) {
+          exitCode = inspectResult.ExitCode;
+          break;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+      }
+
+      if (attempts >= maxAttempts) {
+        console.warn(`[DockerExecutor] Could not verify exit code after ${maxAttempts} attempts`);
+      }
 
       const completedAt = new Date();
 
@@ -100,6 +117,40 @@ export class DockerExecutor {
         `Execution failed: ${error instanceof Error ? error.message : String(error)}`
       );
     }
+  }
+
+  /**
+   * Execute command with automatic retry on transient failures
+   */
+  async execWithRetry(
+    containerName: string,
+    cmd: string[],
+    options: ExecutionOptions = {},
+    maxRetries: number = 2
+  ): Promise<ExecutionResult> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+      try {
+        return await this.exec(containerName, cmd, options);
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+
+        // Don't retry on validation errors
+        if (lastError.message.includes('Command contains dangerous pattern') ||
+            lastError.message.includes('not found')) {
+          throw lastError;
+        }
+
+        if (attempt <= maxRetries) {
+          const delayMs = 1000 * attempt;
+          console.warn(`[DockerExecutor] Retry ${attempt} in ${delayMs}ms:`, lastError.message);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+      }
+    }
+
+    throw lastError!;
   }
 
   /**
@@ -337,6 +388,7 @@ export class DockerExecutor {
     let stdout = "";
     let stderr = "";
     let totalSize = 0;
+    let buffer = Buffer.alloc(0); // Persistent buffer across chunks
 
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
@@ -347,39 +399,66 @@ export class DockerExecutor {
       // Docker multiplexes stdout and stderr
       // First 8 bytes are header: [stream_type, 0, 0, 0, size_msb, size_2, size_3, size_lsb]
       stream.on("data", (chunk: Buffer) => {
+        // Append new chunk to existing buffer
+        buffer = Buffer.concat([buffer, chunk]);
         let offset = 0;
-        
-        while (offset < chunk.length) {
-          if (chunk.length - offset < 8) break;
-          
-          const header = chunk.slice(offset, offset + 8);
+
+        while (offset < buffer.length) {
+          // Need at least 8 bytes for header
+          if (buffer.length - offset < 8) {
+            // Preserve remaining bytes for next chunk
+            buffer = buffer.slice(offset);
+            return;
+          }
+
+          const header = buffer.slice(offset, offset + 8);
           const streamType = header[0]; // 1 = stdout, 2 = stderr
           const size = header.readUInt32BE(4);
-          
+
           offset += 8;
-          
-          if (chunk.length - offset < size) break;
-          
-          const data = chunk.slice(offset, offset + size).toString("utf-8");
+
+          // Need full payload
+          if (buffer.length - offset < size) {
+            // Preserve header + partial payload for next chunk
+            buffer = buffer.slice(offset - 8);
+            return;
+          }
+
+          const data = buffer.slice(offset, offset + size).toString("utf-8");
           offset += size;
-          
+
           totalSize += size;
+
+          // Warn at 80% capacity
+          if (totalSize > this.MAX_OUTPUT_SIZE * 0.8 &&
+              totalSize <= this.MAX_OUTPUT_SIZE * 0.8 + size) {
+            console.warn(`[DockerExecutor] Output approaching limit: ${Math.round(totalSize / 1024 / 1024)}MB / ${Math.round(this.MAX_OUTPUT_SIZE / 1024 / 1024)}MB`);
+          }
+
           if (totalSize > this.MAX_OUTPUT_SIZE) {
             stream.destroy();
             reject(new Error("Output size limit exceeded"));
             return;
           }
-          
+
           if (streamType === 1) {
             stdout += data;
           } else if (streamType === 2) {
             stderr += data;
           }
         }
+
+        // Clear buffer if all data processed
+        if (offset >= buffer.length) {
+          buffer = Buffer.alloc(0);
+        }
       });
 
       stream.on("end", () => {
         clearTimeout(timeoutId);
+        if (buffer.length > 0) {
+          console.warn(`[DockerExecutor] Stream ended with ${buffer.length} bytes remaining`);
+        }
         resolve({ stdout, stderr });
       });
 
@@ -391,30 +470,70 @@ export class DockerExecutor {
   }
 
   private async *streamOutput(stream: Readable): AsyncIterableIterator<string> {
+    let buffer = Buffer.alloc(0); // Persistent buffer across chunks
     const reader = stream[Symbol.asyncIterator]();
-    
+
     for await (const chunk of reader) {
-      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      
-      // Parse Docker multiplexed stream
+      const newData = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      buffer = Buffer.concat([buffer, newData]);
+
       let offset = 0;
       while (offset < buffer.length) {
-        if (buffer.length - offset < 8) break;
-        
+        // Need at least 8 bytes for header
+        if (buffer.length - offset < 8) {
+          buffer = buffer.slice(offset);
+          break;
+        }
+
         const header = buffer.slice(offset, offset + 8);
         const size = header.readUInt32BE(4);
         offset += 8;
-        
-        if (buffer.length - offset < size) break;
-        
+
+        // Need full payload
+        if (buffer.length - offset < size) {
+          buffer = buffer.slice(offset - 8);
+          break;
+        }
+
         const data = buffer.slice(offset, offset + size).toString("utf-8");
         offset += size;
-        
         yield data;
       }
+
+      if (offset >= buffer.length) {
+        buffer = Buffer.alloc(0);
+      }
+    }
+
+    if (buffer.length > 0) {
+      console.warn(`[DockerExecutor] Stream ended with ${buffer.length} bytes unprocessed`);
     }
   }
 }
 
 // Export singleton instance
 export const dockerExecutor = new DockerExecutor();
+
+/**
+ * Keep database connection alive during long operations
+ * Returns a cleanup function to stop the keepalive
+ */
+export async function keepDatabaseAlive(
+  durationMs: number,
+  intervalMs: number = 60000
+): Promise<() => void> {
+  const { db } = await import('../db');
+  const { sql } = await import('drizzle-orm');
+
+  const intervalId = setInterval(async () => {
+    try {
+      await db.execute(sql`SELECT 1`);
+    } catch (error) {
+      console.error('[DockerExecutor] Database keepalive failed:', error);
+    }
+  }, intervalMs);
+
+  setTimeout(() => clearInterval(intervalId), durationMs);
+
+  return () => clearInterval(intervalId);
+}

@@ -1,0 +1,27 @@
+/* Command Palette Styles */
+[cmdk-root] {
+  background: hsl(var(--background));
+}
+
+[cmdk-group-heading] {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground));
+  padding: 0.5rem 0.75rem 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+[cmdk-item] {
+  transition: all 0.15s ease;
+}
+
+[cmdk-item][aria-selected="true"] {
+  background-color: hsl(var(--secondary));
+}
+
+[cmdk-separator] {
+  height: 1px;
+  background: hsl(var(--border));
+  margin: 0.5rem 0;
+}

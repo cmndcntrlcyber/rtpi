@@ -467,7 +467,7 @@ export class OllamaManager {
         .select()
         .from(ollamaModels)
         .where(
-          sql`${ollamaModels.status} = 'loaded' AND (${ollamaModels.lastUsed} IS NULL OR ${ollamaModels.lastUsed} < ${cutoffTime})`
+          sql`${ollamaModels.status} = 'loaded' AND (${ollamaModels.lastUsed} IS NULL OR ${ollamaModels.lastUsed} < ${cutoffTime.toISOString()})`
         );
 
       if (inactiveModels.length === 0) {

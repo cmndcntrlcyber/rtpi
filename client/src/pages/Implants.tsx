@@ -7,6 +7,7 @@ import DeployAgentDialog from "@/components/implants/DeployAgentDialog";
 export default function Implants() {
   const [deployDialogOpen, setDeployDialogOpen] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState<"windows" | "linux">("linux");
+  const [bundlesRefreshTrigger, setBundlesRefreshTrigger] = useState(0);
 
   const handleDeployWindows = () => {
     setSelectedPlatform("windows");
@@ -52,13 +53,14 @@ export default function Implants() {
         </div>
       </div>
 
-      <ImplantsTab />
+      <ImplantsTab bundlesRefreshTrigger={bundlesRefreshTrigger} />
 
       {/* Deploy Agent Dialog */}
       <DeployAgentDialog
         open={deployDialogOpen}
         onClose={() => setDeployDialogOpen(false)}
         platform={selectedPlatform}
+        onBundleGenerated={() => setBundlesRefreshTrigger((prev) => prev + 1)}
       />
     </div>
   );

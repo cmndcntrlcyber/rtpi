@@ -80,7 +80,7 @@ export function ModelManager() {
       });
       if (!response.ok) throw new Error("Failed to load models");
       const data = await response.json();
-      setModels(data);
+      setModels(data.models || []);
     } catch (error) {
       if (showError) {
         toast.error("Failed to load models. Is Ollama running?");
@@ -164,9 +164,10 @@ export function ModelManager() {
         });
         if (!response.ok) throw new Error("Failed to get status");
 
-        const model = await response.json();
+        const data = await response.json();
+        const model = data.model;
 
-        if (model.status === "available") {
+        if (model?.status === "available") {
           clearInterval(interval);
           setDownloading(prev => {
             const next = { ...prev };
@@ -175,7 +176,7 @@ export function ModelManager() {
           });
           toast.success(`${modelName} is now available`);
           await loadModels(false); // Don't show error toast on silent refresh
-        } else if (model.status === "error") {
+        } else if (model?.status === "error") {
           clearInterval(interval);
           setDownloading(prev => {
             const next = { ...prev };

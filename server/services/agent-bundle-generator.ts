@@ -21,6 +21,7 @@ import { db } from '@db';
 import { agentBundles, rustNexusCertificates } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { agentBuildService, BuildResult, AgentPlatform, AgentArchitecture } from './agent-build-service';
+import { agentTokenService } from './agent-token-service';
 
 // ============================================================================
 // Types
@@ -36,6 +37,7 @@ export interface BundleOptions {
   implantType: ImplantType;
   controllerUrl: string;
   userId: string;
+  operationId?: string; // Operation to auto-assign implant to on registration
   autonomyLevel?: number;
   heartbeatInterval?: number;
   expiresAt?: Date;
@@ -50,6 +52,9 @@ export interface GeneratedBundle {
   certificateSerial: string;
   certificateFingerprint: string;
   downloadUrl: string;
+  publicDownloadUrl?: string;
+  tokenId?: string;
+  tokenExpiresAt?: Date;
 }
 
 export interface CertificateInfo {
@@ -173,6 +178,35 @@ class AgentBundleGenerator {
 
     console.log(`[AgentBundleGenerator] Bundle ${bundleRecord.id} created successfully`);
 
+    // Auto-generate download token (if enabled)
+    let publicDownloadUrl: string | undefined;
+    let tokenId: string | undefined;
+    let tokenExpiresAt: Date | undefined;
+
+    try {
+      const autoGenerate = process.env.AGENT_TOKEN_AUTO_GENERATE !== 'false';
+
+      if (autoGenerate) {
+        const token = await agentTokenService.autoGenerateToken(
+          bundleRecord.id,
+          options.userId
+        );
+        publicDownloadUrl = token.downloadUrl;
+        tokenId = token.tokenId;
+        tokenExpiresAt = token.expiresAt;
+
+        console.log(
+          `[AgentBundleGenerator] Auto-generated token ${token.tokenId} for bundle ${bundleRecord.id}`
+        );
+      }
+    } catch (error) {
+      console.warn(
+        `[AgentBundleGenerator] Failed to auto-generate token:`,
+        error
+      );
+      // Don't fail bundle generation if token creation fails
+    }
+
     return {
       bundleId: bundleRecord.id,
       filePath: zipPath,
@@ -181,6 +215,9 @@ class AgentBundleGenerator {
       certificateSerial: certs.serial,
       certificateFingerprint: certs.fingerprint,
       downloadUrl: `/api/v1/rust-nexus/agents/bundles/${bundleRecord.id}/download`,
+      publicDownloadUrl,
+      tokenId,
+      tokenExpiresAt,
     };
   }
 
@@ -284,7 +321,7 @@ extendedKeyUsage = clientAuth
 name = "${options.name}"
 type = "${options.implantType}"
 version = "1.0.0"
-architecture = "${options.architecture}"
+architecture = "${options.architecture}"${options.operationId ? `\noperation_id = "${options.operationId}"` : ''}
 
 [controller]
 url = "${options.controllerUrl}"

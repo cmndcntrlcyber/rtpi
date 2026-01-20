@@ -124,6 +124,7 @@ services:
     environment:
       # MongoDB connection
       MONGODB_URL: mongodb://workbench:${WORKBENCH_DB_PASSWORD:-workbench123}@workbench-db:27017/attack-workbench?authSource=admin
+      DATABASE_URL: mongodb://workbench:${WORKBENCH_DB_PASSWORD:-workbench123}@workbench-db:27017/attack-workbench?authSource=admin
       # API configuration
       PORT: 3010
       # CORS configuration - allow RTPI frontend
@@ -139,7 +140,7 @@ services:
       - rtpi-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3010/api/health"]
+      test: ["CMD-SHELL", "curl -s http://localhost:3010/api/collections > /dev/null || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5

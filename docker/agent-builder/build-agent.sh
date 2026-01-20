@@ -3,7 +3,7 @@
 # Compiles rust-nexus agent for specified platform and architecture
 #
 # Usage: build-agent.sh PLATFORM ARCH FEATURES OUTPUT_DIR
-#   PLATFORM: windows | linux (default: linux)
+#   PLATFORM: windows | linux | macos (default: linux)
 #   ARCH: x64 | x86 | arm64 (default: x64)
 #   FEATURES: comma-separated Cargo features (default: none)
 #   OUTPUT_DIR: output directory for binary (default: /output)
@@ -38,10 +38,13 @@ case "$PLATFORM" in
             x64|x86_64)
                 TARGET="x86_64-pc-windows-gnu"
                 BINARY_NAME="nexus-agent.exe"
+                STRIP_CMD="x86_64-w64-mingw32-strip"
                 ;;
             x86|i686)
-                echo "Error: 32-bit Windows not supported in this build environment"
-                exit 1
+                TARGET="i686-pc-windows-gnu"
+                BINARY_NAME="nexus-agent.exe"
+                STRIP_CMD="i686-w64-mingw32-strip"
+                echo "Note: 32-bit Windows requires cross-compilation setup"
                 ;;
             *)
                 echo "Error: Unsupported architecture '$ARCH' for Windows"
@@ -54,10 +57,17 @@ case "$PLATFORM" in
             x64|x86_64)
                 TARGET="x86_64-unknown-linux-musl"
                 BINARY_NAME="nexus-agent"
+                STRIP_CMD="strip"
                 ;;
             arm64|aarch64)
                 TARGET="aarch64-unknown-linux-musl"
                 BINARY_NAME="nexus-agent"
+                STRIP_CMD="aarch64-linux-gnu-strip"
+                ;;
+            x86|i686)
+                TARGET="i686-unknown-linux-musl"
+                BINARY_NAME="nexus-agent"
+                STRIP_CMD="strip"
                 ;;
             *)
                 echo "Error: Unsupported architecture '$ARCH' for Linux"
@@ -65,8 +75,27 @@ case "$PLATFORM" in
                 ;;
         esac
         ;;
+    macos)
+        case "$ARCH" in
+            x64|x86_64)
+                TARGET="x86_64-apple-darwin"
+                BINARY_NAME="nexus-agent"
+                STRIP_CMD="strip"
+                ;;
+            arm64|aarch64)
+                TARGET="aarch64-apple-darwin"
+                BINARY_NAME="nexus-agent"
+                STRIP_CMD="strip"
+                echo "Note: Building for Apple Silicon (M1/M2)"
+                ;;
+            *)
+                echo "Error: Unsupported architecture '$ARCH' for macOS"
+                exit 1
+                ;;
+        esac
+        ;;
     *)
-        echo "Error: Unsupported platform '$PLATFORM'. Use 'windows' or 'linux'"
+        echo "Error: Unsupported platform '$PLATFORM'. Use 'windows', 'linux', or 'macos'"
         exit 1
         ;;
 esac
@@ -74,6 +103,16 @@ esac
 echo "Target triple: $TARGET"
 echo "Binary name:   $BINARY_NAME"
 echo ""
+
+# Set up cross-compilation environment for Windows
+if [ "$PLATFORM" = "windows" ]; then
+    echo "Setting up Windows cross-compilation environment..."
+    # Use vendored OpenSSL for Windows cross-compilation
+    export OPENSSL_STATIC=1
+    export OPENSSL_RUST_USE_NASM=0
+    # Tell openssl-sys to use vendored OpenSSL
+    export X86_64_PC_WINDOWS_GNU_OPENSSL_NO_VENDOR=0
+fi
 
 # Build command construction
 BUILD_CMD="cargo build --release --target $TARGET -p nexus-agent"
@@ -91,8 +130,9 @@ echo ""
 # Execute build
 $BUILD_CMD
 
-# Locate built binary
-BUILT_BINARY="target/$TARGET/release/$BINARY_NAME"
+# Locate built binary - respect CARGO_TARGET_DIR if set
+TARGET_DIR="${CARGO_TARGET_DIR:-target}"
+BUILT_BINARY="$TARGET_DIR/$TARGET/release/$BINARY_NAME"
 
 if [ ! -f "$BUILT_BINARY" ]; then
     echo "Error: Built binary not found at $BUILT_BINARY"
@@ -112,9 +152,11 @@ ORIGINAL_SIZE=$(stat -c%s "$OUTPUT_DIR/$BINARY_NAME" 2>/dev/null || stat -f%z "$
 echo "Original size: $ORIGINAL_SIZE bytes"
 
 # Strip debug symbols (reduce binary size)
-if [ "$PLATFORM" = "linux" ]; then
-    echo "Stripping debug symbols..."
-    strip "$OUTPUT_DIR/$BINARY_NAME" 2>/dev/null || echo "Strip failed (non-critical)"
+echo "Stripping debug symbols..."
+if command -v "$STRIP_CMD" &> /dev/null; then
+    $STRIP_CMD "$OUTPUT_DIR/$BINARY_NAME" 2>/dev/null || echo "Strip failed (non-critical)"
+else
+    echo "Warning: $STRIP_CMD not found, skipping strip"
 fi
 
 # UPX compression (optional - significant size reduction)

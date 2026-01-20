@@ -22,6 +22,8 @@ import {
   ChevronRight,
   Download,
   Brain,
+  Microscope,
+  ClipboardList,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -34,6 +36,7 @@ interface SidebarProps {
 const navItems = [
   { path: "/", label: "Dashboard", icon: LayoutDashboard },
   { path: "/operations", label: "Operations", icon: ListTodo },
+  { path: "/operations-manager", label: "Operations Manager", icon: ClipboardList },
   { path: "/targets", label: "Targets", icon: Target },
   { path: "/vulnerabilities", label: "Vulnerabilities", icon: AlertTriangle },
   { path: "/surface-assessment", label: "Surface Assessment", icon: BarChart3 },
@@ -47,6 +50,7 @@ const navItems = [
   { path: "/tool-registry", label: "Tool Registry", icon: Package },
   { path: "/tool-migration", label: "Tool Migration", icon: Download },
   { path: "/reports", label: "Reports", icon: FileText },
+  { path: "/offsec-rd", label: "OffSec Team R&D", icon: Microscope },
   { path: "/settings", label: "Settings", icon: Settings },
   { path: "/profile", label: "Profile", icon: User },
 ];

@@ -3,14 +3,17 @@ import { api } from "@/lib/api";
 export interface Target {
   id: string;
   name?: string;
-  hostname?: string;
-  ipAddress?: string;
-  domain?: string;
-  port?: number;
-  status: string;
+  type?: string;
+  value?: string;
+  description?: string;
+  priority?: number;
+  tags?: string[];
   operationId?: string;
-  notes?: string;
-  lastScanAt?: string;
+  discoveredServices?: any;
+  metadata?: any;
+  status: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export const targetsService = {

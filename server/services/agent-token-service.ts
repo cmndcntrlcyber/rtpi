@@ -128,6 +128,32 @@ class AgentTokenService {
   }
 
   /**
+   * Auto-generate a download token for a bundle with default settings
+   */
+  async autoGenerateToken(bundleId: string, userId: string): Promise<GeneratedToken> {
+    const autoGenerate = process.env.AGENT_TOKEN_AUTO_GENERATE !== 'false';
+
+    if (!autoGenerate) {
+      throw new Error('Auto-generation disabled');
+    }
+
+    const expiresInHours = parseInt(
+      process.env.AGENT_TOKEN_DEFAULT_EXPIRATION_HOURS || '24'
+    );
+    const maxDownloads = parseInt(
+      process.env.AGENT_TOKEN_DEFAULT_MAX_DOWNLOADS || '1'
+    );
+
+    return this.generateToken({
+      bundleId,
+      userId,
+      maxDownloads,
+      expiresInHours,
+      description: 'Auto-generated download token',
+    });
+  }
+
+  /**
    * Validate a download token
    */
   async validateToken(token: string, clientIp?: string): Promise<TokenValidationResult> {

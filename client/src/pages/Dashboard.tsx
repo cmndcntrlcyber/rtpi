@@ -1,9 +1,10 @@
 import { useLocation } from "wouter";
-import { Activity, Loader2 } from "lucide-react";
+import { Activity, Loader2, ClipboardList } from "lucide-react";
 import { useOperations } from "@/hooks/useOperations";
 import { useTargets } from "@/hooks/useTargets";
 import { useVulnerabilities } from "@/hooks/useVulnerabilities";
 import { useAgents } from "@/hooks/useAgents";
+import { useReporterAgents } from "@/hooks/useReporterAgents";
 
 export default function Dashboard() {
   const [, navigate] = useLocation();
@@ -13,6 +14,7 @@ export default function Dashboard() {
   const { targets, loading: targetsLoading, error: targetsError } = useTargets();
   const { vulnerabilities, loading: vulnLoading, error: vulnError } = useVulnerabilities();
   const { agents, loading: agentsLoading, error: agentsError } = useAgents();
+  const { agents: reporters, loading: reportersLoading } = useReporterAgents();
 
   // Calculate statistics
   const stats = {
@@ -20,10 +22,11 @@ export default function Dashboard() {
     targets: targets.length,
     vulnerabilities: vulnerabilities.length,
     activeAgents: agents.filter((a) => a.status === "running").length,
+    activeReporters: reporters.length,
   };
 
   // Check if any data is loading
-  const loading = opsLoading || targetsLoading || vulnLoading || agentsLoading;
+  const loading = opsLoading || targetsLoading || vulnLoading || agentsLoading || reportersLoading;
   const hasError = opsError || targetsError || vulnError || agentsError;
 
   return (
@@ -79,6 +82,23 @@ export default function Dashboard() {
           <h3 className="text-sm font-medium text-muted-foreground mb-2">Active Agents</h3>
           <p className="text-3xl font-bold text-purple-600 flex items-center gap-2">
             {loading ? <><Loader2 className="h-6 w-6 animate-spin" /> Loading...</> : stats.activeAgents}
+          </p>
+        </div>
+
+        {/* Operations Manager */}
+        <div
+          className="bg-card p-6 rounded-lg shadow border border-border cursor-pointer hover:shadow-lg transition-shadow"
+          onClick={() => navigate("/operations-manager")}
+        >
+          <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
+            <ClipboardList className="h-4 w-4" />
+            Operations Manager
+          </h3>
+          <p className="text-3xl font-bold text-indigo-600 flex items-center gap-2">
+            {loading ? <><Loader2 className="h-6 w-6 animate-spin" /> Loading...</> : stats.activeReporters}
+          </p>
+          <p className="text-sm text-muted-foreground mt-2">
+            Reporter agents active
           </p>
         </div>
       </div>

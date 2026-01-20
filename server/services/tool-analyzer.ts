@@ -538,6 +538,14 @@ export async function analyzeToolsDirectory(dirPath: string): Promise<PythonTool
   const results: PythonToolAnalysis[] = [];
 
   try {
+    // Check if directory exists first
+    try {
+      await fs.access(dirPath);
+    } catch {
+      console.warn(`Directory does not exist (skipping): ${dirPath}`);
+      return results; // Return empty array instead of throwing
+    }
+
     const entries = await fs.readdir(dirPath, { withFileTypes: true });
 
     for (const entry of entries) {
@@ -566,12 +574,30 @@ export async function analyzeOffSecTeamTools(): Promise<Map<string, PythonToolAn
   const toolsBasePath = path.join(process.cwd(), 'tools', 'offsec-team', 'tools');
   const categories = ['bug_hunter', 'burpsuite_operator', 'daedelu5', 'nexus_kamuy', 'rt_dev'];
 
+  // Check if base path exists
+  try {
+    await fs.access(toolsBasePath);
+  } catch {
+    console.warn(`OffSec team tools base directory not found: ${toolsBasePath}`);
+    console.warn('This is expected if the offsec-team repository is not yet added.');
+    console.warn('To add it, run: git submodule add <repo-url> tools/offsec-team');
+    return new Map(); // Return empty map instead of throwing
+  }
+
   const results = new Map<string, PythonToolAnalysis[]>();
+  let totalToolsFound = 0;
 
   for (const category of categories) {
     const categoryPath = path.join(toolsBasePath, category);
     const tools = await analyzeToolsDirectory(categoryPath);
     results.set(category, tools);
+    totalToolsFound += tools.length;
+  }
+
+  if (totalToolsFound === 0) {
+    console.warn('No tools found in offsec-team categories. Tool migration features will be limited.');
+  } else {
+    console.log(`Found ${totalToolsFound} tools across ${categories.length} categories`);
   }
 
   return results;

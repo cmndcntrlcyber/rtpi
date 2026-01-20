@@ -1,10 +1,8 @@
 {
-  "id": "74ffa0b9-ed9c-429f-92ef-dbab15c6a912",
-  "prevId": "00000000-0000-0000-0000-000000000000",
-  "version": "5",
-  "dialect": "pg",
+  "version": "7",
+  "dialect": "postgresql",
   "tables": {
-    "agents": {
+    "public.agents": {
       "name": "agents",
       "schema": "",
       "columns": {
@@ -85,9 +83,12 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "api_keys": {
+    "public.api_keys": {
       "name": "api_keys",
       "schema": "",
       "columns": {
@@ -162,29 +163,32 @@
         "api_keys_user_id_users_id_fk": {
           "name": "api_keys_user_id_users_id_fk",
           "tableFrom": "api_keys",
-          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "api_keys_key_hash_unique": {
           "name": "api_keys_key_hash_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "key_hash"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
-      }
+      },
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "audit_logs": {
+    "public.audit_logs": {
       "name": "audit_logs",
       "schema": "",
       "columns": {
@@ -257,21 +261,24 @@
         "audit_logs_user_id_users_id_fk": {
           "name": "audit_logs_user_id_users_id_fk",
           "tableFrom": "audit_logs",
-          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "certificates": {
+    "public.certificates": {
       "name": "certificates",
       "schema": "",
       "columns": {
@@ -350,29 +357,32 @@
         "certificates_device_id_devices_id_fk": {
           "name": "certificates_device_id_devices_id_fk",
           "tableFrom": "certificates",
-          "tableTo": "devices",
           "columnsFrom": [
             "device_id"
           ],
+          "tableTo": "devices",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "certificates_fingerprint_unique": {
           "name": "certificates_fingerprint_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "fingerprint"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
-      }
+      },
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "containers": {
+    "public.containers": {
       "name": "containers",
       "schema": "",
       "columns": {
@@ -445,14 +455,17 @@
       "uniqueConstraints": {
         "containers_container_id_unique": {
           "name": "containers_container_id_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "container_id"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
-      }
+      },
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "devices": {
+    "public.devices": {
       "name": "devices",
       "schema": "",
       "columns": {
@@ -527,14 +540,17 @@
       "uniqueConstraints": {
         "devices_device_id_unique": {
           "name": "devices_device_id_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "device_id"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
-      }
+      },
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "files": {
+    "public.files": {
       "name": "files",
       "schema": "",
       "columns": {
@@ -606,34 +622,37 @@
         "files_uploaded_by_users_id_fk": {
           "name": "files_uploaded_by_users_id_fk",
           "tableFrom": "files",
-          "tableTo": "users",
           "columnsFrom": [
             "uploaded_by"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "files_operation_id_operations_id_fk": {
           "name": "files_operation_id_operations_id_fk",
           "tableFrom": "files",
-          "tableTo": "operations",
           "columnsFrom": [
             "operation_id"
           ],
+          "tableTo": "operations",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "health_checks": {
+    "public.health_checks": {
       "name": "health_checks",
       "schema": "",
       "columns": {
@@ -692,9 +711,12 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "mcp_servers": {
+    "public.mcp_servers": {
       "name": "mcp_servers",
       "schema": "",
       "columns": {
@@ -803,21 +825,24 @@
         "mcp_servers_device_id_devices_id_fk": {
           "name": "mcp_servers_device_id_devices_id_fk",
           "tableFrom": "mcp_servers",
-          "tableTo": "devices",
           "columnsFrom": [
             "device_id"
           ],
+          "tableTo": "devices",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "operations": {
+    "public.operations": {
       "name": "operations",
       "schema": "",
       "columns": {
@@ -910,21 +935,24 @@
         "operations_owner_id_users_id_fk": {
           "name": "operations_owner_id_users_id_fk",
           "tableFrom": "operations",
-          "tableTo": "users",
           "columnsFrom": [
             "owner_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "password_history": {
+    "public.password_history": {
       "name": "password_history",
       "schema": "",
       "columns": {
@@ -960,21 +988,24 @@
         "password_history_user_id_users_id_fk": {
           "name": "password_history_user_id_users_id_fk",
           "tableFrom": "password_history",
-          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "report_templates": {
+    "public.report_templates": {
       "name": "report_templates",
       "schema": "",
       "columns": {
@@ -1049,29 +1080,32 @@
         "report_templates_created_by_users_id_fk": {
           "name": "report_templates_created_by_users_id_fk",
           "tableFrom": "report_templates",
-          "tableTo": "users",
           "columnsFrom": [
             "created_by"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "report_templates_name_unique": {
           "name": "report_templates_name_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "name"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
-      }
+      },
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "reports": {
+    "public.reports": {
       "name": "reports",
       "schema": "",
       "columns": {
@@ -1171,47 +1205,50 @@
         "reports_operation_id_operations_id_fk": {
           "name": "reports_operation_id_operations_id_fk",
           "tableFrom": "reports",
-          "tableTo": "operations",
           "columnsFrom": [
             "operation_id"
           ],
+          "tableTo": "operations",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         },
         "reports_template_id_report_templates_id_fk": {
           "name": "reports_template_id_report_templates_id_fk",
           "tableFrom": "reports",
-          "tableTo": "report_templates",
           "columnsFrom": [
             "template_id"
           ],
+          "tableTo": "report_templates",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "reports_generated_by_users_id_fk": {
           "name": "reports_generated_by_users_id_fk",
           "tableFrom": "reports",
-          "tableTo": "users",
           "columnsFrom": [
             "generated_by"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "security_tools": {
+    "public.security_tools": {
       "name": "security_tools",
       "schema": "",
       "columns": {
@@ -1314,9 +1351,12 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "server_logs": {
+    "public.server_logs": {
       "name": "server_logs",
       "schema": "",
       "columns": {
@@ -1364,21 +1404,24 @@
         "server_logs_server_id_mcp_servers_id_fk": {
           "name": "server_logs_server_id_mcp_servers_id_fk",
           "tableFrom": "server_logs",
-          "tableTo": "mcp_servers",
           "columnsFrom": [
             "server_id"
           ],
+          "tableTo": "mcp_servers",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "sessions": {
+    "public.sessions": {
       "name": "sessions",
       "schema": "",
       "columns": {
@@ -1404,9 +1447,12 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "targets": {
+    "public.targets": {
       "name": "targets",
       "schema": "",
       "columns": {
@@ -1493,21 +1539,24 @@
         "targets_operation_id_operations_id_fk": {
           "name": "targets_operation_id_operations_id_fk",
           "tableFrom": "targets",
-          "tableTo": "operations",
           "columnsFrom": [
             "operation_id"
           ],
+          "tableTo": "operations",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "tool_uploads": {
+    "public.tool_uploads": {
       "name": "tool_uploads",
       "schema": "",
       "columns": {
@@ -1579,34 +1628,37 @@
         "tool_uploads_tool_id_security_tools_id_fk": {
           "name": "tool_uploads_tool_id_security_tools_id_fk",
           "tableFrom": "tool_uploads",
-          "tableTo": "security_tools",
           "columnsFrom": [
             "tool_id"
           ],
+          "tableTo": "security_tools",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "tool_uploads_uploaded_by_users_id_fk": {
           "name": "tool_uploads_uploaded_by_users_id_fk",
           "tableFrom": "tool_uploads",
-          "tableTo": "users",
           "columnsFrom": [
             "uploaded_by"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "users": {
+    "public.users": {
       "name": "users",
       "schema": "",
       "columns": {
@@ -1715,35 +1767,38 @@
       "uniqueConstraints": {
         "users_username_unique": {
           "name": "users_username_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "username"
-          ]
+          ],
+          "nullsNotDistinct": false
         },
         "users_email_unique": {
           "name": "users_email_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "email"
-          ]
+          ],
+          "nullsNotDistinct": false
         },
         "users_google_id_unique": {
           "name": "users_google_id_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "google_id"
-          ]
+          ],
+          "nullsNotDistinct": false
         },
         "users_certificate_fingerprint_unique": {
           "name": "users_certificate_fingerprint_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "certificate_fingerprint"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
-      }
+      },
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     },
-    "vulnerabilities": {
+    "public.vulnerabilities": {
       "name": "vulnerabilities",
       "schema": "",
       "columns": {
@@ -1884,141 +1939,161 @@
         "vulnerabilities_target_id_targets_id_fk": {
           "name": "vulnerabilities_target_id_targets_id_fk",
           "tableFrom": "vulnerabilities",
-          "tableTo": "targets",
           "columnsFrom": [
             "target_id"
           ],
+          "tableTo": "targets",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "vulnerabilities_operation_id_operations_id_fk": {
           "name": "vulnerabilities_operation_id_operations_id_fk",
           "tableFrom": "vulnerabilities",
-          "tableTo": "operations",
           "columnsFrom": [
             "operation_id"
           ],
+          "tableTo": "operations",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {},
+      "policies": {},
+      "isRLSEnabled": false,
+      "checkConstraints": {}
     }
   },
   "enums": {
-    "agent_status": {
+    "public.agent_status": {
       "name": "agent_status",
-      "values": {
-        "idle": "idle",
-        "running": "running",
-        "error": "error",
-        "stopped": "stopped"
-      }
+      "schema": "public",
+      "values": [
+        "idle",
+        "running",
+        "error",
+        "stopped"
+      ]
     },
-    "agent_type": {
+    "public.agent_type": {
       "name": "agent_type",
-      "values": {
-        "openai": "openai",
-        "anthropic": "anthropic",
-        "mcp_server": "mcp_server",
-        "custom": "custom"
-      }
+      "schema": "public",
+      "values": [
+        "openai",
+        "anthropic",
+        "mcp_server",
+        "custom"
+      ]
     },
-    "auth_method": {
+    "public.auth_method": {
       "name": "auth_method",
-      "values": {
-        "local": "local",
-        "google_oauth": "google_oauth",
-        "certificate": "certificate",
-        "api_key": "api_key"
-      }
+      "schema": "public",
+      "values": [
+        "local",
+        "google_oauth",
+        "certificate",
+        "api_key"
+      ]
     },
-    "container_status": {
+    "public.container_status": {
       "name": "container_status",
-      "values": {
-        "running": "running",
-        "stopped": "stopped",
-        "paused": "paused",
-        "restarting": "restarting",
-        "dead": "dead"
-      }
+      "schema": "public",
+      "values": [
+        "running",
+        "stopped",
+        "paused",
+        "restarting",
+        "dead"
+      ]
     },
-    "operation_status": {
+    "public.operation_status": {
       "name": "operation_status",
-      "values": {
-        "planning": "planning",
-        "active": "active",
-        "paused": "paused",
-        "completed": "completed",
-        "cancelled": "cancelled"
-      }
+      "schema": "public",
+      "values": [
+        "planning",
+        "active",
+        "paused",
+        "completed",
+        "cancelled"
+      ]
     },
-    "report_format": {
+    "public.report_format": {
       "name": "report_format",
-      "values": {
-        "pdf": "pdf",
-        "docx": "docx",
-        "html": "html",
-        "markdown": "markdown"
-      }
+      "schema": "public",
+      "values": [
+        "pdf",
+        "docx",
+        "html",
+        "markdown"
+      ]
     },
-    "report_status": {
+    "public.report_status": {
       "name": "report_status",
-      "values": {
-        "draft": "draft",
-        "completed": "completed",
-        "archived": "archived"
-      }
+      "schema": "public",
+      "values": [
+        "draft",
+        "completed",
+        "archived"
+      ]
     },
-    "severity": {
+    "public.severity": {
       "name": "severity",
-      "values": {
-        "critical": "critical",
-        "high": "high",
-        "medium": "medium",
-        "low": "low",
-        "informational": "informational"
-      }
+      "schema": "public",
+      "values": [
+        "critical",
+        "high",
+        "medium",
+        "low",
+        "informational"
+      ]
     },
-    "target_type": {
+    "public.target_type": {
       "name": "target_type",
-      "values": {
-        "ip": "ip",
-        "domain": "domain",
-        "url": "url",
-        "network": "network",
-        "range": "range"
-      }
+      "schema": "public",
+      "values": [
+        "ip",
+        "domain",
+        "url",
+        "network",
+        "range"
+      ]
     },
-    "tool_status": {
+    "public.tool_status": {
       "name": "tool_status",
-      "values": {
-        "available": "available",
-        "running": "running",
-        "stopped": "stopped",
-        "error": "error"
-      }
+      "schema": "public",
+      "values": [
+        "available",
+        "running",
+        "stopped",
+        "error"
+      ]
     },
-    "user_role": {
+    "public.user_role": {
       "name": "user_role",
-      "values": {
-        "admin": "admin",
-        "operator": "operator",
-        "viewer": "viewer"
-      }
+      "schema": "public",
+      "values": [
+        "admin",
+        "operator",
+        "viewer"
+      ]
     }
   },
   "schemas": {},
   "_meta": {
-    "columns": {},
     "schemas": {},
-    "tables": {}
-  }
+    "tables": {},
+    "columns": {}
+  },
+  "id": "74ffa0b9-ed9c-429f-92ef-dbab15c6a912",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "sequences": {},
+  "policies": {},
+  "views": {},
+  "roles": {}
 }

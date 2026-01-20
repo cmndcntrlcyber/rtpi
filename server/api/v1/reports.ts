@@ -4,7 +4,10 @@ import { reports, reportTemplates } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import { generateMarkdownReport, getReportFilePath } from "../../services/report-generator";
+import { pdfReportGenerator } from "../../services/pdf-report-generator";
+import { executiveSummaryGenerator } from "../../services/executive-summary-generator";
 import fs from "fs/promises";
+import crypto from "crypto";
 
 const router = Router();
 
@@ -49,10 +52,51 @@ router.post("/", ensureRole("admin", "operator"), async (req, res) => {
   const user = req.user as any;
 
   try {
-    // Only generate files for markdown format (MVP)
+    // Generate report file based on format
     let fileData = null;
-    if (req.body.format === "markdown") {
+    const format = req.body.format || "markdown";
+
+    if (format === "markdown") {
       fileData = await generateMarkdownReport(req.body);
+    } else if (format === "pdf") {
+      // Transform request data to PDF report format
+      const pdfData = {
+        id: crypto.randomUUID(),
+        operationId: req.body.operationId,
+        name: req.body.name || "Security Assessment Report",
+        type: req.body.type || "penetration_test",
+        reportDate: new Date(),
+        testDates: {
+          start: req.body.testDates?.start ? new Date(req.body.testDates.start) : new Date(),
+          end: req.body.testDates?.end ? new Date(req.body.testDates.end) : new Date(),
+        },
+        client: req.body.client,
+        tester: req.body.tester || { name: user.name, email: user.email },
+        scope: req.body.scope,
+        methodology: req.body.methodology,
+        findings: req.body.findings,
+        executiveSummary: req.body.executiveSummary,
+        conclusion: req.body.conclusion,
+        recommendations: req.body.recommendations,
+        metadata: req.body.metadata,
+      };
+
+      const pdfOptions = {
+        format: req.body.pdfOptions?.format || "A4",
+        includeTableOfContents: req.body.pdfOptions?.includeTableOfContents !== false,
+        includeCoverPage: req.body.pdfOptions?.includeCoverPage !== false,
+        includeCharts: req.body.pdfOptions?.includeCharts !== false,
+        headerText: req.body.pdfOptions?.headerText,
+        footerText: req.body.pdfOptions?.footerText,
+        pageNumbers: req.body.pdfOptions?.pageNumbers !== false,
+        watermark: req.body.pdfOptions?.watermark,
+      };
+
+      const result = await pdfReportGenerator.generatePDFReport(pdfData, pdfOptions);
+      fileData = {
+        filePath: result.filePath,
+        fileSize: result.fileSize,
+      };
     }
 
     const report = await db
@@ -265,6 +309,71 @@ router.get("/:id/download", async (req, res) => {
   } catch (error: any) {
     // Error logged for debugging
     res.status(500).json({ error: "Failed to download report", details: error?.message || "Internal server error" });
+  }
+});
+
+// POST /api/v1/reports/generate-executive-summary - Generate AI-powered executive summary
+router.post("/generate-executive-summary", ensureRole("admin", "operator"), async (req, res) => {
+  const user = req.user as any;
+
+  try {
+    const {
+      name,
+      type,
+      operationId,
+      findings,
+      scope,
+      methodology,
+      testDates,
+      client,
+      tone = "balanced",
+      maxLength = 500,
+      includeRiskScore = true,
+      includeRecommendations = true,
+      includeBusinessImpact = true,
+      focusAreas = [],
+    } = req.body;
+
+    // Validate required fields
+    if (!findings || !Array.isArray(findings)) {
+      return res.status(400).json({ error: "Findings array is required" });
+    }
+
+    // Prepare report data
+    const reportData = {
+      name: name || "Security Assessment Report",
+      type: type || "penetration_test",
+      operationId,
+      findings,
+      scope,
+      methodology,
+      testDates: testDates ? {
+        start: new Date(testDates.start),
+        end: new Date(testDates.end),
+      } : undefined,
+      client,
+    };
+
+    // Generate executive summary
+    const summary = await executiveSummaryGenerator.generateSummary(reportData, {
+      tone,
+      maxLength,
+      includeRiskScore,
+      includeRecommendations,
+      includeBusinessImpact,
+      focusAreas,
+    });
+
+    await logAudit(user.id, "generate_executive_summary", "/reports/generate-executive-summary", null, true, req);
+
+    res.json({
+      success: true,
+      summary,
+    });
+  } catch (error: any) {
+    // Error logged for debugging
+    await logAudit(user.id, "generate_executive_summary", "/reports/generate-executive-summary", null, false, req);
+    res.status(500).json({ error: "Failed to generate executive summary", details: error?.message || "Internal server error" });
   }
 });
 

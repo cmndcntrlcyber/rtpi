@@ -466,6 +466,47 @@ router.get('/:operationId/activity', async (req, res) => {
 });
 
 /**
+ * GET /api/v1/surface-assessment/:operationId/scans
+ * Get scan history for an operation (raw scan records, not transformed to events)
+ */
+router.get('/:operationId/scans', async (req, res) => {
+  try {
+    const { operationId } = req.params;
+    const { limit = '50' } = req.query;
+
+    const scans = await db
+      .select({
+        id: axScanResults.id,
+        toolName: axScanResults.toolName,
+        status: axScanResults.status,
+        targets: axScanResults.targets,
+        assetsFound: axScanResults.assetsFound,
+        servicesFound: axScanResults.servicesFound,
+        vulnerabilitiesFound: axScanResults.vulnerabilitiesFound,
+        startedAt: axScanResults.startedAt,
+        completedAt: axScanResults.completedAt,
+        duration: axScanResults.duration,
+        errorMessage: axScanResults.errorMessage,
+        createdAt: axScanResults.createdAt,
+      })
+      .from(axScanResults)
+      .where(eq(axScanResults.operationId, operationId))
+      .orderBy(desc(axScanResults.createdAt))
+      .limit(parseInt(limit as string, 10));
+
+    res.json({
+      scans,
+      total: scans.length,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      error: 'Failed to fetch scans',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
  * POST /api/v1/surface-assessment/:operationId/scan/bbot
  * Execute a BBOT scan
  */
@@ -502,24 +543,65 @@ router.post('/:operationId/scan/bbot', async (req, res) => {
 
     const userId = (req.user as any).id;
 
-    // Execute scan asynchronously
-    bbotExecutor.executeScan(targets, bbotOptions, operationId, userId)
-      .then((result) => {
-        // Debug logging removed
-      })
-      .catch((error) => {
-        // Error logged for debugging
-      });
+    // Start scan and get scanId immediately (scan runs asynchronously)
+    const { scanId } = await bbotExecutor.startScan(targets, bbotOptions, operationId, userId);
 
     // Return immediately with scan ID
     res.json({
       message: 'BBOT scan started successfully',
       status: 'running',
+      scanId,
     });
   } catch (error: any) {
     // Error logged for debugging
     res.status(500).json({
       error: 'Failed to start BBOT scan',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /api/v1/surface-assessment/:operationId/scan/:scanId/output
+ * Get raw output from a scan
+ */
+router.get('/:operationId/scan/:scanId/output', async (req, res) => {
+  try {
+    const { scanId } = req.params;
+
+    const [scan] = await db
+      .select({
+        id: axScanResults.id,
+        toolName: axScanResults.toolName,
+        status: axScanResults.status,
+        rawOutput: axScanResults.rawOutput,
+        errorMessage: axScanResults.errorMessage,
+        startedAt: axScanResults.startedAt,
+        completedAt: axScanResults.completedAt,
+      })
+      .from(axScanResults)
+      .where(eq(axScanResults.id, scanId))
+      .limit(1);
+
+    if (!scan) {
+      return res.status(404).json({
+        error: 'Scan not found',
+        message: `No scan found with ID ${scanId}`
+      });
+    }
+
+    res.json({
+      id: scan.id,
+      toolName: scan.toolName,
+      status: scan.status,
+      rawOutput: scan.rawOutput || 'No output available',
+      errorMessage: scan.errorMessage,
+      startedAt: scan.startedAt?.toISOString(),
+      completedAt: scan.completedAt?.toISOString(),
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      error: 'Failed to fetch scan output',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
@@ -563,24 +645,228 @@ router.post('/:operationId/scan/nuclei', async (req, res) => {
 
     const userId = (req.user as any).id;
 
-    // Execute scan asynchronously
-    nucleiExecutor.executeScan(targets, nucleiOptions, operationId, userId)
-      .then((result) => {
-        // Scan completed successfully
-      })
-      .catch((error) => {
-        // Error logged for debugging
-      });
+    // Start scan and get scanId immediately (scan runs asynchronously)
+    const { scanId } = await nucleiExecutor.startScan(targets, nucleiOptions, operationId, userId);
 
-    // Return immediately with status
+    // Return immediately with scan ID
     res.json({
       message: 'Nuclei scan started successfully',
       status: 'running',
+      scanId,
     });
   } catch (error: any) {
     // Error logged for debugging
     res.status(500).json({
       error: 'Failed to start Nuclei scan',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /api/v1/surface-assessment/:operationId/scans
+ * List all completed scans for comparison
+ */
+router.get('/:operationId/scans', async (req, res) => {
+  try {
+    const { operationId } = req.params;
+
+    // Get completed scan results
+    const scans = await db
+      .select({
+        id: axScanResults.id,
+        name: sql<string>`CONCAT(${axScanResults.tool}, ' - ', ${axScanResults.target})`,
+        completedAt: axScanResults.completedAt,
+        tool: axScanResults.tool,
+        target: axScanResults.target,
+      })
+      .from(axScanResults)
+      .where(
+        and(
+          eq(axScanResults.operationId, operationId),
+          sql`${axScanResults.status} = 'completed'`,
+          sql`${axScanResults.completedAt} IS NOT NULL`
+        )
+      )
+      .orderBy(desc(axScanResults.completedAt));
+
+    // Get counts for each scan
+    const scansWithCounts = await Promise.all(
+      scans.map(async (scan) => {
+        const [counts] = await db
+          .select({
+            assetsCount: sql<number>`count(distinct ${discoveredAssets.id})`,
+            servicesCount: sql<number>`count(distinct ${discoveredServices.id})`,
+            vulnerabilitiesCount: sql<number>`count(distinct ${vulnerabilities.id})`,
+          })
+          .from(discoveredAssets)
+          .leftJoin(discoveredServices, eq(discoveredAssets.id, discoveredServices.assetId))
+          .leftJoin(vulnerabilities, eq(vulnerabilities.operationId, operationId))
+          .where(
+            and(
+              eq(discoveredAssets.operationId, operationId),
+              sql`${discoveredAssets.discoveredAt} <= ${scan.completedAt}`
+            )
+          );
+
+        return {
+          ...scan,
+          assetsCount: counts?.assetsCount || 0,
+          servicesCount: counts?.servicesCount || 0,
+          vulnerabilitiesCount: counts?.vulnerabilitiesCount || 0,
+        };
+      })
+    );
+
+    res.json({ scans: scansWithCounts });
+  } catch (error: any) {
+    res.status(500).json({
+      error: 'Failed to retrieve scans',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /api/v1/surface-assessment/:operationId/compare
+ * Compare two scans
+ */
+router.post('/:operationId/compare', async (req, res) => {
+  try {
+    const { operationId } = req.params;
+    const { scan1Id, scan2Id } = req.body;
+
+    if (!scan1Id || !scan2Id) {
+      return res.status(400).json({ error: 'Both scan1Id and scan2Id are required' });
+    }
+
+    // Get scan timestamps
+    const [scan1] = await db.select().from(axScanResults).where(eq(axScanResults.id, scan1Id));
+    const [scan2] = await db.select().from(axScanResults).where(eq(axScanResults.id, scan2Id));
+
+    if (!scan1 || !scan2) {
+      return res.status(404).json({ error: 'One or both scans not found' });
+    }
+
+    // Get assets for each scan
+    const assets1 = await db
+      .select()
+      .from(discoveredAssets)
+      .where(
+        and(
+          eq(discoveredAssets.operationId, operationId),
+          sql`${discoveredAssets.discoveredAt} <= ${scan1.completedAt}`
+        )
+      );
+
+    const assets2 = await db
+      .select()
+      .from(discoveredAssets)
+      .where(
+        and(
+          eq(discoveredAssets.operationId, operationId),
+          sql`${discoveredAssets.discoveredAt} <= ${scan2.completedAt}`
+        )
+      );
+
+    // Compare assets
+    const assets1Values = new Set(assets1.map(a => a.value));
+    const assets2Values = new Set(assets2.map(a => a.value));
+
+    const assetsAdded = assets2.filter(a => !assets1Values.has(a.value));
+    const assetsRemoved = assets1.filter(a => !assets2Values.has(a.value));
+    const assetsUnchanged = assets2.filter(a => assets1Values.has(a.value));
+
+    // Get services for each scan
+    const services1 = await db
+      .select()
+      .from(discoveredServices)
+      .leftJoin(discoveredAssets, eq(discoveredServices.assetId, discoveredAssets.id))
+      .where(
+        and(
+          eq(discoveredAssets.operationId, operationId),
+          sql`${discoveredServices.discoveredAt} <= ${scan1.completedAt}`
+        )
+      );
+
+    const services2 = await db
+      .select()
+      .from(discoveredServices)
+      .leftJoin(discoveredAssets, eq(discoveredServices.assetId, discoveredAssets.id))
+      .where(
+        and(
+          eq(discoveredAssets.operationId, operationId),
+          sql`${discoveredServices.discoveredAt} <= ${scan2.completedAt}`
+        )
+      );
+
+    // Compare services (simplified - using port+protocol as key)
+    const services1Keys = new Set(services1.map(s => `${s.discovered_services.port}-${s.discovered_services.protocol}`));
+    const services2Keys = new Set(services2.map(s => `${s.discovered_services.port}-${s.discovered_services.protocol}`));
+
+    const servicesAdded = services2.filter(s => !services1Keys.has(`${s.discovered_services.port}-${s.discovered_services.protocol}`));
+    const servicesRemoved = services1.filter(s => !services2Keys.has(`${s.discovered_services.port}-${s.discovered_services.protocol}`));
+    const servicesUnchanged = services2.filter(s => services1Keys.has(`${s.discovered_services.port}-${s.discovered_services.protocol}`));
+
+    // Get vulnerabilities for each scan
+    const vulns1 = await db
+      .select()
+      .from(vulnerabilities)
+      .where(
+        and(
+          eq(vulnerabilities.operationId, operationId),
+          sql`${vulnerabilities.discoveredAt} <= ${scan1.completedAt}`
+        )
+      );
+
+    const vulns2 = await db
+      .select()
+      .from(vulnerabilities)
+      .where(
+        and(
+          eq(vulnerabilities.operationId, operationId),
+          sql`${vulnerabilities.discoveredAt} <= ${scan2.completedAt}`
+        )
+      );
+
+    // Compare vulnerabilities (using title as key for simplicity)
+    const vulns1Map = new Map(vulns1.map(v => [v.title, v]));
+    const vulns2Map = new Map(vulns2.map(v => [v.title, v]));
+
+    const vulnsAdded = vulns2.filter(v => !vulns1Map.has(v.title));
+    const vulnsRemoved = vulns1.filter(v => !vulns2Map.has(v.title));
+    const vulnsChanged = vulns2.filter(v => {
+      const v1 = vulns1Map.get(v.title);
+      return v1 && (v1.severity !== v.severity || v1.status !== v.status);
+    });
+    const vulnsUnchanged = vulns2.filter(v => {
+      const v1 = vulns1Map.get(v.title);
+      return v1 && v1.severity === v.severity && v1.status === v.status;
+    });
+
+    const comparison = {
+      assets: {
+        added: assetsAdded,
+        removed: assetsRemoved,
+        unchanged: assetsUnchanged,
+      },
+      services: {
+        added: servicesAdded.map(s => s.discovered_services),
+        removed: servicesRemoved.map(s => s.discovered_services),
+        unchanged: servicesUnchanged.map(s => s.discovered_services),
+      },
+      vulnerabilities: {
+        added: vulnsAdded,
+        removed: vulnsRemoved,
+        changed: vulnsChanged,
+        unchanged: vulnsUnchanged,
+      },
+    };
+
+    res.json({ comparison });
+  } catch (error: any) {
+    res.status(500).json({
+      error: 'Failed to compare scans',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }

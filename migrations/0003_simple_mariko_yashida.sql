@@ -1,0 +1,1 @@
+ALTER TABLE "ax_scan_results" ADD COLUMN "raw_output" text;

@@ -5,11 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Wrench, ExternalLink, Terminal, Globe } from "lucide-react";
 import { useTools, useUploadToolFile, useDeleteTool } from "@/hooks/useTools";
 import ToolCard from "@/components/tools/ToolCard";
 import MetasploitCard from "@/components/tools/MetasploitCard";
 import ConfigureToolDialog from "@/components/tools/ConfigureToolDialog";
+import ToolWorkflowDesigner from "@/components/tools/ToolWorkflowDesigner";
 import { Tool } from "@/services/tools";
 
 export default function Tools() {
@@ -165,44 +167,54 @@ export default function Tools() {
         </div>
       </div>
 
-      {/* Tools Catalog */}
-      <div>
-        <h2 className="text-xl font-semibold mb-4">Tools Catalog</h2>
-        {loading ? (
-          <p className="text-muted-foreground">Loading tools...</p>
-        ) : validTools.length === 0 ? (
-          <div className="text-center py-12 bg-card rounded-lg border border-border">
-            <Wrench className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">No tools configured</p>
-            <p className="text-sm text-muted-foreground">Contact administrator to add security tools</p>
-          </div>
-        ) : (
-          <>
-            {/* Metasploit tools get special treatment */}
-            {validTools
-              .filter((tool) => tool.name.toLowerCase().includes("metasploit"))
-              .map((tool) => (
-                <div key={tool.id} className="mb-6">
-                  <MetasploitCard tool={tool} />
-                </div>
-              ))}
+      {/* Tools Tabs */}
+      <Tabs defaultValue="catalog" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="catalog">Tools Catalog</TabsTrigger>
+          <TabsTrigger value="workflows">Workflow Designer</TabsTrigger>
+        </TabsList>
 
-            {/* Other tools in grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {validTools
-                .filter((tool) => !tool.name.toLowerCase().includes("metasploit"))
-                .map((tool) => (
-                  <ToolCard
-                    key={tool.id}
-                    tool={tool}
-                    onConfigure={handleConfigure}
-                    onDelete={handleDelete}
-                  />
-                ))}
+        <TabsContent value="catalog" className="space-y-4">
+          {loading ? (
+            <p className="text-muted-foreground">Loading tools...</p>
+          ) : validTools.length === 0 ? (
+            <div className="text-center py-12 bg-card rounded-lg border border-border">
+              <Wrench className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No tools configured</p>
+              <p className="text-sm text-muted-foreground">Contact administrator to add security tools</p>
             </div>
-          </>
-        )}
-      </div>
+          ) : (
+            <>
+              {/* Metasploit tools get special treatment */}
+              {validTools
+                .filter((tool) => tool.name.toLowerCase().includes("metasploit"))
+                .map((tool) => (
+                  <div key={tool.id} className="mb-6">
+                    <MetasploitCard tool={tool} />
+                  </div>
+                ))}
+
+              {/* Other tools in grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {validTools
+                  .filter((tool) => !tool.name.toLowerCase().includes("metasploit"))
+                  .map((tool) => (
+                    <ToolCard
+                      key={tool.id}
+                      tool={tool}
+                      onConfigure={handleConfigure}
+                      onDelete={handleDelete}
+                    />
+                  ))}
+              </div>
+            </>
+          )}
+        </TabsContent>
+
+        <TabsContent value="workflows" className="space-y-4">
+          <ToolWorkflowDesigner />
+        </TabsContent>
+      </Tabs>
 
       {/* Configure Dialog */}
       <ConfigureToolDialog

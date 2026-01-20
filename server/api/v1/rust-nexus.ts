@@ -828,6 +828,7 @@ router.post("/agents/generate", async (req, res) => {
       features = [],
       implantType = "general",
       controllerUrl,
+      operationId,
       autonomyLevel = 1,
       heartbeatInterval = 30,
       expiresAt,
@@ -846,8 +847,8 @@ router.post("/agents/generate", async (req, res) => {
       return res.status(400).json({ error: "Controller URL is required" });
     }
 
-    // Get user ID from session
-    const userId = (req as any).session?.userId;
+    // Get user ID from authenticated user
+    const userId = (req.user as any)?.id;
     if (!userId) {
       return res.status(401).json({ error: "Authentication required" });
     }
@@ -861,6 +862,7 @@ router.post("/agents/generate", async (req, res) => {
       implantType,
       controllerUrl,
       userId,
+      operationId,
       autonomyLevel,
       heartbeatInterval,
       expiresAt: expiresAt ? new Date(expiresAt) : undefined,
@@ -871,6 +873,9 @@ router.post("/agents/generate", async (req, res) => {
       bundle: {
         id: bundle.bundleId,
         downloadUrl: bundle.downloadUrl,
+        publicDownloadUrl: bundle.publicDownloadUrl,
+        tokenId: bundle.tokenId,
+        tokenExpiresAt: bundle.tokenExpiresAt,
         fileSize: bundle.fileSize,
         fileHash: bundle.fileHash,
         certificateSerial: bundle.certificateSerial,
@@ -982,8 +987,8 @@ router.post("/agents/bundles/:bundleId/generate-token", async (req, res) => {
       allowedIpRanges,
     } = req.body;
 
-    // Get user ID from session
-    const userId = (req as any).session?.userId;
+    // Get user ID from authenticated user
+    const userId = (req.user as any)?.id;
     if (!userId) {
       return res.status(401).json({ error: "Authentication required" });
     }
@@ -1038,7 +1043,7 @@ router.get("/agents/tokens", async (req, res) => {
 // Revoke a token
 router.delete("/agents/tokens/:id", async (req, res) => {
   try {
-    const userId = (req as any).session?.userId;
+    const userId = (req.user as any)?.id;
     if (!userId) {
       return res.status(401).json({ error: "Authentication required" });
     }

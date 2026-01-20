@@ -72,6 +72,12 @@ router.get("/agents/download/:token", async (req, res) => {
       return res.status(404).json({ error: "Bundle not found" });
     }
 
+    if (!bundle.isActive) {
+      return res.status(410).json({
+        error: "Bundle is no longer available"
+      });
+    }
+
     // Check file exists
     try {
       await fs.access(bundle.filePath);
@@ -142,6 +148,13 @@ router.get("/agents/check/:token", async (req, res) => {
     const bundle = await db.query.agentBundles.findFirst({
       where: eq(agentBundles.id, validation.bundleId!),
     });
+
+    if (bundle && !bundle.isActive) {
+      return res.json({
+        valid: false,
+        reason: "Bundle is no longer available",
+      });
+    }
 
     res.json({
       valid: true,

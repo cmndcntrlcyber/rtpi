@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { Search, AlertTriangle, Server, CheckCircle, XCircle, Download } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface ActivityTabProps {
   operationId: string;
@@ -21,6 +22,9 @@ export default function ActivityTab({ operationId }: ActivityTabProps) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
+  const [selectedScanId, setSelectedScanId] = useState<string | null>(null);
+  const [scanOutput, setScanOutput] = useState<string>('');
+  const [loadingOutput, setLoadingOutput] = useState(false);
 
   useEffect(() => {
     if (operationId) {
@@ -101,6 +105,27 @@ export default function ActivityTab({ operationId }: ActivityTabProps) {
     link.href = url;
     link.download = `activity-log-${operationId}-${Date.now()}.json`;
     link.click();
+  };
+
+  const handleTileClick = async (scanId: string) => {
+    setSelectedScanId(scanId);
+    setLoadingOutput(true);
+    setScanOutput('');
+
+    try {
+      const response = await api.get<{ rawOutput: string }>(`/surface-assessment/${operationId}/scan/${scanId}/output`);
+      setScanOutput(response.rawOutput || 'No output available');
+    } catch (error) {
+      console.error('Failed to load scan output:', error);
+      setScanOutput('Failed to load output. The scan may not have completed yet or output was not captured.');
+    } finally {
+      setLoadingOutput(false);
+    }
+  };
+
+  const handleCloseDialog = () => {
+    setSelectedScanId(null);
+    setScanOutput('');
   };
 
   if (!operationId) {
@@ -185,7 +210,11 @@ export default function ActivityTab({ operationId }: ActivityTabProps) {
               const { Icon, color, bg } = getEventIcon(event.type);
 
               return (
-                <div key={event.id} className="p-4 hover:bg-secondary">
+                <div
+                  key={event.id}
+                  className="p-4 hover:bg-secondary cursor-pointer transition-colors"
+                  onClick={() => handleTileClick(event.id)}
+                >
                   <div className="flex items-start gap-3">
                     <div className={`p-2 rounded-lg ${bg} flex-shrink-0`}>
                       <Icon className={`w-5 h-5 ${color}`} />
@@ -220,6 +249,27 @@ export default function ActivityTab({ operationId }: ActivityTabProps) {
           </div>
         )}
       </div>
+
+      {/* Output Dialog */}
+      <Dialog open={!!selectedScanId} onOpenChange={handleCloseDialog}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Scan Output</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto">
+            {loadingOutput ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <p className="ml-4 text-muted-foreground">Loading output...</p>
+              </div>
+            ) : (
+              <pre className="bg-slate-950 text-slate-50 p-4 rounded-lg text-xs font-mono overflow-auto whitespace-pre-wrap break-words">
+                {scanOutput}
+              </pre>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

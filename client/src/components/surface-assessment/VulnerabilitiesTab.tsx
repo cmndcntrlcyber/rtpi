@@ -129,7 +129,7 @@ export default function VulnerabilitiesTab({ operationId }: VulnerabilitiesTabPr
     }
   };
 
-  const handleExport = (format: 'csv' | 'json') => {
+  const handleExport = (format: 'csv' | 'json' | 'markdown') => {
     const selectedVulns = vulnerabilities.filter(v => selected.has(v.id));
     const dataToExport = selectedVulns.length > 0 ? selectedVulns : filteredVulns;
 
@@ -157,6 +157,43 @@ export default function VulnerabilitiesTab({ operationId }: VulnerabilitiesTabPr
       const link = document.createElement('a');
       link.href = url;
       link.download = `vulnerabilities-${operationId}-${Date.now()}.csv`;
+      link.click();
+    } else if (format === 'markdown') {
+      // Generate Markdown table
+      let markdown = `# Vulnerability Report\n\n`;
+      markdown += `**Operation ID:** ${operationId}\n`;
+      markdown += `**Generated:** ${new Date().toLocaleString()}\n`;
+      markdown += `**Total Vulnerabilities:** ${dataToExport.length}\n\n`;
+
+      // Summary by severity
+      const severityCounts = dataToExport.reduce((acc, v) => {
+        acc[v.severity] = (acc[v.severity] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      markdown += `## Summary\n\n`;
+      markdown += `| Severity | Count |\n`;
+      markdown += `|----------|-------|\n`;
+      ['critical', 'high', 'medium', 'low', 'informational'].forEach(severity => {
+        if (severityCounts[severity]) {
+          markdown += `| ${severity.charAt(0).toUpperCase() + severity.slice(1)} | ${severityCounts[severity]} |\n`;
+        }
+      });
+      markdown += `\n`;
+
+      // Detailed vulnerability table
+      markdown += `## Vulnerabilities\n\n`;
+      markdown += `| Title | Severity | Status | CVE ID | CVSS Score | Discovered |\n`;
+      markdown += `|-------|----------|--------|--------|------------|------------|\n`;
+      dataToExport.forEach(v => {
+        markdown += `| ${v.title} | ${v.severity} | ${v.status} | ${v.cveId || 'N/A'} | ${v.cvssScore || 'N/A'} | ${new Date(v.discoveredAt).toLocaleDateString()} |\n`;
+      });
+
+      const dataBlob = new Blob([markdown], { type: 'text/markdown' });
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `vulnerabilities-${operationId}-${Date.now()}.md`;
       link.click();
     }
   };

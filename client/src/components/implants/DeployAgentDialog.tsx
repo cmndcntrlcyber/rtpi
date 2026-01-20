@@ -42,12 +42,14 @@ interface DeployAgentDialogProps {
   open: boolean;
   onClose: () => void;
   platform: "windows" | "linux";
+  onBundleGenerated?: () => void;
 }
 
 export default function DeployAgentDialog({
   open,
   onClose,
   platform,
+  onBundleGenerated,
 }: DeployAgentDialogProps) {
   // Form state
   const [name, setName] = useState("");
@@ -147,6 +149,11 @@ export default function DeployAgentDialog({
         downloadUrl: data.bundle.downloadUrl,
         fileSize: data.bundle.fileSize,
       });
+
+      // Trigger parent refresh to update bundles list
+      if (onBundleGenerated) {
+        onBundleGenerated();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {

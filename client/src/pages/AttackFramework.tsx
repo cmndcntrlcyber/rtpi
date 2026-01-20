@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Shield, Target, Users, Wrench, ShieldCheck, Database } from "lucide-react";
 import TechniquesTable from "@/components/attack/TechniquesTable";
 import TacticsGrid from "@/components/attack/TacticsGrid";
@@ -11,6 +12,8 @@ import CoverageMatrix from "@/components/attack/CoverageMatrix";
 import PlannerTab from "@/components/attack/PlannerTab";
 import AttackFlowDiagram from "@/components/attack/AttackFlowDiagram";
 import WorkbenchTab from "@/components/attack/WorkbenchTab";
+import ATTCKNavigator from "@/components/attack/ATTCKNavigator";
+import AttackFlowBuilder from "@/components/attack/AttackFlowBuilder";
 
 interface AttackStats {
   techniques: number;
@@ -35,6 +38,8 @@ export default function AttackFramework() {
     campaigns: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [operations, setOperations] = useState<any[]>([]);
+  const [selectedOperation, setSelectedOperation] = useState<string>("");
 
   const fetchStats = async () => {
     try {
@@ -55,8 +60,27 @@ export default function AttackFramework() {
     }
   };
 
+  const fetchOperations = async () => {
+    try {
+      const response = await fetch("/api/v1/operations", {
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setOperations(data.operations || []);
+        if (data.operations && data.operations.length > 0) {
+          setSelectedOperation(data.operations[0].id);
+        }
+      }
+    } catch (error) {
+      // Error handled via toast
+    }
+  };
+
   useEffect(() => {
     fetchStats();
+    fetchOperations();
   }, []);
 
   const totalTechniques = stats.techniques + stats.subtechniques;
@@ -73,7 +97,24 @@ export default function AttackFramework() {
             </p>
           </div>
         </div>
-        <StixImportDialog />
+        <div className="flex items-center gap-3">
+          {operations.length > 0 && (
+            <Select value={selectedOperation} onValueChange={setSelectedOperation}>
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder="Select operation" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All Operations</SelectItem>
+                {operations.map((op) => (
+                  <SelectItem key={op.id} value={op.id}>
+                    {op.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <StixImportDialog />
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -148,8 +189,10 @@ export default function AttackFramework() {
       </div>
 
       {/* ATT&CK Tabs */}
-      <Tabs defaultValue="techniques" className="space-y-6">
+      <Tabs defaultValue="navigator" className="space-y-6">
         <TabsList>
+          <TabsTrigger value="navigator">Navigator</TabsTrigger>
+          <TabsTrigger value="flowBuilder">Flow Builder</TabsTrigger>
           <TabsTrigger value="techniques">Techniques</TabsTrigger>
           <TabsTrigger value="tactics">Tactics</TabsTrigger>
           <TabsTrigger value="groups">Groups</TabsTrigger>
@@ -160,6 +203,14 @@ export default function AttackFramework() {
           <TabsTrigger value="workbench">Workbench</TabsTrigger>
           <TabsTrigger value="coverage">Coverage Matrix</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="navigator" className="space-y-4">
+          <ATTCKNavigator operationId={selectedOperation || undefined} />
+        </TabsContent>
+
+        <TabsContent value="flowBuilder" className="space-y-4">
+          <AttackFlowBuilder operationId={selectedOperation || undefined} />
+        </TabsContent>
 
         <TabsContent value="techniques" className="space-y-4">
           <TechniquesTable />

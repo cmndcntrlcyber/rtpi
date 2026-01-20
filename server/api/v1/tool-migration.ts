@@ -51,6 +51,19 @@ router.get('/analyze', async (_req: Request, res: Response) => {
       }
     }
 
+    // If no tools found, return informative response
+    if (summary.totalTools === 0) {
+      return res.json({
+        success: true,
+        data: {
+          summary,
+          toolsByCategory: {},
+          message: 'No tools found. The offsec-team repository may not be installed.',
+          help: 'To add the offsec-team repository, run: git submodule add <repo-url> tools/offsec-team',
+        },
+      });
+    }
+
     res.json({
       success: true,
       data: {
@@ -206,6 +219,15 @@ router.post('/migrate-batch', async (req: Request, res: Response) => {
       const toolsBasePath = path.join(process.cwd(), 'tools', 'offsec-team', 'tools');
       const categoryPath = path.join(toolsBasePath, category);
       analyses = await analyzeToolsDirectory(categoryPath);
+
+      if (analyses.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: `No tools found in category: ${category}`,
+          message: 'The offsec-team repository may not be installed or the directory is empty.',
+          help: 'To add the offsec-team repository, run: git submodule add <repo-url> tools/offsec-team',
+        });
+      }
     } else {
       // Migrate specific tools
       const toolsBasePath = path.join(process.cwd(), 'tools', 'offsec-team', 'tools');
@@ -304,6 +326,19 @@ router.get('/recommendations', async (_req: Request, res: Response) => {
 
     for (const tools of toolsByCategory.values()) {
       allTools.push(...tools);
+    }
+
+    // If no tools found, return informative response
+    if (allTools.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          recommended: [],
+          total: 0,
+          message: 'No tools available for analysis. The offsec-team repository may not be installed.',
+          help: 'To add the offsec-team repository, run: git submodule add <repo-url> tools/offsec-team',
+        },
+      });
     }
 
     // Priority scoring

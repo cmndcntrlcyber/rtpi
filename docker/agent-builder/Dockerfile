@@ -2,7 +2,7 @@
 # Rust toolchain with cross-compilation support for Windows and Linux
 # Used by RTPI to compile rust-nexus agents on-demand
 
-FROM rust:1.75-slim-bookworm
+FROM rust:1.84-slim-bookworm
 
 # Metadata
 LABEL maintainer="RTPI Team"
@@ -21,6 +21,11 @@ RUN apt-get update && apt-get install -y \
     # Build essentials
     pkg-config \
     libssl-dev \
+    # Required for vendored OpenSSL compilation
+    perl \
+    make \
+    # Protocol Buffers compiler (for tonic/prost gRPC code generation)
+    protobuf-compiler \
     # Utilities
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*

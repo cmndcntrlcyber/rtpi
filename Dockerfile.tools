@@ -61,7 +61,16 @@ RUN pip3 install --no-cache-dir \
 
 # Install BBOT (attack surface reconnaissance)
 # Install globally using pip3 instead of pipx to make it available system-wide
-RUN pip3 install --no-cache-dir bbot
+# Include asyncpg for database module support (crt_db module)
+# Include baddns for DNS security issue detection (baddns_direct, baddns_zone modules)
+# Include badsecrets for detecting known/weak secrets in web frameworks
+# Include aiosqlite for gowitness screenshot module support
+# Include python-Wappalyzer for technology detection (wappalyzer module)
+RUN pip3 install --no-cache-dir bbot asyncpg baddns badsecrets aiosqlite python-Wappalyzer
+
+# Fix cloudcheck module permissions (needs write access to cloud_providers.json)
+RUN chmod -R 777 /usr/local/lib/python3.10/dist-packages/cloudcheck* || true \
+    && find /usr/local/lib/python3.10/dist-packages -name "cloud_providers.json" -exec chmod 666 {} \; || true
 
 # Install Nuclei (vulnerability scanner)
 # Download latest release dynamically - detect architecture
@@ -72,8 +81,7 @@ RUN NUCLEI_VERSION=$(curl -s https://api.github.com/repos/projectdiscovery/nucle
     && unzip "nuclei_${NUCLEI_VERSION}_linux_${NUCLEI_ARCH}.zip" -d /tmp \
     && mv /tmp/nuclei /usr/local/bin/nuclei \
     && chmod +x /usr/local/bin/nuclei \
-    && rm "nuclei_${NUCLEI_VERSION}_linux_${NUCLEI_ARCH}.zip" \
-    && nuclei -update-templates -silent || true
+    && rm "nuclei_${NUCLEI_VERSION}_linux_${NUCLEI_ARCH}.zip"
 
 # Install Gobuster (directory/DNS brute forcing)
 # Download latest release dynamically - detect architecture
@@ -135,6 +143,9 @@ RUN chmod +x /usr/local/bin/tools-entrypoint.sh
 # Switch to non-root user
 USER rtpi-tools
 WORKDIR /home/rtpi-tools
+
+# Download Nuclei templates as rtpi-tools user (ensures correct permissions)
+RUN nuclei -update-templates -silent || true
 
 # Expose common tool ports (if needed for specific tools)
 EXPOSE 4444 5555

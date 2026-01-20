@@ -1,7 +1,9 @@
 import fs from "fs/promises";
 import path from "path";
+// import puppeteer from "puppeteer"; // NOTE: Requires: npm install puppeteer
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || "./uploads";
+const REPORTS_DIR = path.join(UPLOAD_DIR, "reports");
 
 export async function generateMarkdownReport(
   reportData: any,

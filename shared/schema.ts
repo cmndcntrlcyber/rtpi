@@ -103,6 +103,19 @@ export const attackPlatformEnum = pgEnum("attack_platform", [
   "PRE",
 ]);
 
+// Notification enums
+export const notificationTypeEnum = pgEnum("notification_type", [
+  "scan_complete",
+  "vulnerability_found",
+  "system_alert",
+  "agent_connected",
+  "agent_disconnected",
+  "task_completed",
+  "task_failed",
+  "workflow_completed",
+  "workflow_failed",
+]);
+
 // ============================================================================
 // AUTHENTICATION & USER MANAGEMENT TABLES (5 tables)
 // ============================================================================
@@ -164,6 +177,30 @@ export const passwordHistory = pgTable("password_history", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const notifications = pgTable("notifications", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  type: notificationTypeEnum("type").notNull(),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  metadata: json("metadata"), // Additional context (operation ID, target ID, etc.)
+  read: boolean("read").notNull().default(false),
+  readAt: timestamp("read_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const filterPresets = pgTable("filter_presets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  context: text("context").notNull(), // "vulnerabilities", "targets", "assets", etc.
+  filters: json("filters").notNull(), // Stored filter state (severity, status, search, etc.)
+  isShared: boolean("is_shared").notNull().default(false), // Share with team
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 // ============================================================================
 // OPERATIONS MANAGEMENT TABLES (6 tables)
 // ============================================================================
@@ -180,6 +217,12 @@ export const operations = pgTable("operations", {
   ownerId: uuid("owner_id").notNull().references(() => users.id),
   teamMembers: json("team_members").default([]),
   metadata: json("metadata"),
+
+  // Operations Management Enhancement
+  hourlyReportingEnabled: boolean("hourly_reporting_enabled").notNull().default(false),
+  managementStatus: json("management_status"),
+  lastManagerUpdate: timestamp("last_manager_update"),
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -452,6 +495,41 @@ export const toolUploads = pgTable("tool_uploads", {
 });
 
 // ============================================================================
+// TOOL WORKFLOW DESIGNER (Visual workflow builder for tools)
+// ============================================================================
+
+export const toolWorkflows = pgTable("tool_workflows", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+
+  // React Flow data structure
+  workflowData: json("workflow_data").notNull().default({
+    nodes: [],
+    edges: [],
+  }),
+
+  // Metadata
+  isTemplate: boolean("is_template").default(false),
+  isShared: boolean("is_shared").default(false),
+  status: text("status").default("draft"), // draft, active, completed
+  category: text("category"), // reconnaissance, exploitation, post-exploitation, etc.
+
+  // Execution tracking
+  lastExecutedAt: timestamp("last_executed_at"),
+  executionCount: integer("execution_count").default(0),
+
+  // Timestamps
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "cascade" }),
+
+  // Additional metadata
+  metadata: json("metadata").default({}),
+});
+
+// ============================================================================
 // AGENT WORKFLOW SYSTEM TABLES (3 tables)
 // ============================================================================
 
@@ -568,6 +646,7 @@ export const axScanResults = pgTable("ax_scan_results", {
   completedAt: timestamp("completed_at"),
   duration: integer("duration"), // seconds
   errorMessage: text("error_message"),
+  rawOutput: text("raw_output"), // Raw stdout/stderr from container execution
   createdBy: uuid("created_by").notNull().references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -581,6 +660,24 @@ export const axModuleConfigs = pgTable("ax_module_configs", {
   rateLimit: integer("rate_limit"),
   timeout: integer("timeout").default(1800000), // 30 min default
   lastUsed: timestamp("last_used"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const scanSchedules = pgTable("scan_schedules", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  operationId: uuid("operation_id").notNull().references(() => operations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  cronExpression: text("cron_expression").notNull(), // e.g., "0 2 * * 1" (Mondays 2am)
+  toolConfig: json("tool_config").notNull(), // { bbot?: BBOTConfig, nuclei?: NucleiConfig }
+  targets: json("targets").notNull(), // Array of target URLs/IPs
+  enabled: boolean("enabled").notNull().default(true),
+  lastRun: timestamp("last_run"),
+  nextRun: timestamp("next_run"),
+  runCount: integer("run_count").default(0),
+  failureCount: integer("failure_count").default(0),
+  createdBy: uuid("created_by").notNull().references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -1215,6 +1312,32 @@ export const attackTechniqueTactics = pgTable("attack_technique_tactics", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const attackFlows = pgTable("attack_flows", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+
+  // React Flow data structure
+  flowData: json("flow_data").notNull().default({
+    nodes: [],
+    edges: [],
+  }),
+
+  // Metadata
+  isTemplate: boolean("is_template").default(false),
+  isShared: boolean("is_shared").default(false),
+  status: text("status").default("draft"), // draft, active, completed
+
+  // Timestamps
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "cascade" }),
+
+  // Additional metadata
+  metadata: json("metadata").default({}),
+});
+
 // ============================================================================
 // Kasm Workspaces Integration
 // ============================================================================
@@ -1704,4 +1827,346 @@ export const agentDownloadTokens = pgTable("agent_download_tokens", {
   lastUsedAt: timestamp("last_used_at"),
   revokedAt: timestamp("revoked_at"),
   revokedBy: uuid("revoked_by").references(() => users.id),
+});
+
+// ============================================================================
+// OFFSEC TEAM R&D TABLES
+// ============================================================================
+
+// Research projects table - R&D project tracking
+export const researchProjects = pgTable("research_projects", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  description: text("description"),
+  type: text("type").notNull(), // 'tool_testing', 'vulnerability_research', 'technique_development', 'knowledge_curation', 'poc_development'
+  status: text("status").notNull().default("active"), // 'draft', 'active', 'completed', 'archived', 'cancelled'
+
+  // Team Assignment
+  leadAgentId: uuid("lead_agent_id").references(() => agents.id),
+  assignedAgents: json("assigned_agents").default([]),
+
+  // Project Details
+  objectives: text("objectives"),
+  successCriteria: text("success_criteria"),
+  findings: json("findings").default({}),
+  artifacts: json("artifacts").default([]),
+
+  // Metadata
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
+
+// R&D experiments table - Experiment execution and results
+export const rdExperiments = pgTable("rd_experiments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id").notNull().references(() => researchProjects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+
+  // Experiment Details
+  hypothesis: text("hypothesis"),
+  methodology: text("methodology"),
+  toolsUsed: json("tools_used").default([]),
+  targets: json("targets").default([]),
+
+  // Results
+  status: text("status").notNull().default("planned"), // 'planned', 'running', 'completed', 'failed', 'cancelled'
+  results: json("results").default({}),
+  conclusions: text("conclusions"),
+  success: boolean("success"),
+
+  // Execution Details
+  executedByAgentId: uuid("executed_by_agent_id").references(() => agents.id),
+  workflowId: uuid("workflow_id").references(() => agentWorkflows.id),
+  executionLog: text("execution_log"),
+  errorMessage: text("error_message"),
+
+  // Timing
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+});
+
+// Tool library table - R&D tool metadata and testing status
+export const toolLibrary = pgTable("tool_library", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  securityToolId: uuid("security_tool_id").references(() => securityTools.id, { onDelete: "cascade" }),
+  researchValue: text("research_value").default("medium"), // 'low', 'medium', 'high', 'critical'
+  testingStatus: text("testing_status").default("untested"), // 'untested', 'testing', 'validated', 'deprecated'
+  compatibleAgents: json("compatible_agents").default([]),
+  requiredCapabilities: text("required_capabilities").array().default([]),
+  lastTestedAt: timestamp("last_tested_at"),
+  testResults: json("test_results").default({}),
+  knownIssues: text("known_issues").array(),
+  executionCount: integer("execution_count").default(0),
+  successRate: real("success_rate").default(0.0),
+  avgExecutionTimeSeconds: integer("avg_execution_time_seconds"),
+  usageExamples: json("usage_examples").default([]),
+  researchNotes: text("research_notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================================================
+// OPERATIONS MANAGEMENT ENHANCEMENT TABLES (3 tables)
+// ============================================================================
+
+// Enums for operations management
+export const reportTypeEnum = pgEnum("report_type", [
+  "hourly_status",
+  "milestone",
+  "roadblock",
+  "change_detection",
+  "issue_report",
+]);
+
+export const managerTaskTypeEnum = pgEnum("manager_task_type", [
+  "synthesis",
+  "status_update",
+  "question_generation",
+  "coordination",
+  "analysis",
+]);
+
+export const questionTypeEnum = pgEnum("question_type", [
+  "context",
+  "scope",
+  "priority",
+  "classification",
+  "verification",
+]);
+
+export const questionStatusEnum = pgEnum("question_status", [
+  "pending",
+  "answered",
+  "dismissed",
+  "escalated",
+]);
+
+// Agent activity reports - Hourly status reports from page reporters
+export const agentActivityReports = pgTable("agent_activity_reports", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  agentPageRole: text("agent_page_role").notNull(), // e.g., "dashboard", "operations", "targets"
+
+  // Context
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "cascade" }),
+  targetId: uuid("target_id").references(() => targets.id, { onDelete: "set null" }),
+
+  // Report metadata
+  reportType: reportTypeEnum("report_type").notNull().default("hourly_status"),
+  reportPeriodStart: timestamp("report_period_start").notNull(),
+  reportPeriodEnd: timestamp("report_period_end").notNull(),
+
+  // Report content
+  activitySummary: text("activity_summary"),
+  keyMetrics: json("key_metrics").default({}),
+  pageState: json("page_state").default({}),
+  changesDetected: json("changes_detected").default([]),
+  issuesReported: json("issues_reported").default([]),
+  recommendations: json("recommendations").default([]),
+
+  // Status
+  status: text("status").notNull().default("submitted"), // 'submitted', 'reviewed', 'archived'
+  generatedAt: timestamp("generated_at").notNull().defaultNow(),
+  reviewedAt: timestamp("reviewed_at"),
+
+  // Metadata
+  metadata: json("metadata").default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Operations Manager tasks - Manager coordination activities
+export const operationsManagerTasks = pgTable("operations_manager_tasks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  taskType: managerTaskTypeEnum("task_type").notNull(),
+  taskName: text("task_name").notNull(),
+  taskDescription: text("task_description"),
+
+  // Context
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "cascade" }),
+  managerAgentId: uuid("manager_agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+
+  // Execution
+  status: taskStatusEnum("status").notNull().default("pending"),
+  priority: integer("priority").default(5),
+
+  // Data
+  involvedAgents: json("involved_agents").default([]), // Array of agent IDs that contributed reports
+  reportsSynthesized: json("reports_synthesized").default([]), // Array of report IDs synthesized
+  inputData: json("input_data").default({}),
+  outputData: json("output_data").default({}),
+  decisions: json("decisions").default([]), // Array of {decision, reasoning, timestamp}
+
+  // Timing
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  errorMessage: text("error_message"),
+
+  // Metadata
+  metadata: json("metadata").default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Asset questions - User Q&A about discovered assets
+export const assetQuestions = pgTable("asset_questions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  assetId: uuid("asset_id").references(() => discoveredAssets.id, { onDelete: "cascade" }),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "cascade" }),
+
+  // Question
+  question: text("question").notNull(),
+  questionType: questionTypeEnum("question_type").notNull(),
+  askedBy: uuid("asked_by").notNull().references(() => agents.id), // Manager agent ID
+
+  // Answer
+  answer: text("answer"),
+  answerSource: text("answer_source"), // 'user', 'agent', 'automated'
+  answeredByUserId: uuid("answered_by_user_id").references(() => users.id),
+  answeredByAgentId: uuid("answered_by_agent_id").references(() => agents.id),
+
+  // Supporting data
+  evidence: json("evidence").default({}),
+  confidence: real("confidence"), // 0.0 - 1.0 confidence score
+
+  // Status
+  status: questionStatusEnum("status").notNull().default("pending"),
+  followUpQuestions: json("follow_up_questions").default([]),
+
+  // Timing
+  askedAt: timestamp("asked_at").notNull().defaultNow(),
+  answeredAt: timestamp("answered_at"),
+  reviewedAt: timestamp("reviewed_at"),
+
+  // Feedback
+  userFeedback: text("user_feedback"),
+  helpful: boolean("helpful"),
+
+  // Metadata
+  metadata: json("metadata").default({}),
+});
+
+// ============================================================================
+// V2.1 DYNAMIC WORKFLOW ORCHESTRATOR TABLES (4 tables)
+// Enhancement: Autonomous agents with dynamic workflow management
+// ============================================================================
+
+export const dependencyTypeEnum = pgEnum("dependency_type", [
+  "required",
+  "optional",
+  "conditional",
+]);
+
+export const workflowInstanceStatusEnum = pgEnum("workflow_instance_status", [
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "paused",
+  "cancelled",
+]);
+
+export const agentNodeStatusEnum = pgEnum("agent_node_status", [
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "skipped",
+]);
+
+// Agent capability definitions - maps agents to their capabilities
+export const agentCapabilities = pgTable("agent_capabilities", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  capability: text("capability").notNull(), // e.g., 'tool_discovery', 'vulnerability_scanning', 'report_writing'
+  inputTypes: json("input_types").default([]), // Data types this agent can consume
+  outputTypes: json("output_types").default([]), // Data types this agent produces
+  priority: integer("priority").default(0), // Higher priority = preferred for capability
+  isEnabled: boolean("is_enabled").notNull().default(true),
+  metadata: json("metadata").default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Workflow templates - predefined sequences that can be dynamically modified
+export const workflowTemplates = pgTable("workflow_templates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  description: text("description"),
+  triggerEvent: text("trigger_event"), // e.g., 'operation_created', 'scan_complete', 'manual'
+  requiredCapabilities: json("required_capabilities").notNull().default([]), // Capabilities that must be satisfied
+  optionalCapabilities: json("optional_capabilities").default([]), // Nice-to-have capabilities
+  configuration: json("configuration").default({}), // WorkflowTemplateConfig
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Agent dependencies - defines execution order constraints between capabilities
+export const agentDependencies = pgTable("agent_dependencies", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  dependsOnCapability: text("depends_on_capability").notNull(), // Capability that must complete first
+  dependencyType: dependencyTypeEnum("dependency_type").notNull().default("required"),
+  condition: json("condition").default({}), // DependencyCondition for conditional dependencies
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Workflow execution instances - tracks running workflows
+export const workflowInstances = pgTable("workflow_instances", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  templateId: uuid("template_id").references(() => workflowTemplates.id, { onDelete: "set null" }),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "cascade" }),
+  status: workflowInstanceStatusEnum("status").notNull().default("pending"),
+  resolvedAgents: json("resolved_agents").default([]), // ResolvedAgentNode[] - agents selected for this instance
+  executionGraph: json("execution_graph").default({}), // ExecutionGraph - DAG of task execution
+  currentPhase: integer("current_phase").default(0),
+  context: json("context").default({}), // Shared context between agents
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================================================
+// V2.1 NUCLEI TEMPLATE MANAGEMENT (for Web Hacker Agent)
+// ============================================================================
+
+export const nucleiTemplates = pgTable("nuclei_templates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  templateId: text("template_id").notNull().unique(), // e.g., 'custom-sqli-users-endpoint'
+  name: text("name").notNull(),
+  severity: severityEnum("severity").notNull(),
+  category: text("category"), // 'sqli', 'xss', 'ssrf', etc.
+
+  // Template content
+  content: text("content").notNull(), // YAML template content
+  filePath: text("file_path"), // Path in container
+
+  // Generation metadata
+  isCustom: boolean("is_custom").notNull().default(false),
+  generatedByAi: boolean("generated_by_ai").notNull().default(false),
+  targetVulnerabilityId: uuid("target_vulnerability_id").references(() => vulnerabilities.id, { onDelete: "set null" }),
+
+  // Validation
+  isValidated: boolean("is_validated").notNull().default(false),
+  validationResults: json("validation_results").default({}),
+
+  // Usage tracking
+  usageCount: integer("usage_count").notNull().default(0),
+  successCount: integer("success_count").notNull().default(0),
+  lastUsedAt: timestamp("last_used_at"),
+
+  // Metadata
+  tags: json("tags").default([]),
+  metadata: json("metadata").default({}),
+
+  // Audit
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

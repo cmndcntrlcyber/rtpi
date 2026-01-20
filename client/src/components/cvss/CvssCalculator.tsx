@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Shield } from "lucide-react";
+import { Shield, Clipboard } from "lucide-react";
+import { toast } from "sonner";
 import {
   CVSS31_DEFINITION,
   getDefaultMetrics,
@@ -26,6 +28,7 @@ export default function CvssCalculator({ value, onChange }: CvssCalculatorProps)
     }
     return getDefaultMetrics();
   });
+  const [pasteInput, setPasteInput] = useState("");
 
   // Sync metrics with external value prop changes using useEffect
   /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
@@ -67,6 +70,52 @@ export default function CvssCalculator({ value, onChange }: CvssCalculatorProps)
     }));
   };
 
+  // Handle pasting CVSS vector strings
+  const handlePasteVector = (vectorString: string) => {
+    const trimmed = vectorString.trim();
+
+    // Validate CVSS 3.x format
+    if (!trimmed.startsWith("CVSS:3.")) {
+      toast.error("Invalid CVSS vector. Must start with 'CVSS:3.0/' or 'CVSS:3.1/'");
+      return;
+    }
+
+    try {
+      const parsed = parseVectorCvss3(trimmed);
+
+      // Validate that we got some metrics
+      if (Object.keys(parsed).length === 0) {
+        toast.error("Could not parse CVSS vector. Please check the format.");
+        return;
+      }
+
+      // Merge with defaults to ensure all metrics have values
+      setMetrics({ ...getDefaultMetrics(), ...parsed });
+      setPasteInput(trimmed);
+      toast.success("CVSS vector loaded successfully!");
+    } catch (error) {
+      toast.error("Error parsing CVSS vector. Please check the format.");
+    }
+  };
+
+  // Handle paste event on the input field
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pastedText = e.clipboardData.getData("text");
+    handlePasteVector(pastedText);
+  };
+
+  // Handle manual input (when user types or pastes)
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setPasteInput(value);
+
+    // Auto-parse if it looks like a complete vector
+    if (value.startsWith("CVSS:3.") && value.includes("/")) {
+      handlePasteVector(value);
+    }
+  };
+
   const severity = getSeverityRating(score);
   const severityColors = {
     red: "bg-red-600 text-white",
@@ -85,6 +134,26 @@ export default function CvssCalculator({ value, onChange }: CvssCalculatorProps)
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Paste CVSS Vector Input */}
+        <div className="space-y-2">
+          <Label htmlFor="cvss-paste" className="flex items-center gap-2 text-sm font-medium">
+            <Clipboard className="h-4 w-4" />
+            Paste CVSS Vector
+          </Label>
+          <Input
+            id="cvss-paste"
+            type="text"
+            placeholder="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+            value={pasteInput}
+            onChange={handleInputChange}
+            onPaste={handlePaste}
+            className="font-mono text-sm"
+          />
+          <p className="text-xs text-muted-foreground">
+            Paste a CVSS 3.0 or 3.1 vector string to auto-populate all metrics
+          </p>
+        </div>
+
         {/* Score Display */}
         <div className="bg-secondary p-4 rounded-lg border border-border">
           <div className="flex items-center justify-between mb-2">

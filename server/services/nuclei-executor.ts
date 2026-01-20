@@ -57,7 +57,156 @@ interface NucleiResult {
 
 export class NucleiExecutor {
   /**
-   * Execute a Nuclei vulnerability scan against targets
+   * Start a Nuclei scan and return the scanId immediately.
+   * The scan runs asynchronously in the background.
+   */
+  async startScan(
+    targets: string[],
+    options: NucleiOptions,
+    operationId: string,
+    userId: string
+  ): Promise<{ scanId: string }> {
+    // Create scan record
+    const [scanRecord] = await db
+      .insert(axScanResults)
+      .values({
+        operationId,
+        toolName: 'nuclei',
+        status: 'running',
+        targets: targets as any,
+        config: options as any,
+        createdBy: userId,
+        startedAt: new Date(),
+      })
+      .returning();
+
+    const scanId = scanRecord.id;
+
+    // Run the scan asynchronously (fire-and-forget with proper error handling)
+    this.runScan(scanId, targets, options, operationId, scanRecord.startedAt!)
+      .then((result) => {
+        console.log(`✅ Nuclei scan ${scanId} completed: ${result.vulnerabilitiesCount} vulnerabilities found`);
+      })
+      .catch((error) => {
+        console.error(`❌ Nuclei scan ${scanId} failed:`, error);
+      });
+
+    return { scanId };
+  }
+
+  /**
+   * Run the actual Nuclei scan (internal method, called asynchronously)
+   */
+  private async runScan(
+    scanId: string,
+    targets: string[],
+    options: NucleiOptions,
+    operationId: string,
+    startedAt: Date
+  ): Promise<{ vulnerabilitiesCount: number; results: NucleiResult }> {
+    // Start database keepalive for long-running scan
+    const { keepDatabaseAlive } = await import('./docker-executor');
+    const stopKeepalive = await keepDatabaseAlive(7200000); // 2 hours
+
+    try {
+      // Build Nuclei command arguments
+      const args = this.buildArgs(targets, options);
+
+      console.log(`🔍 Starting Nuclei scan ${scanId} for targets:`, targets);
+      console.log(`📋 Nuclei args:`, args);
+
+      // Warn about large template sets
+      if (options.templates) {
+        const hasCVEs = options.templates.some(t => t.includes('cves'));
+        const hasVulns = options.templates.some(t => t.includes('vulnerabilities'));
+        if (hasCVEs || hasVulns) {
+          console.log(`⚠️  Large template set detected (CVEs: ${hasCVEs ? '3600+' : '0'}, Vulns: ${hasVulns ? '900+' : '0'} templates)`);
+          console.log(`⏱️  Scan may take 30-60+ minutes depending on targets and network conditions`);
+        }
+      }
+
+      // Execute Nuclei via Docker (rtpi-tools container) with automatic retry
+      const result = await dockerExecutor.execWithRetry(
+        'rtpi-tools',
+        ['nuclei', ...args],
+        {
+          timeout: 7200000 // 2 hours
+        }
+      );
+
+      // Parse Nuclei output
+      const parsedResults = this.parseOutput(result.stdout);
+
+      // Store results in database
+      const vulnerabilitiesCount = await this.storeResults(
+        parsedResults,
+        operationId,
+        scanId
+      );
+
+      // Prepare raw output (stdout + stderr)
+      const rawOutput = [
+        '=== STDOUT ===',
+        result.stdout,
+        '',
+        '=== STDERR ===',
+        result.stderr || '(no stderr output)',
+      ].join('\n');
+
+      // Update scan record with results
+      await db
+        .update(axScanResults)
+        .set({
+          status: 'completed',
+          results: parsedResults as any,
+          rawOutput,
+          vulnerabilitiesFound: vulnerabilitiesCount,
+          completedAt: new Date(),
+          duration: Math.floor((Date.now() - startedAt.getTime()) / 1000),
+        })
+        .where(eq(axScanResults.id, scanId));
+
+      // Stop keepalive on success
+      stopKeepalive();
+
+      return {
+        vulnerabilitiesCount,
+        results: parsedResults,
+      };
+    } catch (error) {
+      // Stop keepalive on error
+      stopKeepalive();
+      // Prepare error raw output if available
+      const errorOutput = error && typeof error === 'object' && 'stdout' in error && 'stderr' in error
+        ? [
+            '=== ERROR ===',
+            error instanceof Error ? error.message : 'Unknown error',
+            '',
+            '=== STDOUT ===',
+            (error as any).stdout || '(no stdout output)',
+            '',
+            '=== STDERR ===',
+            (error as any).stderr || '(no stderr output)',
+          ].join('\n')
+        : error instanceof Error ? error.message : 'Unknown error';
+
+      // Update scan record with error
+      await db
+        .update(axScanResults)
+        .set({
+          status: 'failed',
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          rawOutput: errorOutput,
+          completedAt: new Date(),
+        })
+        .where(eq(axScanResults.id, scanId));
+
+      throw error;
+    }
+  }
+
+  /**
+   * Execute a Nuclei vulnerability scan against targets (legacy method, waits for completion)
    */
   async executeScan(
     targets: string[],
@@ -81,6 +230,10 @@ export class NucleiExecutor {
 
     const scanId = scanRecord.id;
 
+    // Start database keepalive for long-running scan
+    const { keepDatabaseAlive } = await import('./docker-executor');
+    const stopKeepalive = await keepDatabaseAlive(7200000); // 2 hours
+
     try {
       // Build Nuclei command arguments
       const args = this.buildArgs(targets, options);
@@ -88,12 +241,23 @@ export class NucleiExecutor {
       console.log(`🔍 Starting Nuclei scan ${scanId} for targets:`, targets);
       console.log(`📋 Nuclei args:`, args);
 
-      // Execute Nuclei via Docker (rtpi-tools container)
-      const result = await dockerExecutor.exec(
+      // Warn about large template sets
+      if (options.templates) {
+        const hasCVEs = options.templates.some(t => t.includes('cves'));
+        const hasVulns = options.templates.some(t => t.includes('vulnerabilities'));
+        if (hasCVEs || hasVulns) {
+          console.log(`⚠️  Large template set detected (CVEs: ${hasCVEs ? '3600+' : '0'}, Vulns: ${hasVulns ? '900+' : '0'} templates)`);
+          console.log(`⏱️  Scan may take 30-60+ minutes depending on targets and network conditions`);
+        }
+      }
+
+      // Execute Nuclei via Docker (rtpi-tools container) with automatic retry
+      // Note: Large template sets (cves/ = 3600+ templates) can take hours
+      const result = await dockerExecutor.execWithRetry(
         'rtpi-tools',
         ['nuclei', ...args],
         {
-          timeout: options.timeout ? options.timeout * 1000 : 1800000 // Default 30 minutes
+          timeout: 7200000 // 2 hours - allows for large template sets across multiple targets
         }
       );
 
@@ -107,12 +271,22 @@ export class NucleiExecutor {
         scanId
       );
 
+      // Prepare raw output (stdout + stderr)
+      const rawOutput = [
+        '=== STDOUT ===',
+        result.stdout,
+        '',
+        '=== STDERR ===',
+        result.stderr || '(no stderr output)',
+      ].join('\n');
+
       // Update scan record with results
       await db
         .update(axScanResults)
         .set({
           status: 'completed',
           results: parsedResults as any,
+          rawOutput,
           vulnerabilitiesFound: vulnerabilitiesCount,
           completedAt: new Date(),
           duration: Math.floor((Date.now() - scanRecord.startedAt!.getTime()) / 1000),
@@ -121,17 +295,37 @@ export class NucleiExecutor {
 
       console.log(`✅ Nuclei scan ${scanId} completed: ${vulnerabilitiesCount} vulnerabilities found`);
 
+      // Stop keepalive on success
+      stopKeepalive();
+
       return {
         scanId,
         results: parsedResults,
       };
     } catch (error) {
+      // Stop keepalive on error
+      stopKeepalive();
+      // Prepare error raw output if available
+      const errorOutput = error && typeof error === 'object' && 'stdout' in error && 'stderr' in error
+        ? [
+            '=== ERROR ===',
+            error instanceof Error ? error.message : 'Unknown error',
+            '',
+            '=== STDOUT ===',
+            (error as any).stdout || '(no stdout output)',
+            '',
+            '=== STDERR ===',
+            (error as any).stderr || '(no stderr output)',
+          ].join('\n')
+        : error instanceof Error ? error.message : 'Unknown error';
+
       // Update scan record with error
       await db
         .update(axScanResults)
         .set({
           status: 'failed',
           errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          rawOutput: errorOutput,
           completedAt: new Date(),
         })
         .where(eq(axScanResults.id, scanId));
@@ -182,7 +376,18 @@ export class NucleiExecutor {
     if (options.templates && options.templates.length > 0) {
       options.templates.forEach(template => {
         if (template && template.trim()) {
-          args.push('-t', template.trim());
+          // Prepend nuclei-templates path and http/ prefix if needed
+          let templatePath = template.trim();
+          if (!templatePath.startsWith('/') && !templatePath.startsWith('nuclei-templates/')) {
+            // If it's a relative path like "cves/" or "vulnerabilities/", add the proper prefix
+            if (templatePath === 'cves/' || templatePath === 'vulnerabilities/' ||
+                templatePath.startsWith('cves/') || templatePath.startsWith('vulnerabilities/')) {
+              templatePath = `nuclei-templates/http/${templatePath}`;
+            } else {
+              templatePath = `nuclei-templates/${templatePath}`;
+            }
+          }
+          args.push('-t', templatePath);
         }
       });
     }
@@ -192,11 +397,24 @@ export class NucleiExecutor {
       args.push('-timeout', Math.min(options.timeout, 60).toString());
     }
 
+    // Performance optimizations - balanced settings to avoid overwhelming targets
+    // Template concurrency (default is 25)
+    args.push('-c', '25');
+
+    // Bulk size for HTTP request batching (default is 25)
+    args.push('-bulk-size', '25');
+
+    // Payload concurrency per template (default is 25)
+    args.push('-pc', '25');
+
+    // Set max-host-error to prevent early termination (default is 30)
+    args.push('-max-host-error', '50');
+
     // JSONL output for parsing (Nuclei 3.x uses -jsonl)
     args.push('-jsonl');
 
-    // Silent mode (no banner)
-    args.push('-silent');
+    // Note: -silent flag removed to capture scan progress/info in output
+    // This provides visibility when scans complete with 0 findings
 
     // Disable automatic updates during scan
     args.push('-disable-update-check');

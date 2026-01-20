@@ -17,7 +17,7 @@ import { eq } from 'drizzle-orm';
 // Types
 // ============================================================================
 
-export type AgentPlatform = 'windows' | 'linux';
+export type AgentPlatform = 'windows' | 'linux' | 'macos';
 export type AgentArchitecture = 'x64' | 'x86' | 'arm64';
 
 export interface BuildOptions {
@@ -145,7 +145,7 @@ class AgentBuildService {
       const features = (options.features || []).join(',');
       const dockerArgs = [
         'run', '--rm',
-        '-v', `${path.resolve(this.rustNexusPath)}:/build/rust-nexus:ro`,
+        '-v', `${path.resolve(this.rustNexusPath)}:/build/rust-nexus`,
         '-v', `${path.resolve(outputDir)}:/output`,
         this.dockerImage,
         options.platform,

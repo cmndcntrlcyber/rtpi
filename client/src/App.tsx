@@ -29,6 +29,8 @@ import AttackFramework from "@/pages/AttackFramework";
 import Empire from "@/pages/Empire";
 import Implants from "@/pages/Implants";
 import Ollama from "@/pages/Ollama";
+import OffSecTeam from "@/pages/OffSecTeam";
+import { OperationsManager } from "@/pages/OperationsManager";
 import Login from "@/pages/Login";
 
 const queryClient = new QueryClient();
@@ -45,6 +47,7 @@ function AuthenticatedApp() {
         <Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/operations" component={Operations} />
+          <Route path="/operations-manager" component={OperationsManager} />
           <Route path="/targets" component={Targets} />
           <Route path="/vulnerabilities" component={Vulnerabilities} />
           <Route path="/surface-assessment" component={SurfaceAssessment} />
@@ -58,6 +61,7 @@ function AuthenticatedApp() {
           <Route path="/tool-registry" component={ToolRegistry} />
           <Route path="/tool-migration" component={ToolMigration} />
           <Route path="/reports" component={Reports} />
+          <Route path="/offsec-rd" component={OffSecTeam} />
           <Route path="/settings" component={Settings} />
           <Route path="/profile" component={Profile} />
           <Route path="/users" component={Users} />

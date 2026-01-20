@@ -31,8 +31,11 @@ import surfaceAssessmentRoutes from "./api/v1/surface-assessment";
 import usersRoutes from "./api/v1/users";
 import empireRoutes from "./api/v1/empire";
 import attackRoutes from "./api/v1/attack";
+import attackFlowsRoutes from "./api/v1/attack-flows";
 import workbenchRoutes from "./api/v1/workbench";
 import toolMigrationRoutes from "./api/v1/tool-migration";
+import toolWorkflowsRoutes from "./api/v1/tool-workflows";
+import agentToolValidationRoutes from "./api/v1/agent-tool-validation";
 import kasmWorkspacesRoutes from "./api/v1/kasm-workspaces";
 import kasmProxyRoutes from "./api/v1/kasm-proxy";
 import sslCertificatesRoutes from "./api/v1/ssl-certificates";
@@ -40,7 +43,17 @@ import burpBuilderRoutes from "./api/v1/burp-builder";
 import rustNexusRoutes from "./api/v1/rust-nexus";
 import agentPublicRoutes from "./api/v1/agent-public";
 import ollamaRoutes from "./api/v1/ollama";
+import notificationsRoutes from "./api/v1/notifications";
+import filterPresetsRoutes from "./api/v1/filter-presets";
+import offsecRdProjectsRoutes from "./api/v1/offsec-rd-projects";
+import offsecRdExperimentsRoutes from "./api/v1/offsec-rd-experiments";
+import offsecRdKnowledgeRoutes from "./api/v1/offsec-rd-knowledge";
+import offsecRdToolsRoutes from "./api/v1/offsec-rd-tools";
+import operationsManagementRoutes from "./api/v1/operations-management";
+import scanSchedulesRoutes from "./api/v1/scan-schedules";
 import { initializeDefaultAdmin } from "./services/admin-initialization";
+import { opsManagerScheduler } from "./services/ops-manager-scheduler";
+import { scanScheduler } from "./services/scan-scheduler";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -97,8 +110,11 @@ app.use("/api/v1/surface-assessment", surfaceAssessmentRoutes);
 app.use("/api/v1/users", usersRoutes);
 app.use("/api/v1/empire", empireRoutes);
 app.use("/api/v1/attack", attackRoutes);
+app.use("/api/v1/attack-flows", attackFlowsRoutes);
 app.use("/api/v1/workbench", workbenchRoutes);
 app.use("/api/v1/tool-migration", toolMigrationRoutes);
+app.use("/api/v1/tool-workflows", toolWorkflowsRoutes);
+app.use("/api/v1/agent-tool-validation", agentToolValidationRoutes);
 app.use("/api/v1/kasm-workspaces", kasmWorkspacesRoutes);
 app.use("/api/v1/kasm-proxy", kasmProxyRoutes);
 app.use("/api/v1/ssl-certificates", sslCertificatesRoutes);
@@ -106,6 +122,14 @@ app.use("/api/v1/burp-builder", burpBuilderRoutes);
 app.use("/api/v1/rust-nexus", rustNexusRoutes);
 app.use("/api/v1/public", agentPublicRoutes); // Public endpoints (no auth)
 app.use("/api/v1/ollama", ollamaRoutes);
+app.use("/api/v1/notifications", notificationsRoutes);
+app.use("/api/v1/filter-presets", filterPresetsRoutes);
+app.use("/api/v1/offsec-rd/projects", offsecRdProjectsRoutes);
+app.use("/api/v1/offsec-rd/experiments", offsecRdExperimentsRoutes);
+app.use("/api/v1/offsec-rd/knowledge", offsecRdKnowledgeRoutes);
+app.use("/api/v1/offsec-rd/tools", offsecRdToolsRoutes);
+app.use("/api/v1/operations-management", operationsManagementRoutes);
+app.use("/api/v1/scan-schedules", scanSchedulesRoutes);
 
 // Root endpoint
 app.get("/api/v1", (_req, res) => {
@@ -138,6 +162,8 @@ app.get("/api/v1", (_req, res) => {
       burpBuilder: "/api/v1/burp-builder",
       rustNexus: "/api/v1/rust-nexus",
       ollama: "/api/v1/ollama",
+      operationsManagement: "/api/v1/operations-management",
+      scanSchedules: "/api/v1/scan-schedules",
     },
   });
 });
@@ -179,10 +205,45 @@ async function initializeServer() {
       console.log(`📚 API documentation: http://0.0.0.0:${PORT}/api/v1`);
     });
 
+    // Configure timeouts for long-running scan operations
+    server.setTimeout(7200000); // 2 hours - matches Nuclei's longest timeout
+    server.requestTimeout = 7200000; // Node 18+ explicit request timeout
+    server.headersTimeout = 7210000; // Slightly higher than request timeout
+    server.keepAliveTimeout = 65000; // Keep connections alive
+    console.log(`⏱️  Server timeouts configured for long-running scans (2 hour limit)`);
+
     // FIX BUG #4: Initialize WebSocket manager for real-time scan progress
     const { initializeScanWebSocketManager } = await import("./services/scan-websocket-manager");
     initializeScanWebSocketManager(server);
     console.log(`🔌 WebSocket server ready for scan streaming`);
+
+    // Start Operations Manager Scheduler
+    opsManagerScheduler.start();
+    console.log(`⏰ Operations Manager Scheduler started (runs hourly)`);
+
+    // Start Scan Scheduler
+    await scanScheduler.start();
+    console.log(`⏰ Scan Scheduler started for scheduled security scans`);
+
+    // Graceful shutdown
+    const shutdown = async () => {
+      console.log("\n🛑 Shutting down gracefully...");
+      opsManagerScheduler.shutdown();
+      await scanScheduler.stop();
+      server.close(() => {
+        console.log("✅ Server closed");
+        process.exit(0);
+      });
+
+      // Force shutdown after 10 seconds
+      setTimeout(() => {
+        console.error("⚠️  Forced shutdown after timeout");
+        process.exit(1);
+      }, 10000);
+    };
+
+    process.on("SIGTERM", shutdown);
+    process.on("SIGINT", shutdown);
   } catch (error) {
     console.error("❌ Server initialization failed:", error);
     process.exit(1);

@@ -1,0 +1,3 @@
+[submodule "rust-nexus"]
+	path = rust-nexus
+	url = https://github.com/attck-nexus/rust-nexus

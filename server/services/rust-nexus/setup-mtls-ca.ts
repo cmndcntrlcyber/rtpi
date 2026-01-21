@@ -269,7 +269,9 @@ async function main() {
 }
 
 // Run if executed directly
-if (require.main === module) {
+import { fileURLToPath } from "url";
+const __filename = fileURLToPath(import.meta.url);
+if (process.argv[1] === __filename || process.argv[1]?.endsWith("setup-mtls-ca.ts")) {
   main();
 }
 

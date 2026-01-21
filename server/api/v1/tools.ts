@@ -20,6 +20,11 @@ import {
   getValidatedTools,
 } from "../../services/tool-registry-manager";
 import {
+  discoverTools,
+  getDiscoverySummary,
+  type DiscoveredTool,
+} from "../../services/tool-discovery-service";
+import {
   executeTool as executeNewTool,
   getExecutionResult,
 } from "../../services/tool-executor";
@@ -741,6 +746,98 @@ router.get("/executions/:executionId", async (req, res) => {
   } catch (error: any) {
     // Error logged for debugging
     res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/v1/tools/refresh - Refresh tools registry from Dockerfile.tools and /opt/tools/
+ * Discovers tools in the rtpi-tools container and syncs them to the database
+ */
+router.post("/refresh", ensureRole("admin", "operator"), async (req, res) => {
+  const user = req.user as any;
+
+  try {
+    console.log("Starting tools registry refresh...");
+
+    // Discover tools from container
+    const discoveredTools = await discoverTools();
+    const summary = getDiscoverySummary(discoveredTools);
+
+    let added = 0;
+    let updated = 0;
+
+    // Sync discovered tools to database
+    for (const tool of discoveredTools) {
+      // Check if tool already exists in database
+      const existing = await db
+        .select()
+        .from(securityTools)
+        .where(eq(securityTools.name, tool.name))
+        .limit(1);
+
+      if (existing.length === 0) {
+        // Insert new tool
+        await db.insert(securityTools).values({
+          name: tool.name,
+          category: tool.category,
+          description: tool.description,
+          command: tool.command,
+          dockerImage: tool.dockerImage,
+          status: tool.isInstalled ? "available" : "unavailable",
+          version: tool.version || undefined,
+          configPath: tool.installPath,
+          metadata: {
+            ...tool.metadata,
+            installMethod: tool.installMethod,
+            githubUrl: tool.githubUrl,
+            installPath: tool.installPath,
+            discoveredAt: new Date().toISOString(),
+          },
+        });
+        added++;
+        console.log(`  Added: ${tool.name}`);
+      } else {
+        // Update existing tool
+        await db
+          .update(securityTools)
+          .set({
+            status: tool.isInstalled ? "available" : "unavailable",
+            version: tool.version || existing[0].version,
+            configPath: tool.installPath || existing[0].configPath,
+            metadata: {
+              ...(existing[0].metadata as Record<string, any> || {}),
+              ...tool.metadata,
+              installMethod: tool.installMethod,
+              githubUrl: tool.githubUrl,
+              installPath: tool.installPath,
+              lastRefreshed: new Date().toISOString(),
+            },
+            updatedAt: new Date(),
+          })
+          .where(eq(securityTools.id, existing[0].id));
+        updated++;
+        console.log(`  Updated: ${tool.name}`);
+      }
+    }
+
+    await logAudit(user.id, "refresh_tools_registry", "/tools/refresh", null, true, req);
+
+    res.json({
+      success: true,
+      message: `Tools registry refreshed successfully`,
+      added,
+      updated,
+      total: discoveredTools.length,
+      summary,
+      tools: discoveredTools,
+    });
+  } catch (error: any) {
+    console.error("Tools refresh failed:", error);
+    await logAudit(user.id, "refresh_tools_registry", "/tools/refresh", null, false, req);
+    res.status(500).json({
+      error: "Failed to refresh tools registry",
+      details: error.message,
+    });
   }
 });
 

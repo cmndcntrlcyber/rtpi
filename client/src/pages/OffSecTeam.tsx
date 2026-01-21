@@ -1,10 +1,11 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Microscope, Bot, Wrench, FolderOpen, FlaskConical, BookOpen } from "lucide-react";
+import { Microscope, Bot, Wrench, FolderOpen, FlaskConical, BookOpen, Target } from "lucide-react";
 import RDAgentsTab from "@/components/offsec-team/RDAgentsTab";
 import ToolLabTab from "@/components/offsec-team/ToolLabTab";
 import ResearchProjectsTab from "@/components/offsec-team/ResearchProjectsTab";
 import ExperimentsTab from "@/components/offsec-team/ExperimentsTab";
 import KnowledgeBaseTab from "@/components/offsec-team/KnowledgeBaseTab";
+import TacticWorkflowsView from "@/components/offsec-team/TacticWorkflowsView";
 
 export default function OffSecTeam() {
   return (
@@ -21,8 +22,8 @@ export default function OffSecTeam() {
         </div>
       </div>
 
-      <Tabs defaultValue="agents" className="w-full">
-        <TabsList className="grid w-full grid-cols-5 mb-8">
+      <Tabs defaultValue="workflows" className="w-full">
+        <TabsList className="grid w-full grid-cols-6 mb-8">
           <TabsTrigger value="agents" className="flex items-center gap-2">
             <Bot className="h-4 w-4" />
             <span className="hidden sm:inline">R&D Agents</span>
@@ -48,6 +49,11 @@ export default function OffSecTeam() {
             <span className="hidden sm:inline">Knowledge Base</span>
             <span className="sm:hidden">Docs</span>
           </TabsTrigger>
+          <TabsTrigger value="workflows" className="flex items-center gap-2">
+            <Target className="h-4 w-4" />
+            <span className="hidden sm:inline">ATT&CK Workflows</span>
+            <span className="sm:hidden">ATT&CK</span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="agents" className="mt-0">
@@ -68,6 +74,10 @@ export default function OffSecTeam() {
 
         <TabsContent value="knowledge" className="mt-0">
           <KnowledgeBaseTab />
+        </TabsContent>
+
+        <TabsContent value="workflows" className="mt-0">
+          <TacticWorkflowsView />
         </TabsContent>
       </Tabs>
     </div>

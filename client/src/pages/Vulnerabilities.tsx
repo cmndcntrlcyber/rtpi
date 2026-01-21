@@ -4,9 +4,11 @@ import { Plus, CheckSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import VulnerabilityList from "@/components/vulnerabilities/VulnerabilityList";
 import EditVulnerabilityDialog from "@/components/vulnerabilities/EditVulnerabilityDialog";
+import SendToRDDialog from "@/components/vulnerabilities/SendToRDDialog";
 import { BulkActionToolbar } from "@/components/shared/BulkActionToolbar";
 import { BulkConfirmDialog } from "@/components/shared/BulkConfirmDialog";
 import { api } from "@/lib/api";
+import { useLocation } from "wouter";
 
 export default function Vulnerabilities() {
   const [vulnerabilities, setVulnerabilities] = useState<any[]>([]);
@@ -14,6 +16,11 @@ export default function Vulnerabilities() {
   const [loading, setLoading] = useState(true);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedVulnerability, setSelectedVulnerability] = useState<any>(null);
+
+  // R&D dialog state
+  const [rdDialogOpen, setRdDialogOpen] = useState(false);
+  const [rdVulnerability, setRdVulnerability] = useState<any>(null);
+  const [, setLocation] = useLocation();
 
   // Bulk selection state
   const [bulkMode, setBulkMode] = useState(false);
@@ -101,6 +108,21 @@ export default function Vulnerabilities() {
       // Error handled via toast
       toast.error("Failed to delete vulnerability");
     }
+  };
+
+  // R&D handlers
+  const handleSendToRD = (vulnerability: any) => {
+    setRdVulnerability(vulnerability);
+    setRdDialogOpen(true);
+  };
+
+  const handleRDSuccess = (_projectId: string) => {
+    toast.success("R&D Project created! View it in OffSec Team.", {
+      action: {
+        label: "View",
+        onClick: () => setLocation("/offsec-team"),
+      },
+    });
   };
 
   // Bulk selection handlers
@@ -236,6 +258,7 @@ export default function Vulnerabilities() {
         onSelect={handleSelectVulnerability}
         onEdit={handleEditVulnerability}
         onDelete={(v) => handleDeleteVulnerability(v.id)}
+        onSendToRD={handleSendToRD}
         selectable={bulkMode}
         selectedIds={selectedIds}
         onSelectionChange={handleSelectionChange}
@@ -270,6 +293,14 @@ export default function Vulnerabilities() {
         itemType="vulnerability"
         onConfirm={handleConfirmBulkAction}
         loading={bulkActionLoading}
+      />
+
+      {/* Send to R&D Dialog */}
+      <SendToRDDialog
+        open={rdDialogOpen}
+        vulnerability={rdVulnerability}
+        onClose={() => setRdDialogOpen(false)}
+        onSuccess={handleRDSuccess}
       />
     </div>
   );

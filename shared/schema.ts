@@ -1851,6 +1851,9 @@ export const researchProjects = pgTable("research_projects", {
   findings: json("findings").default({}),
   artifacts: json("artifacts").default([]),
 
+  // Source Reference (for vulnerability_research projects)
+  sourceVulnerabilityId: uuid("source_vulnerability_id").references(() => vulnerabilities.id, { onDelete: "set null" }),
+
   // Metadata
   createdBy: uuid("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),

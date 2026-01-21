@@ -49,8 +49,10 @@ import offsecRdProjectsRoutes from "./api/v1/offsec-rd-projects";
 import offsecRdExperimentsRoutes from "./api/v1/offsec-rd-experiments";
 import offsecRdKnowledgeRoutes from "./api/v1/offsec-rd-knowledge";
 import offsecRdToolsRoutes from "./api/v1/offsec-rd-tools";
+import vulnerabilityRdRoutes from "./api/v1/vulnerability-rd";
 import operationsManagementRoutes from "./api/v1/operations-management";
 import scanSchedulesRoutes from "./api/v1/scan-schedules";
+import offsecAgentsRoutes from "./api/v1/offsec-agents";
 import { initializeDefaultAdmin } from "./services/admin-initialization";
 import { opsManagerScheduler } from "./services/ops-manager-scheduler";
 import { scanScheduler } from "./services/scan-scheduler";
@@ -128,8 +130,10 @@ app.use("/api/v1/offsec-rd/projects", offsecRdProjectsRoutes);
 app.use("/api/v1/offsec-rd/experiments", offsecRdExperimentsRoutes);
 app.use("/api/v1/offsec-rd/knowledge", offsecRdKnowledgeRoutes);
 app.use("/api/v1/offsec-rd/tools", offsecRdToolsRoutes);
+app.use("/api/v1/vulnerability-rd", vulnerabilityRdRoutes);
 app.use("/api/v1/operations-management", operationsManagementRoutes);
 app.use("/api/v1/scan-schedules", scanSchedulesRoutes);
+app.use("/api/v1/offsec-agents", offsecAgentsRoutes);
 
 // Root endpoint
 app.get("/api/v1", (_req, res) => {

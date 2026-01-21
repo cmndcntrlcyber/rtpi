@@ -28,11 +28,13 @@ const projectSchema = z.object({
   successCriteria: z.string().optional(),
   findings: z.any().optional(),
   artifacts: z.array(z.object({
-    type: z.enum(["code", "report", "poc", "binary", "documentation"]),
+    type: z.enum(["code", "report", "poc", "binary", "documentation", "nuclei_template"]),
     name: z.string(),
     path: z.string(),
     createdAt: z.string(),
+    nucleiTemplateId: z.string().uuid().optional(),
   })).optional(),
+  sourceVulnerabilityId: z.string().uuid().optional(),
 });
 
 // GET /api/v1/offsec-rd/projects - List all research projects
@@ -52,6 +54,7 @@ router.get("/", async (_req, res) => {
         successCriteria: researchProjects.successCriteria,
         findings: researchProjects.findings,
         artifacts: researchProjects.artifacts,
+        sourceVulnerabilityId: researchProjects.sourceVulnerabilityId,
         createdBy: researchProjects.createdBy,
         createdByUsername: users.username,
         createdAt: researchProjects.createdAt,
@@ -91,6 +94,7 @@ router.get("/:id", async (req, res) => {
         successCriteria: researchProjects.successCriteria,
         findings: researchProjects.findings,
         artifacts: researchProjects.artifacts,
+        sourceVulnerabilityId: researchProjects.sourceVulnerabilityId,
         createdBy: researchProjects.createdBy,
         createdByUsername: users.username,
         createdAt: researchProjects.createdAt,
@@ -136,6 +140,7 @@ router.post("/", ensureRole("admin", "operator"), async (req, res) => {
         successCriteria: validatedData.successCriteria,
         findings: validatedData.findings || {},
         artifacts: validatedData.artifacts || [],
+        sourceVulnerabilityId: validatedData.sourceVulnerabilityId,
         createdBy: user.id,
       })
       .returning();

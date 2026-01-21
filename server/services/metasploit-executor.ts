@@ -294,6 +294,98 @@ class MetasploitExecutor {
   }
 
   /**
+   * Search for modules in Metasploit database
+   */
+  async searchModules(query: string, moduleType?: string): Promise<any[]> {
+    if (!query || query.trim().length < 2) {
+      return [];
+    }
+
+    try {
+      // Build search command
+      let searchCommand = `search ${query}`;
+      if (moduleType) {
+        searchCommand += ` type:${moduleType}`;
+      }
+
+      const command = ["msfconsole", "-q", "-x", `${searchCommand}; exit`];
+
+      const result = await dockerExecutor.exec("rtpi-tools", command, {
+        timeout: 30000, // 30 seconds
+      });
+
+      return this.parseSearchResults(result.stdout, moduleType);
+    } catch (error) {
+      console.error("Failed to search modules:", error);
+      return [];
+    }
+  }
+
+  /**
+   * Parse search results from msfconsole output
+   */
+  private parseSearchResults(output: string, filterType?: string): any[] {
+    const modules: any[] = [];
+    const lines = output.split("\n");
+    let inResultsSection = false;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+
+      // Skip until we hit the results section
+      if (trimmed.includes("Matching Modules") || trimmed.includes("Name") && trimmed.includes("Disclosure Date")) {
+        inResultsSection = true;
+        continue;
+      }
+
+      // Skip separator lines
+      if (trimmed.includes("====") || trimmed.includes("----")) {
+        continue;
+      }
+
+      // Stop at interact or end markers
+      if (trimmed.includes("Interact with") || !trimmed) {
+        if (modules.length > 0) break;
+        continue;
+      }
+
+      if (inResultsSection && trimmed) {
+        // Parse module line format: "  #  Name                           Disclosure Date  Rank    Check  Description"
+        // Example: "  0  exploit/windows/smb/ms17_010   2017-03-14       average  Yes    MS17-010 EternalBlue SMB..."
+
+        const match = trimmed.match(/^\s*\d+\s+(\S+)\s+(.*)$/);
+        if (match) {
+          const fullPath = match[1];
+          const parts = fullPath.split("/");
+
+          if (parts.length >= 2) {
+            const type = parts[0];
+            const path = parts.slice(1).join("/");
+
+            // Filter by type if specified
+            if (!filterType || type === filterType) {
+              // Parse the rest for additional info
+              const restParts = match[2].trim().split(/\s{2,}/);
+
+              modules.push({
+                type,
+                path,
+                fullPath,
+                disclosureDate: restParts[0] || "",
+                rank: restParts[1] || "",
+                description: restParts[restParts.length - 1] || "",
+                displayName: path.split("/").pop() || path,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return modules;
+  }
+
+  /**
    * Auto-select appropriate module based on target reconnaissance data
    */
   selectModuleForTarget(

@@ -43,6 +43,13 @@
       "when": 1768888673456,
       "tag": "0005_strong_corsair",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1768975995869,
+      "tag": "0006_workable_dracula",
+      "breakpoints": true
     }
   ]
 }

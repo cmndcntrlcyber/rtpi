@@ -60,12 +60,12 @@ export default function MetasploitCard({ tool }: MetasploitCardProps) {
   const loadModules = async () => {
     try {
       setLoading(true);
-      const response = await api.get("/api/v1/metasploit/modules");
+      const response = await api.get("/metasploit/modules");
       
       // Get all module types
       const modulesData: any = { modules: {} };
       for (const type of response.data.categories) {
-        const typeResponse = await api.get(`/api/v1/metasploit/modules/${type}`);
+        const typeResponse = await api.get(`/metasploit/modules/${type}`);
         modulesData.modules[type] = typeResponse.data.categories;
       }
       
@@ -99,7 +99,7 @@ export default function MetasploitCard({ tool }: MetasploitCardProps) {
     }
 
     try {
-      const response = await api.post("/api/v1/metasploit/auto-select", {
+      const response = await api.post("/metasploit/auto-select", {
         targetId: selectedTarget,
       });
 
@@ -135,7 +135,7 @@ export default function MetasploitCard({ tool }: MetasploitCardProps) {
       setIsExecuting(true);
       setOutput(""); // Clear previous output
 
-      const response = await api.post("/api/v1/metasploit/execute", {
+      const response = await api.post("/metasploit/execute", {
         toolId: tool.id,
         targetId: selectedTarget,
         module: {

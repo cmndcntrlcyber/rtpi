@@ -85,7 +85,7 @@ class AgentBuildService {
   constructor() {
     this.rustNexusPath = process.env.RUST_NEXUS_PATH || '/opt/rust-nexus';
     this.buildsDir = process.env.AGENT_BUILDS_DIR || './uploads/agent-builds';
-    this.buildTimeout = parseInt(process.env.AGENT_BUILD_TIMEOUT || '600000', 10); // 10 min default
+    this.buildTimeout = parseInt(process.env.AGENT_BUILD_TIMEOUT || '1800000', 10); // 30 min default (cross-compilation is slow)
     this.dockerImage = process.env.AGENT_BUILDER_IMAGE || 'rtpi/agent-builder:latest';
   }
 
@@ -150,7 +150,7 @@ class AgentBuildService {
         this.dockerImage,
         options.platform,
         options.architecture,
-        features,
+        features || '',  // Pass empty string if no features (build script handles it)
         '/output'
       ];
 
@@ -273,6 +273,40 @@ class AgentBuildService {
   }
 
   /**
+   * Check if build completed by verifying files exist (fallback for DB issues)
+   */
+  private async checkBuildFilesExist(buildId: string, platform: string): Promise<{
+    exists: boolean;
+    binaryPath?: string;
+    binarySize?: number;
+    binaryHash?: string;
+  }> {
+    const outputDir = path.join(this.buildsDir, buildId);
+    const binaryName = platform === 'windows' ? 'nexus-agent.exe' : 'nexus-agent';
+    const binaryPath = path.join(outputDir, binaryName);
+    const buildInfoPath = path.join(outputDir, 'BUILD_INFO.json');
+
+    try {
+      // Check if both binary and BUILD_INFO.json exist
+      await fs.access(binaryPath);
+      await fs.access(buildInfoPath);
+
+      // Read BUILD_INFO.json for hash
+      const buildInfo = JSON.parse(await fs.readFile(buildInfoPath, 'utf-8'));
+      const stats = await fs.stat(binaryPath);
+
+      return {
+        exists: true,
+        binaryPath,
+        binarySize: stats.size,
+        binaryHash: buildInfo.sha256,
+      };
+    } catch {
+      return { exists: false };
+    }
+  }
+
+  /**
    * Wait for build to complete (with polling)
    */
   async waitForBuild(buildId: string, pollIntervalMs = 2000, maxWaitMs = 600000): Promise<BuildResult> {
@@ -303,6 +337,36 @@ class AgentBuildService {
           errorMessage: status.errorMessage,
           buildDurationMs: status.buildDurationMs,
         };
+      }
+
+      // FALLBACK: Check if files exist even if DB status is stale
+      if (status.status === 'building' || status.status === 'pending') {
+        const fileCheck = await this.checkBuildFilesExist(buildId, status.platform);
+        if (fileCheck.exists) {
+          console.log(`[AgentBuildService] Build ${buildId} detected complete via filesystem (DB status was: ${status.status})`);
+
+          // Update DB to reflect actual state
+          const duration = Date.now() - new Date(status.createdAt).getTime();
+          await db.update(agentBuilds).set({
+            status: 'completed',
+            binaryPath: fileCheck.binaryPath,
+            binaryHash: fileCheck.binaryHash,
+            binarySize: fileCheck.binarySize,
+            buildDurationMs: duration,
+            completedAt: new Date(),
+          }).where(eq(agentBuilds.id, buildId)).catch(err => {
+            console.warn(`[AgentBuildService] Failed to update DB for ${buildId}:`, err);
+          });
+
+          return {
+            buildId,
+            status: 'completed',
+            binaryPath: fileCheck.binaryPath,
+            binarySize: fileCheck.binarySize,
+            binaryHash: fileCheck.binaryHash,
+            buildDurationMs: duration,
+          };
+        }
       }
 
       // Wait before next poll

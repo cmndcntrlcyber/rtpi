@@ -6,8 +6,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Wrench, ExternalLink, Terminal, Globe } from "lucide-react";
-import { useTools, useUploadToolFile, useDeleteTool } from "@/hooks/useTools";
+import { Wrench, ExternalLink, Terminal, Globe, RefreshCw } from "lucide-react";
+import { useTools, useUploadToolFile, useDeleteTool, useRefreshTools } from "@/hooks/useTools";
 import ToolCard from "@/components/tools/ToolCard";
 import MetasploitCard from "@/components/tools/MetasploitCard";
 import ConfigureToolDialog from "@/components/tools/ConfigureToolDialog";
@@ -18,6 +18,7 @@ export default function Tools() {
   const { tools, loading, refetch } = useTools();
   const { upload, uploading } = useUploadToolFile();
   const { deleteTool } = useDeleteTool();
+  const { refresh, refreshing } = useRefreshTools();
 
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [configureDialogOpen, setConfigureDialogOpen] = useState(false);
@@ -63,6 +64,18 @@ export default function Tools() {
     // Debug logging removed
   };
 
+  const handleRefreshRegistry = async () => {
+    try {
+      const result = await refresh();
+      toast.success(
+        `Registry refreshed: ${result.added} added, ${result.updated} updated (${result.summary.installed}/${result.total} installed)`
+      );
+      await refetch();
+    } catch (err) {
+      toast.error(`Failed to refresh registry: ${err instanceof Error ? err.message : "Unknown error"}`);
+    }
+  };
+
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -82,7 +95,17 @@ export default function Tools() {
 
   return (
     <div className="p-8">
-      <h1 className="text-3xl font-bold mb-8">Security Tools</h1>
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="text-3xl font-bold">Security Tools</h1>
+        <Button
+          onClick={handleRefreshRegistry}
+          disabled={refreshing}
+          variant="outline"
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? 'Refreshing...' : 'Refresh Registry'}
+        </Button>
+      </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">

@@ -514,6 +514,213 @@ services:
       retries: 3
       start_period: 20s
 
+  # ===========================================================================
+  # OffSec Agent Containers (v2.2 Enhancement)
+  # Specialized security tool containers with MCP server integration
+  # ===========================================================================
+
+  # OffSec Base Image (built first, used by all agents)
+  offsec-base:
+    build:
+      context: ./docker/offsec-agents
+      dockerfile: Dockerfile.base
+    image: rtpi/offsec-base:latest
+    profiles:
+      - build-only  # Only used for building, not running
+
+  # Maldev Agent - Binary Analysis, Reverse Engineering, ROP Development
+  # MITRE Tactics: Defense Evasion, Execution, Persistence
+  offsec-maldev:
+    build:
+      context: ./docker/offsec-agents
+      dockerfile: Dockerfile.maldev-tools
+    image: rtpi/maldev-tools:latest
+    container_name: rtpi-maldev-agent
+    profiles:
+      - offsec-agents
+    environment:
+      - AGENT_TYPE=maldev
+      - TOOLS_PATH=/opt/tools
+      - DOCS_PATH=/docs
+    volumes:
+      - maldev-tools:/opt/tools
+      - shared-data:/shared
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "node.*mcp"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  # Azure-AD Agent - Azure & Active Directory Attack Research
+  # MITRE Tactics: Credential Access, Persistence, Lateral Movement
+  offsec-azure-ad:
+    build:
+      context: ./docker/offsec-agents
+      dockerfile: Dockerfile.azure-ad-tools
+    image: rtpi/azure-ad-tools:latest
+    container_name: rtpi-azure-ad-agent
+    profiles:
+      - offsec-agents
+    environment:
+      - AGENT_TYPE=azure-ad
+      - TOOLS_PATH=/opt/tools
+      - DOCS_PATH=/docs
+    volumes:
+      - azure-ad-tools:/opt/tools
+      - shared-data:/shared
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "node.*mcp"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  # Burp Suite Agent - Web Application Security Testing
+  # MITRE Tactics: Reconnaissance, Initial Access
+  offsec-burp:
+    build:
+      context: ./docker/offsec-agents
+      dockerfile: Dockerfile.burp-tools
+    image: rtpi/burp-tools:latest
+    container_name: rtpi-burp-agent
+    profiles:
+      - offsec-agents
+    environment:
+      - AGENT_TYPE=burp-suite
+      - TOOLS_PATH=/opt/tools
+      - DOCS_PATH=/docs
+    volumes:
+      - burp-tools:/opt/tools
+      - shared-data:/shared
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "node.*mcp"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  # Empire C2 Agent - Command & Control, Post-Exploitation
+  # MITRE Tactics: Command and Control, Lateral Movement, Persistence
+  offsec-empire:
+    build:
+      context: ./docker/offsec-agents
+      dockerfile: Dockerfile.empire-tools
+    image: rtpi/empire-tools:latest
+    container_name: rtpi-empire-agent
+    profiles:
+      - offsec-agents
+    environment:
+      - AGENT_TYPE=empire-c2
+      - TOOLS_PATH=/opt/tools
+      - DOCS_PATH=/docs
+    volumes:
+      - empire-tools:/opt/tools
+      - shared-data:/shared
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "node.*mcp"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  # Fuzzing Agent - Web Fuzzing, Directory Discovery
+  # MITRE Tactics: Discovery, Reconnaissance
+  offsec-fuzzing:
+    build:
+      context: ./docker/offsec-agents
+      dockerfile: Dockerfile.fuzzing-tools
+    image: rtpi/fuzzing-tools:latest
+    container_name: rtpi-fuzzing-agent
+    profiles:
+      - offsec-agents
+    environment:
+      - AGENT_TYPE=fuzzing
+      - TOOLS_PATH=/opt/tools
+      - DOCS_PATH=/docs
+    volumes:
+      - fuzzing-tools:/opt/tools
+      - fuzzing-wordlists:/opt/wordlists
+      - shared-data:/shared
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "node.*mcp"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  # Framework Security Agent - Technology Stack Detection
+  # MITRE Tactics: Reconnaissance, Initial Access
+  offsec-framework:
+    build:
+      context: ./docker/offsec-agents
+      dockerfile: Dockerfile.framework-tools
+    image: rtpi/framework-tools:latest
+    container_name: rtpi-framework-agent
+    profiles:
+      - offsec-agents
+    environment:
+      - AGENT_TYPE=framework-security
+      - TOOLS_PATH=/opt/tools
+      - DOCS_PATH=/docs
+    volumes:
+      - framework-tools:/opt/tools
+      - shared-data:/shared
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "node.*mcp"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  # Research Agent - General R&D, Tool Testing, POC Creation
+  # MITRE Tactics: All (General Research)
+  offsec-research:
+    build:
+      context: ./docker/offsec-agents
+      dockerfile: Dockerfile.research-tools
+    image: rtpi/research-tools:latest
+    container_name: rtpi-research-agent
+    profiles:
+      - offsec-agents
+    ports:
+      - "8888:8888"  # JupyterLab for research notebooks
+    environment:
+      - AGENT_TYPE=research
+      - TOOLS_PATH=/opt/tools
+      - DOCS_PATH=/docs
+    volumes:
+      - research-tools:/opt/tools
+      - research-notebooks:/home/rtpi-agent/research
+      - shared-data:/shared
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "node.*mcp"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
 # Application (Development)
 #  app:
 #    build:
@@ -567,3 +774,13 @@ volumes:
   # Ollama AI volumes
   ollama-models:
   ollama-webui-data:
+  # OffSec Agent volumes (v2.2)
+  maldev-tools:
+  azure-ad-tools:
+  burp-tools:
+  empire-tools:
+  fuzzing-tools:
+  fuzzing-wordlists:
+  framework-tools:
+  research-tools:
+  research-notebooks:

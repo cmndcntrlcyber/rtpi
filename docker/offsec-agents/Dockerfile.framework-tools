@@ -1,0 +1,263 @@
+# RTPI OffSec Agent: Framework Security Tools
+# Technology Stack Detection & Framework Vulnerability Analysis
+#
+# Categories: Tech Detection, Framework Analysis, Vulnerability Mapping, Security Advisory
+# Primary Focus: Wappalyzer, WhatWeb, CMS scanning, dependency analysis
+#
+# MITRE ATT&CK Tactics: Reconnaissance (TA0043), Initial Access (TA0001)
+
+FROM rtpi/offsec-base:latest
+
+# Set agent type for MCP server
+ENV AGENT_TYPE=framework-security
+ENV TOOLS_PATH=/opt/tools
+
+# Switch to root for package installation
+USER root
+
+# Install framework analysis dependencies
+RUN apt-get update && apt-get install -y \
+    # Ruby for WhatWeb
+    ruby ruby-dev \
+    # Network tools
+    curl wget \
+    # JSON/XML processing
+    jq xmlstarlet \
+    # SSL analysis
+    openssl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python packages for framework analysis
+RUN pip3 install --no-cache-dir \
+    requests \
+    beautifulsoup4 \
+    lxml \
+    selenium \
+    webtech \
+    builtwith \
+    python-Wappalyzer \
+    safety \
+    pip-audit \
+    bandit && \
+    pip3 install semgrep 2>/dev/null || echo "semgrep installation skipped (requires pre-built binaries)"
+
+# Install Node.js for JavaScript-based tools
+RUN npm install -g \
+    wappalyzer \
+    retire \
+    snyk \
+    npm-check \
+    depcheck \
+    is-website-vulnerable
+
+# Switch to root for tool cloning
+USER root
+WORKDIR /opt/tools
+
+# Create binary directory early (needed for symlinks)
+RUN mkdir -p /opt/tools/bin
+
+# =============================================================================
+# TECHNOLOGY DETECTION
+# =============================================================================
+
+# WhatWeb - Web technology identification
+RUN gem install bundler && \
+    git clone --depth 1 https://github.com/urbanadventurer/WhatWeb.git && \
+    cd WhatWeb && (bundle install 2>/dev/null || true) && \
+    ln -s /opt/tools/WhatWeb/whatweb /opt/tools/bin/whatweb && \
+    echo "WhatWeb: Web technology fingerprinting" > TOOL_INFO.txt
+
+# Wappalyzer CLI (may be private/unavailable)
+RUN git clone --depth 1 https://github.com/wappalyzer/wappalyzer.git 2>/dev/null && \
+    echo "wappalyzer: Technology profiler" > wappalyzer/TOOL_INFO.txt || \
+    echo "wappalyzer: Repository unavailable - using npm package" > /dev/null
+
+# Webtech - Web technology detection
+RUN git clone --depth 1 https://github.com/AgusTucker/webtech.git webtech-src 2>/dev/null && \
+    echo "webtech: Identify technologies used on websites" > webtech-src/TOOL_INFO.txt || true
+
+# BuiltWith alternative
+RUN pip3 install builtwith && \
+    mkdir -p builtwith && \
+    echo "builtwith: Website technology lookup" > builtwith/TOOL_INFO.txt
+
+# Wig - Web app information gatherer
+RUN git clone --depth 1 https://github.com/jekyc/wig.git 2>/dev/null && \
+    cd wig && pip3 install . && \
+    echo "wig: WebApp Information Gatherer" > TOOL_INFO.txt || true
+
+# =============================================================================
+# CMS SCANNERS
+# =============================================================================
+
+# WPScan - WordPress scanner
+RUN gem install wpscan && \
+    mkdir -p wpscan && \
+    echo "wpscan: WordPress security scanner" > wpscan/TOOL_INFO.txt
+
+# CMSmap - CMS vulnerability scanner
+RUN git clone --depth 1 https://github.com/dionach/CMSmap.git 2>/dev/null && \
+    cd CMSmap && pip3 install . && \
+    echo "CMSmap: CMS vulnerability scanner" > TOOL_INFO.txt || true
+
+# Droopescan - Drupal/WordPress/Joomla scanner
+RUN pip3 install droopescan && \
+    mkdir -p droopescan && \
+    echo "droopescan: CMS plugin-based scanner" > droopescan/TOOL_INFO.txt
+
+# Joomscan - Joomla scanner
+RUN git clone --depth 1 https://github.com/OWASP/joomscan.git 2>/dev/null && \
+    echo "joomscan: OWASP Joomla vulnerability scanner" > joomscan/TOOL_INFO.txt || true
+
+# Magescan - Magento scanner
+RUN git clone --depth 1 https://github.com/steverobbins/magescan.git 2>/dev/null && \
+    echo "magescan: Magento security scanner" > magescan/TOOL_INFO.txt || true
+
+# =============================================================================
+# FRAMEWORK VULNERABILITY SCANNERS
+# =============================================================================
+
+# Retire.js - JavaScript vulnerability scanner
+RUN git clone --depth 1 https://github.com/RetireJS/retire.js.git retire-js 2>/dev/null && \
+    echo "retire.js: JavaScript vulnerability detection" > retire-js/TOOL_INFO.txt || true
+
+# Snyk (CLI installed above)
+RUN mkdir -p snyk && \
+    echo "snyk: Developer security platform" > snyk/TOOL_INFO.txt
+
+# Safety - Python dependency checker
+RUN pip3 install safety && \
+    mkdir -p safety && \
+    echo "safety: Python dependency security checker" > safety/TOOL_INFO.txt
+
+# pip-audit - Python package auditing
+RUN pip3 install pip-audit && \
+    mkdir -p pip-audit && \
+    echo "pip-audit: Python package vulnerability auditing" > pip-audit/TOOL_INFO.txt
+
+# Trivy - Vulnerability scanner
+RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /opt/tools/bin && \
+    mkdir -p trivy && \
+    echo "trivy: Comprehensive vulnerability scanner" > trivy/TOOL_INFO.txt
+
+# Grype - Vulnerability scanner
+RUN curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /opt/tools/bin && \
+    mkdir -p grype && \
+    echo "grype: Container vulnerability scanner" > grype/TOOL_INFO.txt
+
+# =============================================================================
+# CODE SECURITY ANALYSIS
+# =============================================================================
+
+# Semgrep - Static analysis
+RUN pip3 install semgrep && \
+    mkdir -p semgrep && \
+    echo "semgrep: Static analysis for security" > semgrep/TOOL_INFO.txt
+
+# Bandit - Python security linter
+RUN pip3 install bandit && \
+    mkdir -p bandit && \
+    echo "bandit: Python security linter" > bandit/TOOL_INFO.txt
+
+# Brakeman - Ruby security scanner
+RUN gem install brakeman && \
+    mkdir -p brakeman && \
+    echo "brakeman: Ruby on Rails security scanner" > brakeman/TOOL_INFO.txt
+
+# =============================================================================
+# DEPENDENCY ANALYSIS
+# =============================================================================
+
+# OSV-Scanner - Google vulnerability database
+RUN go install github.com/google/osv-scanner/cmd/osv-scanner@latest && \
+    cp ~/go/bin/osv-scanner /opt/tools/bin/ 2>/dev/null || true && \
+    mkdir -p osv-scanner && \
+    echo "osv-scanner: Google Open Source Vulnerability scanner" > osv-scanner/TOOL_INFO.txt
+
+# Depscan - Dependency scanner
+RUN pip3 install owasp-depscan && \
+    mkdir -p depscan && \
+    echo "depscan: OWASP dependency scanner" > depscan/TOOL_INFO.txt
+
+# =============================================================================
+# API & SPEC ANALYSIS
+# =============================================================================
+
+# OpenAPI vulnerability scanner
+RUN git clone --depth 1 https://github.com/BBVA/apicheck.git 2>/dev/null && \
+    echo "apicheck: OpenAPI security testing" > apicheck/TOOL_INFO.txt || true
+
+# GraphQL security testing
+RUN git clone --depth 1 https://github.com/dolevf/graphw00f.git 2>/dev/null && \
+    cd graphw00f && pip3 install -r requirements.txt && \
+    echo "graphw00f: GraphQL fingerprinting and security testing" > TOOL_INFO.txt || true
+
+# =============================================================================
+# SSL/TLS ANALYSIS
+# =============================================================================
+
+# SSLyze - SSL/TLS scanner
+RUN pip3 install sslyze && \
+    mkdir -p sslyze && \
+    echo "sslyze: SSL/TLS configuration analyzer" > sslyze/TOOL_INFO.txt
+
+# TestSSL - SSL/TLS testing
+RUN git clone --depth 1 https://github.com/drwetter/testssl.sh.git testssl 2>/dev/null && \
+    chmod +x testssl/testssl.sh && \
+    echo "testssl: SSL/TLS testing tool" > testssl/TOOL_INFO.txt || true
+
+# =============================================================================
+# HEADER & SECURITY CONFIG ANALYSIS
+# =============================================================================
+
+# Shcheck - Security headers checker
+RUN git clone --depth 1 https://github.com/santoru/shcheck.git 2>/dev/null && \
+    cd shcheck && pip3 install . && \
+    echo "shcheck: Security headers checker" > TOOL_INFO.txt || true
+
+# SecurityHeaders.io (alternative)
+RUN git clone --depth 1 https://github.com/koenbuyens/securityheaders.git 2>/dev/null && \
+    cd securityheaders && pip3 install . && \
+    echo "securityheaders: HTTP security headers analyzer" > TOOL_INFO.txt || true
+
+# =============================================================================
+# CREATE BINARY DIRECTORY
+# =============================================================================
+
+RUN mkdir -p /opt/tools/bin && \
+    chmod +x /opt/tools/bin/* 2>/dev/null || true
+
+# Add binary directory to PATH
+ENV PATH="/opt/tools/bin:${PATH}"
+
+# =============================================================================
+# CLEANUP AND PERMISSIONS
+# =============================================================================
+
+# Set ownership
+RUN chown -R rtpi-agent:rtpi-agent /opt/tools
+
+# Generate tool documentation
+RUN /usr/local/bin/generate-docs.sh || true
+
+# Create tool index for MCP discovery
+RUN find /opt/tools -name "TOOL_INFO.txt" -exec cat {} \; > /docs/TOOLS_INDEX.md
+
+# Switch to non-root user
+USER rtpi-agent
+WORKDIR /home/rtpi-agent
+
+# Build MCP server
+WORKDIR /mcp
+RUN npm run build
+
+# Expose MCP port
+EXPOSE 9000
+
+# Health check
+HEALTHCHECK --interval=60s --timeout=10s --retries=3 \
+    CMD pgrep -f "node.*mcp" || exit 1
+
+# Start MCP server
+ENTRYPOINT ["/usr/local/bin/mcp-entrypoint.sh"]

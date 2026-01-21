@@ -1,0 +1,243 @@
+# RTPI OffSec Agent: Fuzzing Tools
+# Web Fuzzing, Parameter Discovery, and Content Bruteforcing
+#
+# Categories: Directory Fuzzing, Parameter Discovery, Wordlist Management
+# Primary Focus: FFUF, Gobuster, Feroxbuster, and advanced fuzzing
+#
+# MITRE ATT&CK Tactics: Discovery (TA0007), Reconnaissance (TA0043)
+
+FROM rtpi/offsec-base:latest
+
+# Set agent type for MCP server
+ENV AGENT_TYPE=fuzzing
+ENV TOOLS_PATH=/opt/tools
+
+# Switch to root for package installation
+USER root
+
+# Install fuzzing dependencies
+RUN apt-get update && apt-get install -y \
+    # HTTP tools
+    curl wget \
+    # Compression
+    p7zip-full unzip \
+    # Text processing
+    jq \
+    # Network utilities
+    dnsutils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create directories
+RUN mkdir -p /opt/tools/bin /opt/wordlists
+
+# Install fuzzing tools via Go
+USER rtpi-agent
+
+# FFUF - Fast web fuzzer
+RUN go install github.com/ffuf/ffuf/v2@latest && \
+    cp ~/go/bin/ffuf /opt/tools/bin/ 2>/dev/null || true
+
+# Gobuster - Directory/DNS/vhost busting
+RUN go install github.com/OJ/gobuster/v3@latest && \
+    cp ~/go/bin/gobuster /opt/tools/bin/ 2>/dev/null || true
+
+# Feroxbuster - Rust-based directory scanner
+RUN cargo install feroxbuster && \
+    cp ~/.cargo/bin/feroxbuster /opt/tools/bin/ 2>/dev/null || true
+
+# Switch to root for additional installations
+USER root
+
+# =============================================================================
+# FUZZING TOOLS
+# =============================================================================
+
+WORKDIR /opt/tools
+
+# FFUF source
+RUN git clone --depth 1 https://github.com/ffuf/ffuf.git && \
+    (cd ffuf && go build -o /opt/tools/bin/ffuf . 2>/dev/null || true) && \
+    echo "ffuf: Fast web fuzzer" > ffuf/TOOL_INFO.txt
+
+# Gobuster source (requires newer Go, may fail)
+RUN git clone --depth 1 https://github.com/OJ/gobuster.git && \
+    (cd gobuster && go build -o /opt/tools/bin/gobuster . 2>/dev/null || true) && \
+    echo "gobuster: Directory/DNS/vhost bruteforcing" > gobuster/TOOL_INFO.txt
+
+# Feroxbuster source
+RUN git clone --depth 1 https://github.com/epi052/feroxbuster.git && \
+    echo "feroxbuster: Fast, recursive content discovery" > feroxbuster/TOOL_INFO.txt
+
+# Dirsearch - Web path discovery (install via pip3 directly)
+RUN pip3 install dirsearch 2>/dev/null || true && \
+    git clone --depth 1 https://github.com/maurosoria/dirsearch.git && \
+    echo "dirsearch: Web path discovery" > dirsearch/TOOL_INFO.txt
+
+# Wfuzz - Web application fuzzer
+RUN pip3 install wfuzz && \
+    mkdir -p wfuzz && \
+    echo "wfuzz: Web application fuzzer" > wfuzz/TOOL_INFO.txt
+
+# Rustbuster - Rust directory buster
+RUN git clone --depth 1 https://github.com/phra/rustbuster.git && \
+    cd rustbuster && cargo build --release 2>/dev/null || true && \
+    echo "rustbuster: Rust-based web fuzzer" > TOOL_INFO.txt
+
+# =============================================================================
+# PARAMETER FUZZING TOOLS
+# =============================================================================
+
+# x8 - Hidden parameter discovery
+RUN git clone --depth 1 https://github.com/Sh1Yo/x8.git && \
+    cd x8 && cargo build --release && \
+    cp target/release/x8 /opt/tools/bin/ && \
+    echo "x8: Hidden parameter discovery" > TOOL_INFO.txt
+
+# Arjun - Parameter discovery
+RUN git clone --depth 1 https://github.com/s0md3v/Arjun.git && \
+    cd Arjun && pip3 install . && \
+    echo "Arjun: HTTP parameter discovery" > TOOL_INFO.txt
+
+# ParamSpider - Parameter mining
+RUN git clone --depth 1 https://github.com/devanshbatham/ParamSpider.git && \
+    cd ParamSpider && pip3 install . && \
+    echo "ParamSpider: Parameter mining from archives" > TOOL_INFO.txt
+
+# =============================================================================
+# SUBDOMAIN FUZZING
+# =============================================================================
+
+# Subfinder - Subdomain discovery (requires newer Go, may fail)
+RUN git clone --depth 1 https://github.com/projectdiscovery/subfinder.git && \
+    (cd subfinder/v2/cmd/subfinder && go build -o /opt/tools/bin/subfinder . 2>/dev/null || true) && \
+    echo "subfinder: Subdomain discovery tool" > subfinder/TOOL_INFO.txt
+
+# Amass - Network mapping (requires newer Go, may fail)
+RUN git clone --depth 1 https://github.com/owasp-amass/amass.git && \
+    (cd amass/cmd/amass && go build -o /opt/tools/bin/amass . 2>/dev/null || true) && \
+    echo "amass: Network mapping and subdomain discovery" > amass/TOOL_INFO.txt
+
+# DNSx - DNS toolkit (requires newer Go, may fail)
+RUN git clone --depth 1 https://github.com/projectdiscovery/dnsx.git && \
+    (cd dnsx/cmd/dnsx && go build -o /opt/tools/bin/dnsx . 2>/dev/null || true) && \
+    echo "dnsx: Fast DNS toolkit" > dnsx/TOOL_INFO.txt
+
+# Shuffledns - DNS bruteforcer (requires newer Go, may fail)
+RUN git clone --depth 1 https://github.com/projectdiscovery/shuffledns.git && \
+    (cd shuffledns/cmd/shuffledns && go build -o /opt/tools/bin/shuffledns . 2>/dev/null || true) && \
+    echo "shuffledns: Massdns wrapper for subdomain resolution" > shuffledns/TOOL_INFO.txt
+
+# PureDNS - DNS bruteforce (requires newer Go, may fail)
+RUN git clone --depth 1 https://github.com/d3mondev/puredns.git && \
+    (cd puredns/v2 && go build -o /opt/tools/bin/puredns . 2>/dev/null || true) && \
+    echo "puredns: Fast domain resolver and subdomain bruteforcer" > puredns/TOOL_INFO.txt
+
+# =============================================================================
+# VIRTUAL HOST DISCOVERY
+# =============================================================================
+
+# VHostScan - Virtual host scanner
+RUN git clone --depth 1 https://github.com/codingo/VHostScan.git && \
+    cd VHostScan && pip3 install . && \
+    echo "VHostScan: Virtual host scanner" > TOOL_INFO.txt
+
+# =============================================================================
+# WORDLIST MANAGEMENT
+# =============================================================================
+
+# SecLists - Security wordlists
+RUN git clone --depth 1 https://github.com/danielmiessler/SecLists.git /opt/wordlists/SecLists && \
+    echo "SecLists: Security testing wordlists" > /opt/wordlists/SecLists/TOOL_INFO.txt
+
+# FuzzDB - Fuzzing database
+RUN git clone --depth 1 https://github.com/fuzzdb-project/fuzzdb.git /opt/wordlists/fuzzdb && \
+    echo "fuzzdb: Fuzzing database" > /opt/wordlists/fuzzdb/TOOL_INFO.txt
+
+# Assetnote Wordlists (smaller version)
+RUN mkdir -p /opt/wordlists/assetnote && \
+    cd /opt/wordlists/assetnote && \
+    curl -sL https://wordlists-cdn.assetnote.io/data/manual/best-dns-wordlist.txt -o best-dns-wordlist.txt && \
+    curl -sL https://wordlists-cdn.assetnote.io/data/manual/raft-large-directories.txt -o raft-large-directories.txt && \
+    curl -sL https://wordlists-cdn.assetnote.io/data/manual/raft-large-files.txt -o raft-large-files.txt && \
+    echo "assetnote: Assetnote wordlists" > TOOL_INFO.txt
+
+# OneListForAll - Combined wordlist
+RUN git clone --depth 1 https://github.com/six2dez/OneListForAll.git /opt/wordlists/OneListForAll && \
+    echo "OneListForAll: Combined directory wordlist" > /opt/wordlists/OneListForAll/TOOL_INFO.txt
+
+# =============================================================================
+# UTILITY TOOLS
+# =============================================================================
+
+# Unfurl - URL parser
+RUN git clone --depth 1 https://github.com/tomnomnom/unfurl.git && \
+    (cd unfurl && go build -o /opt/tools/bin/unfurl . 2>/dev/null || true) && \
+    echo "unfurl: URL parser utility" > unfurl/TOOL_INFO.txt
+
+# Qsreplace - Query string replacer
+RUN git clone --depth 1 https://github.com/tomnomnom/qsreplace.git && \
+    (cd qsreplace && go build -o /opt/tools/bin/qsreplace . 2>/dev/null || true) && \
+    echo "qsreplace: Query string value replacer" > qsreplace/TOOL_INFO.txt
+
+# Meg - Many paths, many hosts
+RUN git clone --depth 1 https://github.com/tomnomnom/meg.git && \
+    (cd meg && go build -o /opt/tools/bin/meg . 2>/dev/null || true) && \
+    echo "meg: Fetch many paths for many hosts" > meg/TOOL_INFO.txt
+
+# Anew - Append new lines
+RUN git clone --depth 1 https://github.com/tomnomnom/anew.git && \
+    (cd anew && go build -o /opt/tools/bin/anew . 2>/dev/null || true) && \
+    echo "anew: Append new lines to output" > anew/TOOL_INFO.txt
+
+# =============================================================================
+# CREATE CONFIG FILES
+# =============================================================================
+
+# Create FFUF config
+RUN mkdir -p /home/rtpi-agent/.ffuf && \
+    echo '{"headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}}' > /home/rtpi-agent/.ffuf/config.json
+
+# Create feroxbuster config
+RUN mkdir -p /home/rtpi-agent/.config/feroxbuster && \
+    cat > /home/rtpi-agent/.config/feroxbuster/ferox-config.toml << 'EOF'
+# Feroxbuster default configuration
+threads = 50
+wordlist = "/opt/wordlists/SecLists/Discovery/Web-Content/common.txt"
+status_codes = [200, 204, 301, 302, 307, 308, 401, 403, 405]
+timeout = 7
+user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+EOF
+
+# =============================================================================
+# CLEANUP AND PERMISSIONS
+# =============================================================================
+
+# Add binary directory to PATH
+ENV PATH="/opt/tools/bin:${PATH}"
+
+# Set ownership
+RUN chown -R rtpi-agent:rtpi-agent /opt/tools /opt/wordlists /home/rtpi-agent
+
+# Generate tool documentation
+RUN /usr/local/bin/generate-docs.sh || true
+
+# Create tool index for MCP discovery
+RUN find /opt/tools -name "TOOL_INFO.txt" -exec cat {} \; > /docs/TOOLS_INDEX.md
+
+# Switch to non-root user
+USER rtpi-agent
+WORKDIR /home/rtpi-agent
+
+# Build MCP server
+WORKDIR /mcp
+RUN npm run build
+
+# Expose MCP port
+EXPOSE 9000
+
+# Health check
+HEALTHCHECK --interval=60s --timeout=10s --retries=3 \
+    CMD pgrep -f "node.*mcp" || exit 1
+
+# Start MCP server
+ENTRYPOINT ["/usr/local/bin/mcp-entrypoint.sh"]

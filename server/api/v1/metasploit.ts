@@ -75,6 +75,39 @@ router.get("/modules/:type", async (req, res) => {
   }
 });
 
+// GET /api/v1/metasploit/search - Search modules in Metasploit database
+router.get("/search", async (req, res) => {
+  const { q: query, type } = req.query;
+
+  if (!query || typeof query !== "string") {
+    return res.status(400).json({ error: "Query parameter 'q' is required" });
+  }
+
+  if (query.trim().length < 2) {
+    return res.status(400).json({ error: "Query must be at least 2 characters long" });
+  }
+
+  try {
+    const results = await metasploitExecutor.searchModules(
+      query,
+      type as string | undefined
+    );
+
+    res.json({
+      query,
+      type: type || "all",
+      results,
+      count: results.length,
+    });
+  } catch (error: any) {
+    console.error("Module search error:", error);
+    res.status(500).json({
+      error: "Failed to search modules",
+      details: error?.message || "Internal server error"
+    });
+  }
+});
+
 // GET /api/v1/metasploit/modules/:type/:path - Get specific module info
 router.get("/modules/:type/*", async (req, res) => {
   const { type } = req.params;

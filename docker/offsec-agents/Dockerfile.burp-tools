@@ -1,0 +1,230 @@
+# RTPI OffSec Agent: Burp Suite Tools
+# Web Application Security Testing & Burp Suite Orchestration
+#
+# Categories: Burp Extensions, Web Crawlers, Proxy Tools, Scanner Integration
+# Primary Focus: Web vulnerability scanning and Burp API integration
+#
+# MITRE ATT&CK Tactics: Reconnaissance (TA0043), Initial Access (TA0001)
+
+FROM rtpi/offsec-base:latest
+
+# Set agent type for MCP server
+ENV AGENT_TYPE=burp-suite
+ENV TOOLS_PATH=/opt/tools
+
+# Switch to root for package installation
+USER root
+
+# Install web security testing dependencies
+RUN apt-get update && apt-get install -y \
+    # HTTP tools
+    curl wget httpie \
+    # SSL/TLS tools
+    openssl ca-certificates \
+    # Proxy tools
+    mitmproxy \
+    # XML/JSON processing
+    jq xmlstarlet \
+    # Additional utilities
+    socat netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python packages for web testing
+RUN pip3 install --no-cache-dir \
+    requests \
+    beautifulsoup4 \
+    lxml \
+    selenium \
+    playwright \
+    httpx \
+    aiohttp \
+    urllib3 \
+    mitmproxy \
+    scrapy \
+    pyjwt \
+    cryptography
+
+# Install Playwright browsers
+RUN playwright install chromium firefox
+
+# Install Node.js web testing tools
+RUN npm install -g \
+    puppeteer \
+    axios \
+    cheerio \
+    request \
+    superagent
+
+# Switch to root for tool cloning
+USER root
+WORKDIR /opt/tools
+
+# =============================================================================
+# BURP SUITE INTEGRATION TOOLS
+# =============================================================================
+
+# Burp REST API client
+RUN git clone --depth 1 https://github.com/vmware/burp-rest-api.git burp-rest-api && \
+    echo "burp-rest-api: Burp Suite REST API wrapper" > burp-rest-api/TOOL_INFO.txt
+
+# Burp Extensions Manager
+RUN git clone --depth 1 https://github.com/PortSwigger/BApp-Store.git BApp-Store 2>/dev/null && \
+    echo "BApp-Store: Burp Suite extensions reference" > BApp-Store/TOOL_INFO.txt || \
+    echo "BApp-Store: Repository unavailable" > /dev/null
+
+# Autorize - Burp authorization testing
+RUN git clone --depth 1 https://github.com/PortSwigger/autorize.git autorize && \
+    echo "autorize: Burp authorization testing extension" > autorize/TOOL_INFO.txt
+
+# =============================================================================
+# WEB CRAWLING TOOLS
+# =============================================================================
+
+# Katana - Fast web crawler (requires Go 1.24+, may fail on older base images)
+RUN git clone --depth 1 https://github.com/projectdiscovery/katana.git && \
+    (cd katana/cmd/katana && go build -o /opt/tools/bin/katana . 2>/dev/null || true) && \
+    echo "katana: Fast web crawler from ProjectDiscovery" > katana/TOOL_INFO.txt
+
+# Gospider - Fast web spider
+RUN git clone --depth 1 https://github.com/jaeles-project/gospider.git && \
+    (cd gospider && go build -o /opt/tools/bin/gospider . 2>/dev/null || true) && \
+    echo "gospider: Fast web spider for discovery" > gospider/TOOL_INFO.txt
+
+# Hakrawler - Simple web crawler
+RUN git clone --depth 1 https://github.com/hakluke/hakrawler.git && \
+    (cd hakrawler && go build -o /opt/tools/bin/hakrawler . 2>/dev/null || true) && \
+    echo "hakrawler: Simple web crawler for link discovery" > hakrawler/TOOL_INFO.txt
+
+# Gau - Fetch known URLs
+RUN git clone --depth 1 https://github.com/lc/gau.git && \
+    (cd gau/cmd/gau && go build -o /opt/tools/bin/gau . 2>/dev/null || true) && \
+    echo "gau: Get All URLs from multiple sources" > gau/TOOL_INFO.txt
+
+# Waybackurls - Wayback machine URL fetcher
+RUN git clone --depth 1 https://github.com/tomnomnom/waybackurls.git && \
+    (cd waybackurls && go build -o /opt/tools/bin/waybackurls . 2>/dev/null || true) && \
+    echo "waybackurls: Fetch URLs from Wayback Machine" > waybackurls/TOOL_INFO.txt
+
+# =============================================================================
+# PROXY & INTERCEPTION TOOLS
+# =============================================================================
+
+# Mitmproxy2Swagger - Generate API specs from traffic
+RUN pip3 install mitmproxy2swagger 2>/dev/null || true && \
+    mkdir -p mitmproxy2swagger && \
+    echo "mitmproxy2swagger: Generate OpenAPI from mitmproxy traffic" > mitmproxy2swagger/TOOL_INFO.txt
+
+# =============================================================================
+# WEB VULNERABILITY SCANNERS
+# =============================================================================
+
+# Nuclei (web vulnerability scanner)
+RUN git clone --depth 1 https://github.com/projectdiscovery/nuclei.git && \
+    (cd nuclei/cmd/nuclei && go build -o /opt/tools/bin/nuclei . 2>/dev/null || true) && \
+    echo "nuclei: Fast vulnerability scanner" > nuclei/TOOL_INFO.txt
+
+# Nuclei Templates
+RUN git clone --depth 1 https://github.com/projectdiscovery/nuclei-templates.git && \
+    echo "nuclei-templates: Nuclei vulnerability templates" > nuclei-templates/TOOL_INFO.txt
+
+# Nikto - Web server scanner
+RUN git clone --depth 1 https://github.com/sullo/nikto.git && \
+    echo "nikto: Web server vulnerability scanner" > nikto/TOOL_INFO.txt
+
+# Wapiti - Web application scanner
+RUN git clone --depth 1 https://github.com/wapiti-scanner/wapiti.git && \
+    cd wapiti && pip3 install . && \
+    echo "wapiti: Web application vulnerability scanner" > TOOL_INFO.txt
+
+# =============================================================================
+# PARAMETER & INPUT DISCOVERY
+# =============================================================================
+
+# Arjun - HTTP parameter discovery
+RUN git clone --depth 1 https://github.com/s0md3v/Arjun.git && \
+    cd Arjun && pip3 install . && \
+    echo "Arjun: HTTP parameter discovery suite" > TOOL_INFO.txt
+
+# ParamSpider - Parameter mining
+RUN git clone --depth 1 https://github.com/devanshbatham/ParamSpider.git && \
+    cd ParamSpider && pip3 install . && \
+    echo "ParamSpider: Parameter mining from web archives" > TOOL_INFO.txt
+
+# x8 - Hidden parameter discovery
+RUN git clone --depth 1 https://github.com/Sh1Yo/x8.git && \
+    cd x8 && cargo build --release && \
+    cp target/release/x8 /opt/tools/bin/ && \
+    echo "x8: Hidden parameter discovery" > TOOL_INFO.txt
+
+# =============================================================================
+# API SECURITY TESTING
+# =============================================================================
+
+# Astra - REST API security testing
+RUN git clone --depth 1 https://github.com/flipkart-incubator/Astra.git && \
+    echo "Astra: REST API security testing" > Astra/TOOL_INFO.txt
+
+# =============================================================================
+# UTILITY TOOLS
+# =============================================================================
+
+# httpx - HTTP toolkit (requires Go 1.24+, may fail on older base images)
+RUN git clone --depth 1 https://github.com/projectdiscovery/httpx.git && \
+    (cd httpx/cmd/httpx && go build -o /opt/tools/bin/httpx . 2>/dev/null || true) && \
+    echo "httpx: Fast HTTP probing tool" > httpx/TOOL_INFO.txt
+
+# Qsreplace - Query string replacer
+RUN git clone --depth 1 https://github.com/tomnomnom/qsreplace.git && \
+    (cd qsreplace && go build -o /opt/tools/bin/qsreplace . 2>/dev/null || true) && \
+    echo "qsreplace: Query string value replacer" > qsreplace/TOOL_INFO.txt
+
+# Unfurl - URL parser
+RUN git clone --depth 1 https://github.com/tomnomnom/unfurl.git && \
+    (cd unfurl && go build -o /opt/tools/bin/unfurl . 2>/dev/null || true) && \
+    echo "unfurl: URL parser and extractor" > unfurl/TOOL_INFO.txt
+
+# Dalfox - XSS scanner
+RUN git clone --depth 1 https://github.com/hahwul/dalfox.git && \
+    (cd dalfox && go build -o /opt/tools/bin/dalfox . 2>/dev/null || true) && \
+    echo "dalfox: XSS vulnerability scanner" > dalfox/TOOL_INFO.txt
+
+# =============================================================================
+# CREATE BINARY DIRECTORY
+# =============================================================================
+
+RUN mkdir -p /opt/tools/bin && \
+    chmod +x /opt/tools/bin/* 2>/dev/null || true
+
+# Add binary directory to PATH
+ENV PATH="/opt/tools/bin:${PATH}"
+
+# =============================================================================
+# CLEANUP AND PERMISSIONS
+# =============================================================================
+
+# Set ownership
+RUN chown -R rtpi-agent:rtpi-agent /opt/tools
+
+# Generate tool documentation
+RUN /usr/local/bin/generate-docs.sh || true
+
+# Create tool index for MCP discovery
+RUN find /opt/tools -name "TOOL_INFO.txt" -exec cat {} \; > /docs/TOOLS_INDEX.md
+
+# Switch to non-root user
+USER rtpi-agent
+WORKDIR /home/rtpi-agent
+
+# Build MCP server
+WORKDIR /mcp
+RUN npm run build
+
+# Expose MCP port
+EXPOSE 9000
+
+# Health check
+HEALTHCHECK --interval=60s --timeout=10s --retries=3 \
+    CMD pgrep -f "node.*mcp" || exit 1
+
+# Start MCP server
+ENTRYPOINT ["/usr/local/bin/mcp-entrypoint.sh"]

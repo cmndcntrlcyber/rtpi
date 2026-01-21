@@ -1,0 +1,256 @@
+# RTPI OffSec Agent: Azure-AD Tools
+# Azure & Active Directory Attack Research
+#
+# Total Tool Repositories: 28
+# Categories: EntraID (5), Initial Access (2), Enumeration (5), Privesc (3),
+#             Persistence (3), Lateral Movement (3), Rust/C++ (7)
+# Primary Languages: Rust, C++, PowerShell
+#
+# MITRE ATT&CK Tactics: Credential Access (TA0006), Persistence (TA0003), Lateral Movement (TA0008)
+
+FROM rtpi/offsec-base:latest
+
+# Set agent type for MCP server
+ENV AGENT_TYPE=azure-ad
+ENV TOOLS_PATH=/opt/tools
+
+# Switch to root for package installation
+USER root
+
+# Install Azure and AD-specific dependencies
+RUN apt-get update && apt-get install -y \
+    # LDAP tools
+    ldap-utils slapd \
+    # Kerberos tools
+    krb5-user krb5-config libkrb5-dev \
+    # SMB/CIFS tools
+    smbclient cifs-utils \
+    # Network tools
+    nmap masscan \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install PowerShell and .NET (x86 only, skip on ARM64)
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then \
+        apt-get update && apt-get install -y powershell dotnet-sdk-8.0 && \
+        rm -rf /var/lib/apt/lists/*; \
+    else \
+        echo "Skipping PowerShell and .NET on ARM64"; \
+    fi
+
+# Install Python packages for AD tooling
+RUN pip3 install --no-cache-dir \
+    impacket \
+    ldap3 \
+    pykerberos \
+    pyasn1 \
+    bloodhound \
+    neo4j \
+    certipy-ad \
+    adidnsdump \
+    roadrecon \
+    msldap
+
+# Install Azure CLI
+RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+
+# Install Azure PowerShell modules via pwsh (x86 only)
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then \
+        pwsh -Command "Install-Module -Name Az -AllowClobber -Scope AllUsers -Force" && \
+        pwsh -Command "Install-Module -Name AzureAD -AllowClobber -Scope AllUsers -Force" && \
+        pwsh -Command "Install-Module -Name MSOnline -AllowClobber -Scope AllUsers -Force"; \
+    else \
+        echo "Skipping Azure PowerShell modules on ARM64"; \
+    fi
+
+# Add Rust targets for cross-compilation
+USER rtpi-agent
+RUN rustup target add x86_64-pc-windows-gnu && \
+    rustup target add x86_64-unknown-linux-musl
+
+# Switch back to root for tool cloning
+USER root
+WORKDIR /opt/tools
+
+# =============================================================================
+# ENTRAID ABUSE TOOLS (5 repos)
+# =============================================================================
+
+# EntraMFACheck - MFA status checker
+RUN git clone --depth 1 https://github.com/dafthack/EntraMFACheck.git 2>/dev/null && \
+    echo "EntraMFACheck: Entra ID MFA status checker" > EntraMFACheck/TOOL_INFO.txt || \
+    echo "EntraMFACheck: Repository unavailable" > /dev/null
+
+# linWinPwn - Linux-based AD attack toolkit
+RUN git clone --depth 1 https://github.com/lefayjey/linWinPwn.git 2>/dev/null && \
+    cd linWinPwn && chmod +x linWinPwn.sh && \
+    echo "linWinPwn: Linux-based Windows/AD attack toolkit" > TOOL_INFO.txt || true
+
+# AADInternals - Azure AD internal operations
+RUN git clone --depth 1 https://github.com/Gerenios/AADInternals.git 2>/dev/null && \
+    echo "AADInternals: Azure AD internal operations toolkit" > AADInternals/TOOL_INFO.txt || true
+
+# AADInternals-Endpoints - AADInternals endpoints reference
+RUN git clone --depth 1 https://github.com/Gerenios/AADInternals-Endpoints.git 2>/dev/null && \
+    echo "AADInternals-Endpoints: AADInternals API endpoints" > AADInternals-Endpoints/TOOL_INFO.txt || true
+
+# EntraOps - Entra ID operations
+RUN git clone --depth 1 https://github.com/Cloud-Architekt/EntraOps.git 2>/dev/null && \
+    echo "EntraOps: Entra ID security operations" > EntraOps/TOOL_INFO.txt || true
+
+# =============================================================================
+# (A)AD INITIAL ACCESS (2 repos)
+# =============================================================================
+
+# Chrome App-Bound Encryption Decryption
+RUN git clone --depth 1 https://github.com/xaitax/Chrome-App-Bound-Encryption-Decryption.git Chrome-ABE-Decrypt 2>/dev/null && \
+    echo "Chrome-ABE-Decrypt: Chrome credential extraction" > Chrome-ABE-Decrypt/TOOL_INFO.txt || true
+
+# ScubaGear - M365 security assessment
+RUN git clone --depth 1 https://github.com/cisagov/ScubaGear.git 2>/dev/null && \
+    echo "ScubaGear: M365 security configuration assessment" > ScubaGear/TOOL_INFO.txt || true
+
+# =============================================================================
+# (A)AD ENUMERATION (5 repos)
+# =============================================================================
+
+# ShareHound - SharePoint enumeration
+RUN git clone --depth 1 https://github.com/protectai/ShareHound.git 2>/dev/null && \
+    echo "ShareHound: SharePoint enumeration tool" > ShareHound/TOOL_INFO.txt || \
+    echo "ShareHound: Repository unavailable" > /dev/null
+
+# BloodHound MCP AI - BloodHound with AI integration
+RUN git clone --depth 1 https://github.com/jakekarnes42/BloodHound-MCP-AI.git BloodHound-MCP-AI 2>/dev/null && \
+    echo "BloodHound-MCP-AI: BloodHound with MCP AI integration" > BloodHound-MCP-AI/TOOL_INFO.txt || \
+    echo "BloodHound-MCP-AI: Repository unavailable" > /dev/null
+
+# NetworkHound - Network enumeration
+RUN git clone --depth 1 https://github.com/Wafffle77/NetworkHound.git 2>/dev/null && \
+    echo "NetworkHound: Network enumeration tool" > NetworkHound/TOOL_INFO.txt || \
+    echo "NetworkHound: Repository unavailable" > /dev/null
+
+# RustHound-CE - BloodHound collector in Rust
+RUN git clone --depth 1 https://github.com/NH-RED-TEAM/RustHound-CE.git RustHound-CE 2>/dev/null && \
+    echo "RustHound-CE: BloodHound collector in Rust" > RustHound-CE/TOOL_INFO.txt || \
+    echo "RustHound-CE: Repository unavailable" > /dev/null
+
+# linWinPwn already cloned above - used for enumeration too
+
+# =============================================================================
+# (A)AD PRIVESC (3 repos)
+# =============================================================================
+
+# Dumpert - LSASS dumper (evasive)
+RUN git clone --depth 1 https://github.com/outflanknl/Dumpert.git 2>/dev/null && \
+    echo "Dumpert: Evasive LSASS memory dumper" > Dumpert/TOOL_INFO.txt || true
+
+# DonPwner - AD privilege escalation
+RUN git clone --depth 1 https://github.com/MisterPwner/DonPwner.git 2>/dev/null && \
+    echo "DonPwner: Active Directory privilege escalation" > DonPwner/TOOL_INFO.txt || true
+
+# linWinPwn already cloned - used for privesc too
+
+# =============================================================================
+# (A)AD PERSISTENCE (3 repos)
+# =============================================================================
+
+# Titanis - AD persistence toolkit
+RUN git clone --depth 1 https://github.com/3lp4tr0n/Titanis.git 2>/dev/null && \
+    echo "Titanis: Active Directory persistence toolkit" > Titanis/TOOL_INFO.txt || true
+
+# Dumpert already cloned - used for persistence too
+# linWinPwn already cloned - used for persistence too
+
+# =============================================================================
+# (A)AD LATERAL MOVEMENT (3 repos)
+# =============================================================================
+
+# rpc2efs - RPC to EFS exploitation
+RUN git clone --depth 1 https://github.com/Wh04m1001/rpc2efs.git 2>/dev/null && \
+    echo "rpc2efs: RPC to EFS lateral movement" > rpc2efs/TOOL_INFO.txt || true
+
+# Titanis already cloned - used for lateral movement
+# linWinPwn already cloned - used for lateral movement
+
+# =============================================================================
+# RUST & C++ DEVELOPMENT (7 repos)
+# =============================================================================
+
+# PowerChell - PowerShell execution
+RUN git clone --depth 1 https://github.com/Mr-Un1k0d3r/PowerChell.git 2>/dev/null && \
+    echo "PowerChell: PowerShell runner" > PowerChell/TOOL_INFO.txt || true
+
+# Offensive PowerShell
+RUN git clone --depth 1 https://github.com/samratashok/offensive-powershell.git offensive-powershell 2>/dev/null && \
+    echo "offensive-powershell: Offensive PowerShell scripts" > offensive-powershell/TOOL_INFO.txt || true
+
+# OFFSEC PowerShell
+RUN git clone --depth 1 https://github.com/cmndcntrlcyber/OFFSEC-PowerShell.git OFFSEC-PowerShell 2>/dev/null && \
+    echo "OFFSEC-PowerShell: OffSec PowerShell toolkit" > OFFSEC-PowerShell/TOOL_INFO.txt || true
+
+# Invisi-Shell - PowerShell evasion
+RUN git clone --depth 1 https://github.com/OmerYa/Invisi-Shell.git Invisi-Shell 2>/dev/null && \
+    echo "Invisi-Shell: PowerShell evasion framework" > Invisi-Shell/TOOL_INFO.txt || true
+
+# DSInternals - AD security toolkit
+RUN git clone --depth 1 https://github.com/MichaelGrafnetter/DSInternals.git 2>/dev/null && \
+    echo "DSInternals: Active Directory security toolkit" > DSInternals/TOOL_INFO.txt || true
+
+# BYOSI - Bring Your Own Script Interpreter
+RUN git clone --depth 1 https://github.com/mrd0x/BYOSI.git 2>/dev/null && \
+    echo "BYOSI: Bring Your Own Script Interpreter" > BYOSI/TOOL_INFO.txt || true
+
+# PowerHouse - PowerShell post-exploitation
+RUN git clone --depth 1 https://github.com/Mr-Un1k0d3r/PowerHouse.git 2>/dev/null && \
+    echo "PowerHouse: PowerShell post-exploitation framework" > PowerHouse/TOOL_INFO.txt || true
+
+# =============================================================================
+# BUILD RUST TOOLS
+# =============================================================================
+
+# Build RustHound-CE (may fail if repo not cloned)
+RUN (cd /opt/tools/RustHound-CE 2>/dev/null && \
+    cargo build --release 2>/dev/null) || echo "RustHound-CE build skipped"
+
+# =============================================================================
+# INSTALL BLOODHOUND COMMUNITY EDITION
+# =============================================================================
+
+# BloodHound CE (download may fail, fallback to pip install)
+RUN mkdir -p /opt/tools/bloodhound && \
+    cd /opt/tools/bloodhound && \
+    (curl -sL https://github.com/SpecterOps/BloodHound/releases/latest/download/BloodHound-linux-x64.zip -o bloodhound.zip && \
+    unzip bloodhound.zip && rm bloodhound.zip) 2>/dev/null || true && \
+    echo "BloodHound: Active Directory attack path analysis" > TOOL_INFO.txt
+
+# =============================================================================
+# CLEANUP AND PERMISSIONS
+# =============================================================================
+
+# Set ownership
+RUN chown -R rtpi-agent:rtpi-agent /opt/tools
+
+# Generate tool documentation
+RUN /usr/local/bin/generate-docs.sh || true
+
+# Create tool index for MCP discovery
+RUN find /opt/tools -name "TOOL_INFO.txt" -exec cat {} \; > /docs/TOOLS_INDEX.md
+
+# Switch to non-root user
+USER rtpi-agent
+WORKDIR /home/rtpi-agent
+
+# Build MCP server
+WORKDIR /mcp
+RUN npm run build
+
+# Expose MCP port
+EXPOSE 9000
+
+# Health check
+HEALTHCHECK --interval=60s --timeout=10s --retries=3 \
+    CMD pgrep -f "node.*mcp" || exit 1
+
+# Start MCP server
+ENTRYPOINT ["/usr/local/bin/mcp-entrypoint.sh"]

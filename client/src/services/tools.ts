@@ -67,4 +67,33 @@ export const toolsService = {
   // Delete tool
   delete: (id: string) =>
     api.delete<{ message: string; tool: Tool }>(`/tools/${id}`),
+
+  // Refresh tools registry from Dockerfile.tools and /opt/tools/
+  refresh: () =>
+    api.post<{
+      success: boolean;
+      message: string;
+      added: number;
+      updated: number;
+      total: number;
+      summary: {
+        total: number;
+        installed: number;
+        notInstalled: number;
+        byCategory: Record<string, number>;
+        byMethod: Record<string, number>;
+      };
+      tools: Array<{
+        toolId: string;
+        name: string;
+        category: string;
+        description: string;
+        command: string;
+        installMethod: string;
+        installPath?: string;
+        githubUrl?: string;
+        isInstalled: boolean;
+        version?: string;
+      }>;
+    }>("/tools/refresh", {}),
 };

@@ -170,3 +170,55 @@ export function useDeleteTool() {
     error,
   };
 }
+
+export interface RefreshResult {
+  success: boolean;
+  message: string;
+  added: number;
+  updated: number;
+  total: number;
+  summary: {
+    total: number;
+    installed: number;
+    notInstalled: number;
+    byCategory: Record<string, number>;
+    byMethod: Record<string, number>;
+  };
+  tools: Array<{
+    toolId: string;
+    name: string;
+    category: string;
+    description: string;
+    command: string;
+    installMethod: string;
+    installPath?: string;
+    githubUrl?: string;
+    isInstalled: boolean;
+    version?: string;
+  }>;
+}
+
+export function useRefreshTools() {
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = async (): Promise<RefreshResult> => {
+    try {
+      setRefreshing(true);
+      setError(null);
+      const response = await toolsService.refresh();
+      return response;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to refresh tools registry");
+      throw err;
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  return {
+    refresh,
+    refreshing,
+    error,
+  };
+}

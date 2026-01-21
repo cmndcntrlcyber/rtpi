@@ -8,6 +8,30 @@ import { getFriendlyError } from "@/utils/errors";
 
 const API_BASE = "/api/v1";
 
+interface RequestParams {
+  [key: string]: string | number | boolean | null | undefined;
+}
+
+/**
+ * Build URL with query parameters
+ * Handles encoding and filtering of undefined/null values
+ */
+function buildUrl(path: string, params?: RequestParams): string {
+  if (!params) return path;
+
+  const searchParams = new URLSearchParams();
+
+  Object.entries(params).forEach(([key, value]) => {
+    // Skip undefined and null values
+    if (value !== undefined && value !== null) {
+      searchParams.append(key, String(value));
+    }
+  });
+
+  const queryString = searchParams.toString();
+  return queryString ? `${path}?${queryString}` : path;
+}
+
 // Session refresh tracking
 let lastActivity = Date.now();
 let sessionRefreshTimer: NodeJS.Timeout | null = null;
@@ -155,7 +179,8 @@ export async function fetchWithAuth<T = any>(
 
 // HTTP method helpers
 export const api = {
-  get: <T = any>(url: string) => fetchWithAuth<T>(url),
+  get: <T = any>(url: string, options?: { params?: RequestParams }) =>
+    fetchWithAuth<T>(buildUrl(url, options?.params)),
 
   post: <T = any>(url: string, data?: any) =>
     fetchWithAuth<T>(url, {

@@ -1,0 +1,318 @@
+# RTPI OffSec Agent: Maldev Tools
+# Binary Analysis, Reverse Engineering, ROP Development & Rust-Based Exploitation
+#
+# Total Tool Repositories: 44
+# Categories: Reverse Engineering (17), ROP Development (8), POC (8), Rust-Based (11)
+# Primary Language: Rust
+#
+# MITRE ATT&CK Tactics: Defense Evasion (TA0005), Execution (TA0002), Persistence (TA0003)
+
+FROM rtpi/offsec-base:latest
+
+# Set agent type for MCP server
+ENV AGENT_TYPE=maldev
+ENV TOOLS_PATH=/opt/tools
+
+# Switch to root for package installation
+USER root
+
+# Install additional dependencies for malware development and binary analysis
+RUN apt-get update && apt-get install -y \
+    # Binary analysis tools
+    binutils binwalk \
+    # Assembly and compilation
+    nasm yasm \
+    # Debugging tools
+    gdb gdb-multiarch strace ltrace \
+    # PE/ELF analysis
+    pev upx-ucl \
+    # Development libraries (libcapstone available, keystone/unicorn via pip)
+    libcapstone-dev \
+    # Cross-compilation support
+    gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+    # Additional utilities
+    xxd hexedit jq \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install mingw cross-compiler (x86 only, skip on ARM64)
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then \
+        apt-get update && apt-get install -y gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 && \
+        rm -rf /var/lib/apt/lists/*; \
+    else \
+        echo "Skipping mingw cross-compiler on ARM64"; \
+    fi
+
+# Install radare2 from source (not available in Ubuntu ARM64 repos)
+RUN git clone --depth 1 https://github.com/radareorg/radare2.git /tmp/radare2 && \
+    cd /tmp/radare2 && sys/install.sh && rm -rf /tmp/radare2 || \
+    echo "Skipping radare2 build on this architecture"
+
+# Install Python packages for binary analysis
+RUN pip3 install --no-cache-dir \
+    pwntools \
+    capstone \
+    keystone-engine \
+    unicorn \
+    ropper \
+    angr \
+    pefile \
+    lief \
+    yara-python
+
+# Add Rust targets for cross-compilation
+USER rtpi-agent
+RUN rustup target add x86_64-pc-windows-gnu && \
+    rustup target add x86_64-unknown-linux-musl && \
+    rustup target add aarch64-unknown-linux-gnu && \
+    rustup component add rust-src
+
+# Install Rust-based security tools
+RUN cargo install xgadget && \
+    cargo install feroxbuster && \
+    cargo install ripgrep && \
+    cargo install fd-find
+
+# Switch back to root for tool cloning
+USER root
+WORKDIR /opt/tools
+
+# =============================================================================
+# REVERSE ENGINEERING TOOLS (17 repos)
+# =============================================================================
+
+# Ghidra MCP Integration
+RUN git clone --depth 1 https://github.com/AhmedMaher309/GhidraMCP.git 2>/dev/null && \
+    echo "GhidraMCP: Ghidra integration for MCP servers" > GhidraMCP/TOOL_INFO.txt || true
+
+# Binary Analysis MCPs
+RUN git clone --depth 1 https://github.com/ant4g0nist/BinaryAnalysisMCPs.git 2>/dev/null && \
+    echo "BinaryAnalysisMCPs: Multiple binary analysis MCP integrations" > BinaryAnalysisMCPs/TOOL_INFO.txt || true
+
+# x64dbg MCP
+RUN git clone --depth 1 https://github.com/mrexodia/x64dbgMCP.git 2>/dev/null && \
+    echo "x64dbgMCP: x64dbg debugger MCP integration" > x64dbgMCP/TOOL_INFO.txt || true
+
+# WinDbg MCP
+RUN git clone --depth 1 https://github.com/psolyca/mcp-windbg.git mcp-windbg 2>/dev/null && \
+    echo "mcp-windbg: WinDbg debugger MCP integration" > mcp-windbg/TOOL_INFO.txt || true
+
+# Jaegis RAVERSE - Reverse engineering assistant
+RUN git clone --depth 1 https://github.com/xXJaegisXx/jaegis-RAVERSE.git jaegis-RAVERSE 2>/dev/null && \
+    echo "jaegis-RAVERSE: AI-powered reverse engineering assistant" > jaegis-RAVERSE/TOOL_INFO.txt || true
+
+# OSS-Fuzz-Gen - Fuzzer generation
+RUN git clone --depth 1 https://github.com/google/oss-fuzz-gen.git 2>/dev/null && \
+    echo "oss-fuzz-gen: Google OSS-Fuzz generator" > oss-fuzz-gen/TOOL_INFO.txt || true
+
+# WinAFL - Windows AFL fuzzer
+RUN git clone --depth 1 https://github.com/googleprojectzero/winafl.git 2>/dev/null && \
+    echo "winafl: Windows AFL fuzzer" > winafl/TOOL_INFO.txt || true
+
+# Jackalope - Binary fuzzer
+RUN git clone --depth 1 https://github.com/googleprojectzero/Jackalope.git 2>/dev/null && \
+    echo "Jackalope: Binary fuzzer for Windows and macOS" > Jackalope/TOOL_INFO.txt || true
+
+# objdiff - Object file differ
+RUN git clone --depth 1 https://github.com/encounter/objdiff.git 2>/dev/null && \
+    echo "objdiff: Object file binary differ" > objdiff/TOOL_INFO.txt || true
+
+# ACEshark - ACE detection
+RUN git clone --depth 1 https://github.com/Akamai-Security/ACEshark.git 2>/dev/null && \
+    echo "ACEshark: ACE vulnerability detection tool" > ACEshark/TOOL_INFO.txt || true
+
+# UEFI Scanner
+RUN git clone --depth 1 https://github.com/sl0ppy-privesc/sl0ppy-UEFIScan.git sl0ppy-UEFIScan 2>/dev/null && \
+    echo "sl0ppy-UEFIScan: UEFI firmware scanner" > sl0ppy-UEFIScan/TOOL_INFO.txt || true
+
+# COM Fuzzer
+RUN git clone --depth 1 https://github.com/mwrlabs/COM-Fuzzer.git COM-Fuzzer 2>/dev/null && \
+    echo "COM-Fuzzer: Windows COM object fuzzer" > COM-Fuzzer/TOOL_INFO.txt || true
+
+# Docker Binary Exploitation
+RUN git clone --depth 1 https://github.com/Gallopsled/docker-binaryexploitation.git docker-binaryexploitation 2>/dev/null && \
+    echo "docker-binaryexploitation: Binary exploitation environment" > docker-binaryexploitation/TOOL_INFO.txt || true
+
+# xgadget - ROP gadget finder (Rust)
+RUN git clone --depth 1 https://github.com/entropic-security/xgadget.git xgadget-src 2>/dev/null && \
+    echo "xgadget: Rust-based ROP gadget finder" > xgadget-src/TOOL_INFO.txt || true
+
+# Rhabdomancer - Binary diffing
+RUN git clone --depth 1 https://github.com/0xdea/rhabdomancer.git 2>/dev/null && \
+    echo "rhabdomancer: Binary diffing and vulnerability research" > rhabdomancer/TOOL_INFO.txt || true
+
+# Aplos - Binary analysis
+RUN git clone --depth 1 https://github.com/leandrofroes/aplos.git 2>/dev/null && \
+    echo "aplos: Binary analysis framework" > aplos/TOOL_INFO.txt || true
+
+# WTF - Windows Task Fuzzer
+RUN git clone --depth 1 https://github.com/0vercl0k/wtf.git 2>/dev/null && \
+    echo "wtf: Windows kernel fuzzer (What The Fuzz)" > wtf/TOOL_INFO.txt || true
+
+# =============================================================================
+# ROP DEVELOPMENT TOOLS (8 repos)
+# =============================================================================
+
+# Obfusk8 - Obfuscation toolkit
+RUN git clone --depth 1 https://github.com/trickster0/Obfusk8.git 2>/dev/null && \
+    echo "Obfusk8: Code obfuscation toolkit" > Obfusk8/TOOL_INFO.txt || true
+
+# RustChain - ROP chain generator in Rust
+RUN git clone --depth 1 https://github.com/trickster0/RustChain.git 2>/dev/null && \
+    echo "RustChain: Rust-based ROP chain generator" > RustChain/TOOL_INFO.txt || true
+
+# Ropdump - ROP gadget dumper
+RUN git clone --depth 1 https://github.com/h4x0r-dz/ropdump.git 2>/dev/null && \
+    echo "ropdump: ROP gadget dumper utility" > ropdump/TOOL_INFO.txt || true
+
+# rop-tool - ROP toolkit
+RUN git clone --depth 1 https://github.com/t00sh/rop-tool.git rop-tool 2>/dev/null && \
+    echo "rop-tool: ROP gadget toolkit" > rop-tool/TOOL_INFO.txt || true
+
+# ropium - ROP gadget compiler
+RUN git clone --depth 1 https://github.com/Boyan-MILANOV/ropium.git 2>/dev/null && \
+    echo "ropium: ROP gadget compiler and builder" > ropium/TOOL_INFO.txt || true
+
+# ROPgadget - Classic ROP gadget finder
+RUN git clone --depth 1 https://github.com/JonathanSalwan/ROPgadget.git 2>/dev/null && \
+    cd ROPgadget && pip3 install . && \
+    echo "ROPgadget: Classic ROP gadget finder" > TOOL_INFO.txt || true
+
+# p0tools - Security research tools
+RUN git clone --depth 1 https://github.com/AzAgarampur/p0tools.git 2>/dev/null && \
+    echo "p0tools: P0 security research toolkit" > p0tools/TOOL_INFO.txt || true
+
+# jopcall - JOP chain caller
+RUN git clone --depth 1 https://github.com/v-p-b/jopcall.git 2>/dev/null && \
+    echo "jopcall: JOP chain call generator" > jopcall/TOOL_INFO.txt || true
+
+# =============================================================================
+# PROOF-OF-CONCEPT TOOLS (8 repos)
+# =============================================================================
+
+# Shellcode-IDE - Shellcode development
+RUN git clone --depth 1 https://github.com/felixweyne/Shellcode-IDE.git Shellcode-IDE 2>/dev/null && \
+    echo "Shellcode-IDE: Shellcode development environment" > Shellcode-IDE/TOOL_INFO.txt || true
+
+# Packer - Executable packer
+RUN git clone --depth 1 https://github.com/m0n0ph1/packer.git 2>/dev/null && \
+    echo "packer: Executable packer" > packer/TOOL_INFO.txt || true
+
+# PadZip-Evader - Zip padding evasion
+RUN git clone --depth 1 https://github.com/mgeeky/PadZip-Evader.git PadZip-Evader 2>/dev/null && \
+    echo "PadZip-Evader: Zip padding AV evasion" > PadZip-Evader/TOOL_INFO.txt || true
+
+# Ditto - Process hollowing
+RUN git clone --depth 1 https://github.com/whoamifromme/ditto.git 2>/dev/null && \
+    echo "ditto: Process hollowing technique" > ditto/TOOL_INFO.txt || true
+
+# Umbrella - Protection bypass
+RUN git clone --depth 1 https://github.com/Arvanaghi/Umbrella.git 2>/dev/null && \
+    echo "Umbrella: EDR/AV bypass techniques" > Umbrella/TOOL_INFO.txt || true
+
+# OneNote SVG AutoRun Bypass
+RUN git clone --depth 1 https://github.com/AlteredSecurity/OneNote-SVG-AutoRun-Bypass.git OneNote-SVG-AutoRun-Bypass 2>/dev/null && \
+    echo "OneNote-SVG-AutoRun-Bypass: OneNote attack vector" > OneNote-SVG-AutoRun-Bypass/TOOL_INFO.txt || true
+
+# DarkLnk - LNK file attacks
+RUN git clone --depth 1 https://github.com/natesubra/DarkLnk.git 2>/dev/null && \
+    echo "DarkLnk: LNK file attack tool" > DarkLnk/TOOL_INFO.txt || true
+
+# Hypervinject POC
+RUN git clone --depth 1 https://github.com/Jeromeyoung/hypervinject-poc.git hypervinject-poc 2>/dev/null && \
+    echo "hypervinject-poc: Hypervisor injection POC" > hypervinject-poc/TOOL_INFO.txt || true
+
+# =============================================================================
+# RUST-BASED DEVELOPMENT TOOLS (11 repos)
+# =============================================================================
+
+# TamperETW - ETW bypass in Rust
+RUN git clone --depth 1 https://github.com/daem0nc0re/TamperETW.git 2>/dev/null && \
+    echo "TamperETW: ETW bypass implementation" > TamperETW/TOOL_INFO.txt || true
+
+# SHAPESHIFTER - Process morphing
+RUN git clone --depth 1 https://github.com/Octoberfest7/SHAPESHIFTER.git 2>/dev/null && \
+    echo "SHAPESHIFTER: Process morphing technique" > SHAPESHIFTER/TOOL_INFO.txt || true
+
+# SharpCall - Direct syscalls
+RUN git clone --depth 1 https://github.com/jhalon/SharpCall.git 2>/dev/null && \
+    echo "SharpCall: Direct syscall implementation" > SharpCall/TOOL_INFO.txt || true
+
+# SysWhispers - Direct syscall generator
+RUN git clone --depth 1 https://github.com/jthuraisamy/SysWhispers.git 2>/dev/null && \
+    echo "SysWhispers: Syscall stub generator" > SysWhispers/TOOL_INFO.txt || true
+
+# SharpSploit - .NET post-exploitation
+RUN git clone --depth 1 https://github.com/cobbr/SharpSploit.git 2>/dev/null && \
+    echo "SharpSploit: .NET post-exploitation library" > SharpSploit/TOOL_INFO.txt || true
+
+# rustclr - Rust CLR loader
+RUN git clone --depth 1 https://github.com/polycone/rustclr.git 2>/dev/null && \
+    echo "rustclr: Rust CLR hosting library" > rustclr/TOOL_INFO.txt || true
+
+# Windows Reflective Loader
+RUN git clone --depth 1 https://github.com/memN0ps/windows_reflective_loader.git windows_reflective_loader 2>/dev/null && \
+    echo "windows_reflective_loader: Reflective DLL loader in Rust" > windows_reflective_loader/TOOL_INFO.txt || true
+
+# NSecSoft BYOVD
+RUN git clone --depth 1 https://github.com/NSecSoft/NSecSoftBYOVD.git NSecSoftBYOVD 2>/dev/null && \
+    echo "NSecSoftBYOVD: Bring Your Own Vulnerable Driver" > NSecSoftBYOVD/TOOL_INFO.txt || true
+
+# ARM64 Reflective DLL Injection
+RUN git clone --depth 1 https://github.com/oldboy21/ARM64-ReflectiveDLLInjection.git ARM64-ReflectiveDLLInjection 2>/dev/null && \
+    echo "ARM64-ReflectiveDLLInjection: ARM64 reflective injection" > ARM64-ReflectiveDLLInjection/TOOL_INFO.txt || true
+
+# C to Shellcode NG
+RUN git clone --depth 1 https://github.com/winterknife/C_To_Shellcode_NG.git C_To_Shellcode_NG 2>/dev/null && \
+    echo "C_To_Shellcode_NG: C to shellcode converter" > C_To_Shellcode_NG/TOOL_INFO.txt || true
+
+# SharpBypassUAC
+RUN git clone --depth 1 https://github.com/icyguider/SharpBypassUAC.git 2>/dev/null && \
+    echo "SharpBypassUAC: UAC bypass techniques" > SharpBypassUAC/TOOL_INFO.txt || true
+
+# =============================================================================
+# BUILD RUST TOOLS
+# =============================================================================
+
+# Build RustChain (if cloned successfully)
+RUN if [ -d /opt/tools/RustChain ]; then \
+        cd /opt/tools/RustChain && \
+        cargo build --release 2>/dev/null || echo "RustChain build requires specific dependencies"; \
+    fi
+
+# Build xgadget from source (if cloned successfully)
+RUN if [ -d /opt/tools/xgadget-src ]; then \
+        cd /opt/tools/xgadget-src && \
+        cargo build --release 2>/dev/null || echo "xgadget built from cargo install"; \
+    fi
+
+# =============================================================================
+# CLEANUP AND PERMISSIONS
+# =============================================================================
+
+# Set ownership
+RUN chown -R rtpi-agent:rtpi-agent /opt/tools
+
+# Generate tool documentation
+RUN /usr/local/bin/generate-docs.sh || true
+
+# Create tool index for MCP discovery
+RUN find /opt/tools -name "TOOL_INFO.txt" -exec cat {} \; > /docs/TOOLS_INDEX.md
+
+# Switch to non-root user
+USER rtpi-agent
+WORKDIR /home/rtpi-agent
+
+# Build MCP server
+WORKDIR /mcp
+RUN npm run build
+
+# Expose MCP port
+EXPOSE 9000
+
+# Health check
+HEALTHCHECK --interval=60s --timeout=10s --retries=3 \
+    CMD pgrep -f "node.*mcp" || exit 1
+
+# Start MCP server
+ENTRYPOINT ["/usr/local/bin/mcp-entrypoint.sh"]

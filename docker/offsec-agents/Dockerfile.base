@@ -1,0 +1,106 @@
+# RTPI OffSec Agent Base Image
+# Shared base for all specialized agent containers with MCP server integration
+FROM ubuntu:22.04
+
+# Prevent interactive prompts during installation
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+# Create application directories
+RUN mkdir -p /opt/tools /var/log/rtpi /mcp /docs
+
+# Add external repositories and install base system packages
+RUN apt-get update && apt-get install -y \
+    # Basic system tools
+    curl wget unzip gnupg lsb-release ca-certificates software-properties-common \
+    build-essential git vim nano htop sudo \
+    # Python stack
+    python3 python3-pip python3-venv python-is-python3 pipx \
+    # Development tools
+    default-jdk golang-go cmake pkg-config libssl-dev \
+    # Networking tools
+    net-tools iputils-ping dnsutils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js (LTS) for MCP server
+RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust toolchain (used by many security tools)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Create non-root user for running tools
+RUN useradd -m -s /bin/bash rtpi-agent && \
+    echo "rtpi-agent ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
+    chown -R rtpi-agent:rtpi-agent /opt/tools /var/log/rtpi /mcp /docs
+
+# Install Rust for rtpi-agent user as well
+USER rtpi-agent
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/home/rtpi-agent/.cargo/bin:${PATH}"
+
+# Switch back to root for MCP server setup
+USER root
+
+# Copy MCP server files
+COPY mcp-server/ /mcp/
+WORKDIR /mcp
+
+# Install MCP server dependencies
+RUN npm install
+
+# Generate tool documentation entrypoint
+RUN cat > /usr/local/bin/generate-docs.sh << 'EOF'
+#!/bin/bash
+# Generate usage documentation for all tools in /opt/tools
+DOCS_DIR="/docs"
+echo "# Tool Documentation" > "$DOCS_DIR/README.md"
+echo "" >> "$DOCS_DIR/README.md"
+echo "Generated: $(date)" >> "$DOCS_DIR/README.md"
+echo "" >> "$DOCS_DIR/README.md"
+
+find /opt/tools -type f -executable 2>/dev/null | while read tool; do
+    name=$(basename "$tool")
+    echo "## $name" >> "$DOCS_DIR/README.md"
+    echo '```' >> "$DOCS_DIR/README.md"
+    timeout 5 "$tool" --help 2>&1 | head -50 >> "$DOCS_DIR/README.md" || echo "No help available" >> "$DOCS_DIR/README.md"
+    echo '```' >> "$DOCS_DIR/README.md"
+    echo "" >> "$DOCS_DIR/README.md"
+done
+
+echo "Documentation generated at $DOCS_DIR/README.md"
+EOF
+RUN chmod +x /usr/local/bin/generate-docs.sh
+
+# Create MCP server entrypoint
+RUN cat > /usr/local/bin/mcp-entrypoint.sh << 'EOF'
+#!/bin/bash
+set -e
+
+echo "OffSec Agent Container Starting..."
+echo "Container: ${AGENT_TYPE:-unknown}"
+echo "MCP Server: Initializing..."
+
+# Generate tool documentation
+/usr/local/bin/generate-docs.sh
+
+# Start MCP server
+cd /mcp
+exec node dist/index.js
+EOF
+RUN chmod +x /usr/local/bin/mcp-entrypoint.sh
+
+# Switch to non-root user
+USER rtpi-agent
+WORKDIR /home/rtpi-agent
+
+# Expose MCP server port (optional, primarily uses stdio)
+EXPOSE 9000
+
+# Health check
+HEALTHCHECK --interval=60s --timeout=10s --retries=3 \
+    CMD pgrep -f "node.*mcp" || exit 1
+
+ENTRYPOINT ["/usr/local/bin/mcp-entrypoint.sh"]

@@ -120,9 +120,12 @@ export class AttackWorkbenchClient {
     this.client.interceptors.response.use(
       (response) => response,
       (error: AxiosError) => {
-        console.error('Workbench API Error:', error.message);
-        if (error.response) {
-          console.error('Response:', error.response.status, error.response.data);
+        // Don't log 401 errors - they're expected when Workbench requires auth
+        if (error.response?.status !== 401) {
+          console.error('Workbench API Error:', error.message);
+          if (error.response) {
+            console.error('Response:', error.response.status, error.response.data);
+          }
         }
         return Promise.reject(error);
       }
@@ -161,7 +164,11 @@ export class AttackWorkbenchClient {
     try {
       const response = await this.client.get('/techniques', { params });
       return response.data.data || [];
-    } catch (error) {
+    } catch (error: any) {
+      // Return empty array if Workbench requires auth or is unavailable
+      if (error.response?.status === 401) {
+        return [];
+      }
       console.error('Failed to fetch techniques:', error);
       return [];
     }
@@ -228,7 +235,11 @@ export class AttackWorkbenchClient {
     try {
       const response = await this.client.get('/collections');
       return response.data.data || [];
-    } catch (error) {
+    } catch (error: any) {
+      // Return empty array if Workbench requires auth or is unavailable
+      if (error.response?.status === 401) {
+        return [];
+      }
       console.error('Failed to fetch collections:', error);
       return [];
     }
@@ -282,7 +293,11 @@ export class AttackWorkbenchClient {
     try {
       const response = await this.client.get('/groups');
       return response.data.data || [];
-    } catch (error) {
+    } catch (error: any) {
+      // Return empty array if Workbench requires auth or is unavailable
+      if (error.response?.status === 401) {
+        return [];
+      }
       console.error('Failed to fetch groups:', error);
       return [];
     }
@@ -310,7 +325,11 @@ export class AttackWorkbenchClient {
     try {
       const response = await this.client.get('/software');
       return response.data.data || [];
-    } catch (error) {
+    } catch (error: any) {
+      // Return empty array if Workbench requires auth or is unavailable
+      if (error.response?.status === 401) {
+        return [];
+      }
       console.error('Failed to fetch software:', error);
       return [];
     }
@@ -338,7 +357,11 @@ export class AttackWorkbenchClient {
     try {
       const response = await this.client.get('/mitigations');
       return response.data.data || [];
-    } catch (error) {
+    } catch (error: any) {
+      // Return empty array if Workbench requires auth or is unavailable
+      if (error.response?.status === 401) {
+        return [];
+      }
       console.error('Failed to fetch mitigations:', error);
       return [];
     }
@@ -370,7 +393,11 @@ export class AttackWorkbenchClient {
     try {
       const response = await this.client.get('/relationships', { params });
       return response.data.data || [];
-    } catch (error) {
+    } catch (error: any) {
+      // Return empty array if Workbench requires auth or is unavailable
+      if (error.response?.status === 401) {
+        return [];
+      }
       console.error('Failed to fetch relationships:', error);
       return [];
     }

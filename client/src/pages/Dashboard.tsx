@@ -34,7 +34,7 @@ export default function Dashboard() {
       <h1 className="text-3xl font-bold mb-8">RTPI Dashboard</h1>
 
       {hasError && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-800">
+        <div className="mb-6 p-4 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg text-red-800 dark:text-red-200">
           <p className="font-medium">Failed to load some dashboard data</p>
           <p className="text-sm">{opsError || targetsError || vulnError || agentsError}</p>
         </div>
@@ -47,7 +47,7 @@ export default function Dashboard() {
           onClick={() => navigate("/operations")}
         >
           <h3 className="text-sm font-medium text-muted-foreground mb-2">Active Operations</h3>
-          <p className="text-3xl font-bold text-green-600 flex items-center gap-2">
+          <p className="text-3xl font-bold text-green-600 dark:text-green-400 flex items-center gap-2">
             {loading ? <><Loader2 className="h-6 w-6 animate-spin" /> Loading...</> : stats.activeOperations}
           </p>
         </div>
@@ -58,7 +58,7 @@ export default function Dashboard() {
           onClick={() => navigate("/targets")}
         >
           <h3 className="text-sm font-medium text-muted-foreground mb-2">Targets</h3>
-          <p className="text-3xl font-bold text-blue-600 flex items-center gap-2">
+          <p className="text-3xl font-bold text-blue-600 dark:text-blue-400 flex items-center gap-2">
             {loading ? <><Loader2 className="h-6 w-6 animate-spin" /> Loading...</> : stats.targets}
           </p>
         </div>
@@ -69,7 +69,7 @@ export default function Dashboard() {
           onClick={() => navigate("/vulnerabilities")}
         >
           <h3 className="text-sm font-medium text-muted-foreground mb-2">Vulnerabilities</h3>
-          <p className="text-3xl font-bold text-red-600 flex items-center gap-2">
+          <p className="text-3xl font-bold text-red-600 dark:text-red-400 flex items-center gap-2">
             {loading ? <><Loader2 className="h-6 w-6 animate-spin" /> Loading...</> : stats.vulnerabilities}
           </p>
         </div>
@@ -80,7 +80,7 @@ export default function Dashboard() {
           onClick={() => navigate("/agents")}
         >
           <h3 className="text-sm font-medium text-muted-foreground mb-2">Active Agents</h3>
-          <p className="text-3xl font-bold text-purple-600 flex items-center gap-2">
+          <p className="text-3xl font-bold text-purple-600 dark:text-purple-400 flex items-center gap-2">
             {loading ? <><Loader2 className="h-6 w-6 animate-spin" /> Loading...</> : stats.activeAgents}
           </p>
         </div>
@@ -94,7 +94,7 @@ export default function Dashboard() {
             <ClipboardList className="h-4 w-4" />
             Operations Manager
           </h3>
-          <p className="text-3xl font-bold text-indigo-600 flex items-center gap-2">
+          <p className="text-3xl font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-2">
             {loading ? <><Loader2 className="h-6 w-6 animate-spin" /> Loading...</> : stats.activeReporters}
           </p>
           <p className="text-sm text-muted-foreground mt-2">

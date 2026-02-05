@@ -11,6 +11,87 @@ import { eq, and } from 'drizzle-orm';
 import { EventEmitter } from 'events';
 
 // ============================================================================
+// Workflow Template Seed Data
+// ============================================================================
+
+const DEFAULT_WORKFLOW_TEMPLATES = [
+  {
+    name: "Surface Assessment Workflow",
+    description: "Automated surface assessment workflow triggered on operation creation. Retrieves scope, executes BBOT reconnaissance, and documents findings.",
+    triggerEvent: "operation_created",
+    requiredCapabilities: ["scope_retrieval", "surface_scanning", "finding_documentation"],
+    optionalCapabilities: ["tool_discovery"],
+    configuration: {
+      maxParallelAgents: 1,
+      timeoutPerPhase: 7200000,
+      retryPolicy: { maxRetries: 2, backoffMultiplier: 2 },
+      fallbackBehavior: "skip",
+    },
+    isActive: true,
+  },
+  {
+    name: "Web Hacker Workflow",
+    description: "Automated vulnerability validation and exploitation workflow. Triggered after surface assessment completes.",
+    triggerEvent: "surface_assessment_completed",
+    requiredCapabilities: ["vulnerability_analysis", "nuclei_scanning"],
+    optionalCapabilities: ["template_generation", "tool_selection"],
+    configuration: {
+      maxParallelAgents: 3,
+      timeoutPerPhase: 3600000,
+      retryPolicy: { maxRetries: 1, backoffMultiplier: 1 },
+      fallbackBehavior: "skip",
+    },
+    isActive: true,
+  },
+  {
+    name: "Full Assessment Pipeline",
+    description: "Complete assessment pipeline from scope retrieval to exploitation.",
+    triggerEvent: "manual",
+    requiredCapabilities: [
+      "tool_discovery", "scope_retrieval", "surface_scanning",
+      "finding_documentation", "vulnerability_analysis", "nuclei_scanning", "template_generation",
+    ],
+    optionalCapabilities: [],
+    configuration: {
+      maxParallelAgents: 2,
+      timeoutPerPhase: 14400000,
+      retryPolicy: { maxRetries: 2, backoffMultiplier: 2 },
+      fallbackBehavior: "skip",
+    },
+    isActive: true,
+  },
+  {
+    name: "Tool Discovery Workflow",
+    description: "Standalone workflow for tool discovery. Polls the rtpi-tools container to update the tool registry.",
+    triggerEvent: "manual",
+    requiredCapabilities: ["tool_discovery", "tool_registry_sync"],
+    optionalCapabilities: [],
+    configuration: {
+      maxParallelAgents: 1,
+      timeoutPerPhase: 300000,
+      retryPolicy: { maxRetries: 3, backoffMultiplier: 1.5 },
+      fallbackBehavior: "fail",
+    },
+    isActive: true,
+  },
+  {
+    name: "Quick Scan Workflow",
+    description: "Lightweight reconnaissance workflow for rapid assessment.",
+    triggerEvent: "manual",
+    requiredCapabilities: ["scope_retrieval", "surface_scanning"],
+    optionalCapabilities: [],
+    configuration: {
+      maxParallelAgents: 1,
+      timeoutPerPhase: 1800000,
+      retryPolicy: { maxRetries: 1, backoffMultiplier: 1 },
+      fallbackBehavior: "fail",
+      scanPreset: "subdomain-enum",
+    },
+    isActive: true,
+  },
+];
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -234,6 +315,35 @@ class WorkflowEventHandlers extends EventEmitter {
   }
 
   /**
+   * Seed default workflow templates if they don't exist
+   */
+  private async seedWorkflowTemplates(): Promise<void> {
+    console.log('Checking workflow templates...');
+
+    try {
+      const existingTemplates = await db.select().from(workflowTemplates);
+      const existingNames = new Set(existingTemplates.map(t => t.name));
+
+      let seeded = 0;
+      for (const template of DEFAULT_WORKFLOW_TEMPLATES) {
+        if (!existingNames.has(template.name)) {
+          await db.insert(workflowTemplates).values(template);
+          seeded++;
+          console.log(`  + Seeded: ${template.name}`);
+        }
+      }
+
+      if (seeded > 0) {
+        console.log(`Seeded ${seeded} new workflow templates`);
+      } else {
+        console.log(`All ${DEFAULT_WORKFLOW_TEMPLATES.length} workflow templates already exist`);
+      }
+    } catch (error) {
+      console.error('Failed to seed workflow templates:', error);
+    }
+  }
+
+  /**
    * Initialize all agents and start background services
    */
   async initializeAgentSystem(): Promise<void> {
@@ -243,6 +353,9 @@ class WorkflowEventHandlers extends EventEmitter {
     }
 
     console.log('Initializing Agent System...');
+
+    // Seed workflow templates first
+    await this.seedWorkflowTemplates();
 
     try {
       // Initialize Tool Connector Agent (background polling)

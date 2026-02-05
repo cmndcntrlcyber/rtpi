@@ -1,5 +1,4 @@
-/* eslint-disable react-hooks/set-state-in-effect */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
 import { Plus, CheckSquare } from "lucide-react";
 import { toast } from "sonner";
@@ -67,7 +66,7 @@ export default function Operations() {
     }
   };
 
-  const enrichOperationsWithWorkflows = async () => {
+  const enrichOperationsWithWorkflows = useCallback(async () => {
     if (!operations || operations.length === 0) {
       setOperationsWithWorkflows([]);
       return;
@@ -100,7 +99,7 @@ export default function Operations() {
       // Fallback to operations without workflow data
       setOperationsWithWorkflows(operations);
     }
-  };
+  }, [operations]);
 
   // FIX BUG #2: Handle inline status changes
   const handleStatusChange = async (operationId: string, newStatus: string) => {

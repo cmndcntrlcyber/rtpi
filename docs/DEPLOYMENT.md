@@ -16,6 +16,8 @@ This guide covers deploying the Unified RTPI platform in various environments, f
 - [Backup and Recovery](#backup-and-recovery)
 - [Troubleshooting](#troubleshooting)
 - [Scaling](#scaling)
+- [Agent System Deployment](#agent-system-deployment-v21)
+- [OffSec Agent Containers](#offsec-agent-containers)
 
 ---
 
@@ -152,6 +154,18 @@ UPLOAD_DIR=./uploads
 ```bash
 OPENAI_API_KEY=<your-openai-api-key>
 ANTHROPIC_API_KEY=<your-anthropic-api-key>
+```
+
+#### Agent System Configuration (v2.1)
+
+```bash
+# Agent System Auto-Initialization
+AGENT_AUTO_INITIALIZE=true
+
+# Workflow Retry Configuration
+WORKFLOW_RETRY_MAX_RETRIES=3
+WORKFLOW_RETRY_BACKOFF_MULTIPLIER=2
+WORKFLOW_RETRY_BASE_DELAY_MS=1000
 ```
 
 ### Generating Secure Secrets
@@ -344,6 +358,275 @@ npx tsx scripts/seed-tools.ts
 ```
 
 For complete rtpi-tools documentation, see [RTPI-Tools Implementation Guide](RTPI-TOOLS-IMPLEMENTATION.md).
+
+---
+
+## Agent System Deployment (v2.1)
+
+The v2.1 Autonomous Agent Framework provides automated workflow orchestration for security assessments.
+
+### Auto-Initialization
+
+On server startup, the agent system automatically:
+1. Initializes the AgentWorkflowOrchestrator
+2. Seeds default workflow templates (if not present)
+3. Sets up event listeners for workflow triggers
+4. Configures graceful shutdown handlers
+
+### Default Workflow Templates
+
+Five workflow templates are seeded on first run:
+
+| Template | Trigger Event | Description |
+|----------|--------------|-------------|
+| Surface Assessment Workflow | `operation_created` | Initial reconnaissance |
+| Web Hacker Workflow | `surface_assessment_completed` | Web vulnerability scanning |
+| Full Assessment Pipeline | `manual` | Complete assessment chain |
+| Tool Discovery Workflow | `scheduled` | Periodic tool updates |
+| Quick Scan Workflow | `manual` | Fast reconnaissance |
+
+### Environment Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AGENT_AUTO_INITIALIZE` | `true` | Enable auto-init on startup |
+| `WORKFLOW_RETRY_MAX_RETRIES` | `3` | Max retry attempts per task |
+| `WORKFLOW_RETRY_BACKOFF_MULTIPLIER` | `2` | Exponential backoff multiplier |
+| `WORKFLOW_RETRY_BASE_DELAY_MS` | `1000` | Base delay between retries (ms) |
+
+### Verifying Agent System
+
+```bash
+# Check agent system initialized
+curl http://localhost:3000/api/v1/agents/health
+
+# List workflow templates
+curl http://localhost:3000/api/v1/workflows/templates
+
+# Check workflow instances
+curl http://localhost:3000/api/v1/workflows/instances
+```
+
+### Nuclei Template Management
+
+The platform includes a Nuclei template management API for vulnerability scanning:
+
+```bash
+# List all templates
+curl http://localhost:3000/api/v1/nuclei-templates
+
+# Get template statistics
+curl http://localhost:3000/api/v1/nuclei-templates/stats
+
+# Sync from official repository
+curl -X POST http://localhost:3000/api/v1/nuclei-templates/sync
+```
+
+### Workflow Checkpoint and Resume
+
+Workflows support checkpoint/resume for fault tolerance:
+
+- **Pause**: `POST /api/v1/workflows/instances/:id/pause` - Creates checkpoint
+- **Resume**: `POST /api/v1/workflows/instances/:id/resume` - Resumes from checkpoint
+
+### Graceful Shutdown
+
+On SIGTERM/SIGINT, the agent system:
+1. Pauses all running workflows
+2. Saves checkpoint state for resume
+3. Completes in-progress tasks (with timeout)
+4. Closes database connections
+
+---
+
+## OffSec Agent Containers
+
+The OffSec Team Agent containers are specialized Docker images for security research and penetration testing. Each container includes curated tools for specific MITRE ATT&CK tactics and exposes them via MCP (Model Context Protocol) servers.
+
+### Container Overview
+
+| Agent | Dockerfile | Focus Area | MITRE Tactics |
+|-------|-----------|-----------|---------------|
+| **Maldev** | `Dockerfile.maldev-tools` | Binary Analysis, ROP Development | Defense Evasion, Execution |
+| **Azure-AD** | `Dockerfile.azure-ad-tools` | Azure & Active Directory | Credential Access, Lateral Movement |
+| **Burp** | `Dockerfile.burp-tools` | Web Application Security | Reconnaissance, Initial Access |
+| **Empire** | `Dockerfile.empire-tools` | Command & Control | C2, Persistence |
+| **Fuzzing** | `Dockerfile.fuzzing-tools` | Web Fuzzing, Discovery | Discovery, Reconnaissance |
+| **Framework** | `Dockerfile.framework-tools` | Tech Stack Detection | Reconnaissance, Initial Access |
+| **Research** | `Dockerfile.research-tools` | General R&D, OSINT | All Tactics |
+
+### Build Requirements
+
+**System Requirements:**
+- **Disk Space**: 50GB+ (tool repositories and compiled binaries)
+- **RAM**: 4GB+ for build processes
+- **CPU**: Multi-core recommended for parallel compilation
+- **Build Time**: Base image ~30-45 min, each agent ~20-60 min
+
+**Architecture Support:**
+- Full support for `amd64` (x86_64)
+- Partial support for `arm64` (some Windows-specific tools excluded)
+
+### Building the Base Image (Required First)
+
+The base image must be built before any agent images:
+
+```bash
+# Build the base image (required first)
+docker compose --profile build-only build offsec-base
+
+# Or build directly
+docker build -f docker/offsec-agents/Dockerfile.base \
+  -t rtpi/offsec-base:latest \
+  docker/offsec-agents/
+```
+
+The base image includes:
+- Ubuntu 22.04 with Python3, Node.js, Rust, Go, JDK
+- Non-root `rtpi-agent` user
+- MCP server framework
+- Common security tool dependencies
+
+### Building Individual Agent Images
+
+After the base image is built, build individual agents:
+
+```bash
+# Build all agents at once
+docker compose --profile offsec-agents build
+
+# Or build specific agents
+docker compose build offsec-maldev
+docker compose build offsec-azure-ad
+docker compose build offsec-burp
+docker compose build offsec-empire
+docker compose build offsec-fuzzing
+docker compose build offsec-framework
+docker compose build offsec-research
+```
+
+**Direct Docker Build (alternative):**
+
+```bash
+# Maldev Agent
+docker build -f docker/offsec-agents/Dockerfile.maldev-tools \
+  -t rtpi/maldev-tools:latest \
+  docker/offsec-agents/
+
+# Azure-AD Agent
+docker build -f docker/offsec-agents/Dockerfile.azure-ad-tools \
+  -t rtpi/azure-ad-tools:latest \
+  docker/offsec-agents/
+
+# Burp Agent
+docker build -f docker/offsec-agents/Dockerfile.burp-tools \
+  -t rtpi/burp-tools:latest \
+  docker/offsec-agents/
+
+# Empire Agent
+docker build -f docker/offsec-agents/Dockerfile.empire-tools \
+  -t rtpi/empire-tools:latest \
+  docker/offsec-agents/
+
+# Fuzzing Agent
+docker build -f docker/offsec-agents/Dockerfile.fuzzing-tools \
+  -t rtpi/fuzzing-tools:latest \
+  docker/offsec-agents/
+
+# Framework Agent
+docker build -f docker/offsec-agents/Dockerfile.framework-tools \
+  -t rtpi/framework-tools:latest \
+  docker/offsec-agents/
+
+# Research Agent
+docker build -f docker/offsec-agents/Dockerfile.research-tools \
+  -t rtpi/research-tools:latest \
+  docker/offsec-agents/
+```
+
+### Starting OffSec Agent Containers
+
+The OffSec agents use the `offsec-agents` Docker Compose profile:
+
+```bash
+# Start all OffSec agents
+docker compose --profile offsec-agents up -d
+
+# Start specific agents only
+docker compose up -d offsec-maldev offsec-research
+
+# View agent logs
+docker logs rtpi-maldev-agent
+docker logs rtpi-research-agent
+```
+
+### Verifying Agent Health
+
+Each agent runs an MCP server with a health check:
+
+```bash
+# Check all agent containers
+docker compose --profile offsec-agents ps
+
+# Verify MCP server is running
+docker exec rtpi-maldev-agent pgrep -f "node.*mcp"
+
+# Check agent logs for MCP startup
+docker logs rtpi-maldev-agent 2>&1 | grep -i mcp
+```
+
+### Agent-Specific Ports
+
+| Agent | Port | Service |
+|-------|------|---------|
+| Research | 8888 | JupyterLab notebooks |
+| All agents | 9000 (internal) | MCP Server |
+
+### Volumes and Persistence
+
+Each agent has dedicated volumes for tool storage:
+
+| Volume | Purpose |
+|--------|---------|
+| `maldev-tools` | Maldev agent tools |
+| `azure-ad-tools` | Azure-AD agent tools |
+| `burp-tools` | Burp agent tools |
+| `empire-tools` | Empire agent tools |
+| `fuzzing-tools` | Fuzzing agent tools |
+| `fuzzing-wordlists` | Shared wordlists (SecLists, fuzzdb) |
+| `framework-tools` | Framework agent tools |
+| `research-tools` | Research agent tools |
+| `research-notebooks` | Jupyter notebooks |
+| `shared-data` | Shared data across all agents |
+
+### Troubleshooting OffSec Agents
+
+**Agent won't start:**
+```bash
+# Check logs for errors
+docker logs rtpi-maldev-agent
+
+# Rebuild if necessary
+docker compose build --no-cache offsec-maldev
+docker compose --profile offsec-agents up -d
+```
+
+**MCP server not responding:**
+```bash
+# Enter container and check
+docker exec -it rtpi-maldev-agent bash
+ps aux | grep node
+cat /mcp/dist/index.js  # Verify build exists
+```
+
+**Base image missing:**
+```bash
+# Verify base image exists
+docker images | grep rtpi/offsec-base
+
+# Rebuild if missing
+docker compose --profile build-only build offsec-base
+```
 
 ---
 
@@ -832,6 +1115,15 @@ curl http://localhost:3000/api/v1/health-checks/database
 
 # Redis health
 curl http://localhost:3000/api/v1/health-checks/redis
+
+# Agent system health
+curl http://localhost:3000/api/v1/agents/health
+
+# Workflow orchestrator status
+curl http://localhost:3000/api/v1/workflows/status
+
+# Nuclei templates statistics
+curl http://localhost:3000/api/v1/nuclei-templates/stats
 ```
 
 ### Monitoring Tools
@@ -1242,6 +1534,26 @@ For security vulnerabilities, please follow responsible disclosure:
 - [ ] Resource limits configured
 - [ ] Audit logging functional
 - [ ] Security audit completed
+
+### Agent System (v2.1)
+- [ ] `AGENT_AUTO_INITIALIZE=true` set in environment
+- [ ] Workflow retry variables configured
+- [ ] Agent system auto-initializes on server start
+- [ ] Default workflow templates seeded (5 templates)
+- [ ] Workflow event triggers functional
+- [ ] Agent health endpoint responding: `/api/v1/agents/health`
+- [ ] Nuclei templates API accessible
+- [ ] Graceful shutdown tested (workflows pause correctly)
+
+### OffSec Agent Containers
+- [ ] Base image built: `rtpi/offsec-base:latest`
+- [ ] All agent images built successfully
+- [ ] Agent containers start without errors
+- [ ] MCP servers running in each container
+- [ ] Research agent JupyterLab accessible on port 8888
+- [ ] Volumes created and mounted correctly
+- [ ] Docker socket mounted for container management
+- [ ] Health checks passing for all agents
 
 ### Operations
 - [ ] Backup system configured and tested

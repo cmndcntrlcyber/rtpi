@@ -255,6 +255,44 @@ class AgentBuildService {
       return null;
     }
 
+    // FALLBACK: If DB says 'building' or 'pending' but files exist, sync DB with filesystem
+    if (build.status === 'building' || build.status === 'pending') {
+      const fileCheck = await this.checkBuildFilesExist(buildId, build.platform);
+      if (fileCheck.exists) {
+        console.log(`[AgentBuildService] getBuildStatus: Build ${buildId} detected complete via filesystem (DB status was: ${build.status})`);
+
+        const duration = Date.now() - new Date(build.createdAt).getTime();
+        const completedAt = new Date();
+
+        // Update DB to reflect actual state
+        await db.update(agentBuilds).set({
+          status: 'completed',
+          binaryPath: fileCheck.binaryPath,
+          binaryHash: fileCheck.binaryHash,
+          binarySize: fileCheck.binarySize,
+          buildDurationMs: duration,
+          completedAt,
+        }).where(eq(agentBuilds.id, buildId));
+
+        // Return the corrected status
+        return {
+          id: build.id,
+          status: 'completed',
+          platform: build.platform as AgentPlatform,
+          architecture: build.architecture as AgentArchitecture,
+          features: (build.features as string[]) || [],
+          binaryPath: fileCheck.binaryPath,
+          binarySize: fileCheck.binarySize,
+          binaryHash: fileCheck.binaryHash,
+          buildLog: build.buildLog || undefined,
+          buildDurationMs: duration,
+          errorMessage: undefined,
+          createdAt: build.createdAt,
+          completedAt,
+        };
+      }
+    }
+
     return {
       id: build.id,
       status: build.status as BuildStatus['status'],

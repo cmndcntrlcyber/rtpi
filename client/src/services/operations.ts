@@ -12,7 +12,8 @@ export interface Operation {
 
 export const operationsService = {
   // List all operations
-  list: () => api.get<{ operations: Operation[] }>("/operations"),
+  list: (options?: { signal?: AbortSignal }) =>
+    api.get<{ operations: Operation[] }>("/operations", { signal: options?.signal }),
 
   // Get single operation
   get: (id: string) => api.get<{ operation: Operation }>(`/operations/${id}`),

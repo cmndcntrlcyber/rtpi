@@ -272,23 +272,23 @@ export default function NetworkTopologyView({ operationId }: NetworkTopologyView
         <div className="flex items-center gap-6 flex-wrap text-sm">
           <div className="font-semibold">Legend:</div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 border-2 border-red-500 bg-red-50 rounded"></div>
+            <div className="w-4 h-4 border-2 border-red-500 bg-red-50 dark:bg-red-950 rounded"></div>
             <span>Critical Vulnerabilities</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 border-2 border-orange-500 bg-orange-50 rounded"></div>
+            <div className="w-4 h-4 border-2 border-orange-500 bg-orange-50 dark:bg-orange-950 rounded"></div>
             <span>High Vulnerabilities</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 border-2 border-yellow-500 bg-yellow-50 rounded"></div>
+            <div className="w-4 h-4 border-2 border-yellow-500 bg-yellow-50 dark:bg-yellow-950 rounded"></div>
             <span>Medium Vulnerabilities</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 border-2 border-green-500 bg-green-50 rounded"></div>
+            <div className="w-4 h-4 border-2 border-green-500 bg-green-50 dark:bg-green-950 rounded"></div>
             <span>Secure</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 border-2 border-blue-500 bg-blue-50 rounded"></div>
+            <div className="w-4 h-4 border-2 border-blue-500 bg-blue-50 dark:bg-blue-950 rounded"></div>
             <span>Domain/External</span>
           </div>
         </div>

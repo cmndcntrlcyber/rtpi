@@ -60,10 +60,10 @@ export default function WorkflowProgressCard({
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, { className: string; label: string }> = {
-      pending: { className: "bg-yellow-500/10 text-yellow-600", label: "PENDING" },
-      running: { className: "bg-blue-500/10 text-blue-600", label: "RUNNING" },
-      completed: { className: "bg-green-500/10 text-green-600", label: "COMPLETED" },
-      failed: { className: "bg-red-500/10 text-red-600", label: "FAILED" },
+      pending: { className: "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400", label: "PENDING" },
+      running: { className: "bg-blue-500/10 text-blue-600 dark:text-blue-400", label: "RUNNING" },
+      completed: { className: "bg-green-500/10 text-green-600 dark:text-green-400", label: "COMPLETED" },
+      failed: { className: "bg-red-500/10 text-red-600 dark:text-red-400", label: "FAILED" },
       cancelled: { className: "bg-secondary0/10 text-muted-foreground", label: "CANCELLED" },
     };
 
@@ -79,11 +79,11 @@ export default function WorkflowProgressCard({
   const getTaskIcon = (task: WorkflowTask) => {
     switch (task.status) {
       case "completed":
-        return <CheckCircle className="h-4 w-4 text-green-600" />;
+        return <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />;
       case "in_progress":
-        return <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />;
+        return <Loader2 className="h-4 w-4 text-blue-600 dark:text-blue-400 animate-spin" />;
       case "failed":
-        return <XCircle className="h-4 w-4 text-red-600" />;
+        return <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />;
       default:
         return <Circle className="h-4 w-4 text-muted-foreground" />;
     }
@@ -106,12 +106,12 @@ export default function WorkflowProgressCard({
   };
 
   return (
-    <Card className="bg-card border-l-4 border-blue-600">
+    <Card className="bg-card border-l-4 border-blue-600 dark:border-blue-400">
       <CardContent className="p-4">
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <Activity className="h-4 w-4 text-blue-600" />
+            <Activity className="h-4 w-4 text-blue-600 dark:text-blue-400" />
             <h3 className="font-semibold text-foreground">{workflow.name}</h3>
           </div>
           {getStatusBadge(workflow.status)}
@@ -159,7 +159,7 @@ export default function WorkflowProgressCard({
                   {task.taskName}
                 </span>
                 {task.status === "in_progress" && (
-                  <span className="text-xs text-blue-600">
+                  <span className="text-xs text-blue-600 dark:text-blue-400">
                     {getTaskDuration(task)}
                   </span>
                 )}
@@ -169,7 +169,7 @@ export default function WorkflowProgressCard({
                   </span>
                 )}
                 {task.status === "failed" && (
-                  <span className="text-xs text-red-600">failed</span>
+                  <span className="text-xs text-red-600 dark:text-red-400">failed</span>
                 )}
               </div>
             ))}
@@ -201,7 +201,7 @@ export default function WorkflowProgressCard({
               size="sm"
               variant="outline"
               onClick={() => onCancel(workflow.id)}
-              className="hover:bg-red-50 hover:text-red-600 hover:border-red-600"
+              className="hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-600 dark:hover:text-red-400 hover:border-red-600 dark:hover:border-red-400"
             >
               <StopCircle className="h-3 w-3 mr-1" />
               Cancel

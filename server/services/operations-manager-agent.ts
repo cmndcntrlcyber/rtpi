@@ -1,343 +1,458 @@
 import { db } from "../db";
 import {
-  operations,
-  operationsManagerTasks,
-  assetQuestions,
-  agentActivityReports,
-  workflowTasks,
+  reporters,
+  reporterQuestions,
+  reporterTasks,
   agents,
-  discoveredAssets,
-  reports,
-} from "../../shared/schema";
-import { eq, inArray } from "drizzle-orm";
-import { ollamaAIClient } from "./ollama-ai-client";
+  operations,
+} from "@shared/schema";
+import { eq, and, desc, inArray, isNull, count } from "drizzle-orm";
+import { EventEmitter } from "events";
+import { reporterAgentService } from "./reporter-agent-service";
+import { agentLoopService, LoopExecution } from "./agent-tool-connector";
+import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 
-/**
- * Operations Manager Agent Service
- *
- * The Operations Manager is responsible for:
- * - Synthesizing reports from all page reporters
- * - Analyzing overall operation status
- * - Autonomously updating operation status with rationale
- * - Generating questions about discovered assets
- * - Identifying cross-page roadblocks
- */
-class OperationsManagerAgent {
-  /**
-   * Execute the Operations Manager
-   *
-   * @param operationId - ID of the operation
-   * @param reporterTaskIds - IDs of reporter tasks to synthesize
-   * @returns Manager execution results
-   */
-  async executeOperationsManager(operationId: string, reporterTaskIds: string[]): Promise<any> {
-    console.log(
-      `🧠 [OperationsManagerAgent] Executing for operation ${operationId} with ${reporterTaskIds.length} reporter tasks`
-    );
+// Initialize AI clients
+const openai = process.env.OPENAI_API_KEY
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
 
-    try {
-      // Get operation
-      const operation = await db.select().from(operations).where(eq(operations.id, operationId)).limit(1);
+const anthropic = process.env.ANTHROPIC_API_KEY
+  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  : null;
 
-      if (operation.length === 0) {
-        throw new Error(`Operation ${operationId} not found`);
-      }
-
-      const currentOperation = operation[0];
-
-      // Get operations manager agent
-      const manager = await this.getOperationsManagerAgent();
-      if (!manager) {
-        throw new Error("Operations Manager agent not found");
-      }
-
-      // Collect all reporter outputs
-      const reports = await this.collectReports(reporterTaskIds);
-
-      console.log(`📊 [OperationsManagerAgent] Collected ${reports.length} reports`);
-
-      // Call AI for analysis
-      const analysis = await this.callManagerAI(currentOperation, reports);
-
-      console.log(`✅ [OperationsManagerAgent] AI analysis complete`);
-
-      // Update operation status if recommended
-      if (analysis.shouldUpdateStatus) {
-        await db
-          .update(operations)
-          .set({
-            status: analysis.recommendedStatus,
-            managementStatus: {
-              assessment: analysis.statusAssessment,
-              rationale: analysis.statusChangeRationale,
-              updatedAt: new Date().toISOString(),
-            },
-            lastManagerUpdate: new Date(),
-          })
-          .where(eq(operations.id, operationId));
-
-        console.log(`🔄 [OperationsManagerAgent] Updated operation status to: ${analysis.recommendedStatus}`);
-
-        // Log decision
-        await db.insert(operationsManagerTasks).values({
-          taskType: "status_update",
-          taskName: "Autonomous Status Update",
-          taskDescription: `Updated operation status from ${currentOperation.status} to ${analysis.recommendedStatus}`,
-          operationId,
-          managerAgentId: manager.id,
-          status: "completed",
-          priority: 7,
-          involvedAgents: reporterTaskIds,
-          reportsSynthesized: reports.map((r) => r.id),
-          decisions: [
-            {
-              decision: `Status changed: ${currentOperation.status} → ${analysis.recommendedStatus}`,
-              reasoning: analysis.statusChangeRationale,
-              timestamp: new Date().toISOString(),
-            },
-          ],
-          startedAt: new Date(),
-          completedAt: new Date(),
-        });
-      }
-
-      // Create asset questions
-      for (const question of analysis.userQuestions) {
-        await db.insert(assetQuestions).values({
-          assetId: question.assetId,
-          operationId,
-          question: question.question,
-          questionType: question.questionType || "context",
-          askedBy: manager.id,
-          status: "pending",
-          metadata: {
-            priority: question.priority,
-            context: question.context,
-          },
-        });
-
-        console.log(`❓ [OperationsManagerAgent] Created question: ${question.question}`);
-      }
-
-      // Store synthesis report
-      const synthesisReport = {
-        statusAssessment: analysis.statusAssessment,
-        recommendedStatus: analysis.recommendedStatus,
-        statusChangeRationale: analysis.statusChangeRationale,
-        shouldUpdateStatus: analysis.shouldUpdateStatus,
-        userQuestions: analysis.userQuestions,
-        criticalRoadblocks: analysis.criticalRoadblocks,
-        keyInsights: analysis.keyInsights,
-        reportsSynthesized: reports.length,
-        timestamp: new Date().toISOString(),
-      };
-
-      await db.insert(reports).values({
-        name: `Operations Management Synthesis - ${new Date().toISOString()}`,
-        type: "operations_manager_synthesis",
-        operationId,
-        content: synthesisReport,
-        status: "completed",
-        format: "markdown",
-        generatedBy: currentOperation.ownerId,
-      });
-
-      // Create synthesis task
-      await db.insert(operationsManagerTasks).values({
-        taskType: "synthesis",
-        taskName: "Report Synthesis",
-        taskDescription: `Synthesized ${reports.length} page reporter reports`,
-        operationId,
-        managerAgentId: manager.id,
-        status: "completed",
-        priority: 5,
-        involvedAgents: reporterTaskIds,
-        reportsSynthesized: reports.map((r) => r.id),
-        inputData: { reporterTaskIds },
-        outputData: synthesisReport,
-        startedAt: new Date(),
-        completedAt: new Date(),
-      });
-
-      return {
-        synthesisCompleted: true,
-        statusUpdated: analysis.shouldUpdateStatus,
-        newStatus: analysis.shouldUpdateStatus ? analysis.recommendedStatus : null,
-        questionsGenerated: analysis.userQuestions.length,
-        roadblocksIdentified: analysis.criticalRoadblocks.length,
-        reportsAnalyzed: reports.length,
-      };
-    } catch (error) {
-      console.error(
-        `❌ [OperationsManagerAgent] Failed to execute:`,
-        error instanceof Error ? error.message : error
-      );
-      throw error;
-    }
-  }
-
-  /**
-   * Collect reports from reporter tasks
-   */
-  private async collectReports(taskIds: string[]): Promise<any[]> {
-    if (taskIds.length === 0) {
-      return [];
-    }
-
-    // Get task outputs
-    const tasks = await db.select().from(workflowTasks).where(inArray(workflowTasks.id, taskIds));
-
-    // Get corresponding reports
-    const reportIds = tasks
-      .filter((t) => t.outputData && (t.outputData as any).reportId)
-      .map((t) => (t.outputData as any).reportId);
-
-    if (reportIds.length === 0) {
-      console.warn("⚠️  [OperationsManagerAgent] No report IDs found in task outputs");
-      return [];
-    }
-
-    const reportsList = await db
-      .select()
-      .from(agentActivityReports)
-      .where(inArray(agentActivityReports.id, reportIds));
-
-    return reportsList;
-  }
-
-  /**
-   * Call AI for operations management analysis
-   */
-  private async callManagerAI(operation: typeof operations.$inferSelect, reports: any[]): Promise<any> {
-    const systemPrompt = `You are an Operations Manager for penetration testing operations.
-You receive hourly reports from specialized page reporters. Your responsibilities:
-1. Synthesize reports into overall status assessment
-2. Autonomously update operation status with clear rationale
-3. Generate specific questions for users about newly discovered assets
-4. Identify roadblocks requiring attention
-5. Log all decisions for audit trail
-
-You have authority to change operation status. Always provide clear reasoning.
-
-Status transitions:
-- planning → active: When targets are defined and testing has begun
-- active → paused: When blocking issues prevent progress
-- active → completed: When objectives are met
-- Any → failed: When critical failures prevent continuation`;
-
-    const aggregatedReports = reports.map((r) => ({
-      pageRole: r.agentPageRole,
-      summary: r.activitySummary,
-      metrics: r.keyMetrics,
-      changes: r.changesDetected,
-      issues: r.issuesReported,
-      recommendations: r.recommendations,
-    }));
-
-    const userPrompt = `
-Operation: ${operation.name}
-Current Status: ${operation.status}
-Reporting Period: ${new Date().toISOString()}
-
-Page Reports (${reports.length} reports):
-${JSON.stringify(aggregatedReports, null, 2)}
-
-Tasks:
-1. Analyze all reports for patterns and critical issues
-2. Determine if operation status should change (planning→active, active→paused, etc.)
-3. List newly discovered assets requiring user input (if applicable)
-4. Identify cross-page roadblocks
-5. Provide status update rationale
-
-Respond in JSON:
-{
-  "statusAssessment": "Overall analysis of the operation's current state...",
-  "recommendedStatus": "planning|active|paused|completed|cancelled",
-  "statusChangeRationale": "Clear explanation of why status should change (or why it should stay the same)...",
-  "shouldUpdateStatus": true|false,
-  "userQuestions": [
-    {
-      "assetId": "asset-uuid",
-      "question": "Is domain staging.example.com in scope?",
-      "questionType": "scope",
-      "priority": "high",
-      "context": {}
-    }
-  ],
-  "criticalRoadblocks": ["Description of any blocking issues..."],
-  "keyInsights": ["Important observations from the reports..."]
+interface QuestionWithReporter {
+  question: typeof reporterQuestions.$inferSelect;
+  reporter: typeof reporters.$inferSelect | null;
 }
-`;
 
-    try {
-      const response = await ollamaAIClient.complete(
-        [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        {
-          provider: "auto",
-          temperature: 0.3, // Lower temperature for more consistent analysis
-          maxTokens: 2000,
-        }
-      );
+interface GeneratedTask {
+  taskName: string;
+  taskDescription: string;
+  taskType: string;
+  instructions: string;
+  parameters: Record<string, any>;
+  priority: number;
+}
 
-      if (!response.success) {
-        throw new Error(`AI completion failed: ${response.error}`);
-      }
+interface OpsManagerStatus {
+  isActive: boolean;
+  pendingQuestions: number;
+  activeReporters: number;
+  totalTasksAssigned: number;
+  activeLoops: number;
+}
 
-      // Parse JSON response
-      let analysis;
-      try {
-        // Extract JSON from markdown code blocks if present
-        const content = response.content.replace(/```json\n?/g, "").replace(/```\n?/g, "");
-        analysis = JSON.parse(content);
-      } catch (parseError) {
-        console.error("Failed to parse AI response:", response.content);
-        throw new Error("Failed to parse AI response as JSON");
-      }
+interface LoopTerminationDecision {
+  terminate: boolean;
+  reason: string;
+}
 
-      // Validate required fields
-      if (!analysis.statusAssessment || !analysis.recommendedStatus) {
-        throw new Error("AI response missing required fields");
-      }
+class OperationsManagerAgent extends EventEmitter {
+  private isActive = false;
+  private questionProcessingInterval: NodeJS.Timeout | null = null;
+  private loopMonitoringInterval: NodeJS.Timeout | null = null;
+  private readonly QUESTION_CHECK_INTERVAL_MS = 10000; // 10 seconds
+  private readonly LOOP_CHECK_INTERVAL_MS = 30000; // 30 seconds
 
-      // Ensure arrays exist
-      analysis.userQuestions = analysis.userQuestions || [];
-      analysis.criticalRoadblocks = analysis.criticalRoadblocks || [];
-      analysis.keyInsights = analysis.keyInsights || [];
+  constructor() {
+    super();
 
-      return analysis;
-    } catch (error) {
-      console.error("❌ [OperationsManagerAgent] AI call failed:", error);
-
-      // Fallback to basic analysis
-      return {
-        statusAssessment: `Analyzed ${reports.length} reports. AI analysis failed, using fallback.`,
-        recommendedStatus: operation.status,
-        statusChangeRationale: "Maintaining current status due to AI analysis failure",
-        shouldUpdateStatus: false,
-        userQuestions: [],
-        criticalRoadblocks: ["AI analysis unavailable"],
-        keyInsights: [],
-      };
-    }
-  }
-
-  /**
-   * Get the operations manager agent
-   */
-  private async getOperationsManagerAgent(): Promise<typeof agents.$inferSelect | null> {
-    const allAgents = await db.select().from(agents);
-
-    const manager = allAgents.find((agent) => {
-      const config = agent.config as any;
-      return config?.role === "operations_manager";
+    // Listen for reporter events
+    reporterAgentService.on("question_submitted", (data) => {
+      this.emit("new_question", data);
     });
 
-    return manager || null;
+    reporterAgentService.on("data_changed", (data) => {
+      this.handleDataChange(data);
+    });
+  }
+
+  /**
+   * Start the Operations Manager
+   */
+  async start(): Promise<void> {
+    if (this.isActive) return;
+
+    console.log("[OpsManager] Starting Operations Manager Agent...");
+    this.isActive = true;
+
+    // Start periodic question processing
+    this.questionProcessingInterval = setInterval(async () => {
+      await this.processHighPriorityQuestions();
+    }, this.QUESTION_CHECK_INTERVAL_MS);
+
+    // Start periodic loop monitoring
+    this.loopMonitoringInterval = setInterval(async () => {
+      await this.evaluateActiveLoops();
+    }, this.LOOP_CHECK_INTERVAL_MS);
+
+    this.emit("started");
+    console.log("[OpsManager] Operations Manager Agent started");
+  }
+
+  /**
+   * Stop the Operations Manager
+   */
+  async stop(): Promise<void> {
+    if (!this.isActive) return;
+
+    console.log("[OpsManager] Stopping Operations Manager Agent...");
+    this.isActive = false;
+
+    if (this.questionProcessingInterval) {
+      clearInterval(this.questionProcessingInterval);
+      this.questionProcessingInterval = null;
+    }
+
+    if (this.loopMonitoringInterval) {
+      clearInterval(this.loopMonitoringInterval);
+      this.loopMonitoringInterval = null;
+    }
+
+    this.emit("stopped");
+    console.log("[OpsManager] Operations Manager Agent stopped");
+  }
+
+  /**
+   * Get Operations Manager status
+   */
+  async getStatus(): Promise<OpsManagerStatus> {
+    const pendingQuestions = await db
+      .select({ count: count() })
+      .from(reporterQuestions)
+      .where(eq(reporterQuestions.status, "pending"));
+
+    const activeReporters = await db
+      .select({ count: count() })
+      .from(reporters)
+      .where(eq(reporters.status, "active"));
+
+    const totalTasks = await db
+      .select({ count: count() })
+      .from(reporterTasks);
+
+    const activeLoops = agentLoopService.getActiveLoops()
+      .filter(loop => loop.status === "running").length;
+
+    return {
+      isActive: this.isActive,
+      pendingQuestions: pendingQuestions[0]?.count || 0,
+      activeReporters: activeReporters[0]?.count || 0,
+      totalTasksAssigned: totalTasks[0]?.count || 0,
+      activeLoops,
+    };
+  }
+
+  /**
+   * Request current status data from a reporter
+   */
+  async requestReporterStatus(reporterId: string): Promise<Record<string, any> | null> {
+    const data = await reporterAgentService.releaseData(reporterId);
+    return data;
+  }
+
+  /**
+   * Get pending questions queue
+   */
+  async getPendingQuestions(operationId?: string): Promise<QuestionWithReporter[]> {
+    let query = db
+      .select()
+      .from(reporterQuestions)
+      .where(eq(reporterQuestions.status, "pending"))
+      .orderBy(desc(reporterQuestions.priority), desc(reporterQuestions.createdAt));
+
+    if (operationId) {
+      query = query.where(eq(reporterQuestions.operationId, operationId)) as typeof query;
+    }
+
+    const questions = await query;
+
+    // Enrich with reporter data
+    const enrichedQuestions: QuestionWithReporter[] = [];
+    for (const question of questions) {
+      const [reporter] = await db
+        .select()
+        .from(reporters)
+        .where(eq(reporters.id, question.reporterId))
+        .limit(1);
+
+      enrichedQuestions.push({
+        question,
+        reporter: reporter || null,
+      });
+    }
+
+    return enrichedQuestions;
+  }
+
+  /**
+   * Respond to a question and optionally generate a task
+   */
+  async respondToQuestion(
+    questionId: string,
+    response: string,
+    userId: string,
+    generateTask: boolean = false
+  ): Promise<{ question: any; task?: any }> {
+    const [updatedQuestion] = await db
+      .update(reporterQuestions)
+      .set({
+        response,
+        respondedBy: userId,
+        respondedAt: new Date(),
+        status: "answered",
+        updatedAt: new Date(),
+      })
+      .where(eq(reporterQuestions.id, questionId))
+      .returning();
+
+    if (!updatedQuestion) {
+      throw new Error("Question not found");
+    }
+
+    let task = null;
+
+    if (generateTask) {
+      const generatedTask = await this.generateTaskFromResponse(updatedQuestion, response);
+      if (generatedTask) {
+        const taskId = await reporterAgentService.assignTask({
+          reporterId: updatedQuestion.reporterId,
+          taskName: generatedTask.taskName,
+          taskDescription: generatedTask.taskDescription,
+          taskType: generatedTask.taskType,
+          instructions: generatedTask.instructions,
+          parameters: generatedTask.parameters,
+          priority: generatedTask.priority,
+          questionId: questionId,
+          assignedBy: userId,
+        });
+
+        await db
+          .update(reporterQuestions)
+          .set({ generatedTaskId: taskId })
+          .where(eq(reporterQuestions.id, questionId));
+
+        const [createdTask] = await db
+          .select()
+          .from(reporterTasks)
+          .where(eq(reporterTasks.id, taskId))
+          .limit(1);
+
+        task = createdTask;
+      }
+    }
+
+    this.emit("question_answered", { questionId, response, taskGenerated: !!task });
+    return { question: updatedQuestion, task };
+  }
+
+  /**
+   * Generate a task from AI based on response
+   */
+  async generateTaskFromResponse(
+    question: typeof reporterQuestions.$inferSelect,
+    response: string
+  ): Promise<GeneratedTask | null> {
+    // Fallback task generation
+    return {
+      taskName: "Follow-up: " + question.question.substring(0, 50),
+      taskDescription: "Task generated from human response",
+      taskType: "investigate",
+      instructions: response,
+      parameters: {},
+      priority: question.priority,
+    };
+  }
+
+  /**
+   * Dismiss a question
+   */
+  async dismissQuestion(questionId: string, reason?: string): Promise<void> {
+    await db
+      .update(reporterQuestions)
+      .set({
+        status: "dismissed",
+        response: reason || "Dismissed by operator",
+        respondedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(reporterQuestions.id, questionId));
+
+    this.emit("question_dismissed", { questionId, reason });
+  }
+
+  /**
+   * Escalate a question
+   */
+  async escalateQuestion(questionId: string): Promise<void> {
+    await db
+      .update(reporterQuestions)
+      .set({
+        status: "escalated",
+        priority: 10,
+        updatedAt: new Date(),
+      })
+      .where(eq(reporterQuestions.id, questionId));
+
+    this.emit("question_escalated", { questionId });
+  }
+
+  private async processHighPriorityQuestions(): Promise<void> {
+    const highPriorityQuestions = await db
+      .select()
+      .from(reporterQuestions)
+      .where(eq(reporterQuestions.status, "pending"))
+      .orderBy(desc(reporterQuestions.priority))
+      .limit(5);
+
+    const urgent = highPriorityQuestions.filter(q => q.priority >= 8);
+
+    if (urgent.length > 0) {
+      this.emit("urgent_questions", { count: urgent.length, questions: urgent });
+    }
+  }
+
+  private handleDataChange(data: any): void {
+    if (data.changes?.length >= 3) {
+      this.emit("significant_data_change", {
+        reporterId: data.reporterId,
+        changeCount: data.changes.length,
+        changes: data.changes,
+      });
+    }
+  }
+
+  /**
+   * Get question analytics
+   */
+  async getQuestionAnalytics(operationId?: string): Promise<any> {
+    let query = db.select().from(reporterQuestions);
+
+    if (operationId) {
+      query = query.where(eq(reporterQuestions.operationId, operationId)) as typeof query;
+    }
+
+    const questions = await query;
+
+    return {
+      total: questions.length,
+      pending: questions.filter(q => q.status === "pending").length,
+      answered: questions.filter(q => q.status === "answered").length,
+      dismissed: questions.filter(q => q.status === "dismissed").length,
+      escalated: questions.filter(q => q.status === "escalated").length,
+    };
+  }
+
+  // ==========================================
+  // LOOP MANAGEMENT CAPABILITIES
+  // ==========================================
+
+  /**
+   * Get all active agent loops for monitoring
+   */
+  getActiveLoops(): LoopExecution[] {
+    return agentLoopService.getActiveLoops();
+  }
+
+  /**
+   * Evaluate active loops and terminate those not progressing toward mission success
+   */
+  async evaluateActiveLoops(): Promise<void> {
+    const activeLoops = agentLoopService.getActiveLoops()
+      .filter(loop => loop.status === "running");
+
+    if (activeLoops.length === 0) return;
+
+    for (const loop of activeLoops) {
+      const decision = await this.shouldTerminateLoop(loop);
+      if (decision.terminate) {
+        const success = agentLoopService.stopLoop(loop.id);
+        if (success) {
+          console.log(`[OpsManager] Terminated loop ${loop.id}: ${decision.reason}`);
+          this.emit("loop_terminated", {
+            loopId: loop.id,
+            reason: decision.reason,
+            iterations: loop.currentIteration,
+            automatic: true
+          });
+        }
+      }
+    }
+  }
+
+  /**
+   * Determine if a loop should be terminated based on progress analysis
+   */
+  private async shouldTerminateLoop(loop: LoopExecution): Promise<LoopTerminationDecision> {
+    // Check for approaching max iterations without exit condition progress
+    if (loop.currentIteration >= loop.maxIterations * 0.8) {
+      return {
+        terminate: true,
+        reason: `Approaching max iterations (${loop.currentIteration}/${loop.maxIterations}) without achieving exit condition`
+      };
+    }
+
+    // Check for stagnant output patterns (similar outputs repeated)
+    if (loop.iterations.length >= 3) {
+      const recent = loop.iterations.slice(-3);
+      const outputs = recent.map(i => i.output.toLowerCase().substring(0, 200));
+      if (outputs[0] === outputs[1] && outputs[1] === outputs[2]) {
+        return {
+          terminate: true,
+          reason: "Detected repeating outputs - agents stuck in non-productive loop"
+        };
+      }
+    }
+
+    // Check elapsed time vs expected progress rate
+    const elapsedMs = Date.now() - loop.startedAt.getTime();
+    const elapsedMinutes = elapsedMs / 60000;
+    if (elapsedMinutes > 0 && loop.currentIteration > 2) {
+      const progressRate = loop.currentIteration / elapsedMinutes; // iterations per minute
+      if (progressRate < 0.5) {
+        return {
+          terminate: true,
+          reason: `Progress rate too slow (${progressRate.toFixed(2)} iterations/min) - loop may be stuck`
+        };
+      }
+    }
+
+    // Check if loop has been running too long without meaningful progress
+    if (elapsedMinutes > 10 && loop.currentIteration < 3) {
+      return {
+        terminate: true,
+        reason: `Running for ${Math.round(elapsedMinutes)} minutes with only ${loop.currentIteration} iterations`
+      };
+    }
+
+    return { terminate: false, reason: "" };
+  }
+
+  /**
+   * Manually terminate a specific loop with a reason
+   */
+  terminateLoop(loopId: string, reason: string): boolean {
+    const success = agentLoopService.stopLoop(loopId);
+    if (success) {
+      console.log(`[OpsManager] Manually terminated loop ${loopId}: ${reason}`);
+      this.emit("loop_terminated", {
+        loopId,
+        reason,
+        manual: true
+      });
+    }
+    return success;
+  }
+
+  /**
+   * Get detailed information about a specific loop
+   */
+  getLoopDetails(loopId: string): LoopExecution | undefined {
+    return agentLoopService.getLoop(loopId);
   }
 }
 
-// Singleton instance
 export const operationsManagerAgent = new OperationsManagerAgent();
+export default operationsManagerAgent;

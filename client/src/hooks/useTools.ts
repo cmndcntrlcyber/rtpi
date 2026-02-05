@@ -1,28 +1,49 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { toolsService, Tool } from "@/services/tools";
 
 export function useTools() {
   const [tools, setTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  const fetchTools = async () => {
+  const fetchTools = useCallback(async () => {
+    // Cancel any existing request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    // Create new abort controller for this request
+    abortControllerRef.current = new AbortController();
+
     try {
       setLoading(true);
       setError(null);
-      const response = await toolsService.list();
+      const response = await toolsService.list({
+        signal: abortControllerRef.current.signal,
+      });
       setTools(response.tools || []);
     } catch (err) {
+      // Ignore abort errors - these are expected when unmounting
+      if (err instanceof Error && err.name === "AbortError") {
+        return;
+      }
       setError(err instanceof Error ? err.message : "Failed to fetch tools");
-      // Error handled by component
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchTools();
-  }, []);
+
+    // Cleanup: abort request on unmount
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [fetchTools]);
 
   return {
     tools,

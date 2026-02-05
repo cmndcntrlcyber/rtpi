@@ -12,7 +12,7 @@ import {
   agentBundles,
   agentDownloadTokens,
 } from "@shared/schema";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, isNull, gt } from "drizzle-orm";
 import { rustNexusController } from "../../services/rust-nexus-controller";
 import { taskDistributor } from "../../services/rust-nexus-task-distributor";
 import { distributedWorkflowOrchestrator, KillSwitchReason } from "../../services/distributed-workflow-orchestrator";
@@ -893,12 +893,49 @@ router.get("/agents/bundles", async (req, res) => {
   try {
     const { platform, isActive, limit = 50 } = req.query;
 
+    // Get bundles
     const bundles = await db.query.agentBundles.findMany({
       orderBy: [desc(agentBundles.createdAt)],
       limit: Number(limit),
     });
 
-    res.json(bundles);
+    if (bundles.length === 0) {
+      return res.json([]);
+    }
+
+    // Get active tokens for all bundles
+    const bundleIds = bundles.map(b => b.id);
+    const tokens = await db.query.agentDownloadTokens.findMany({
+      where: and(
+        inArray(agentDownloadTokens.bundleId, bundleIds),
+        isNull(agentDownloadTokens.revokedAt),
+        gt(agentDownloadTokens.expiresAt, new Date())
+      ),
+      orderBy: [desc(agentDownloadTokens.createdAt)],
+    });
+
+    // Filter tokens that haven't exceeded download limit and create lookup map
+    const tokenMap = new Map<string, typeof tokens[0]>();
+    for (const token of tokens) {
+      if (token.currentDownloads < token.maxDownloads && !tokenMap.has(token.bundleId)) {
+        tokenMap.set(token.bundleId, token);
+      }
+    }
+
+    // Build response with URLs
+    const baseUrl = process.env.PUBLIC_URL || `http://localhost:${process.env.PORT || 3001}`;
+    const bundlesWithUrls = bundles.map(bundle => {
+      const token = tokenMap.get(bundle.id);
+      return {
+        ...bundle,
+        downloadUrl: `/api/v1/rust-nexus/agents/bundles/${bundle.id}/download`,
+        publicDownloadUrl: token ? `${baseUrl}/api/v1/public/agents/download/${token.token}` : null,
+        tokenExpiresAt: token?.expiresAt || null,
+        tokenRemainingDownloads: token ? token.maxDownloads - token.currentDownloads : 0,
+      };
+    });
+
+    res.json(bundlesWithUrls);
   } catch (error: any) {
     // Error logged for debugging
     res.status(500).json({ error: "Failed to list bundles", details: error?.message || "Internal server error" });

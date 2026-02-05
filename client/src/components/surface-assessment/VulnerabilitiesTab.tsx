@@ -4,7 +4,8 @@ import { api } from '@/lib/api';
 import VulnerabilityFilters from './VulnerabilityFilters';
 import VulnerabilityBulkActions from './VulnerabilityBulkActions';
 import { Badge } from '@/components/ui/badge';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 
 interface VulnerabilitiesTabProps {
   operationId: string;
@@ -126,6 +127,34 @@ export default function VulnerabilitiesTab({ operationId }: VulnerabilitiesTabPr
     } catch (error) {
       console.error('Failed to update status:', error);
       toast.error("Failed to update vulnerability status");
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this vulnerability?")) return;
+
+    try {
+      await api.delete(`/vulnerabilities/${id}`);
+      toast.success("Vulnerability deleted");
+      loadVulnerabilities();
+    } catch (error) {
+      console.error('Failed to delete vulnerability:', error);
+      toast.error("Failed to delete vulnerability");
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selected.size === 0) return;
+    if (!confirm(`Delete ${selected.size} selected vulnerabilities?`)) return;
+
+    try {
+      await api.delete('/vulnerabilities/bulk', { ids: Array.from(selected) });
+      toast.success(`${selected.size} vulnerabilities deleted`);
+      setSelected(new Set());
+      loadVulnerabilities();
+    } catch (error) {
+      console.error('Failed to bulk delete vulnerabilities:', error);
+      toast.error("Failed to delete vulnerabilities");
     }
   };
 
@@ -260,6 +289,7 @@ export default function VulnerabilitiesTab({ operationId }: VulnerabilitiesTabPr
         onSelectNone={handleSelectNone}
         onStatusChange={handleBulkStatusChange}
         onExport={handleExport}
+        onBulkDelete={handleBulkDelete}
       />
 
       {/* Vulnerabilities Table */}
@@ -302,6 +332,9 @@ export default function VulnerabilitiesTab({ operationId }: VulnerabilitiesTabPr
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Discovered
                   </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-card divide-y divide-gray-200">
@@ -338,6 +371,16 @@ export default function VulnerabilitiesTab({ operationId }: VulnerabilitiesTabPr
                     </td>
                     <td className="px-4 py-4 text-sm text-muted-foreground">
                       {new Date(vuln.discoveredAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-4 py-4">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => { e.stopPropagation(); handleDelete(vuln.id); }}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </td>
                   </tr>
                 ))}

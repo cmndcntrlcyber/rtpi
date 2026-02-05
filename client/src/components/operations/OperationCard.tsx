@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -97,7 +97,7 @@ export default function OperationCard({
   };
 
   // Fetch report for latest workflow if it exists
-  useState(() => {
+  useEffect(() => {
     const loadWorkflowReport = async () => {
       if (operation.latestWorkflowId && operation.latestWorkflowStatus === "completed") {
         try {
@@ -111,7 +111,7 @@ export default function OperationCard({
       }
     };
     loadWorkflowReport();
-  });
+  }, [operation.latestWorkflowId, operation.latestWorkflowStatus]);
 
   const handleClick = () => {
     if (onSelect) {

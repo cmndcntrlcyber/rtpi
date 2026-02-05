@@ -117,10 +117,10 @@ router.post("/:id/start", ensureRole("admin", "operator"), async (req, res) => {
 
   try {
     const success = await mcpServerManager.startServer(id);
-    
+
     if (!success) {
       await logAudit(user.id, "start_mcp_server", "/mcp-servers", id, false, req);
-      return res.status(500).json({ error: "Failed to start server", details: error?.message || "Internal server error" });
+      return res.status(500).json({ error: "Failed to start server", details: "Server failed to start - check server logs" });
     }
 
     const result = await db
@@ -145,10 +145,10 @@ router.post("/:id/stop", ensureRole("admin", "operator"), async (req, res) => {
 
   try {
     const success = await mcpServerManager.stopServer(id);
-    
+
     if (!success) {
       await logAudit(user.id, "stop_mcp_server", "/mcp-servers", id, false, req);
-      return res.status(500).json({ error: "Failed to stop server", details: error?.message || "Internal server error" });
+      return res.status(500).json({ error: "Failed to stop server", details: "Server failed to stop - check server logs" });
     }
 
     const result = await db
@@ -173,10 +173,10 @@ router.post("/:id/restart", ensureRole("admin", "operator"), async (req, res) =>
 
   try {
     const success = await mcpServerManager.restartServer(id);
-    
+
     if (!success) {
       await logAudit(user.id, "restart_mcp_server", "/mcp-servers", id, false, req);
-      return res.status(500).json({ error: "Failed to restart server", details: error?.message || "Internal server error" });
+      return res.status(500).json({ error: "Failed to restart server", details: "Server failed to restart - check server logs" });
     }
 
     const result = await db

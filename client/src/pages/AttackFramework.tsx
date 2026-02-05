@@ -38,8 +38,9 @@ export default function AttackFramework() {
     campaigns: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [operations, setOperations] = useState<any[]>([]);
-  const [selectedOperation, setSelectedOperation] = useState<string>("");
+  const [selectedOperation, setSelectedOperation] = useState<string>("all");
 
   const fetchStats = async () => {
     try {
@@ -50,11 +51,16 @@ export default function AttackFramework() {
       if (response.ok) {
         const data = await response.json();
         setStats(data);
+        setError(null);
       } else {
-        // Error handled via toast
+        const errorData = await response.json().catch(() => ({ error: "Failed to fetch stats" }));
+        setError(errorData.error || "Failed to fetch ATT&CK statistics");
+        console.error("Failed to fetch stats:", errorData);
       }
     } catch (error) {
-      // Error handled via toast
+      const message = error instanceof Error ? error.message : "Network error while fetching statistics";
+      setError(message);
+      console.error("Error fetching stats:", error);
     } finally {
       setLoading(false);
     }
@@ -85,6 +91,32 @@ export default function AttackFramework() {
 
   const totalTechniques = stats.techniques + stats.subtechniques;
 
+  // Display error state
+  if (error) {
+    return (
+      <div className="p-8">
+        <div className="bg-destructive/10 border border-destructive text-destructive-foreground rounded-lg p-6">
+          <div className="flex items-center gap-3 mb-2">
+            <Shield className="h-6 w-6" />
+            <h2 className="text-xl font-semibold">Failed to Load ATT&CK Framework</h2>
+          </div>
+          <p className="text-sm mb-4">{error}</p>
+          <button
+            onClick={() => {
+              setError(null);
+              setLoading(true);
+              fetchStats();
+              fetchOperations();
+            }}
+            className="px-4 py-2 bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-8">
       <div className="flex items-center justify-between mb-8">
@@ -104,7 +136,7 @@ export default function AttackFramework() {
                 <SelectValue placeholder="Select operation" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Operations</SelectItem>
+                <SelectItem value="all">All Operations</SelectItem>
                 {operations.map((op) => (
                   <SelectItem key={op.id} value={op.id}>
                     {op.name}
@@ -205,11 +237,11 @@ export default function AttackFramework() {
         </TabsList>
 
         <TabsContent value="navigator" className="space-y-4">
-          <ATTCKNavigator operationId={selectedOperation || undefined} />
+          <ATTCKNavigator operationId={selectedOperation === "all" ? undefined : selectedOperation} />
         </TabsContent>
 
         <TabsContent value="flowBuilder" className="space-y-4">
-          <AttackFlowBuilder operationId={selectedOperation || undefined} />
+          <AttackFlowBuilder operationId={selectedOperation === "all" ? undefined : selectedOperation} />
         </TabsContent>
 
         <TabsContent value="techniques" className="space-y-4">

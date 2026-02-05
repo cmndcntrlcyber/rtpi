@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
+import { toast } from "sonner";
 import { api } from '@/lib/api';
-import { Search, AlertTriangle, Server, CheckCircle, XCircle, Download } from 'lucide-react';
+import { Search, AlertTriangle, Server, CheckCircle, XCircle, Download, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 interface ActivityTabProps {
   operationId: string;
@@ -70,15 +72,15 @@ export default function ActivityTab({ operationId }: ActivityTabProps) {
   const getEventIcon = (type: ActivityEvent['type']) => {
     switch (type) {
       case 'scan_started':
-        return { Icon: Search, color: 'text-blue-600', bg: 'bg-blue-50' };
+        return { Icon: Search, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-950' };
       case 'scan_completed':
-        return { Icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50' };
+        return { Icon: CheckCircle, color: 'text-green-600 dark:text-green-400', bg: 'bg-green-50 dark:bg-green-950' };
       case 'scan_failed':
-        return { Icon: XCircle, color: 'text-red-600', bg: 'bg-red-50' };
+        return { Icon: XCircle, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-950' };
       case 'vuln_discovered':
-        return { Icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-50' };
+        return { Icon: AlertTriangle, color: 'text-orange-600 dark:text-orange-400', bg: 'bg-orange-50 dark:bg-orange-950' };
       case 'asset_discovered':
-        return { Icon: Server, color: 'text-purple-600', bg: 'bg-purple-50' };
+        return { Icon: Server, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-950' };
       default:
         return { Icon: Search, color: 'text-muted-foreground', bg: 'bg-secondary' };
     }
@@ -128,6 +130,20 @@ export default function ActivityTab({ operationId }: ActivityTabProps) {
     setScanOutput('');
   };
 
+  const handleDeleteScan = async (e: React.MouseEvent, scanId: string) => {
+    e.stopPropagation();
+    if (!confirm("Delete this scan record?")) return;
+
+    try {
+      await api.delete(`/surface-assessment/${operationId}/scans/${scanId}`);
+      toast.success("Scan deleted");
+      loadActivity();
+    } catch (error) {
+      console.error('Failed to delete scan:', error);
+      toast.error("Failed to delete scan");
+    }
+  };
+
   if (!operationId) {
     return (
       <div className="bg-card rounded-lg shadow-sm border border-border p-8">
@@ -142,7 +158,7 @@ export default function ActivityTab({ operationId }: ActivityTabProps) {
     return (
       <div className="bg-card rounded-lg shadow-sm border border-border p-8">
         <div className="flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
           <p className="ml-4 text-muted-foreground">Loading activity...</p>
         </div>
       </div>
@@ -205,7 +221,7 @@ export default function ActivityTab({ operationId }: ActivityTabProps) {
               : 'No events match your filters'}
           </div>
         ) : (
-          <div className="divide-y divide-gray-200">
+          <div className="divide-y divide-border">
             {filteredEvents.map((event) => {
               const { Icon, color, bg } = getEventIcon(event.type);
 
@@ -228,18 +244,28 @@ export default function ActivityTab({ operationId }: ActivityTabProps) {
                             {formatTimestamp(event.timestamp)}
                           </p>
                         </div>
-                        {event.severity && (
-                          <div className={`
-                            ml-4 px-2 py-1 rounded text-xs font-medium flex-shrink-0
-                            ${event.severity === 'critical' ? 'bg-red-100 text-red-800' : ''}
-                            ${event.severity === 'high' ? 'bg-orange-100 text-orange-800' : ''}
-                            ${event.severity === 'medium' ? 'bg-yellow-100 text-yellow-800' : ''}
-                            ${event.severity === 'low' ? 'bg-green-100 text-green-800' : ''}
-                            ${event.severity === 'info' ? 'bg-blue-100 text-blue-800' : ''}
-                          `}>
-                            {event.severity}
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+                          {event.severity && (
+                            <div className={`
+                              px-2 py-1 rounded text-xs font-medium
+                              ${event.severity === 'critical' ? 'bg-red-100 dark:bg-red-950 text-red-800 dark:text-red-300' : ''}
+                              ${event.severity === 'high' ? 'bg-orange-100 dark:bg-orange-950 text-orange-800 dark:text-orange-300' : ''}
+                              ${event.severity === 'medium' ? 'bg-yellow-100 dark:bg-yellow-950 text-yellow-800 dark:text-yellow-300' : ''}
+                              ${event.severity === 'low' ? 'bg-green-100 dark:bg-green-950 text-green-800 dark:text-green-300' : ''}
+                              ${event.severity === 'info' ? 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300' : ''}
+                            `}>
+                              {event.severity}
+                            </div>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => handleDeleteScan(e, event.id)}
+                            className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950 h-7 w-7 p-0"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -259,7 +285,7 @@ export default function ActivityTab({ operationId }: ActivityTabProps) {
           <div className="flex-1 overflow-auto">
             {loadingOutput ? (
               <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                 <p className="ml-4 text-muted-foreground">Loading output...</p>
               </div>
             ) : (

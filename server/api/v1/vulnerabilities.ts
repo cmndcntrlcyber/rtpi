@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "../../db";
 import { vulnerabilities, targets, operations } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import { vulnerabilityAIEnrichment } from "../../services/vulnerability-ai-enrichment";
 
@@ -89,6 +89,27 @@ router.put("/:id", ensureRole("admin", "operator"), async (req, res) => {
     // Error logged for debugging
     await logAudit(user.id, "update_vulnerability", "/vulnerabilities", id, false, req);
     res.status(500).json({ error: "Failed to update vulnerability", details: error?.message || "Internal server error" });
+  }
+});
+
+// DELETE /api/v1/vulnerabilities/bulk - Bulk delete vulnerabilities
+router.delete("/bulk", ensureRole("admin"), async (req, res) => {
+  const { ids } = req.body;
+  const user = req.user as any;
+
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: "ids array is required" });
+  }
+
+  try {
+    await db.delete(vulnerabilities).where(inArray(vulnerabilities.id, ids));
+
+    await logAudit(user.id, "bulk_delete_vulnerabilities", "/vulnerabilities", ids.join(","), true, req);
+    res.json({ message: `${ids.length} vulnerabilities deleted successfully`, count: ids.length });
+  } catch (error: any) {
+    // Error logged for debugging
+    await logAudit(user.id, "bulk_delete_vulnerabilities", "/vulnerabilities", ids.join(","), false, req);
+    res.status(500).json({ error: "Failed to delete vulnerabilities", details: error?.message || "Internal server error" });
   }
 });
 

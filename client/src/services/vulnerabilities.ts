@@ -16,7 +16,8 @@ export interface Vulnerability {
 
 export const vulnerabilitiesService = {
   // List all vulnerabilities
-  list: () => api.get<{ vulnerabilities: Vulnerability[] }>("/vulnerabilities"),
+  list: (options?: { signal?: AbortSignal }) =>
+    api.get<{ vulnerabilities: Vulnerability[] }>("/vulnerabilities", { signal: options?.signal }),
 
   // Get single vulnerability
   get: (id: string) => api.get<{ vulnerability: Vulnerability }>(`/vulnerabilities/${id}`),

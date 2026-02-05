@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "@/lib/api";
 
 export interface WorkflowTask {
@@ -44,19 +44,33 @@ export function useWorkflows(autoRefresh = true) {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  const loadWorkflows = async () => {
+  const loadWorkflows = useCallback(async () => {
+    // Cancel any existing request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    // Create new abort controller for this request
+    abortControllerRef.current = new AbortController();
+
     try {
-      const response = await api.get<{ workflows: Workflow[] }>("/agent-workflows");
+      const response = await api.get<{ workflows: Workflow[] }>("/agent-workflows", {
+        signal: abortControllerRef.current.signal,
+      });
       setWorkflows(response.workflows || []);
       setError(null);
     } catch (err) {
-      // Error handled by component
+      // Ignore abort errors - these are expected when unmounting
+      if (err instanceof Error && err.name === "AbortError") {
+        return;
+      }
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const getWorkflowDetails = async (id: string): Promise<WorkflowDetails | null> => {
     try {
@@ -80,12 +94,22 @@ export function useWorkflows(autoRefresh = true) {
 
   useEffect(() => {
     loadWorkflows();
-    
+
+    let interval: NodeJS.Timeout | undefined;
     if (autoRefresh) {
-      const interval = setInterval(loadWorkflows, 3000); // Refresh every 3 seconds
-      return () => clearInterval(interval);
+      interval = setInterval(loadWorkflows, 3000); // Refresh every 3 seconds
     }
-  }, [autoRefresh]);
+
+    // Cleanup: clear interval and abort pending request
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [autoRefresh, loadWorkflows]);
 
   // Derived data
   const runningWorkflows = workflows.filter((w) => w.status === "running");

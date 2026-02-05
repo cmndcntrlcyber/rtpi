@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "../../db";
-import { agentWorkflows, workflowTasks, workflowLogs } from "@shared/schema";
+import { agentWorkflows, workflowTasks, workflowLogs, targets, operations, workflowTemplates } from "@shared/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import { agentWorkflowOrchestrator } from "../../services/agent-workflow-orchestrator";
@@ -12,11 +12,20 @@ router.use(ensureAuthenticated);
 
 /**
  * POST /api/v1/agent-workflows/start
- * Start a new agent workflow (penetration test)
+ * Start a new agent workflow (penetration test or custom)
  */
 router.post("/start", ensureRole("admin", "operator"), async (req, res) => {
   const user = req.user as any;
-  const { targetId, workflowType, operationId } = req.body;
+  const {
+    targetId,
+    workflowType,
+    operationId,
+    templateId,
+    name,
+    agents: agentsList,
+    mcpServerIds,
+    metadata
+  } = req.body;
 
   if (!targetId) {
     return res.status(400).json({ error: "targetId is required" });
@@ -25,33 +34,132 @@ router.post("/start", ensureRole("admin", "operator"), async (req, res) => {
   try {
     let workflow;
 
-    // Currently only support penetration_test workflow
+    // Support both penetration_test and custom workflow types
     if (!workflowType || workflowType === "penetration_test") {
+      // Existing behavior for penetration test workflows
       workflow = await agentWorkflowOrchestrator.startPenetrationTestWorkflow(
         targetId,
         user.id,
         operationId
       );
+
+      await logAudit(
+        user.id,
+        "start_agent_workflow",
+        "/agent-workflows",
+        workflow.workflow.id,
+        true,
+        req
+      );
+
+      return res.status(201).json({
+        success: true,
+        workflow: workflow.workflow,
+        tasks: workflow.tasks,
+      });
+    } else if (workflowType === "custom") {
+      // New: Handle custom workflows from WorkflowBuilder
+      const { dynamicWorkflowOrchestrator } = await import("../../services/dynamic-workflow-orchestrator");
+
+      // Get or create an operation for this target
+      let opId = operationId;
+      if (!opId) {
+        // Find the target to check if it's already linked to an operation
+        const [targetRecord] = await db
+          .select()
+          .from(targets)
+          .where(eq(targets.id, targetId))
+          .limit(1);
+
+        if (targetRecord?.operationId) {
+          opId = targetRecord.operationId;
+        } else {
+          // Create a new operation for this workflow
+          const [newOp] = await db
+            .insert(operations)
+            .values({
+              name: name || `Custom Workflow - ${new Date().toISOString()}`,
+              status: "active",
+              createdBy: user.id,
+            })
+            .returning();
+          opId = newOp.id;
+
+          // Link target to operation if target exists
+          if (targetRecord) {
+            await db
+              .update(targets)
+              .set({ operationId: opId })
+              .where(eq(targets.id, targetId));
+          }
+        }
+      }
+
+      // Create or use existing template
+      let templId = templateId;
+      if (!templId && agentsList?.length > 0) {
+        // Create a workflow template on-the-fly
+        const [template] = await db
+          .insert(workflowTemplates)
+          .values({
+            name: name || `Custom Workflow ${Date.now()}`,
+            description: metadata?.description || "",
+            requiredCapabilities: agentsList.map((a: any) => `agent:${a.agentId}`),
+            optionalCapabilities: [],
+            configuration: {
+              agents: agentsList,
+              mcpServerIds: mcpServerIds || [],
+              maxParallelAgents: 1,
+              timeoutMs: 3600000,
+              retryConfig: { maxRetries: 3 },
+            },
+            isActive: true,
+          })
+          .returning();
+        templId = template.id;
+      }
+
+      if (!templId) {
+        return res.status(400).json({
+          error: "templateId or agents array required for custom workflows"
+        });
+      }
+
+      // Build and execute workflow using dynamic orchestrator
+      const workflowId = await dynamicWorkflowOrchestrator.buildWorkflow(
+        templId,
+        opId,
+        {
+          userId: user.id,
+          targetId,
+          ...metadata,
+        }
+      );
+
+      // Execute async - don't wait for completion
+      dynamicWorkflowOrchestrator.executeWorkflow(workflowId).catch((err: Error) => {
+        console.error("Custom workflow execution failed:", err);
+      });
+
+      await logAudit(
+        user.id,
+        "start_custom_workflow",
+        "/agent-workflows",
+        workflowId,
+        true,
+        req
+      );
+
+      return res.status(201).json({
+        success: true,
+        workflow: { id: workflowId, templateId: templId, operationId: opId },
+        message: "Custom workflow started",
+      });
     } else {
       return res.status(400).json({
         error: `Unsupported workflow type: ${workflowType}`,
       });
     }
-
-    await logAudit(
-      user.id,
-      "start_agent_workflow",
-      "/agent-workflows",
-      workflow.workflow.id,
-      true,
-      req
-    );
-
-    res.status(201).json({
-      success: true,
-      workflow: workflow.workflow,
-      tasks: workflow.tasks,
-    });
   } catch (error: any) {
     // Error logged for debugging
     const errorMsg = error instanceof Error ? error.message : String(error);
@@ -118,11 +226,54 @@ router.get("/", async (req, res) => {
 });
 
 /**
+ * GET /api/v1/agent-workflows/target/:targetId/latest
+ * Get latest workflow for a target
+ * NOTE: This route must be defined BEFORE /:id to avoid being caught by the generic route
+ */
+router.get("/target/:targetId/latest", async (req, res) => {
+  const { targetId } = req.params;
+
+  try {
+    const workflow = await db
+      .select()
+      .from(agentWorkflows)
+      .where(eq(agentWorkflows.targetId, targetId))
+      .orderBy(desc(agentWorkflows.createdAt))
+      .limit(1)
+      .then((rows) => rows[0]);
+
+    if (!workflow) {
+      return res.status(404).json({ error: "No workflows found for this target" });
+    }
+
+    // Get tasks for this workflow
+    const tasks = await db
+      .select()
+      .from(workflowTasks)
+      .where(eq(workflowTasks.workflowId, workflow.id));
+
+    res.json({
+      workflow,
+      tasks,
+    });
+  } catch (error: any) {
+    // Error logged for debugging
+    res.status(500).json({ error: "Failed to get latest workflow", details: error?.message || "Internal server error" });
+  }
+});
+
+/**
  * GET /api/v1/agent-workflows/:id
  * Get workflow details with tasks and logs
  */
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
+
+  // Validate UUID format to prevent invalid IDs from reaching the database
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(id)) {
+    return res.status(400).json({ error: "Invalid workflow ID format" });
+  }
 
   try {
     const result = await agentWorkflowOrchestrator.getWorkflowStatus(id);
@@ -243,42 +394,6 @@ router.delete("/:id", ensureRole("admin", "operator"), async (req, res) => {
     await logAudit(user.id, "delete_agent_workflow", "/agent-workflows", id, false, req);
 
     res.status(500).json({ error: "Failed to delete workflow", details: error?.message || "Internal server error" });
-  }
-});
-
-/**
- * GET /api/v1/agent-workflows/target/:targetId/latest
- * Get latest workflow for a target
- */
-router.get("/target/:targetId/latest", async (req, res) => {
-  const { targetId } = req.params;
-
-  try {
-    const workflow = await db
-      .select()
-      .from(agentWorkflows)
-      .where(eq(agentWorkflows.targetId, targetId))
-      .orderBy(desc(agentWorkflows.createdAt))
-      .limit(1)
-      .then((rows) => rows[0]);
-
-    if (!workflow) {
-      return res.status(404).json({ error: "No workflows found for this target" });
-    }
-
-    // Get tasks for this workflow
-    const tasks = await db
-      .select()
-      .from(workflowTasks)
-      .where(eq(workflowTasks.workflowId, workflow.id));
-
-    res.json({
-      workflow,
-      tasks,
-    });
-  } catch (error: any) {
-    // Error logged for debugging
-    res.status(500).json({ error: "Failed to get latest workflow", details: error?.message || "Internal server error" });
   }
 });
 

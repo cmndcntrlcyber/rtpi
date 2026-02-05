@@ -1,28 +1,49 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { reportsService, Report, ReportTemplate } from "@/services/reports";
 
 export function useReports() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  const fetchReports = async () => {
+  const fetchReports = useCallback(async () => {
+    // Cancel any existing request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    // Create new abort controller for this request
+    abortControllerRef.current = new AbortController();
+
     try {
       setLoading(true);
       setError(null);
-      const response = await reportsService.list();
+      const response = await reportsService.list({
+        signal: abortControllerRef.current.signal,
+      });
       setReports(response.reports || []);
     } catch (err) {
+      // Ignore abort errors - these are expected when unmounting
+      if (err instanceof Error && err.name === "AbortError") {
+        return;
+      }
       setError(err instanceof Error ? err.message : "Failed to fetch reports");
-      // Error handled by component
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchReports();
-  }, []);
+
+    // Cleanup: abort request on unmount
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [fetchReports]);
 
   return {
     reports,
@@ -36,24 +57,45 @@ export function useReportTemplates() {
   const [templates, setTemplates] = useState<ReportTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  const fetchTemplates = async () => {
+  const fetchTemplates = useCallback(async () => {
+    // Cancel any existing request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    // Create new abort controller for this request
+    abortControllerRef.current = new AbortController();
+
     try {
       setLoading(true);
       setError(null);
-      const response = await reportsService.listTemplates();
+      const response = await reportsService.listTemplates({
+        signal: abortControllerRef.current.signal,
+      });
       setTemplates(response.templates || []);
     } catch (err) {
+      // Ignore abort errors - these are expected when unmounting
+      if (err instanceof Error && err.name === "AbortError") {
+        return;
+      }
       setError(err instanceof Error ? err.message : "Failed to fetch templates");
-      // Error handled by component
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchTemplates();
-  }, []);
+
+    // Cleanup: abort request on unmount
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [fetchTemplates]);
 
   return {
     templates,

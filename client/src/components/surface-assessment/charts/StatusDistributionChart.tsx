@@ -67,12 +67,13 @@ export default function StatusDistributionChart({ data }: StatusDistributionChar
               <Cell key={`cell-${index}`} fill={entry.color} />
             ))}
           </Pie>
-          <Tooltip 
+          <Tooltip
             formatter={(value: number) => [value, 'Count']}
-            contentStyle={{ 
-              backgroundColor: 'white', 
-              border: '1px solid #e5e7eb',
-              borderRadius: '0.5rem'
+            contentStyle={{
+              backgroundColor: 'hsl(var(--popover))',
+              borderColor: 'hsl(var(--border))',
+              borderRadius: '0.5rem',
+              color: 'hsl(var(--popover-foreground))'
             }}
           />
           <Legend 

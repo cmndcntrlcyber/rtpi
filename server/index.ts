@@ -53,9 +53,12 @@ import vulnerabilityRdRoutes from "./api/v1/vulnerability-rd";
 import operationsManagementRoutes from "./api/v1/operations-management";
 import scanSchedulesRoutes from "./api/v1/scan-schedules";
 import offsecAgentsRoutes from "./api/v1/offsec-agents";
+import nucleiTemplatesRoutes from "./api/v1/nuclei-templates";
+import reportersRoutes from "./api/v1/reporters";
 import { initializeDefaultAdmin } from "./services/admin-initialization";
 import { opsManagerScheduler } from "./services/ops-manager-scheduler";
 import { scanScheduler } from "./services/scan-scheduler";
+import { initializeAgentSystem, shutdownAgentSystem } from "./services/workflow-event-handlers";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -134,6 +137,8 @@ app.use("/api/v1/vulnerability-rd", vulnerabilityRdRoutes);
 app.use("/api/v1/operations-management", operationsManagementRoutes);
 app.use("/api/v1/scan-schedules", scanSchedulesRoutes);
 app.use("/api/v1/offsec-agents", offsecAgentsRoutes);
+app.use("/api/v1/nuclei-templates", nucleiTemplatesRoutes);
+app.use("/api/v1/reporters", reportersRoutes);
 
 // Root endpoint
 app.get("/api/v1", (_req, res) => {
@@ -229,11 +234,33 @@ async function initializeServer() {
     await scanScheduler.start();
     console.log(`⏰ Scan Scheduler started for scheduled security scans`);
 
+    // Initialize v2.1 Autonomous Agent System
+    if (process.env.AGENT_AUTO_INITIALIZE !== "false") {
+      try {
+        await initializeAgentSystem();
+        console.log(`🤖 Agent System initialized (Tool Connector, Surface Assessment, Web Hacker)`);
+      } catch (agentError) {
+        // Non-fatal - agents can be initialized later via API
+        console.warn(`⚠️  Agent System initialization failed (non-fatal):`, agentError);
+      }
+    } else {
+      console.log(`🤖 Agent System auto-initialization disabled (AGENT_AUTO_INITIALIZE=false)`);
+    }
+
     // Graceful shutdown
     const shutdown = async () => {
       console.log("\n🛑 Shutting down gracefully...");
       opsManagerScheduler.shutdown();
       await scanScheduler.stop();
+
+      // Shutdown v2.1 Agent System
+      try {
+        await shutdownAgentSystem();
+        console.log("🤖 Agent System shutdown complete");
+      } catch (agentError) {
+        console.warn("⚠️  Agent System shutdown error:", agentError);
+      }
+
       server.close(() => {
         console.log("✅ Server closed");
         process.exit(0);

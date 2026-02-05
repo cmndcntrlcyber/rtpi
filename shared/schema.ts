@@ -2103,6 +2103,7 @@ export const workflowTemplates = pgTable("workflow_templates", {
   requiredCapabilities: json("required_capabilities").notNull().default([]), // Capabilities that must be satisfied
   optionalCapabilities: json("optional_capabilities").default([]), // Nice-to-have capabilities
   configuration: json("configuration").default({}), // WorkflowTemplateConfig
+  displayOrder: integer("display_order").notNull().default(0), // For ordering workflows in the UI
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -2170,6 +2171,141 @@ export const nucleiTemplates = pgTable("nuclei_templates", {
 
   // Audit
   createdBy: uuid("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================================================
+// Reporter System Tables
+// ============================================================================
+
+// Reporter status enum
+export const reporterStatusEnum = pgEnum("reporter_status", [
+  "active",
+  "polling",
+  "idle",
+  "paused",
+  "error",
+]);
+
+// Note: questionStatusEnum is already defined earlier in this file (line ~1944)
+// It is reused by the reporterQuestions table below
+
+// Reporter task status enum
+export const reporterTaskStatusEnum = pgEnum("reporter_task_status", [
+  "pending",
+  "in_progress",
+  "completed",
+  "failed",
+  "cancelled",
+]);
+
+// Reporters - Each reporter monitors a specific page/site
+export const reporters = pgTable("reporters", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "set null" }),
+
+  // Reporter identity
+  name: text("name").notNull(),
+  pageId: text("page_id").notNull(), // Unique identifier for the page being monitored
+  pageUrl: text("page_url"), // URL of the page being monitored
+  description: text("description"),
+
+  // Status
+  status: reporterStatusEnum("status").notNull().default("idle"),
+  lastPollAt: timestamp("last_poll_at"),
+  pollIntervalMs: integer("poll_interval_ms").notNull().default(60000), // 1 minute default
+
+  // Data storage
+  polledData: json("polled_data").default({}),
+  statusContext: json("status_context").default({}),
+  dataHistory: json("data_history").default([]), // Historical data snapshots
+
+  // Configuration
+  config: json("config").default({}),
+
+  // Statistics
+  totalPolls: integer("total_polls").notNull().default(0),
+  totalQuestions: integer("total_questions").notNull().default(0),
+  totalTasks: integer("total_tasks").notNull().default(0),
+
+  // Metadata
+  metadata: json("metadata").default({}),
+  tags: text("tags").array().default([]),
+
+  // Audit
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Reporter Questions - Human-in-the-loop question queue
+export const reporterQuestions = pgTable("reporter_questions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  reporterId: uuid("reporter_id").notNull().references(() => reporters.id, { onDelete: "cascade" }),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "set null" }),
+
+  // Question content
+  question: text("question").notNull(),
+  context: json("context").default({}), // Additional context for the question
+  priority: integer("priority").notNull().default(5), // 1-10, higher = more urgent
+
+  // Status
+  status: questionStatusEnum("status").notNull().default("pending"),
+
+  // Response
+  response: text("response"),
+  respondedBy: uuid("responded_by").references(() => users.id),
+  respondedAt: timestamp("responded_at"),
+
+  // Generated task (if any)
+  generatedTaskId: uuid("generated_task_id"),
+
+  // Metadata
+  metadata: json("metadata").default({}),
+
+  // Audit
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Reporter Tasks - Tasks assigned to reporters by Operations Manager
+export const reporterTasks = pgTable("reporter_tasks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  reporterId: uuid("reporter_id").notNull().references(() => reporters.id, { onDelete: "cascade" }),
+  questionId: uuid("question_id").references(() => reporterQuestions.id, { onDelete: "set null" }),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "set null" }),
+
+  // Task definition
+  taskName: text("task_name").notNull(),
+  taskDescription: text("task_description"),
+  taskType: text("task_type").notNull(), // poll, analyze, report, investigate, etc.
+  instructions: text("instructions").notNull(),
+  parameters: json("parameters").default({}),
+
+  // Priority and scheduling
+  priority: integer("priority").notNull().default(5), // 1-10
+  dueAt: timestamp("due_at"),
+
+  // Status
+  status: reporterTaskStatusEnum("status").notNull().default("pending"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+
+  // Results
+  result: json("result").default({}),
+  errorMessage: text("error_message"),
+
+  // Retry configuration
+  maxRetries: integer("max_retries").notNull().default(3),
+  retryCount: integer("retry_count").notNull().default(0),
+
+  // Metadata
+  metadata: json("metadata").default({}),
+
+  // Audit
+  assignedBy: uuid("assigned_by").notNull().references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

@@ -10,7 +10,7 @@ const router = Router();
 const createWorkflowSchema = z.object({
   name: z.string().min(1, "Name is required"),
   description: z.string().optional(),
-  operationId: z.string().uuid().optional(),
+  operationId: z.string().uuid().nullish(),
   workflowData: z.object({
     nodes: z.array(z.any()),
     edges: z.array(z.any()),

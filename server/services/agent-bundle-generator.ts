@@ -63,6 +63,10 @@ export interface CertificateInfo {
   keyPath: string;
   certPath: string;
   caCertPath: string;
+  certificatePem: string;
+  publicKeyPem: string;
+  commonName: string;
+  issuerCommonName: string;
 }
 
 // ============================================================================
@@ -141,8 +145,13 @@ class AgentBundleGenerator {
     const [certRecord] = await db.insert(rustNexusCertificates).values({
       certificateType: 'client',
       implantId: null, // Will be linked when implant registers
-      certificateSerial: certs.serial,
-      certificateFingerprint: certs.fingerprint,
+      serialNumber: certs.serial,
+      fingerprintSha256: certs.fingerprint,
+      commonName: certs.commonName,
+      certificatePem: certs.certificatePem,
+      publicKeyPem: certs.publicKeyPem,
+      issuerCommonName: certs.issuerCommonName,
+      issuedBy: options.userId,
       notBefore: new Date(),
       notAfter: new Date(Date.now() + this.clientCertValidityDays * 24 * 60 * 60 * 1000),
       isValid: true,
@@ -293,12 +302,40 @@ extendedKeyUsage = clientAuth
     );
     const serial = serialOutput.split('=')[1].trim();
 
+    // Read certificate PEM
+    const certificatePem = await fs.readFile(clientCertPath, 'utf-8');
+
+    // Extract public key from certificate
+    const publicKeyPem = execSync(
+      `openssl x509 -in "${clientCertPath}" -pubkey -noout`,
+      { encoding: 'utf-8' }
+    );
+
+    // Get issuer common name from CA cert
+    let issuerCommonName = 'RTPI CA';
+    try {
+      const issuerOutput = execSync(
+        `openssl x509 -in "${caCertPath}" -noout -subject`,
+        { encoding: 'utf-8' }
+      );
+      const cnMatch = issuerOutput.match(/CN\s*=\s*([^,\/\n]+)/);
+      if (cnMatch) {
+        issuerCommonName = cnMatch[1].trim();
+      }
+    } catch {
+      // Use default if extraction fails
+    }
+
     return {
       serial,
       fingerprint,
       keyPath: clientKeyPath,
       certPath: clientCertPath,
       caCertPath,
+      certificatePem,
+      publicKeyPem,
+      commonName: implantName,
+      issuerCommonName,
     };
   }
 

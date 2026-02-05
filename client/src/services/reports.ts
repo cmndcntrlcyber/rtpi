@@ -32,7 +32,8 @@ export interface ReportTemplate {
 
 export const reportsService = {
   // List all reports
-  list: () => api.get<{ reports: Report[] }>("/reports"),
+  list: (options?: { signal?: AbortSignal }) =>
+    api.get<{ reports: Report[] }>("/reports", { signal: options?.signal }),
 
   // Get single report
   get: (id: string) => api.get<{ report: Report }>(`/reports/${id}`),
@@ -49,7 +50,8 @@ export const reportsService = {
   delete: (id: string) => api.delete(`/reports/${id}`),
 
   // List templates
-  listTemplates: () => api.get<{ templates: ReportTemplate[] }>("/reports/templates/list"),
+  listTemplates: (options?: { signal?: AbortSignal }) =>
+    api.get<{ templates: ReportTemplate[] }>("/reports/templates/list", { signal: options?.signal }),
 
   // Create template
   createTemplate: (data: Partial<ReportTemplate>) =>

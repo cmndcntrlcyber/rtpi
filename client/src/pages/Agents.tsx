@@ -10,15 +10,19 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Bot, Server, Activity, Clock, Plus, RotateCcw, Pause, Target, CheckCircle, AlertTriangle, Zap, GripVertical, ArrowRight, X } from "lucide-react";
+import { Bot, Server, Activity, Clock, Plus, RotateCcw, Pause, Target, CheckCircle, AlertTriangle, Zap, GripVertical, ArrowRight, X, Import, Workflow, ChevronDown, ChevronRight } from "lucide-react";
 import { useAgents } from "@/hooks/useAgents";
 import { useMCPServers } from "@/hooks/useMCPServers";
 import { useTargets } from "@/hooks/useTargets";
+import { useOperations } from "@/hooks/useOperations";
 import { useTools } from "@/hooks/useTools";
 import { useWorkflows, type WorkflowDetails } from "@/hooks/useWorkflows";
+import { useWorkflowTemplates, type WorkflowTemplate } from "@/hooks/useWorkflowTemplates";
 import { api } from "@/lib/api";
 import WorkflowProgressCard from "@/components/agents/WorkflowProgressCard";
 import WorkflowDetailsDialog from "@/components/agents/WorkflowDetailsDialog";
+import ImportAgentDialog from "@/components/agents/ImportAgentDialog";
+import WorkflowBuilder from "@/components/agents/WorkflowBuilder";
 import {
   DndContext,
   closestCenter,
@@ -69,21 +73,23 @@ function SortableAgentItem({ agent, onRemove }: { agent: any; onRemove: (agentId
       </div>
       
       <div className="flex items-center flex-1">
-        <div className="bg-blue-100 p-2 rounded-lg mr-3">
-          <Bot className="h-4 w-4 text-blue-600" />
+        <div className="bg-blue-100 dark:bg-blue-900 p-2 rounded-lg mr-3">
+          <Bot className="h-4 w-4 text-blue-600 dark:text-blue-400" />
         </div>
         <div className="flex-1">
           <h4 className="text-foreground font-medium">{agent.name}</h4>
           <p className="text-sm text-muted-foreground capitalize">{agent.type} Agent</p>
         </div>
-        <div className="text-sm text-muted-foreground mr-3">
-          Order: {agent.config?.flowOrder >= 0 ? agent.config.flowOrder : 0}
-        </div>
+        {agent.config?.flowOrder >= 0 && (
+          <div className="text-sm text-muted-foreground mr-3">
+            Order: {agent.config.flowOrder}
+          </div>
+        )}
         <Button
           size="sm"
           variant="ghost"
           onClick={() => onRemove(agent.id)}
-          className="hover:bg-red-50 hover:text-red-600"
+          className="hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-600 dark:hover:text-red-400"
         >
           <X className="h-4 w-4" />
         </Button>
@@ -133,11 +139,88 @@ function SortableToolItem({ id, tool, index }: { id: string; tool: any; index: n
   );
 }
 
+// Sortable workflow template item for drag-drop
+function SortableWorkflowItem({
+  template,
+  index,
+  onRemove,
+  onSelect,
+  isSelected,
+  agentCount
+}: {
+  template: WorkflowTemplate;
+  index: number;
+  onRemove: (id: string) => void;
+  onSelect: (id: string) => void;
+  isSelected: boolean;
+  agentCount: number;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id: template.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      className={`flex items-center p-3 bg-secondary border rounded-lg cursor-pointer transition-colors ${
+        isSelected ? 'border-blue-500 bg-blue-50' : 'border-border hover:border-blue-300'
+      }`}
+      onClick={() => onSelect(template.id)}
+    >
+      <div className="flex items-center justify-center w-8 h-8 bg-indigo-100 rounded-full text-indigo-600 text-sm font-medium mr-3">
+        {index + 1}
+      </div>
+      <div
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing p-1 mr-3 text-muted-foreground hover:text-muted-foreground"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <GripVertical className="h-4 w-4" />
+      </div>
+
+      <div className="flex items-center flex-1">
+        <div className="bg-indigo-100 p-2 rounded-lg mr-3">
+          <Workflow className="h-4 w-4 text-indigo-600" />
+        </div>
+        <div className="flex-1">
+          <h4 className="text-foreground font-medium">{template.name}</h4>
+          <p className="text-sm text-muted-foreground">
+            {agentCount} agent{agentCount !== 1 ? 's' : ''} • {template.isActive ? 'Active' : 'Inactive'}
+          </p>
+        </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove(template.id);
+          }}
+          className="hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-600 dark:hover:text-red-400"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function Agents() {
   const { agents, loading: agentsLoading, refetch: refetchAgents } = useAgents();
   const { servers: mcpServers, loading: serversLoading, refetch: refetchServers } = useMCPServers();
   const { tools } = useTools();
   const { runningWorkflows, allNonRunning, getWorkflowDetails, cancelWorkflow } = useWorkflows();
+  const { templates: workflowTemplates, reorderTemplates, deleteTemplate, refetch: refetchTemplates } = useWorkflowTemplates();
   
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -148,6 +231,13 @@ export default function Agents() {
   
   const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const [serverDialogOpen, setServerDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [workflowBuilderOpen, setWorkflowBuilderOpen] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
+    running: true,
+    completed: false,
+    failed: false,
+  });
   const [workflowDetailsOpen, setWorkflowDetailsOpen] = useState(false);
   const [selectedWorkflowDetails, setSelectedWorkflowDetails] = useState<WorkflowDetails | null>(null);
   const [workflowTasksMap, setWorkflowTasksMap] = useState<Record<string, any[]>>({});
@@ -170,7 +260,9 @@ export default function Agents() {
   });
   const [activeLoops, setActiveLoops] = useState<any[]>([]);
   const { targets } = useTargets();
+  const { operations } = useOperations();
   const [selectedTargetId, setSelectedTargetId] = useState<string>("");
+  const [selectedWorkflowTemplateId, setSelectedWorkflowTemplateId] = useState<string>("");
   const [newServer, setNewServer] = useState({
     name: "",
     command: "",
@@ -309,6 +401,68 @@ export default function Agents() {
       
       // Refresh after updates
       setTimeout(() => refetchAgents(), 500);
+    }
+  };
+
+  // Handle drag end for workflow templates
+  const handleWorkflowDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id && workflowTemplates) {
+      const oldIndex = workflowTemplates.findIndex((t) => t.id === active.id);
+      const newIndex = workflowTemplates.findIndex((t) => t.id === over.id);
+
+      const newOrder = arrayMove(workflowTemplates, oldIndex, newIndex);
+
+      try {
+        await reorderTemplates(newOrder.map((t) => t.id));
+        toast.success("Workflow order updated");
+      } catch (err) {
+        toast.error("Failed to update workflow order");
+      }
+    }
+  };
+
+  // Execute selected workflow template
+  const handleExecuteWorkflowTemplate = async () => {
+    if (!selectedTargetId) {
+      toast.warning("Please select a target first");
+      return;
+    }
+    if (!selectedWorkflowTemplateId) {
+      toast.warning("Please select a workflow template to execute");
+      return;
+    }
+
+    const template = workflowTemplates.find((t) => t.id === selectedWorkflowTemplateId);
+    if (!template) return;
+
+    try {
+      const response = await api.post("/agent-workflows/start", {
+        targetId: selectedTargetId,
+        workflowType: "penetration_test",
+        templateId: selectedWorkflowTemplateId
+      });
+
+      toast.success(`Workflow "${template.name}" started! Workflow ID: ${response.workflow.id}`);
+      setSelectedWorkflowTemplateId("");
+    } catch (err) {
+      toast.error(`Failed to start workflow: ${err instanceof Error ? err.message : "Unknown error"}`);
+    }
+  };
+
+  // Delete workflow template
+  const handleDeleteWorkflowTemplate = async (templateId: string) => {
+    if (!confirm("Are you sure you want to delete this workflow template?")) return;
+
+    try {
+      await deleteTemplate(templateId);
+      if (selectedWorkflowTemplateId === templateId) {
+        setSelectedWorkflowTemplateId("");
+      }
+      toast.success("Workflow template deleted");
+    } catch (err) {
+      toast.error("Failed to delete workflow template");
     }
   };
 
@@ -578,6 +732,25 @@ export default function Agents() {
         </div>
       </div>
 
+      {/* Workflow Management Section - Moved to top for visibility */}
+      <Card className="mb-8 bg-card">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Workflow className="h-5 w-5 text-indigo-600" />
+              Agent Workflows
+            </CardTitle>
+            <Button onClick={() => setWorkflowBuilderOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Create Workflow
+            </Button>
+          </div>
+          <p className="text-sm text-muted-foreground mt-1">
+            Orchestrate multi-agent workflows with custom execution order
+          </p>
+        </CardHeader>
+      </Card>
+
       {/* Tabs */}
       <Tabs defaultValue="ai" className="space-y-6">
         <TabsList>
@@ -586,9 +759,13 @@ export default function Agents() {
         </TabsList>
 
         <TabsContent value="ai" className="space-y-4">
-          <div className="flex justify-end mb-4">
-            <Button onClick={() => setAgentDialogOpen(true)}>
+          <div className="flex justify-end gap-2 mb-4">
+            <Button variant="outline" onClick={() => setAgentDialogOpen(true)}>
               <Plus className="h-4 w-4 mr-2" />
+              New Agent
+            </Button>
+            <Button onClick={() => setImportDialogOpen(true)}>
+              <Import className="h-4 w-4 mr-2" />
               Import Agent
             </Button>
           </div>
@@ -599,11 +776,17 @@ export default function Agents() {
             <div className="text-center py-12 bg-card rounded-lg border border-border">
               <Bot className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-muted-foreground">No AI agents configured</p>
-              <p className="text-sm text-muted-foreground mb-4">Import an AI agent to get started</p>
-              <Button onClick={() => setAgentDialogOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Import Agent
-              </Button>
+              <p className="text-sm text-muted-foreground mb-4">Create or import an AI agent to get started</p>
+              <div className="flex justify-center gap-2">
+                <Button variant="outline" onClick={() => setAgentDialogOpen(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Agent
+                </Button>
+                <Button onClick={() => setImportDialogOpen(true)}>
+                  <Import className="h-4 w-4 mr-2" />
+                  Import Agent
+                </Button>
+              </div>
             </div>
           ) : (
             <>
@@ -726,7 +909,7 @@ export default function Agents() {
                             size="sm"
                             variant="outline"
                             onClick={() => handleDeleteAgent(agent.id)}
-                            className="hover:bg-red-50 hover:text-red-600 hover:border-red-600"
+                            className="hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-600 dark:hover:text-red-400 hover:border-red-600 dark:hover:border-red-400"
                           >
                             Delete
                           </Button>
@@ -737,228 +920,211 @@ export default function Agents() {
                 })}
               </div>
 
-              {/* Agent Flow Order Section */}
-              {agents.length > 0 && (
-                <Card className="mt-6 bg-card">
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle className="flex items-center gap-2">
-                          <ArrowRight className="h-5 w-5 text-blue-600" />
-                          Agent Flow Order
-                        </CardTitle>
-                        <p className="text-muted-foreground text-sm mt-1">
-                          Drag and drop to organize the order that AI agents will communicate with each other
-                        </p>
-                      </div>
-                      
-                      {/* Target Selector & Execute Button */}
-                      <div className="flex flex-col items-end gap-2">
-                        <div className="flex items-center gap-2">
-                          <Target className="h-4 w-4 text-muted-foreground" />
-                          <Select value={selectedTargetId} onValueChange={setSelectedTargetId}>
-                            <SelectTrigger className="w-48">
-                              <SelectValue placeholder="Select target..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {targets.map((target) => (
-                                <SelectItem key={target.id} value={target.id}>
-                                  {target.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <Button
-                          onClick={handleExecuteWorkflow}
-                          disabled={!selectedTargetId}
-                          className="w-48 bg-green-600 hover:bg-green-700 text-white"
-                        >
-                          <Zap className="h-4 w-4 mr-2" />
-                          Execute
-                        </Button>
-                      </div>
+              {/* Workflow Order Section */}
+              <Card className="mt-6 bg-card">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        <Workflow className="h-5 w-5 text-indigo-600" />
+                        Workflow Order
+                      </CardTitle>
+                      <p className="text-muted-foreground text-sm mt-1">
+                        Drag and drop to organize workflow execution priority. Click a workflow to select it for execution.
+                      </p>
                     </div>
-                  </CardHeader>
-                  <CardContent>
-                    {/* Filter agents in flow (flowOrder >= 0) */}
-                    {(() => {
-                      const agentsInFlow = [...agents]
-                        .filter((a) => {
-                          const order = (a.config as any)?.flowOrder;
-                          return order !== undefined && order >= 0;
-                        })
-                        .sort((a, b) => {
-                          const aOrder = (a.config as any)?.flowOrder || 0;
-                          const bOrder = (b.config as any)?.flowOrder || 0;
-                          return aOrder - bOrder;
-                        });
 
-                      const availableAgents = agents.filter((a) => {
-                        const order = (a.config as any)?.flowOrder;
-                        return order === undefined || order < 0;
-                      });
+                    {/* Target Selector & Execute Button */}
+                    <div className="flex flex-col items-end gap-2">
+                      <div className="flex items-center gap-2">
+                        <Target className="h-4 w-4 text-muted-foreground" />
+                        <Select value={selectedTargetId} onValueChange={setSelectedTargetId}>
+                          <SelectTrigger className="w-48">
+                            <SelectValue placeholder="Select target..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {targets.map((target) => (
+                              <SelectItem key={target.id} value={target.id}>
+                                {target.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button
+                        onClick={handleExecuteWorkflowTemplate}
+                        disabled={!selectedTargetId || !selectedWorkflowTemplateId}
+                        className="w-48 bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        <Zap className="h-4 w-4 mr-2" />
+                        Execute
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {workflowTemplates.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Workflow className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                      <p className="text-sm">No workflow templates yet.</p>
+                      <p className="text-xs mt-1">
+                        Create a workflow using the &quot;Create Workflow&quot; button above.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={handleWorkflowDragEnd}
+                      >
+                        <SortableContext
+                          items={workflowTemplates.map((t) => t.id)}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          <div className="space-y-3">
+                            {workflowTemplates.map((template, index) => (
+                              <SortableWorkflowItem
+                                key={template.id}
+                                template={template}
+                                index={index}
+                                onRemove={handleDeleteWorkflowTemplate}
+                                onSelect={setSelectedWorkflowTemplateId}
+                                isSelected={selectedWorkflowTemplateId === template.id}
+                                agentCount={template.configuration?.agents?.length || 0}
+                              />
+                            ))}
+                          </div>
+                        </SortableContext>
+                      </DndContext>
 
-                      return (
-                        <>
-                          <DndContext
-                            sensors={sensors}
-                            collisionDetection={closestCenter}
-                            onDragEnd={handleDragEnd}
-                          >
-                            <SortableContext
-                              items={agentsInFlow.map((agent) => agent.id)}
-                              strategy={verticalListSortingStrategy}
-                            >
-                              <div className="space-y-3">
-                                {agentsInFlow.map((agent, index) => (
-                                  <div key={agent.id} className="flex items-center gap-3">
-                                    <div className="flex items-center justify-center w-8 h-8 bg-blue-100 rounded-full text-blue-600 text-sm font-medium">
-                                      {index + 1}
-                                    </div>
-                                    <SortableAgentItem agent={agent} onRemove={handleRemoveFromFlow} />
-                                    {index < agentsInFlow.length - 1 && (
-                                      <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            </SortableContext>
-                          </DndContext>
+                      {/* How it Works Section */}
+                      {workflowTemplates.length > 0 && (
+                        <div className="mt-6 p-4 bg-indigo-50 rounded-lg border border-indigo-200">
+                          <h4 className="text-sm font-medium text-foreground mb-2">How Workflow Order Works</h4>
+                          <ul className="text-xs text-muted-foreground space-y-1">
+                            <li>• Workflows are listed in priority order (top = highest priority)</li>
+                            <li>• Each workflow contains its own agent sequence (managed in Workflow Builder)</li>
+                            <li>• Drag workflows up or down to change their priority</li>
+                            <li>• Click a workflow to select it, then click Execute to run against a target</li>
+                            <li>• Click X to delete a workflow template</li>
+                          </ul>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </CardContent>
+              </Card>
 
-                          {/* Add Agent Section */}
-                          {availableAgents.length > 0 && (
-                            <div className="mt-6 p-4 bg-secondary border border-dashed border-border rounded-lg">
-                              <div className="flex items-center gap-3">
-                                <Plus className="h-4 w-4 text-muted-foreground" />
-                                <Select onValueChange={handleAddToFlow}>
-                                  <SelectTrigger className="flex-1">
-                                    <SelectValue placeholder="Add agent to flow..." />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {availableAgents.map((agent) => (
-                                      <SelectItem key={agent.id} value={agent.id}>
-                                        {agent.name} ({agent.type})
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <p className="text-xs text-muted-foreground mt-2">
-                                {availableAgents.length} agent(s) available to add
-                              </p>
-                            </div>
-                          )}
-
-                          {/* How it Works Section */}
-                          {agentsInFlow.length > 1 && (
-                            <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                              <h4 className="text-sm font-medium text-foreground mb-2">How Agent Flow Works</h4>
-                              <ul className="text-xs text-muted-foreground space-y-1">
-                                <li>• Agents execute in the order shown above (top to bottom)</li>
-                                <li>• Each agent can process and enhance the previous agent&apos;s output</li>
-                                <li>• Drag agents up or down to change their execution order</li>
-                                <li>• Click X to remove an agent from the flow</li>
-                                <li>• The final output combines insights from all agents in sequence</li>
-                              </ul>
-                            </div>
-                          )}
-                        </>
-                      );
-                    })()}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Active Workflows Section */}
+              {/* Active Workflows Section - Collapsible */}
               {runningWorkflows.length > 0 && (
-                <Card className="mt-6 bg-card">
-                  <CardHeader>
+                <Card className="mt-4 bg-card">
+                  <CardHeader
+                    className="cursor-pointer hover:bg-secondary/50 rounded-t-lg transition-colors"
+                    onClick={() => setExpandedGroups(prev => ({ ...prev, running: !prev.running }))}
+                  >
                     <CardTitle className="flex items-center gap-2">
+                      {expandedGroups.running ? (
+                        <ChevronDown className="h-4 w-4" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4" />
+                      )}
                       <Activity className="h-5 w-5 text-blue-600" />
                       Active Workflows
+                      <Badge variant="secondary" className="ml-2 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
+                        {runningWorkflows.length}
+                      </Badge>
                     </CardTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Real-time monitoring of running workflows with progress tracking
-                    </p>
                   </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {runningWorkflows.map((workflow) => (
-                        <WorkflowProgressCard
-                          key={workflow.id}
-                          workflow={workflow}
-                          tasks={workflowTasksMap[workflow.id] || []}
-                          agents={agents}
-                          onCancel={handleCancelWorkflow}
-                          onViewDetails={handleViewWorkflowDetails}
-                        />
-                      ))}
-                    </div>
-                  </CardContent>
+                  {expandedGroups.running && (
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {runningWorkflows.map((workflow) => (
+                          <WorkflowProgressCard
+                            key={workflow.id}
+                            workflow={workflow}
+                            tasks={workflowTasksMap[workflow.id] || []}
+                            agents={agents}
+                            onCancel={handleCancelWorkflow}
+                            onViewDetails={handleViewWorkflowDetails}
+                          />
+                        ))}
+                      </div>
+                    </CardContent>
+                  )}
                 </Card>
               )}
 
-              {/* Workflow History Section */}
+              {/* Workflow History Section - Collapsible */}
               {allNonRunning.length > 0 && (
-                <Card className="mt-6 bg-card">
-                  <CardHeader>
+                <Card className="mt-4 bg-card">
+                  <CardHeader
+                    className="cursor-pointer hover:bg-secondary/50 rounded-t-lg transition-colors"
+                    onClick={() => setExpandedGroups(prev => ({ ...prev, completed: !prev.completed }))}
+                  >
                     <CardTitle className="flex items-center gap-2">
+                      {expandedGroups.completed ? (
+                        <ChevronDown className="h-4 w-4" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4" />
+                      )}
                       <Clock className="h-5 w-5 text-muted-foreground" />
                       Workflow History
+                      <Badge variant="secondary" className="ml-2">
+                        {allNonRunning.length}
+                      </Badge>
                     </CardTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Completed and failed workflows
-                    </p>
                   </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      {allNonRunning.slice(0, 5).map((workflow) => (
-                        <div
-                          key={workflow.id}
-                          className="p-3 bg-secondary rounded border border-border hover:bg-secondary transition-colors"
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex-1">
-                              <h4 className="text-sm font-medium text-foreground">
-                                {workflow.name}
-                              </h4>
-                              <p className="text-xs text-muted-foreground">
-                                {workflow.completedAt 
-                                  ? new Date(workflow.completedAt).toLocaleString()
-                                  : new Date(workflow.createdAt).toLocaleString()}
-                              </p>
-                            </div>
-                            <Badge
-                              variant="secondary"
-                              className={`${
-                                workflow.status === "completed"
-                                  ? "bg-green-500/10 text-green-600"
-                                  : workflow.status === "failed"
-                                  ? "bg-red-500/10 text-red-600"
-                                  : "bg-secondary0/10 text-muted-foreground"
-                              }`}
-                            >
-                              {workflow.status.toUpperCase()}
-                            </Badge>
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleViewWorkflowDetails(workflow.id)}
-                            className="w-full text-xs"
+                  {expandedGroups.completed && (
+                    <CardContent>
+                      <div className="space-y-3">
+                        {allNonRunning.slice(0, 10).map((workflow) => (
+                          <div
+                            key={workflow.id}
+                            className="p-3 bg-secondary rounded border border-border hover:bg-secondary/80 transition-colors"
                           >
-                            View Details
-                          </Button>
-                        </div>
-                      ))}
-                      {allNonRunning.length > 5 && (
-                        <p className="text-xs text-muted-foreground text-center italic">
-                          + {allNonRunning.length - 5} more workflows
-                        </p>
-                      )}
-                    </div>
-                  </CardContent>
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex-1">
+                                <h4 className="text-sm font-medium text-foreground">
+                                  {workflow.name}
+                                </h4>
+                                <p className="text-xs text-muted-foreground">
+                                  {workflow.completedAt
+                                    ? new Date(workflow.completedAt).toLocaleString()
+                                    : new Date(workflow.createdAt).toLocaleString()}
+                                </p>
+                              </div>
+                              <Badge
+                                variant="secondary"
+                                className={`${
+                                  workflow.status === "completed"
+                                    ? "bg-green-500/10 text-green-600"
+                                    : workflow.status === "failed"
+                                    ? "bg-red-500/10 text-red-600"
+                                    : "bg-secondary/10 text-muted-foreground"
+                                }`}
+                              >
+                                {workflow.status.toUpperCase()}
+                              </Badge>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleViewWorkflowDetails(workflow.id)}
+                              className="w-full text-xs"
+                            >
+                              View Details
+                            </Button>
+                          </div>
+                        ))}
+                        {allNonRunning.length > 10 && (
+                          <p className="text-xs text-muted-foreground text-center italic">
+                            + {allNonRunning.length - 10} more workflows
+                          </p>
+                        )}
+                      </div>
+                    </CardContent>
+                  )}
                 </Card>
               )}
 
@@ -1495,8 +1661,11 @@ export default function Agents() {
                 id="server-command"
                 value={newServer.command}
                 onChange={(e) => setNewServer({ ...newServer, command: e.target.value })}
-                placeholder="npx -y tavily-mcp@latest"
+                placeholder="npx -y @anthropics/mcp-remote https://mcp.tavily.com/mcp/"
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                Full shell command with arguments (e.g., npx -y package-name or node /path/to/script.js)
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -1526,6 +1695,25 @@ export default function Agents() {
         onOpenChange={setWorkflowDetailsOpen}
         workflowDetails={selectedWorkflowDetails}
         agents={agents}
+      />
+
+      {/* Import Agent Dialog */}
+      <ImportAgentDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        mcpServers={mcpServers || []}
+        onAgentCreated={refetchAgents}
+      />
+
+      {/* Workflow Builder Dialog */}
+      <WorkflowBuilder
+        open={workflowBuilderOpen}
+        onOpenChange={setWorkflowBuilderOpen}
+        agents={agents || []}
+        mcpServers={mcpServers || []}
+        operations={operations || []}
+        targets={targets || []}
+        onWorkflowCreated={refetchAgents}
       />
     </div>
   );

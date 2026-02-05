@@ -100,7 +100,7 @@ export default function PlannerTab() {
 
       if (response.ok) {
         const data = await response.json();
-        setOperations(data);
+        setOperations(data.operations || []);
       }
     } catch (error) {
       // Error already shown via toast
@@ -371,11 +371,15 @@ export default function PlannerTab() {
                     <SelectValue placeholder="Select collection..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {collections.map((col) => (
-                      <SelectItem key={col.id} value={col.id}>
-                        {col.name} ({col.techniqueIds.length} techniques)
-                      </SelectItem>
-                    ))}
+                    {collections?.length > 0 ? (
+                      collections.map((col) => (
+                        <SelectItem key={col.id} value={col.id}>
+                          {col.name} ({col.techniqueIds.length} techniques)
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="none" disabled>No collections saved</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
                 {selectedCollectionId && (
@@ -558,11 +562,11 @@ export default function PlannerTab() {
                   <SelectValue placeholder="Select operation..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {operations.map((op) => (
+                  {operations?.map((op) => (
                     <SelectItem key={op.id} value={op.id}>
                       {op.name}
                     </SelectItem>
-                  ))}
+                  )) || <SelectItem value="none" disabled>No operations available</SelectItem>}
                 </SelectContent>
               </Select>
             </div>

@@ -20,7 +20,8 @@ export interface Tool {
 
 export const toolsService = {
   // List all tools
-  list: () => api.get<{ tools: Tool[] }>("/tools"),
+  list: (options?: { signal?: AbortSignal }) =>
+    api.get<{ tools: Tool[] }>("/tools", { signal: options?.signal }),
 
   // Get single tool
   get: (id: string) => api.get<{ tool: Tool }>(`/tools/${id}`),

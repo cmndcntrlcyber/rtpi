@@ -9,7 +9,6 @@ interface NucleiOptions {
   templates?: string[];    // template paths/tags
   tags?: string[];         // template tags to include
   excludeTags?: string[];  // template tags to exclude
-  timeout?: number;        // request timeout in seconds
 }
 
 interface NucleiVuln {
@@ -129,9 +128,7 @@ export class NucleiExecutor {
       const result = await dockerExecutor.execWithRetry(
         'rtpi-tools',
         ['nuclei', ...args],
-        {
-          timeout: 7200000 // 2 hours
-        }
+        {}
       );
 
       // Parse Nuclei output
@@ -252,13 +249,10 @@ export class NucleiExecutor {
       }
 
       // Execute Nuclei via Docker (rtpi-tools container) with automatic retry
-      // Note: Large template sets (cves/ = 3600+ templates) can take hours
       const result = await dockerExecutor.execWithRetry(
         'rtpi-tools',
         ['nuclei', ...args],
-        {
-          timeout: 7200000 // 2 hours - allows for large template sets across multiple targets
-        }
+        {}
       );
 
       // Parse Nuclei output
@@ -390,11 +384,6 @@ export class NucleiExecutor {
           args.push('-t', templatePath);
         }
       });
-    }
-
-    // Request timeout
-    if (options.timeout && options.timeout > 0) {
-      args.push('-timeout', Math.min(options.timeout, 60).toString());
     }
 
     // Performance optimizations - balanced settings to avoid overwhelming targets

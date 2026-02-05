@@ -110,10 +110,11 @@ services:
       - rtpi-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "mongosh", "-u", "workbench", "-p", "workbench123", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
 
   # ATT&CK Workbench REST API
   workbench-api:
@@ -166,12 +167,33 @@ services:
 
   # ============================================================================
   # Kasm Workspaces - Browser-Based Desktop Streaming Platform
+  # All Kasm services are in the 'kasm' profile and must be explicitly enabled
+  # Usage: docker compose --profile kasm up -d
   # ============================================================================
+
+  # Kasm DB Certificate Init - Generates self-signed SSL certs for kasm-db
+  kasm-db-init:
+    image: alpine:latest
+    container_name: rtpi-kasm-db-init
+    profiles:
+      - kasm  # Only start with Kasm profile
+    volumes:
+      - kasm-db-certs:/certs
+      - ./scripts/kasm:/scripts:ro
+    command: >
+      sh -c "
+        apk add --no-cache openssl &&
+        /scripts/init-db-certs.sh
+      "
+    networks:
+      - rtpi-network
 
   # Kasm PostgreSQL Database (separate from main RTPI database)
   kasm-db:
-    image: kasmweb/postgres:1.17.0
+    image: postgres:16-alpine
     container_name: rtpi-kasm-db
+    profiles:
+      - kasm  # Only start with Kasm profile
     environment:
       POSTGRES_USER: kasmapp
       POSTGRES_PASSWORD: ${KASM_DB_PASSWORD:-kasm123secure}
@@ -180,11 +202,15 @@ services:
       - "5433:5432"  # Different port to avoid conflict with main postgres
     volumes:
       - kasm-db-data:/var/lib/postgresql/data
+      - kasm-db-certs:/etc/ssl/certs/kasm:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U kasmapp"]
       interval: 10s
       timeout: 5s
       retries: 5
+    depends_on:
+      kasm-db-init:
+        condition: service_completed_successfully
     networks:
       - rtpi-network
     restart: unless-stopped
@@ -193,6 +219,8 @@ services:
   kasm-redis:
     image: redis:5-alpine
     container_name: rtpi-kasm-redis
+    profiles:
+      - kasm  # Only start with Kasm profile
     ports:
       - "6380:6379"  # Different port to avoid conflict with main redis
     volumes:
@@ -210,6 +238,8 @@ services:
   kasm-api:
     image: kasmweb/api:1.17.0
     container_name: rtpi-kasm-api
+    profiles:
+      - kasm  # Only start with Kasm profile
     environment:
       # Database connection
       DATABASE_HOSTNAME: kasm-db
@@ -253,6 +283,8 @@ services:
   kasm-manager:
     image: kasmweb/manager:1.17.0
     container_name: rtpi-kasm-manager
+    profiles:
+      - kasm  # Only start with Kasm profile
     environment:
       # Database connection
       DATABASE_HOSTNAME: kasm-db
@@ -284,6 +316,8 @@ services:
   kasm-proxy:
     image: nginx:alpine
     container_name: rtpi-kasm-proxy
+    profiles:
+      - kasm  # Only start with Kasm profile
     environment:
       - SERVER_HOSTNAME=${KASM_SERVER_HOSTNAME:-localhost}
     ports:
@@ -308,6 +342,8 @@ services:
   kasm-guac:
     image: kasmweb/kasm-guac:1.17.0
     container_name: rtpi-kasm-guac
+    profiles:
+      - kasm  # Only start with Kasm profile
     environment:
       # Database connection for session tracking
       POSTGRES_HOSTNAME: kasm-db
@@ -333,6 +369,8 @@ services:
   kasm-agent:
     image: kasmweb/agent:1.17.0
     container_name: rtpi-kasm-agent
+    profiles:
+      - kasm  # Only start with Kasm profile
     environment:
       # API connection
       API_HOSTNAME: kasm-api
@@ -357,6 +395,8 @@ services:
   kasm-share:
     image: kasmweb/share:1.17.0
     container_name: rtpi-kasm-share
+    profiles:
+      - kasm  # Only start with Kasm profile
     environment:
       # Redis connection for share tracking
       REDIS_HOSTNAME: kasm-redis
@@ -761,6 +801,7 @@ volumes:
   workbench-db-data:
   # Kasm Workspaces volumes
   kasm-db-data:
+  kasm-db-certs:
   kasm-redis-data:
   kasm-api-data:
   kasm-manager-data:

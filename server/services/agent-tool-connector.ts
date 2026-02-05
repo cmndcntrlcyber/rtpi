@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { dockerExecutor } from "./docker-executor";
 import { getToolById } from "./tool-registry-manager";
 import { executeTool } from "./tool-executor";
+import { mcpGrpcBridge } from "./mcp-grpc-bridge";
 import type { ToolConfiguration } from "../../shared/types/tool-config";
 
 /**
@@ -68,6 +69,152 @@ export class AgentToolConnector {
     } else {
       return await this.executeAgentWithTool(agent, tool, target, input);
     }
+  }
+
+  /**
+   * Execute a tool on a remote implant via MCP-gRPC bridge
+   */
+  async executeOnImplant(
+    agentId: string,
+    toolCall: {
+      toolName: string;
+      toolCategory: string;
+      parameters: Record<string, any>;
+    },
+    implantId?: string
+  ): Promise<{
+    success: boolean;
+    result?: any;
+    error?: string;
+    executionTimeMs: number;
+    implantId?: string;
+  }> {
+    // Get agent configuration
+    const agent = await db
+      .select()
+      .from(agents)
+      .where(eq(agents.id, agentId))
+      .limit(1)
+      .then((rows) => rows[0]);
+
+    if (!agent) {
+      return {
+        success: false,
+        error: `Agent ${agentId} not found`,
+        executionTimeMs: 0,
+      };
+    }
+
+    // Ensure bridge is active
+    const bridgeStatus = mcpGrpcBridge.getStatus();
+    if (!bridgeStatus.isActive) {
+      try {
+        await mcpGrpcBridge.start();
+      } catch (error) {
+        return {
+          success: false,
+          error: `Failed to start MCP-gRPC bridge: ${error instanceof Error ? error.message : String(error)}`,
+          executionTimeMs: 0,
+        };
+      }
+    }
+
+    // Create MCP tool request
+    const requestId = `mcp_${agentId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const request = {
+      requestId,
+      agentId,
+      toolName: toolCall.toolName,
+      toolCategory: toolCall.toolCategory,
+      parameters: toolCall.parameters,
+      implantId,
+      timeout: 60000, // 1 minute default
+    };
+
+    console.log(`[AgentToolConnector] Executing tool on implant: ${toolCall.toolName}`);
+    console.log(`[AgentToolConnector] Agent: ${agent.name}, Implant: ${implantId || 'auto-select'}`);
+
+    // Execute via bridge
+    const response = await mcpGrpcBridge.executeToolOnImplant(request);
+
+    return {
+      success: response.success,
+      result: response.result,
+      error: response.error,
+      executionTimeMs: response.executionTimeMs,
+      implantId: response.implantId,
+    };
+  }
+
+  /**
+   * Execute a tool on implant with streaming results
+   */
+  async executeOnImplantStreaming(
+    agentId: string,
+    toolCall: {
+      toolName: string;
+      toolCategory: string;
+      parameters: Record<string, any>;
+    },
+    implantId: string | undefined,
+    callbacks: {
+      onData: (data: any) => void;
+      onError: (error: Error) => void;
+      onComplete: (result: any) => void;
+    }
+  ): Promise<void> {
+    // First execute the tool to get task ID
+    const result = await this.executeOnImplant(agentId, toolCall, implantId);
+
+    if (!result.success) {
+      callbacks.onError(new Error(result.error || 'Unknown error'));
+      return;
+    }
+
+    // Result contains the task data - stream from it
+    callbacks.onData(result.result);
+    callbacks.onComplete(result);
+  }
+
+  /**
+   * Get available implants with their capabilities for an agent
+   */
+  async getAvailableImplantsForAgent(agentId: string): Promise<{
+    implantId: string;
+    implantName: string;
+    capabilities: string[];
+    status: string;
+    connectionQuality: number;
+  }[]> {
+    // Ensure bridge is active
+    const bridgeStatus = mcpGrpcBridge.getStatus();
+    if (!bridgeStatus.isActive) {
+      await mcpGrpcBridge.start();
+    }
+
+    return mcpGrpcBridge.getAvailableCapabilities();
+  }
+
+  /**
+   * Find the best implant for a specific tool
+   */
+  async findBestImplantForTool(
+    toolName: string,
+    toolCategory: string
+  ): Promise<{
+    implantId: string;
+    implantName: string;
+    capabilities: string[];
+    status: string;
+    connectionQuality: number;
+  } | null> {
+    // Ensure bridge is active
+    const bridgeStatus = mcpGrpcBridge.getStatus();
+    if (!bridgeStatus.isActive) {
+      await mcpGrpcBridge.start();
+    }
+
+    return mcpGrpcBridge.findBestImplantForTool(toolName, toolCategory);
   }
 
   /**
@@ -455,11 +602,13 @@ export interface LoopExecution {
   targetId: string;
   currentIteration: number;
   maxIterations: number;
+  maxDurationMs: number; // Timeout in milliseconds
   exitCondition: string;
-  status: "running" | "completed" | "failed" | "max_iterations_reached";
+  status: "running" | "completed" | "failed" | "max_iterations_reached" | "timeout" | "stagnant";
   iterations: LoopIteration[];
   startedAt: Date;
   completedAt?: Date;
+  terminationReason?: string;
 }
 
 export interface LoopIteration {
@@ -514,6 +663,7 @@ class AgentLoopService {
       targetId,
       currentIteration: 0,
       maxIterations: config?.maxLoopIterations || 5,
+      maxDurationMs: (config?.maxLoopDuration || 300) * 1000, // Default 5 minutes
       exitCondition: config?.loopExitCondition || "functional_poc",
       status: "running",
       iterations: [],
@@ -538,11 +688,26 @@ class AgentLoopService {
   ): Promise<void> {
     let currentInput = input;
     let currentAgentId = loop.agentId;
+    const startTime = Date.now();
+
+    // Circuit breaker: track recent output hashes to detect stagnation
+    const recentOutputHashes: string[] = [];
+    const maxConsecutiveRepeats = 3;
 
     while (
       loop.currentIteration < loop.maxIterations &&
       loop.status === "running"
     ) {
+      // Timeout check
+      const elapsedMs = Date.now() - startTime;
+      if (elapsedMs > loop.maxDurationMs) {
+        loop.status = "timeout";
+        loop.terminationReason = `Loop timeout after ${Math.round(elapsedMs / 1000)}s (max: ${Math.round(loop.maxDurationMs / 1000)}s)`;
+        loop.completedAt = new Date();
+        console.warn(`[AgentLoop] ${loop.id} timed out after ${loop.currentIteration} iterations`);
+        break;
+      }
+
       try {
         // Execute current agent with target context
         const output = await agentToolConnector.execute(
@@ -551,6 +716,22 @@ class AgentLoopService {
           loop.targetId,
           currentInput
         );
+
+        // Circuit breaker: check for stagnant outputs
+        const outputHash = this.hashOutput(output);
+        recentOutputHashes.push(outputHash);
+
+        if (recentOutputHashes.length >= maxConsecutiveRepeats) {
+          const lastN = recentOutputHashes.slice(-maxConsecutiveRepeats);
+          const allSame = lastN.every(h => h === lastN[0]);
+          if (allSame) {
+            loop.status = "stagnant";
+            loop.terminationReason = `Agent outputs are repeating (${maxConsecutiveRepeats} identical responses)`;
+            loop.completedAt = new Date();
+            console.warn(`[AgentLoop] ${loop.id} detected stagnant output after ${loop.currentIteration + 1} iterations`);
+            break;
+          }
+        }
 
         // Check exit condition
         const exitConditionMet = this.checkExitCondition(
@@ -594,6 +775,7 @@ class AgentLoopService {
 
         loop.iterations.push(iteration);
         loop.status = "failed";
+        loop.terminationReason = error instanceof Error ? error.message : String(error);
         loop.completedAt = new Date();
         break;
       }
@@ -604,36 +786,81 @@ class AgentLoopService {
       loop.status === "running"
     ) {
       loop.status = "max_iterations_reached";
+      loop.terminationReason = `Reached maximum iterations (${loop.maxIterations})`;
       loop.completedAt = new Date();
     }
+  }
+
+  /**
+   * Simple hash function for output comparison (circuit breaker)
+   */
+  private hashOutput(output: string): string {
+    // Use a simple hash for comparison - normalize whitespace and case
+    const normalized = output.toLowerCase().replace(/\s+/g, ' ').trim();
+    let hash = 0;
+    for (let i = 0; i < normalized.length; i++) {
+      const char = normalized.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return hash.toString(16);
   }
 
   private checkExitCondition(condition: string, output: string): boolean {
     const outputLower = output.toLowerCase();
 
+    // Check for negation patterns that would invalidate a positive match
+    const negationPatterns = [
+      "not a ", "not an ", "isn't ", "is not ", "cannot ", "can't ",
+      "failed to ", "unable to ", "no ", "none ", "without ",
+      "doesn't ", "does not ", "didn't ", "did not ", "wasn't ", "were not "
+    ];
+
+    // Helper to check if a keyword appears in a negated context
+    const isNegated = (keyword: string): boolean => {
+      const keywordIndex = outputLower.indexOf(keyword);
+      if (keywordIndex === -1) return false;
+
+      // Check if any negation pattern appears within 50 chars before the keyword
+      const contextStart = Math.max(0, keywordIndex - 50);
+      const context = outputLower.slice(contextStart, keywordIndex);
+
+      return negationPatterns.some(neg => context.includes(neg));
+    };
+
     switch (condition) {
-      case "functional_poc":
-        return (
-          outputLower.includes("functional") &&
-          (outputLower.includes("poc") ||
-            outputLower.includes("proof of concept")) &&
-          (outputLower.includes("working") ||
-            outputLower.includes("successful"))
-        );
+      case "functional_poc": {
+        const hasFunctional = outputLower.includes("functional");
+        const hasPoc = outputLower.includes("poc") || outputLower.includes("proof of concept");
+        const hasWorking = outputLower.includes("working") || outputLower.includes("successful");
 
-      case "vulnerability_confirmed":
-        return (
-          outputLower.includes("confirmed") ||
-          outputLower.includes("verified") ||
-          outputLower.includes("exploitable")
-        );
+        // Must have all required keywords and none should be negated
+        if (!(hasFunctional && hasPoc && hasWorking)) return false;
+        if (isNegated("functional") || isNegated("poc") || isNegated("proof of concept")) return false;
+        if (isNegated("working") || isNegated("successful")) return false;
+        return true;
+      }
 
-      case "exploit_successful":
-        return (
-          outputLower.includes("exploit") &&
-          (outputLower.includes("successful") ||
-            outputLower.includes("working"))
-        );
+      case "vulnerability_confirmed": {
+        const hasConfirmed = outputLower.includes("confirmed");
+        const hasVerified = outputLower.includes("verified");
+        const hasExploitable = outputLower.includes("exploitable");
+
+        // At least one must be present and not negated
+        if (hasConfirmed && !isNegated("confirmed")) return true;
+        if (hasVerified && !isNegated("verified")) return true;
+        if (hasExploitable && !isNegated("exploitable")) return true;
+        return false;
+      }
+
+      case "exploit_successful": {
+        const hasExploit = outputLower.includes("exploit");
+        const hasSuccessful = outputLower.includes("successful") || outputLower.includes("working");
+
+        if (!(hasExploit && hasSuccessful)) return false;
+        if (isNegated("exploit") || isNegated("successful") || isNegated("working")) return false;
+        return true;
+      }
 
       default:
         return false;

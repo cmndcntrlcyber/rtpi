@@ -6,7 +6,8 @@ import {
   vulnerabilities,
   axScanResults
 } from '@shared/schema';
-import { eq, and, sql, desc } from 'drizzle-orm';
+import { eq, and, sql, desc, inArray } from 'drizzle-orm';
+import { ensureRole, logAudit } from '../../auth/middleware';
 
 const router = Router();
 
@@ -640,7 +641,6 @@ router.post('/:operationId/scan/nuclei', async (req, res) => {
       templates: config?.templates ? config.templates.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
       tags: config?.tags ? config.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
       excludeTags: config?.excludeTags ? config.excludeTags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
-      timeout: config?.timeout ? parseInt(config.timeout, 10) : 30,
     };
 
     const userId = (req.user as any).id;
@@ -869,6 +869,104 @@ router.post('/:operationId/compare', async (req, res) => {
       error: 'Failed to compare scans',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
+  }
+});
+
+/**
+ * DELETE /api/v1/surface-assessment/:operationId/assets/bulk
+ * Bulk delete discovered assets (services will cascade delete)
+ */
+router.delete('/:operationId/assets/bulk', ensureRole("admin", "operator"), async (req, res) => {
+  const { operationId } = req.params;
+  const { ids } = req.body;
+  const user = req.user as any;
+
+  if (!ids || !Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: "ids array is required" });
+  }
+
+  try {
+    // Services will be cascade deleted due to FK constraint
+    await db.delete(discoveredAssets).where(
+      and(
+        inArray(discoveredAssets.id, ids),
+        eq(discoveredAssets.operationId, operationId)
+      )
+    );
+
+    await logAudit(user.id, "bulk_delete_assets", "/surface-assessment", ids.join(","), true, req);
+    res.json({ message: `${ids.length} assets deleted successfully`, count: ids.length });
+  } catch (error: any) {
+    await logAudit(user.id, "bulk_delete_assets", "/surface-assessment", ids.join(","), false, req);
+    res.status(500).json({ error: "Failed to delete assets", details: error?.message });
+  }
+});
+
+/**
+ * DELETE /api/v1/surface-assessment/:operationId/assets/:assetId
+ * Delete a discovered asset (services will cascade delete)
+ */
+router.delete('/:operationId/assets/:assetId', ensureRole("admin", "operator"), async (req, res) => {
+  const { operationId, assetId } = req.params;
+  const user = req.user as any;
+
+  try {
+    // Services will be cascade deleted due to FK constraint
+    await db.delete(discoveredAssets).where(
+      and(
+        eq(discoveredAssets.id, assetId),
+        eq(discoveredAssets.operationId, operationId)
+      )
+    );
+
+    await logAudit(user.id, "delete_asset", "/surface-assessment", assetId, true, req);
+    res.json({ message: "Asset deleted successfully" });
+  } catch (error: any) {
+    await logAudit(user.id, "delete_asset", "/surface-assessment", assetId, false, req);
+    res.status(500).json({ error: "Failed to delete asset", details: error?.message });
+  }
+});
+
+/**
+ * DELETE /api/v1/surface-assessment/:operationId/services/:serviceId
+ * Delete a discovered service
+ */
+router.delete('/:operationId/services/:serviceId', ensureRole("admin", "operator"), async (req, res) => {
+  const { operationId, serviceId } = req.params;
+  const user = req.user as any;
+
+  try {
+    await db.delete(discoveredServices).where(eq(discoveredServices.id, serviceId));
+
+    await logAudit(user.id, "delete_service", "/surface-assessment", serviceId, true, req);
+    res.json({ message: "Service deleted successfully" });
+  } catch (error: any) {
+    await logAudit(user.id, "delete_service", "/surface-assessment", serviceId, false, req);
+    res.status(500).json({ error: "Failed to delete service", details: error?.message });
+  }
+});
+
+/**
+ * DELETE /api/v1/surface-assessment/:operationId/scans/:scanId
+ * Delete a scan result record
+ */
+router.delete('/:operationId/scans/:scanId', ensureRole("admin", "operator"), async (req, res) => {
+  const { operationId, scanId } = req.params;
+  const user = req.user as any;
+
+  try {
+    await db.delete(axScanResults).where(
+      and(
+        eq(axScanResults.id, scanId),
+        eq(axScanResults.operationId, operationId)
+      )
+    );
+
+    await logAudit(user.id, "delete_scan", "/surface-assessment", scanId, true, req);
+    res.json({ message: "Scan result deleted successfully" });
+  } catch (error: any) {
+    await logAudit(user.id, "delete_scan", "/surface-assessment", scanId, false, req);
+    res.status(500).json({ error: "Failed to delete scan result", details: error?.message });
   }
 });
 

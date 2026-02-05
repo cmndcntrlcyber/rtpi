@@ -4,7 +4,13 @@ import App from "./App";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import "./index.css";
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
+const rootElement = document.getElementById("root");
+
+if (!rootElement) {
+  throw new Error("Root element not found. Unable to mount React application.");
+}
+
+ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <ThemeProvider defaultTheme="system">
       <App />

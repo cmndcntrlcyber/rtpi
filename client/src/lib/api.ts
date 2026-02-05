@@ -179,8 +179,8 @@ export async function fetchWithAuth<T = any>(
 
 // HTTP method helpers
 export const api = {
-  get: <T = any>(url: string, options?: { params?: RequestParams }) =>
-    fetchWithAuth<T>(buildUrl(url, options?.params)),
+  get: <T = any>(url: string, options?: { params?: RequestParams; signal?: AbortSignal }) =>
+    fetchWithAuth<T>(buildUrl(url, options?.params), { signal: options?.signal }),
 
   post: <T = any>(url: string, data?: any) =>
     fetchWithAuth<T>(url, {
@@ -200,8 +200,9 @@ export const api = {
       body: data ? JSON.stringify(data) : undefined,
     }),
 
-  delete: <T = any>(url: string) =>
+  delete: <T = any>(url: string, data?: any) =>
     fetchWithAuth<T>(url, {
       method: "DELETE",
+      body: data ? JSON.stringify(data) : undefined,
     }),
 };

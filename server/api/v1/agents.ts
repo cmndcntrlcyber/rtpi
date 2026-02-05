@@ -20,6 +20,153 @@ router.get("/", async (_req, res) => {
   }
 });
 
+// ============================================================================
+// Workflow Template Routes (must be defined before /:id to avoid being caught)
+// ============================================================================
+
+// GET /api/v1/agents/workflow-templates - List all workflow templates
+router.get("/workflow-templates", async (req, res) => {
+  try {
+    const templates = await db
+      .select()
+      .from(workflowTemplates)
+      .orderBy(workflowTemplates.displayOrder);
+
+    res.json({ templates });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to list workflow templates", details: error?.message });
+  }
+});
+
+// PUT /api/v1/agents/workflow-templates/reorder - Bulk update display order (must be before :id)
+router.put("/workflow-templates/reorder", ensureRole("admin", "operator"), async (req, res) => {
+  const { orderedIds } = req.body;
+  const user = req.user as any;
+
+  if (!Array.isArray(orderedIds)) {
+    return res.status(400).json({ error: "orderedIds must be an array" });
+  }
+
+  try {
+    // Update each template's displayOrder based on its position in the array
+    for (let i = 0; i < orderedIds.length; i++) {
+      await db
+        .update(workflowTemplates)
+        .set({ displayOrder: i, updatedAt: new Date() })
+        .where(eq(workflowTemplates.id, orderedIds[i]));
+    }
+
+    await logAudit(user.id, "reorder_workflow_templates", "/agents/workflow-templates/reorder", null, true, req);
+
+    res.json({ success: true, message: "Workflow templates reordered successfully" });
+  } catch (error: any) {
+    await logAudit(user.id, "reorder_workflow_templates", "/agents/workflow-templates/reorder", null, false, req);
+    res.status(500).json({ error: "Failed to reorder workflow templates", details: error?.message });
+  }
+});
+
+// PUT /api/v1/agents/workflow-templates/:id - Update a workflow template
+router.put("/workflow-templates/:id", ensureRole("admin", "operator"), async (req, res) => {
+  const { id } = req.params;
+  const { name, description, displayOrder, isActive, configuration } = req.body;
+  const user = req.user as any;
+
+  try {
+    const updates: Record<string, any> = { updatedAt: new Date() };
+
+    if (name !== undefined) updates.name = name;
+    if (description !== undefined) updates.description = description;
+    if (displayOrder !== undefined) updates.displayOrder = displayOrder;
+    if (isActive !== undefined) updates.isActive = isActive;
+    if (configuration !== undefined) updates.configuration = configuration;
+
+    const updated = await db
+      .update(workflowTemplates)
+      .set(updates)
+      .where(eq(workflowTemplates.id, id))
+      .returning();
+
+    if (updated.length === 0) {
+      return res.status(404).json({ error: "Workflow template not found" });
+    }
+
+    await logAudit(user.id, "update_workflow_template", `/agents/workflow-templates/${id}`, id, true, req);
+
+    res.json({ template: updated[0] });
+  } catch (error: any) {
+    await logAudit(user.id, "update_workflow_template", `/agents/workflow-templates/${id}`, id, false, req);
+    res.status(500).json({ error: "Failed to update workflow template", details: error?.message });
+  }
+});
+
+// DELETE /api/v1/agents/workflow-templates/:id - Delete a workflow template
+router.delete("/workflow-templates/:id", ensureRole("admin", "operator"), async (req, res) => {
+  const { id } = req.params;
+  const user = req.user as any;
+
+  try {
+    const deleted = await db
+      .delete(workflowTemplates)
+      .where(eq(workflowTemplates.id, id))
+      .returning();
+
+    if (deleted.length === 0) {
+      return res.status(404).json({ error: "Workflow template not found" });
+    }
+
+    await logAudit(user.id, "delete_workflow_template", `/agents/workflow-templates/${id}`, id, true, req);
+
+    res.json({ success: true, message: "Workflow template deleted successfully" });
+  } catch (error: any) {
+    await logAudit(user.id, "delete_workflow_template", `/agents/workflow-templates/${id}`, id, false, req);
+    res.status(500).json({ error: "Failed to delete workflow template", details: error?.message });
+  }
+});
+
+// POST /api/v1/agents/workflow-templates - Create a workflow template
+router.post("/workflow-templates", ensureRole("admin", "operator"), async (req, res) => {
+  const { name, description, agents: agentsList, mcpServerIds, isActive } = req.body;
+  const user = req.user as any;
+
+  if (!name) {
+    return res.status(400).json({ error: "name is required" });
+  }
+
+  try {
+    // Extract required capabilities from agents
+    const requiredCapabilities = agentsList?.map((a: any) => `agent:${a.agentId}`) || [];
+
+    const template = await db
+      .insert(workflowTemplates)
+      .values({
+        name,
+        description: description || "",
+        requiredCapabilities,
+        optionalCapabilities: [],
+        configuration: {
+          agents: agentsList || [],
+          mcpServerIds: mcpServerIds || [],
+          maxParallelAgents: 1,
+          timeoutMs: 3600000, // 1 hour default
+          retryConfig: { maxRetries: 3 },
+        },
+        isActive: isActive !== false,
+      })
+      .returning();
+
+    await logAudit(user.id, "create_workflow_template", "/agents/workflow-templates", template[0].id, true, req);
+
+    res.status(201).json({ template: template[0] });
+  } catch (error: any) {
+    await logAudit(user.id, "create_workflow_template", "/agents/workflow-templates", null, false, req);
+    res.status(500).json({ error: "Failed to create workflow template", details: error?.message });
+  }
+});
+
+// ============================================================================
+// Agent CRUD Routes (/:id routes must come after specific routes)
+// ============================================================================
+
 // GET /api/v1/agents/:id - Get agent details
 router.get("/:id", async (req, res) => {
   const { id } = req.params;
@@ -91,6 +238,36 @@ router.put("/:id", ensureRole("admin", "operator"), async (req, res) => {
   }
 });
 
+// POST /api/v1/agents/generate-prompt - Generate agent system prompt using AI
+router.post("/generate-prompt", ensureRole("admin", "operator"), async (req, res) => {
+  const { description, toolContainers, agentType } = req.body;
+  const user = req.user as any;
+
+  if (!description) {
+    return res.status(400).json({ error: "description is required" });
+  }
+
+  try {
+    const { generateAgentPrompt } = await import("../../services/agent-prompt-generator");
+
+    const result = await generateAgentPrompt({
+      description,
+      toolContainers: toolContainers || [],
+      agentType: agentType || "anthropic",
+    });
+
+    await logAudit(user.id, "generate_agent_prompt", "/agents/generate-prompt", null, true, req);
+
+    res.json({
+      prompt: result.prompt,
+      generatedBy: result.generatedBy,
+    });
+  } catch (error: any) {
+    await logAudit(user.id, "generate_agent_prompt", "/agents/generate-prompt", null, false, req);
+    res.status(500).json({ error: "Failed to generate prompt", details: error?.message });
+  }
+});
+
 // DELETE /api/v1/agents/:id - Delete agent
 router.delete("/:id", ensureRole("admin"), async (req, res) => {
   const { id } = req.params;
@@ -146,6 +323,173 @@ router.post("/:agentId/capabilities", ensureRole("admin", "operator"), async (re
   } catch (error: any) {
     await logAudit(user.id, "add_agent_capability", "/agents/capabilities", agentId, false, req);
     res.status(500).json({ error: "Failed to add capability", details: error?.message });
+  }
+});
+
+// ============================================================================
+// Agent-MCP Connector Routes
+// ============================================================================
+
+// POST /api/v1/agents/:agentId/mcp/attach - Attach agent to MCP server
+router.post("/:agentId/mcp/attach", ensureRole("admin", "operator"), async (req, res) => {
+  const { agentId } = req.params;
+  const { mcpServerId, priority, enabledTools } = req.body;
+  const user = req.user as any;
+
+  if (!mcpServerId) {
+    return res.status(400).json({ error: "mcpServerId is required" });
+  }
+
+  try {
+    const { agentMCPConnector } = await import("../../services/agent-mcp-connector");
+
+    const success = await agentMCPConnector.attachAgentToMCP(agentId, mcpServerId, {
+      priority,
+      enabledTools,
+    });
+
+    if (!success) {
+      return res.status(400).json({ error: "Failed to attach agent to MCP server" });
+    }
+
+    await logAudit(user.id, "attach_agent_mcp", "/agents/mcp/attach", agentId, true, req);
+
+    res.json({ message: "Agent attached to MCP server", agentId, mcpServerId });
+  } catch (error: any) {
+    await logAudit(user.id, "attach_agent_mcp", "/agents/mcp/attach", agentId, false, req);
+    res.status(500).json({ error: "Failed to attach agent", details: error?.message });
+  }
+});
+
+// DELETE /api/v1/agents/:agentId/mcp/:mcpServerId - Detach agent from MCP server
+router.delete("/:agentId/mcp/:mcpServerId", ensureRole("admin", "operator"), async (req, res) => {
+  const { agentId, mcpServerId } = req.params;
+  const user = req.user as any;
+
+  try {
+    const { agentMCPConnector } = await import("../../services/agent-mcp-connector");
+
+    const success = await agentMCPConnector.detachAgentFromMCP(agentId, mcpServerId);
+
+    if (!success) {
+      return res.status(400).json({ error: "Agent was not attached to this MCP server" });
+    }
+
+    await logAudit(user.id, "detach_agent_mcp", "/agents/mcp/detach", agentId, true, req);
+
+    res.json({ message: "Agent detached from MCP server" });
+  } catch (error: any) {
+    await logAudit(user.id, "detach_agent_mcp", "/agents/mcp/detach", agentId, false, req);
+    res.status(500).json({ error: "Failed to detach agent", details: error?.message });
+  }
+});
+
+// GET /api/v1/agents/:agentId/mcp/tools - Get all tools available to an agent
+router.get("/:agentId/mcp/tools", async (req, res) => {
+  const { agentId } = req.params;
+
+  try {
+    const { agentMCPConnector } = await import("../../services/agent-mcp-connector");
+
+    const result = await agentMCPConnector.getAgentTools(agentId);
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to get agent tools", details: error?.message });
+  }
+});
+
+// GET /api/v1/agents/:agentId/mcp/documentation - Get tool documentation for an agent
+router.get("/:agentId/mcp/documentation", async (req, res) => {
+  const { agentId } = req.params;
+
+  try {
+    const { agentMCPConnector } = await import("../../services/agent-mcp-connector");
+
+    const docs = await agentMCPConnector.getAgentToolDocumentation(agentId);
+
+    res.json({ documentation: docs });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to get documentation", details: error?.message });
+  }
+});
+
+// GET /api/v1/agents/:agentId/mcp/usage - Get complete Usage.md for an agent
+router.get("/:agentId/mcp/usage", async (req, res) => {
+  const { agentId } = req.params;
+
+  try {
+    const { agentMCPConnector } = await import("../../services/agent-mcp-connector");
+
+    const usageDoc = await agentMCPConnector.generateAgentUsageDocument(agentId);
+
+    res.type("text/markdown").send(usageDoc);
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to generate usage document", details: error?.message });
+  }
+});
+
+// GET /api/v1/agents/mcp/discover - Trigger MCP server discovery
+router.get("/mcp/discover", async (_req, res) => {
+  try {
+    const { agentMCPConnector } = await import("../../services/agent-mcp-connector");
+
+    await agentMCPConnector.discoverAllServerCapabilities();
+    const status = agentMCPConnector.getStatus();
+
+    res.json({
+      message: "Discovery complete",
+      ...status,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to run discovery", details: error?.message });
+  }
+});
+
+// GET /api/v1/agents/mcp/servers/:serverId/capabilities - Get MCP server capabilities
+router.get("/mcp/servers/:serverId/capabilities", async (req, res) => {
+  const { serverId } = req.params;
+
+  try {
+    const { agentMCPConnector } = await import("../../services/agent-mcp-connector");
+
+    const capabilities = await agentMCPConnector.getServerCapabilities(serverId);
+
+    if (!capabilities) {
+      return res.status(404).json({ error: "Server not found or no capabilities discovered" });
+    }
+
+    res.json({ capabilities });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to get server capabilities", details: error?.message });
+  }
+});
+
+// GET /api/v1/agents/mcp/servers/:serverId/documentation - Get tool documentation for an MCP server
+router.get("/mcp/servers/:serverId/documentation", async (req, res) => {
+  const { serverId } = req.params;
+
+  try {
+    const { agentMCPConnector } = await import("../../services/agent-mcp-connector");
+
+    const docs = await agentMCPConnector.getServerToolDocumentation(serverId);
+
+    res.json({ documentation: docs });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to get server documentation", details: error?.message });
+  }
+});
+
+// GET /api/v1/agents/mcp/status - Get MCP connector service status
+router.get("/mcp/status", async (_req, res) => {
+  try {
+    const { agentMCPConnector } = await import("../../services/agent-mcp-connector");
+
+    const status = agentMCPConnector.getStatus();
+
+    res.json({ status });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to get MCP status", details: error?.message });
   }
 });
 

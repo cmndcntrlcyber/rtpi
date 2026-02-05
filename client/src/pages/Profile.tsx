@@ -68,9 +68,9 @@ export default function Profile() {
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
       case "admin":
-        return "bg-red-100 text-red-700";
+        return "bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300";
       case "operator":
-        return "bg-blue-100 text-blue-700";
+        return "bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300";
       case "viewer":
         return "bg-secondary text-foreground";
       default:
@@ -86,13 +86,13 @@ export default function Profile() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
+        <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded mb-4">
           {error}
         </div>
       )}
 
       {success && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded mb-4">
+        <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 px-4 py-3 rounded mb-4">
           {success}
         </div>
       )}

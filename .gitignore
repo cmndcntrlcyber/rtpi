@@ -49,3 +49,6 @@ data/
 
 # Certificates
 ca/
+
+# Local Agents Builds
+uploads/

@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle2, XCircle, RefreshCw } from "lucide-react";
+import { CheckCircle2, XCircle, RefreshCw, Trash2 } from "lucide-react";
 
 interface EmpireServer {
   id: string;
@@ -19,12 +19,14 @@ interface EmpireServerCardProps {
   server: EmpireServer;
   onCheckConnection: (server: EmpireServer) => void;
   onRefreshToken: (server: EmpireServer) => void;
+  onDelete: (server: EmpireServer) => void;
 }
 
 export default function EmpireServerCard({
   server,
   onCheckConnection,
   onRefreshToken,
+  onDelete,
 }: EmpireServerCardProps) {
   const isConnected = server.status === "connected";
 
@@ -84,6 +86,14 @@ export default function EmpireServerCard({
             className="flex-1"
           >
             Refresh Token
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onDelete(server)}
+            className="text-muted-foreground hover:text-red-600 hover:bg-red-50"
+          >
+            <Trash2 className="h-4 w-4" />
           </Button>
         </div>
       </CardContent>

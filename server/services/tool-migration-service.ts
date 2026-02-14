@@ -432,7 +432,7 @@ async function registerToolInDatabase(
     category: config.category,
     description: config.description,
     version: config.version,
-    status: 'available' as const, // Match schema: "available" | "unavailable" | "deprecated"
+    status: 'available' as const, // Match schema: "available" | "running" | "stopped" | "error"
     command: `python3 ${analysis.filePath}`, // Command to execute the Python tool
     metadata: {
       ...config.metadata,

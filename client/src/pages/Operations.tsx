@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearchParams } from "wouter";
 import { Plus, CheckSquare } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import OperationList from "@/components/operations/OperationList";
 import OperationForm from "@/components/operations/OperationForm";
+import OpsManagerFloatingChat from "@/components/operations/OpsManagerFloatingChat";
 import { BulkActionToolbar } from "@/components/shared/BulkActionToolbar";
 import { BulkConfirmDialog } from "@/components/shared/BulkConfirmDialog";
 import { useOperations, useCreateOperation, useUpdateOperation, useDeleteOperation } from "@/hooks/useOperations";
@@ -12,6 +13,7 @@ import { api } from "@/lib/api";
 
 export default function Operations() {
   const [, navigate] = useLocation();
+  const [searchParams] = useSearchParams();
   const { operations, loading, refetch } = useOperations();
   const { create, creating } = useCreateOperation();
   const { update } = useUpdateOperation();
@@ -20,6 +22,18 @@ export default function Operations() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingOperation, setEditingOperation] = useState<any>(null);
   const [operationsWithWorkflows, setOperationsWithWorkflows] = useState<any[]>([]);
+
+  // Floating chat state
+  const [chatOpen, setChatOpen] = useState(searchParams.get("chat") === "open");
+  const [selectedOperationId, setSelectedOperationId] = useState<string | null>(null);
+
+  // Auto-select first active operation for floating chat
+  useEffect(() => {
+    if (!selectedOperationId && operations.length > 0) {
+      const firstActive = operations.find((op) => op.status === "active");
+      setSelectedOperationId((firstActive || operations[0]).id);
+    }
+  }, [operations, selectedOperationId]);
 
   // Bulk selection state
   const [bulkMode, setBulkMode] = useState(false);
@@ -134,8 +148,8 @@ export default function Operations() {
   };
 
   const handleSelectOperation = (operation: any) => {
-    // TODO: Navigate to operation details or open details view
-    // Operation selection handler - currently not implemented
+    setSelectedOperationId(operation.id);
+    if (!chatOpen) setChatOpen(true);
   };
 
   // Bulk selection handlers
@@ -317,6 +331,13 @@ export default function Operations() {
         itemType="operation"
         onConfirm={handleConfirmBulkAction}
         loading={bulkActionLoading}
+      />
+
+      {/* Operations Manager Floating Chat */}
+      <OpsManagerFloatingChat
+        operationId={selectedOperationId}
+        isOpen={chatOpen}
+        onToggle={() => setChatOpen(!chatOpen)}
       />
     </div>
   );

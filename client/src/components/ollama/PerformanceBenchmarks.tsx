@@ -42,9 +42,9 @@ const BENCHMARK_TASKS = [
 const MODELS_TO_TEST = [
   { provider: "ollama", model: "llama3:8b" },
   { provider: "ollama", model: "qwen2.5-coder:7b" },
-  { provider: "openai", model: "gpt-3.5-turbo" },
-  { provider: "openai", model: "gpt-4-turbo-preview" },
-  { provider: "anthropic", model: "claude-3-5-sonnet-20241022" },
+  { provider: "openai", model: "gpt-4.1-mini" },
+  { provider: "openai", model: "gpt-5.2-chat-latest" },
+  { provider: "anthropic", model: "claude-sonnet-4-5" },
 ];
 
 export function PerformanceBenchmarks() {

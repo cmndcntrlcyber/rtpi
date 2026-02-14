@@ -1,14 +1,4 @@
-import OpenAI from "openai";
-import Anthropic from "@anthropic-ai/sdk";
-
-// Initialize AI clients
-const openai = process.env.OPENAI_API_KEY
-  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-  : null;
-
-const anthropic = process.env.ANTHROPIC_API_KEY
-  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  : null;
+import { getOpenAIClient, getAnthropicClient } from "./ai-clients";
 
 interface GeneratePromptParams {
   description: string;
@@ -53,10 +43,12 @@ ${toolContainers.length > 0
 Generate ONLY the system prompt text, without any additional explanation or formatting.`;
 
   // Try Anthropic first if available and agent type is anthropic
+  const anthropic = getAnthropicClient();
+  const openai = getOpenAIClient();
   if (anthropic && (agentType === "anthropic" || !openai)) {
     try {
       const response = await anthropic.messages.create({
-        model: "claude-sonnet-4-5-20250929",
+        model: "claude-sonnet-4-5",
         max_tokens: 2000,
         messages: [
           {
@@ -83,7 +75,7 @@ Generate ONLY the system prompt text, without any additional explanation or form
   if (openai) {
     try {
       const response = await openai.chat.completions.create({
-        model: "gpt-4o",
+        model: "gpt-5.2-chat-latest",
         messages: [
           {
             role: "user",

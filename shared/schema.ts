@@ -223,6 +223,15 @@ export const operations = pgTable("operations", {
   managementStatus: json("management_status"),
   lastManagerUpdate: timestamp("last_manager_update"),
 
+  // Phase 2: Memory integration
+  memoryContextId: uuid("memory_context_id").references(() => memoryContexts.id, { onDelete: "set null" }),
+  lastSynthesisAt: timestamp("last_synthesis_at"),
+  synthesisSummary: text("synthesis_summary"),
+
+  // Phase 3: Pipeline automation
+  pipelineStatus: json("pipeline_status"),
+  automationEnabled: boolean("automation_enabled").notNull().default(true),
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -238,6 +247,12 @@ export const targets = pgTable("targets", {
   operationId: uuid("operation_id").references(() => operations.id, { onDelete: "cascade" }),
   discoveredServices: json("discovered_services"),
   metadata: json("metadata"),
+
+  // Phase 3: Link to discovered assets
+  discoveredAssetId: uuid("discovered_asset_id").references(() => discoveredAssets.id, { onDelete: "set null" }),
+  autoCreated: boolean("auto_created").notNull().default(false),
+  sourceScanId: uuid("source_scan_id").references(() => axScanResults.id, { onDelete: "set null" }),
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -611,6 +626,10 @@ export const discoveredAssets = pgTable("discovered_assets", {
   operatingSystem: text("operating_system"),
   tags: json("tags").default([]),
   metadata: json("metadata").default({}),
+
+  // Phase 3: Back-reference to auto-created target
+  targetId: uuid("target_id").references(() => targets.id, { onDelete: "set null" }),
+
   discoveredAt: timestamp("discovered_at").notNull().defaultNow(),
   lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -699,6 +718,23 @@ export const toolCategoryEnum = pgEnum("tool_category", [
   "social-engineering",
   "reporting",
   "other",
+  // Additional categories for specialized tool containers
+  "vulnerability",
+  "web",
+  "network",
+  "fuzzing",
+  "reverse-engineering",
+  "binary-analysis",
+  "fingerprinting",
+  "cms",
+  "azure",
+  "active-directory",
+  "enumeration",
+  "c2",
+  "proxy",
+  "discovery",
+  "security-scanning",
+  "web-recon",
 ]);
 
 export const parameterTypeEnum = pgEnum("parameter_type", [
@@ -769,6 +805,10 @@ export const toolRegistry = pgTable("tool_registry", {
 
   // Configuration (full ToolConfiguration as JSONB)
   config: json("config").notNull().default({}),
+
+  // Container tracking for multi-container tool discovery
+  containerName: text("container_name").default("rtpi-tools"),
+  containerUser: text("container_user").default("rtpi-tools"),
 
   // Status
   installStatus: installStatusEnum("install_status").notNull().default("pending"),
@@ -892,6 +932,45 @@ export const githubToolInstallations = pgTable("github_tool_installations", {
   // Timestamps
   analyzedAt: timestamp("analyzed_at"),
   installedAt: timestamp("installed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================================================
+// AGENT TOOL BUILDS (GitHub install + create pipelines)
+// ============================================================================
+
+export const agentToolBuildStatusEnum = pgEnum("agent_tool_build_status", [
+  "pending", "researching", "generating_dockerfile",
+  "building_image", "repairing", "starting_container",
+  "registering_mcp", "attaching_agent",
+  "completed", "failed",
+]);
+
+export const agentToolBuildModeEnum = pgEnum("agent_tool_build_mode", [
+  "install",
+  "create",
+]);
+
+export const agentToolBuilds = pgTable("agent_tool_builds", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  mode: agentToolBuildModeEnum("mode").notNull(),
+  agentId: uuid("agent_id").notNull().references(() => agents.id),
+  githubUrls: json("github_urls").notNull(),
+  status: agentToolBuildStatusEnum("status").notNull().default("pending"),
+  repoResearch: json("repo_research"),
+  generatedDockerfile: text("generated_dockerfile"),
+  dockerImageTag: text("docker_image_tag"),
+  containerName: text("container_name"),
+  mcpServerId: uuid("mcp_server_id").references(() => mcpServers.id),
+  currentStep: text("current_step"),
+  buildLog: text("build_log"),
+  errorMessage: text("error_message"),
+  repairAttempts: integer("repair_attempts").notNull().default(0),
+  repairHistory: json("repair_history"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -1976,6 +2055,11 @@ export const agentActivityReports = pgTable("agent_activity_reports", {
   generatedAt: timestamp("generated_at").notNull().defaultNow(),
   reviewedAt: timestamp("reviewed_at"),
 
+  // Phase 2: Memory integration
+  memoryIds: json("memory_ids").default([]),
+  synthesisStatus: text("synthesis_status").default("pending"),
+  synthesizedByManagerTaskId: uuid("synthesized_by_manager_task_id").references(() => operationsManagerTasks.id, { onDelete: "set null" }),
+
   // Metadata
   metadata: json("metadata").default({}),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -2002,6 +2086,11 @@ export const operationsManagerTasks = pgTable("operations_manager_tasks", {
   inputData: json("input_data").default({}),
   outputData: json("output_data").default({}),
   decisions: json("decisions").default([]), // Array of {decision, reasoning, timestamp}
+
+  // Phase 2: Memory integration
+  memoryContext: json("memory_context").default([]),
+  storedMemoryIds: json("stored_memory_ids").default([]),
+  aiReasoning: text("ai_reasoning"),
 
   // Timing
   startedAt: timestamp("started_at"),
@@ -2043,6 +2132,10 @@ export const assetQuestions = pgTable("asset_questions", {
   askedAt: timestamp("asked_at").notNull().defaultNow(),
   answeredAt: timestamp("answered_at"),
   reviewedAt: timestamp("reviewed_at"),
+
+  // Phase 2: Memory integration
+  relevantMemoryIds: json("relevant_memory_ids").default([]),
+  answerStoredAsMemoryId: uuid("answer_stored_as_memory_id").references(() => memoryEntries.id, { onDelete: "set null" }),
 
   // Feedback
   userFeedback: text("user_feedback"),
@@ -2306,6 +2399,489 @@ export const reporterTasks = pgTable("reporter_tasks", {
 
   // Audit
   assignedBy: uuid("assigned_by").notNull().references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================================================
+// V2.3 MEMORY SYSTEM FOUNDATION (Mem0 Integration)
+// Agentic memory infrastructure for contextual knowledge storage and retrieval
+// ============================================================================
+
+// Memory system enums
+export const memoryContextTypeEnum = pgEnum("memory_context_type", [
+  "operation",
+  "target",
+  "agent",
+  "user",
+  "workflow",
+  "global",
+]);
+
+export const memoryTypeEnum = pgEnum("memory_type", [
+  "fact",
+  "event",
+  "insight",
+  "pattern",
+  "procedure",
+  "preference",
+]);
+
+export const memoryRelationshipTypeEnum = pgEnum("memory_relationship_type", [
+  "related_to",
+  "caused_by",
+  "depends_on",
+  "conflicts_with",
+  "supersedes",
+  "derived_from",
+]);
+
+export const memoryAccessTypeEnum = pgEnum("memory_access_type", [
+  "read",
+  "write",
+  "update",
+  "delete",
+  "search",
+]);
+
+// Memory contexts - links memories to operations, targets, agents, or users
+export const memoryContexts = pgTable("memory_contexts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  contextType: memoryContextTypeEnum("context_type").notNull(),
+  contextId: text("context_id").notNull(),
+  contextName: text("context_name").notNull(),
+  metadata: json("metadata").default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Memory entries - individual memory records with optional vector embeddings
+export const memoryEntries = pgTable("memory_entries", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  contextId: uuid("context_id").notNull().references(() => memoryContexts.id, { onDelete: "cascade" }),
+
+  // Memory content
+  memoryText: text("memory_text").notNull(),
+  memoryType: memoryTypeEnum("memory_type").notNull(),
+
+  // Embeddings stored as JSON array (future: migrate to pgvector vector(1536))
+  embedding: json("embedding"),
+
+  // Source tracking
+  sourceAgentId: uuid("source_agent_id").references(() => agents.id, { onDelete: "set null" }),
+  sourceReportId: uuid("source_report_id"),
+
+  // Scoring and access
+  relevanceScore: real("relevance_score").notNull().default(1.0),
+  accessCount: integer("access_count").notNull().default(0),
+  lastAccessedAt: timestamp("last_accessed_at"),
+
+  // Temporal validity
+  validFrom: timestamp("valid_from").notNull().defaultNow(),
+  validUntil: timestamp("valid_until"),
+
+  // Tags and metadata
+  tags: json("tags").default([]),
+  metadata: json("metadata").default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Memory relationships - graph edges connecting related memories
+export const memoryRelationships = pgTable("memory_relationships", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sourceMemoryId: uuid("source_memory_id").notNull().references(() => memoryEntries.id, { onDelete: "cascade" }),
+  targetMemoryId: uuid("target_memory_id").notNull().references(() => memoryEntries.id, { onDelete: "cascade" }),
+  relationshipType: memoryRelationshipTypeEnum("relationship_type").notNull(),
+  strength: real("strength").notNull().default(1.0),
+  metadata: json("metadata").default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Memory access logs - audit trail for memory operations
+export const memoryAccessLogs = pgTable("memory_access_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  memoryId: uuid("memory_id").notNull().references(() => memoryEntries.id, { onDelete: "cascade" }),
+  accessedByAgentId: uuid("accessed_by_agent_id").references(() => agents.id, { onDelete: "set null" }),
+  accessedByUserId: uuid("accessed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  accessType: memoryAccessTypeEnum("access_type").notNull(),
+  queryText: text("query_text"),
+  resultCount: integer("result_count"),
+  accessedAt: timestamp("accessed_at").notNull().defaultNow(),
+});
+
+// ============================================================================
+// V2.3.2 AGENT MESSAGE BUS (Phase 2: Agent System Architecture)
+// Inter-agent communication, registry, and message subscriptions
+// ============================================================================
+
+// Message bus enums
+export const agentMessageTypeEnum = pgEnum("agent_message_type", [
+  "report",
+  "task",
+  "question",
+  "response",
+  "alert",
+  "status",
+  "data",
+]);
+
+export const messageStatusEnum = pgEnum("message_status", [
+  "queued",
+  "delivered",
+  "read",
+  "processed",
+  "failed",
+  "expired",
+]);
+
+export const messagePriorityEnum = pgEnum("message_priority", [
+  "critical",
+  "high",
+  "normal",
+  "low",
+  "background",
+]);
+
+// Agent messages - Inter-agent communication records
+export const agentMessages = pgTable("agent_messages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  messageType: agentMessageTypeEnum("message_type").notNull(),
+
+  // Routing
+  fromAgentId: uuid("from_agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  fromAgentRole: text("from_agent_role").notNull(),
+  toAgentId: uuid("to_agent_id").references(() => agents.id, { onDelete: "cascade" }),
+  toAgentRole: text("to_agent_role"),
+  broadcastToRole: text("broadcast_to_role"),
+
+  // Context
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "cascade" }),
+  targetId: uuid("target_id").references(() => targets.id, { onDelete: "set null" }),
+  workflowId: uuid("workflow_id").references(() => agentWorkflows.id, { onDelete: "set null" }),
+
+  // Priority
+  priority: messagePriorityEnum("priority").notNull().default("normal"),
+
+  // Content
+  subject: text("subject").notNull(),
+  contentSummary: text("content_summary").notNull(),
+  contentData: json("content_data").notNull().default({}),
+  contextData: json("context_data").default({}),
+
+  // Memory integration
+  relevantMemoryIds: json("relevant_memory_ids").default([]),
+  shouldStoreInMemory: boolean("should_store_in_memory").notNull().default(false),
+  storedAsMemoryId: uuid("stored_as_memory_id").references(() => memoryEntries.id, { onDelete: "set null" }),
+  memoryType: text("memory_type"),
+
+  // Status tracking
+  status: messageStatusEnum("status").notNull().default("queued"),
+  deliveredAt: timestamp("delivered_at"),
+  readAt: timestamp("read_at"),
+  processedAt: timestamp("processed_at"),
+  expiresAt: timestamp("expires_at"),
+
+  // Metadata
+  metadata: json("metadata").default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Agent registry - Tracks active agents and their capabilities
+export const agentRegistry = pgTable("agent_registry", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+
+  // Agent identity
+  agentRole: text("agent_role").notNull(),
+  agentType: text("agent_type").notNull(),
+
+  // Capabilities
+  capabilities: json("capabilities").default([]),
+  messageTypesHandled: json("message_types_handled").default([]),
+
+  // Status
+  isActive: boolean("is_active").notNull().default(true),
+  lastHeartbeatAt: timestamp("last_heartbeat_at").notNull().defaultNow(),
+
+  // Message queue stats
+  queuedMessages: integer("queued_messages").notNull().default(0),
+  processedMessages: integer("processed_messages").notNull().default(0),
+  failedMessages: integer("failed_messages").notNull().default(0),
+
+  // Configuration
+  maxQueueSize: integer("max_queue_size").notNull().default(100),
+  processingTimeoutMs: integer("processing_timeout_ms").notNull().default(300000),
+
+  // Metadata
+  metadata: json("metadata").default({}),
+  registeredAt: timestamp("registered_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Agent message subscriptions - Defines which agents receive which message types
+export const agentMessageSubscriptions = pgTable("agent_message_subscriptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+
+  // Subscription filters
+  messageType: agentMessageTypeEnum("message_type"),
+  fromAgentRole: text("from_agent_role"),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "cascade" }),
+  priorityFilter: json("priority_filter"),
+
+  // Configuration
+  isActive: boolean("is_active").notNull().default(true),
+  autoProcess: boolean("auto_process").notNull().default(false),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// ============================================================================
+// PHASE 5: FRAMEWORK INTEGRATION (ATLAS, OWASP LLM, NIST AI RMF)
+// ============================================================================
+
+// MITRE ATLAS - Adversarial Threat Landscape for AI Systems
+
+export const atlasTactics = pgTable("atlas_tactics", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  atlasId: text("atlas_id").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  shortName: text("short_name"),
+  sortOrder: integer("sort_order"),
+  stixId: text("stix_id").unique(),
+  xMitreShortname: text("x_mitre_shortname"),
+  metadata: json("metadata"),
+  externalReferences: json("external_references").default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const atlasTechniques = pgTable("atlas_techniques", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  atlasId: text("atlas_id").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  tacticId: uuid("tactic_id").references(() => atlasTactics.id, { onDelete: "set null" }),
+
+  caseStudies: text("case_studies").array(),
+  detectionMethods: text("detection_methods").array(),
+  mitigationStrategies: text("mitigation_strategies").array(),
+
+  isSubtechnique: boolean("is_subtechnique").default(false),
+  parentTechniqueId: uuid("parent_technique_id").references((): any => atlasTechniques.id, { onDelete: "set null" }),
+  platforms: text("platforms").array(),
+  killChainPhases: text("kill_chain_phases").array(),
+
+  stixId: text("stix_id").unique(),
+  deprecated: boolean("deprecated").default(false),
+  revoked: boolean("revoked").default(false),
+  externalReferences: json("external_references").default([]),
+
+  metadata: json("metadata"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const atlasCaseStudies = pgTable("atlas_case_studies", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  techniqueId: uuid("technique_id").notNull().references(() => atlasTechniques.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  targetSystem: text("target_system"),
+  impact: text("impact"),
+  references: text("references").array(),
+  metadata: json("metadata"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const atlasMitigations = pgTable("atlas_mitigations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  atlasId: text("atlas_id").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  stixId: text("stix_id").unique(),
+  deprecated: boolean("deprecated").default(false),
+  revoked: boolean("revoked").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  metadata: json("metadata").default({}),
+  externalReferences: json("external_references").default([]),
+});
+
+export const atlasRelationships = pgTable("atlas_relationships", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  stixId: text("stix_id").unique(),
+  relationshipType: text("relationship_type").notNull(),
+  sourceRef: text("source_ref").notNull(),
+  targetRef: text("target_ref").notNull(),
+  description: text("description"),
+  created: timestamp("created"),
+  modified: timestamp("modified"),
+  createdAt: timestamp("created_at").defaultNow(),
+  metadata: json("metadata").default({}),
+});
+
+export const atlasTechniqueTactics = pgTable("atlas_technique_tactics", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  techniqueId: uuid("technique_id").notNull().references(() => atlasTechniques.id, { onDelete: "cascade" }),
+  tacticId: uuid("tactic_id").notNull().references(() => atlasTactics.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const operationAtlasMapping = pgTable("operation_atlas_mapping", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  operationId: uuid("operation_id").notNull().references(() => operations.id, { onDelete: "cascade" }),
+  techniqueId: uuid("technique_id").notNull().references(() => atlasTechniques.id, { onDelete: "cascade" }),
+  tacticId: uuid("tactic_id").references(() => atlasTactics.id, { onDelete: "set null" }),
+  status: text("status").default("planned"),
+  coveragePercentage: integer("coverage_percentage").default(0),
+  evidenceText: text("evidence_text"),
+  notes: text("notes"),
+  executedAt: timestamp("executed_at"),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  metadata: json("metadata").default({}),
+});
+
+export const atlasFlows = pgTable("atlas_flows", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  flowData: json("flow_data").notNull().default({ nodes: [], edges: [] }),
+  isTemplate: boolean("is_template").default(false),
+  isShared: boolean("is_shared").default(false),
+  status: text("status").default("draft"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "cascade" }),
+  metadata: json("metadata").default({}),
+});
+
+// OWASP LLM Top 10
+
+export const owaspLlmVulnerabilities = pgTable("owasp_llm_vulnerabilities", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  owaspId: text("owasp_id").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  riskRating: text("risk_rating"),
+
+  commonExamples: text("common_examples").array(),
+  preventionStrategies: text("prevention_strategies").array(),
+  exampleAttackScenarios: text("example_attack_scenarios").array(),
+
+  references: text("references").array(),
+  cweMappings: text("cwe_mappings").array(),
+
+  metadata: json("metadata"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const owaspLlmAttackVectors = pgTable("owasp_llm_attack_vectors", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  vulnerabilityId: uuid("vulnerability_id").notNull().references(() => owaspLlmVulnerabilities.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  attackComplexity: text("attack_complexity"),
+  prerequisites: text("prerequisites").array(),
+  payloadExamples: text("payload_examples").array(),
+  metadata: json("metadata"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const owaspLlmMitigations = pgTable("owasp_llm_mitigations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  vulnerabilityId: uuid("vulnerability_id").notNull().references(() => owaspLlmVulnerabilities.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  implementationGuidance: text("implementation_guidance"),
+  effectiveness: text("effectiveness"),
+  cost: text("cost"),
+  metadata: json("metadata"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// NIST AI RMF (AI Risk Management Framework)
+
+export const nistAiFunctions = pgTable("nist_ai_functions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  functionId: text("function_id").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  sortOrder: integer("sort_order"),
+  metadata: json("metadata"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const nistAiCategories = pgTable("nist_ai_categories", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  categoryId: text("category_id").notNull().unique(),
+  functionId: uuid("function_id").notNull().references(() => nistAiFunctions.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  sortOrder: integer("sort_order"),
+  metadata: json("metadata"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const nistAiSubcategories = pgTable("nist_ai_subcategories", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  subcategoryId: text("subcategory_id").notNull().unique(),
+  categoryId: uuid("category_id").notNull().references(() => nistAiCategories.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  sortOrder: integer("sort_order"),
+
+  implementationExamples: text("implementation_examples").array(),
+  informativeReferences: text("informative_references").array(),
+
+  metadata: json("metadata"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Cross-framework mapping
+
+export const frameworkMappings = pgTable("framework_mappings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+
+  sourceFramework: text("source_framework").notNull(),
+  sourceId: text("source_id").notNull(),
+  sourceTableId: uuid("source_table_id").notNull(),
+
+  targetFramework: text("target_framework").notNull(),
+  targetId: text("target_id").notNull(),
+  targetTableId: uuid("target_table_id").notNull(),
+
+  mappingType: text("mapping_type").notNull(),
+  confidence: real("confidence").default(1.0),
+  description: text("description"),
+
+  metadata: json("metadata"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Operation coverage
+
+export const operationFrameworkCoverage = pgTable("operation_framework_coverage", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  operationId: uuid("operation_id").notNull().references(() => operations.id, { onDelete: "cascade" }),
+
+  frameworkType: text("framework_type").notNull(),
+  frameworkElementId: uuid("framework_element_id").notNull(),
+  frameworkElementExternalId: text("framework_element_external_id").notNull(),
+
+  coverageStatus: text("coverage_status").notNull(),
+  testResults: json("test_results"),
+  notes: text("notes"),
+
+  linkedVulnerabilityId: uuid("linked_vulnerability_id").references(() => vulnerabilities.id, { onDelete: "set null" }),
+  linkedTargetId: uuid("linked_target_id").references(() => targets.id, { onDelete: "set null" }),
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

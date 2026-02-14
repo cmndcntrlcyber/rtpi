@@ -970,4 +970,71 @@ router.delete('/:operationId/scans/:scanId', ensureRole("admin", "operator"), as
   }
 });
 
+/**
+ * POST /api/v1/surface-assessment/:operationId/scans/:scanId/cancel
+ * Cancel a running or pending scan
+ */
+router.post('/:operationId/scans/:scanId/cancel', async (req, res) => {
+  const { operationId, scanId } = req.params;
+
+  try {
+    // Look up the scan record
+    const [scan] = await db
+      .select({
+        id: axScanResults.id,
+        status: axScanResults.status,
+        toolName: axScanResults.toolName,
+      })
+      .from(axScanResults)
+      .where(
+        and(
+          eq(axScanResults.id, scanId),
+          eq(axScanResults.operationId, operationId)
+        )
+      )
+      .limit(1);
+
+    if (!scan) {
+      return res.status(404).json({ error: 'Scan not found' });
+    }
+
+    if (scan.status !== 'running' && scan.status !== 'pending') {
+      return res.status(400).json({
+        error: 'Cannot cancel scan',
+        message: `Scan is already ${scan.status}`,
+      });
+    }
+
+    // Kill the process inside the rtpi-tools container
+    if (scan.status === 'running') {
+      const { dockerExecutor } = await import('../../services/docker-executor');
+      try {
+        await dockerExecutor.exec(
+          'rtpi-tools',
+          ['pkill', '-f', scan.toolName],
+          { user: 'root' }
+        );
+      } catch {
+        // pkill returns exit code 1 if no matching process found — that's OK
+      }
+    }
+
+    // Update DB status to cancelled
+    await db
+      .update(axScanResults)
+      .set({
+        status: 'cancelled',
+        completedAt: new Date(),
+      })
+      .where(eq(axScanResults.id, scanId));
+
+    res.json({ message: `${scan.toolName} scan cancelled`, scanId });
+  } catch (error: any) {
+    res.status(500).json({
+      error: 'Failed to cancel scan',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
 export default router;

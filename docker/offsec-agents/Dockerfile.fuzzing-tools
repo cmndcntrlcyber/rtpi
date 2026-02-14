@@ -145,25 +145,12 @@ RUN git clone --depth 1 https://github.com/codingo/VHostScan.git && \
 # WORDLIST MANAGEMENT
 # =============================================================================
 
-# SecLists - Security wordlists
-RUN git clone --depth 1 https://github.com/danielmiessler/SecLists.git /opt/wordlists/SecLists && \
-    echo "SecLists: Security testing wordlists" > /opt/wordlists/SecLists/TOOL_INFO.txt
-
-# FuzzDB - Fuzzing database
-RUN git clone --depth 1 https://github.com/fuzzdb-project/fuzzdb.git /opt/wordlists/fuzzdb && \
-    echo "fuzzdb: Fuzzing database" > /opt/wordlists/fuzzdb/TOOL_INFO.txt
-
-# Assetnote Wordlists (smaller version)
-RUN mkdir -p /opt/wordlists/assetnote && \
-    cd /opt/wordlists/assetnote && \
-    curl -sL https://wordlists-cdn.assetnote.io/data/manual/best-dns-wordlist.txt -o best-dns-wordlist.txt && \
-    curl -sL https://wordlists-cdn.assetnote.io/data/manual/raft-large-directories.txt -o raft-large-directories.txt && \
-    curl -sL https://wordlists-cdn.assetnote.io/data/manual/raft-large-files.txt -o raft-large-files.txt && \
-    echo "assetnote: Assetnote wordlists" > TOOL_INFO.txt
-
-# OneListForAll - Combined wordlist
-RUN git clone --depth 1 https://github.com/six2dez/OneListForAll.git /opt/wordlists/OneListForAll && \
-    echo "OneListForAll: Combined directory wordlist" > /opt/wordlists/OneListForAll/TOOL_INFO.txt
+# Wordlists are synced from Cloudflare R2 at runtime via sync-wordlists.sh
+# Create placeholder directories for volume mount points
+RUN mkdir -p /opt/wordlists/SecLists \
+    /opt/wordlists/fuzzdb \
+    /opt/wordlists/assetnote \
+    /opt/wordlists/OneListForAll
 
 # =============================================================================
 # UTILITY TOOLS

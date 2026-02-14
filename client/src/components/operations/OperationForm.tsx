@@ -18,12 +18,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ListTodo, Trash2 } from "lucide-react";
+import { ListTodo, Trash2, Workflow } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import MarkdownEditor from "@/components/markdown/MarkdownEditor";
 import DynamicFieldList from "@/components/shared/DynamicFieldList";
 import QuestionResponseTable, { QuestionResponseRow } from "@/components/shared/QuestionResponseTable";
 import LinkedTargets from "./LinkedTargets";
 import CompletedWorkflows from "./CompletedWorkflows";
+import { useWorkflowTemplates } from "@/hooks/useWorkflowTemplates";
 
 interface OperationFormData {
   name: string;
@@ -107,8 +109,10 @@ export default function OperationForm({
     additionalInfo: "",
   });
   const [goals, setGoals] = useState<string[]>([""]);
+  const [selectedWorkflowIds, setSelectedWorkflowIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const { templates: workflowTemplates } = useWorkflowTemplates();
 
   // FIX BUG #1 CONTINUED: Helper to format ISO datetime to yyyy-MM-dd for date inputs
   const formatDateForInput = (isoDate: string | undefined): string => {
@@ -136,6 +140,7 @@ export default function OperationForm({
       additionalInfo: "",
     });
     setGoals([""]);
+    setSelectedWorkflowIds([]);
     setError("");
   };
 
@@ -170,6 +175,8 @@ export default function OperationForm({
       if (initialData.metadata?.goals) {
         setGoals(initialData.metadata.goals);
       }
+      // Load workflow template selections
+      setSelectedWorkflowIds(initialData.metadata?.workflowTemplateIds || []);
     }
   }, [initialData, open]);
 
@@ -189,7 +196,7 @@ export default function OperationForm({
       const cleanGoals = goals.filter((g) => g.trim() !== "");
 
       // Package metadata (includes all custom form fields)
-      const metadata = {
+      const metadata: Record<string, any> = {
         goals: cleanGoals,
         applicationOverview: formData.applicationOverview,
         businessImpact: formData.businessImpact,
@@ -197,6 +204,9 @@ export default function OperationForm({
         authentication: formData.authentication,
         additionalInfo: formData.additionalInfo,
       };
+      if (selectedWorkflowIds.length > 0) {
+        metadata.workflowTemplateIds = selectedWorkflowIds;
+      }
 
       // Build submitData explicitly (avoid spread operator conflicts)
       const submitData: any = {
@@ -370,6 +380,55 @@ export default function OperationForm({
                   rows={8}
                 />
               </div>
+
+              {/* Workflow Templates */}
+              {workflowTemplates.length > 0 && (
+                <div>
+                  <Label className="mb-2 block flex items-center gap-2">
+                    <Workflow className="h-4 w-4 text-indigo-600" />
+                    Assigned Workflows
+                  </Label>
+                  <div className="space-y-2 max-h-48 overflow-y-auto border border-border rounded-lg p-2">
+                    {workflowTemplates.map((wt) => (
+                      <div
+                        key={wt.id}
+                        className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-colors ${
+                          selectedWorkflowIds.includes(wt.id)
+                            ? 'bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800'
+                            : 'hover:bg-secondary'
+                        }`}
+                        onClick={() => {
+                          setSelectedWorkflowIds((prev) =>
+                            prev.includes(wt.id)
+                              ? prev.filter((id) => id !== wt.id)
+                              : [...prev, wt.id]
+                          );
+                        }}
+                      >
+                        <Checkbox
+                          checked={selectedWorkflowIds.includes(wt.id)}
+                          onCheckedChange={(checked) => {
+                            setSelectedWorkflowIds((prev) =>
+                              checked
+                                ? [...prev, wt.id]
+                                : prev.filter((id) => id !== wt.id)
+                            );
+                          }}
+                        />
+                        <div className="flex-1">
+                          <span className="text-sm font-medium text-foreground">{wt.name}</span>
+                          <span className="text-xs text-muted-foreground ml-2">
+                            ({wt.configuration?.agents?.length || 0} agents)
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Select workflow templates to assign to this operation
+                  </p>
+                </div>
+              )}
             </TabsContent>
 
             {/* Tab 3: Details */}

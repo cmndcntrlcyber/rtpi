@@ -221,12 +221,12 @@ export default function AttackFramework() {
       </div>
 
       {/* ATT&CK Tabs */}
-      <Tabs defaultValue="navigator" className="space-y-6">
+      <Tabs defaultValue="tactics" className="space-y-6">
         <TabsList>
+          <TabsTrigger value="tactics">Tactics</TabsTrigger>
           <TabsTrigger value="navigator">Navigator</TabsTrigger>
           <TabsTrigger value="flowBuilder">Flow Builder</TabsTrigger>
           <TabsTrigger value="techniques">Techniques</TabsTrigger>
-          <TabsTrigger value="tactics">Tactics</TabsTrigger>
           <TabsTrigger value="groups">Groups</TabsTrigger>
           <TabsTrigger value="software">Software</TabsTrigger>
           <TabsTrigger value="mitigations">Mitigations</TabsTrigger>
@@ -235,6 +235,10 @@ export default function AttackFramework() {
           <TabsTrigger value="workbench">Workbench</TabsTrigger>
           <TabsTrigger value="coverage">Coverage Matrix</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="tactics" className="space-y-4">
+          <TacticsGrid />
+        </TabsContent>
 
         <TabsContent value="navigator" className="space-y-4">
           <ATTCKNavigator operationId={selectedOperation === "all" ? undefined : selectedOperation} />
@@ -246,10 +250,6 @@ export default function AttackFramework() {
 
         <TabsContent value="techniques" className="space-y-4">
           <TechniquesTable />
-        </TabsContent>
-
-        <TabsContent value="tactics" className="space-y-4">
-          <TacticsGrid />
         </TabsContent>
 
         <TabsContent value="groups" className="space-y-4">

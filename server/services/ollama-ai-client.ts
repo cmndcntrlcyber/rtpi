@@ -1,8 +1,7 @@
 import { db } from "../db";
 import { aiEnrichmentLogs } from "../../shared/schema";
 import { ollamaManager } from "./ollama-manager";
-import Anthropic from "@anthropic-ai/sdk";
-import OpenAI from "openai";
+import { getOpenAIClient, getAnthropicClient } from "./ai-clients";
 
 /**
  * Ollama AI Client Service
@@ -51,6 +50,7 @@ export interface AICompletionResponse {
   cached?: boolean;
   success: boolean;
   error?: string;
+  truncated?: boolean;
 }
 
 export interface PromptTemplate {
@@ -302,40 +302,17 @@ export class OllamaAIClient {
   private readonly DEFAULT_MODEL = "llama3:8b";
   private readonly CODE_MODEL = "qwen2.5-coder:7b";
   private readonly cache = new ResponseCache();
-  private _anthropic: Anthropic | null = null;
-  private _openai: OpenAI | null = null;
-  private _anthropicInitialized = false;
-  private _openaiInitialized = false;
-
   constructor(host: string = process.env.OLLAMA_HOST || "http://localhost:11434") {
     this.OLLAMA_HOST = host.replace(/\/$/, "");
-    // Cloud providers are now lazily initialized on first access
   }
 
-  // Lazy getter for Anthropic client
-  private get anthropic(): Anthropic | null {
-    if (!this._anthropicInitialized) {
-      this._anthropicInitialized = true;
-      if (process.env.ANTHROPIC_API_KEY) {
-        this._anthropic = new Anthropic({
-          apiKey: process.env.ANTHROPIC_API_KEY,
-        });
-      }
-    }
-    return this._anthropic;
+  // Delegate to centralized AI client manager
+  private get anthropic() {
+    return getAnthropicClient();
   }
 
-  // Lazy getter for OpenAI client
-  private get openai(): OpenAI | null {
-    if (!this._openaiInitialized) {
-      this._openaiInitialized = true;
-      if (process.env.OPENAI_API_KEY) {
-        this._openai = new OpenAI({
-          apiKey: process.env.OPENAI_API_KEY,
-        });
-      }
-    }
-    return this._openai;
+  private get openai() {
+    return getOpenAIClient();
   }
 
   // ==========================================================================
@@ -387,15 +364,19 @@ export class OllamaAIClient {
       }
     }
 
-    // Determine provider and model
+    // Determine provider and model (model must match provider)
     const provider = options.provider || this.selectProvider();
-    const model = options.model || this.selectModel(options.enrichmentType);
+    const model = options.model || this.selectModelForProvider(provider, options.enrichmentType);
 
     let response: AICompletionResponse;
 
     try {
       // Try primary provider
       response = await this.callProvider(provider, model, messages, options);
+      // Trigger fallback if provider returned a non-throwing failure (e.g. Ollama 404)
+      if (!response.success && provider === "ollama") {
+        throw new Error(response.error || "Provider returned failure");
+      }
     } catch (error) {
       console.error(`[OllamaAIClient] ${provider} failed:`, error);
 
@@ -406,7 +387,9 @@ export class OllamaAIClient {
 
         if (fallbackProvider) {
           try {
-            response = await this.callProvider(fallbackProvider, model, messages, options);
+            // Pass empty model so the cloud provider uses its own default
+            // (Ollama model names like "llama3:8b" are invalid for cloud APIs)
+            response = await this.callProvider(fallbackProvider, "", messages, options);
           } catch (fallbackError) {
             console.error(`[OllamaAIClient] Fallback failed:`, fallbackError);
             throw fallbackError;
@@ -536,7 +519,7 @@ export class OllamaAIClient {
       const userMessages = messages.filter(m => m.role !== "system");
 
       const response = await this.anthropic.messages.create({
-        model: model || "claude-3-5-sonnet-20241022",
+        model: model || "claude-sonnet-4-5",
         max_tokens: options.maxTokens || 2048,
         temperature: options.temperature ?? 0.7,
         system: systemMessage,
@@ -545,6 +528,11 @@ export class OllamaAIClient {
 
       const durationMs = Date.now() - startTime;
       const content = response.content[0].type === "text" ? response.content[0].text : "";
+      const truncated = response.stop_reason === "max_tokens";
+
+      if (truncated) {
+        console.warn(`[AI] Anthropic response truncated due to max_tokens limit (${options.maxTokens || 2048})`);
+      }
 
       return {
         content,
@@ -555,13 +543,14 @@ export class OllamaAIClient {
         completionTokens: response.usage.output_tokens,
         durationMs,
         success: true,
+        truncated,
       };
     } catch (error) {
       const durationMs = Date.now() - startTime;
       return {
         content: "",
         provider: "anthropic",
-        model: model || "claude-3-5-sonnet-20241022",
+        model: model || "claude-sonnet-4-5",
         tokensUsed: 0,
         promptTokens: 0,
         completionTokens: 0,
@@ -588,7 +577,7 @@ export class OllamaAIClient {
 
     try {
       const response = await this.openai.chat.completions.create({
-        model: model || "gpt-4-turbo-preview",
+        model: model || "gpt-5.2-chat-latest",
         messages: messages as any,
         max_tokens: options.maxTokens || 2048,
         temperature: options.temperature ?? 0.7,
@@ -597,6 +586,11 @@ export class OllamaAIClient {
 
       const durationMs = Date.now() - startTime;
       const content = response.choices[0]?.message?.content || "";
+      const truncated = response.choices[0]?.finish_reason === "length";
+
+      if (truncated) {
+        console.warn(`[AI] OpenAI response truncated due to max_tokens limit (${options.maxTokens || 2048})`);
+      }
 
       return {
         content,
@@ -607,13 +601,14 @@ export class OllamaAIClient {
         completionTokens: response.usage?.completion_tokens || 0,
         durationMs,
         success: true,
+        truncated,
       };
     } catch (error) {
       const durationMs = Date.now() - startTime;
       return {
         content: "",
         provider: "openai",
-        model: model || "gpt-4-turbo-preview",
+        model: model || "gpt-5.2-chat-latest",
         tokensUsed: 0,
         promptTokens: 0,
         completionTokens: 0,
@@ -632,17 +627,31 @@ export class OllamaAIClient {
    * Automatically select the best available provider
    */
   private selectProvider(): AIProvider {
-    // Prefer local Ollama if available
+    // Prefer cloud providers when API keys are configured
+    if (this.anthropic) return "anthropic";
+    if (this.openai) return "openai";
+    // Fall back to local Ollama
     return "ollama";
-
-    // In production, could check Ollama health and fallback:
-    // const health = await ollamaManager.healthCheck();
-    // if (health.healthy) return "ollama";
-    // return this.anthropic ? "anthropic" : this.openai ? "openai" : "ollama";
   }
 
   /**
-   * Select appropriate model based on enrichment type
+   * Select appropriate model based on provider and enrichment type.
+   * Returns a model name valid for the given provider.
+   */
+  private selectModelForProvider(provider: AIProvider, enrichmentType?: string): string {
+    switch (provider) {
+      case "anthropic":
+        return enrichmentType === "code_analysis" ? "claude-sonnet-4-5" : "claude-sonnet-4-5";
+      case "openai":
+        return enrichmentType === "code_analysis" ? "gpt-5.2" : "gpt-5.2-chat-latest";
+      case "ollama":
+      default:
+        return enrichmentType === "code_analysis" ? this.CODE_MODEL : this.DEFAULT_MODEL;
+    }
+  }
+
+  /**
+   * Select appropriate model based on enrichment type (Ollama only, legacy)
    */
   private selectModel(enrichmentType?: string): string {
     // Use code model for code analysis

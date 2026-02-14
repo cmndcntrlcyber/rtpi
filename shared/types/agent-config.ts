@@ -12,8 +12,8 @@ export interface AgentAIConfig {
    * AI provider to use for this agent
    * - "ollama": Use local Ollama models
    * - "openai": Use OpenAI API
-   * - "anthropic": Use Anthropic API
-   * - "auto": Automatically select best available (default)
+   * - "anthropic": Use Anthropic API (default)
+   * - "auto": Automatically select best available
    */
   provider?: AIProvider;
 
@@ -21,8 +21,8 @@ export interface AgentAIConfig {
    * Specific model to use
    * Examples:
    * - Ollama: "llama3:8b", "qwen2.5-coder:7b"
-   * - OpenAI: "gpt-4-turbo-preview", "gpt-3.5-turbo"
-   * - Anthropic: "claude-3-5-sonnet-20241022", "claude-3-opus-20240229"
+   * - OpenAI: "gpt-5.2", "gpt-5.2-chat-latest", "gpt-4.1-mini"
+   * - Anthropic: "claude-opus-4-6", "claude-sonnet-4-5", "claude-haiku-4-5"
    */
   model?: string;
 
@@ -48,7 +48,7 @@ export interface AgentAIConfig {
   /**
    * Prefer local models over cloud
    * If true, will try Ollama first even if cloud keys are available
-   * Default: true
+   * Default: false
    */
   preferLocal?: boolean;
 }
@@ -97,11 +97,11 @@ export interface AgentConfig {
  * Default AI configuration
  */
 export const DEFAULT_AI_CONFIG: AgentAIConfig = {
-  provider: "auto",
+  provider: "anthropic",
   temperature: 0.7,
   maxTokens: 2048,
   useCache: true,
-  preferLocal: true,
+  preferLocal: false,
 };
 
 /**
@@ -111,26 +111,26 @@ export const MODEL_PRESETS = {
   // General purpose agents
   general: {
     ollama: "llama3:8b",
-    openai: "gpt-4-turbo-preview",
-    anthropic: "claude-3-5-sonnet-20241022",
+    openai: "gpt-5.2-chat-latest",
+    anthropic: "claude-sonnet-4-5",
   },
   // Code analysis agents
   code: {
     ollama: "qwen2.5-coder:7b",
-    openai: "gpt-4-turbo-preview",
-    anthropic: "claude-3-5-sonnet-20241022",
+    openai: "gpt-5.2",
+    anthropic: "claude-sonnet-4-5",
   },
   // Technical writing agents
   writing: {
     ollama: "llama3:8b",
-    openai: "gpt-4-turbo-preview",
-    anthropic: "claude-3-opus-20240229",
+    openai: "gpt-5.2-chat-latest",
+    anthropic: "claude-opus-4-6",
   },
   // Fast response agents
   fast: {
     ollama: "llama3:8b",
-    openai: "gpt-3.5-turbo",
-    anthropic: "claude-3-5-sonnet-20241022",
+    openai: "gpt-4.1-mini",
+    anthropic: "claude-haiku-4-5",
   },
 };
 

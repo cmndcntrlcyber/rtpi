@@ -150,6 +150,14 @@ export class BBOTExecutor {
       // Stop keepalive on success
       stopKeepalive();
 
+      // Emit scan completed event for pipeline cascade (target auto-creation, etc.)
+      try {
+        const { workflowEventHandlers } = await import('./workflow-event-handlers');
+        await workflowEventHandlers.handleScanCompleted(scanId, 'bbot', operationId, 'system');
+      } catch (eventError) {
+        console.error(`BBOT scan ${scanId}: Failed to emit scan_completed event:`, eventError);
+      }
+
       return {
         assetsCount,
         servicesCount,
@@ -159,6 +167,15 @@ export class BBOTExecutor {
     } catch (error) {
       // Stop keepalive on error
       stopKeepalive();
+
+      // Check if scan was externally cancelled (don't overwrite 'cancelled' status)
+      const [currentScan] = await db.select({ status: axScanResults.status })
+        .from(axScanResults).where(eq(axScanResults.id, scanId)).limit(1);
+      if (currentScan?.status === 'cancelled') {
+        console.log(`⛔ BBOT scan ${scanId} was cancelled, skipping error status update`);
+        return { assetsCount: 0, servicesCount: 0, vulnerabilitiesCount: 0, results: { domains: [], ips: [], urls: [], ports: [], technologies: [], vulnerabilities: [], findings: [], raw: [] } };
+      }
+
       // Prepare error raw output if available
       const errorOutput = error && typeof error === 'object' && 'stdout' in error && 'stderr' in error
         ? [
@@ -271,6 +288,14 @@ export class BBOTExecutor {
 
       // Stop keepalive on success
       stopKeepalive();
+
+      // Emit scan completed event for pipeline cascade (target auto-creation, etc.)
+      try {
+        const { workflowEventHandlers } = await import('./workflow-event-handlers');
+        await workflowEventHandlers.handleScanCompleted(scanId, 'bbot', operationId, userId);
+      } catch (eventError) {
+        console.error(`BBOT scan ${scanId}: Failed to emit scan_completed event:`, eventError);
+      }
 
       return {
         scanId,

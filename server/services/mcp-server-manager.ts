@@ -20,6 +20,48 @@ class MCPServerManager {
   constructor() {
     // Start periodic health checks
     this.startHealthMonitoring();
+    // Auto-recover errored servers on startup (delayed to let DB connect)
+    setTimeout(() => this.recoverErroredServers(), 5000);
+  }
+
+  /**
+   * Recover MCP servers stuck in 'error' state from previous runs.
+   * Resets restart counters and attempts to start them.
+   */
+  private async recoverErroredServers(): Promise<void> {
+    try {
+      const servers = await db.select().from(mcpServers);
+      const erroredServers = servers.filter(
+        (s) => (s.status === "error" || s.status === "running") && s.autoRestart
+      );
+
+      for (const server of erroredServers) {
+        // Reset stale 'running' status (process died during previous shutdown)
+        if (server.status === "running" && !this.processes.has(server.id)) {
+          console.log(`[MCPServerManager] Recovering stale server: ${server.name} (${server.id})`);
+        } else if (server.status === "error") {
+          console.log(`[MCPServerManager] Recovering errored server: ${server.name} (${server.id})`);
+        }
+
+        // Reset error state before attempting restart
+        await db
+          .update(mcpServers)
+          .set({ status: "stopped", restartCount: 0, lastError: null, pid: null })
+          .where(eq(mcpServers.id, server.id));
+
+        try {
+          await this.startServer(server.id);
+        } catch (err) {
+          console.error(`[MCPServerManager] Failed to recover server ${server.name}:`, err);
+        }
+      }
+
+      if (erroredServers.length > 0) {
+        console.log(`[MCPServerManager] Recovery complete: attempted ${erroredServers.length} server(s)`);
+      }
+    } catch (error) {
+      console.error("[MCPServerManager] Server recovery failed:", error);
+    }
   }
 
   async startServer(serverId: string): Promise<boolean> {
@@ -58,9 +100,11 @@ class MCPServerManager {
 
       // Spawn the process with shell: true to allow command parsing
       // This enables commands like "npx -y tavily-mcp@latest" to work correctly
+      // stdin must be 'pipe' (not 'ignore') because MCP servers use JSON-RPC over stdio
+      // and will exit immediately if stdin is closed/ignored
       const childProcess = spawn(server.command, args, {
         env: { ...process.env, ...env },
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: ['pipe', 'pipe', 'pipe'],
         shell: true,
       });
 
@@ -124,7 +168,7 @@ class MCPServerManager {
         console.error(`Server ${serverId} stderr:`, data.toString());
       });
 
-      // Update database status
+      // Update database status and reset restart counter (allows recovery from error state)
       await db
         .update(mcpServers)
         .set({
@@ -132,6 +176,7 @@ class MCPServerManager {
           pid: childProcess.pid,
           uptime: new Date(),
           lastError: null,
+          restartCount: 0,
         })
         .where(eq(mcpServers.id, serverId));
 

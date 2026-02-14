@@ -38,14 +38,14 @@ const RECOMMENDED_MODELS = {
     { value: "codellama:13b", label: "Code Llama 13B (Code)" },
   ],
   openai: [
-    { value: "gpt-4-turbo-preview", label: "GPT-4 Turbo (Best)" },
-    { value: "gpt-4", label: "GPT-4 (Balanced)" },
-    { value: "gpt-3.5-turbo", label: "GPT-3.5 Turbo (Fast)" },
+    { value: "gpt-5.2", label: "GPT-5.2 (Thinking)" },
+    { value: "gpt-5.2-chat-latest", label: "GPT-5.2 Instant (Standard)" },
+    { value: "gpt-4.1-mini", label: "GPT-4.1 Mini (Fast)" },
   ],
   anthropic: [
-    { value: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet (Best)" },
-    { value: "claude-3-opus-20240229", label: "Claude 3 Opus (Creative)" },
-    { value: "claude-3-sonnet-20240229", label: "Claude 3 Sonnet (Balanced)" },
+    { value: "claude-opus-4-6", label: "Claude Opus 4.6 (Thinking)" },
+    { value: "claude-sonnet-4-5", label: "Claude Sonnet 4.5 (Standard)" },
+    { value: "claude-haiku-4-5", label: "Claude Haiku 4.5 (Fast)" },
   ],
 };
 
@@ -77,10 +77,15 @@ export function AIProviderSettings() {
       if (response.ok) {
         const data = await response.json();
         if (data.settings) {
-          setConfig(data.settings);
+          // Map backend response fields to component config shape.
+          // The backend returns { openaiApiKey, anthropicApiKey, tavilyApiKey, defaultModel }
+          // but this component uses { provider, model, temperature, maxTokens, useCache, preferLocal }.
+          // Merge only the relevant field to preserve defaults.
+          setConfig((prev) => ({
+            ...prev,
+            model: data.settings.defaultModel || prev.model,
+          }));
         }
-      } else {
-        toast.error("Failed to load AI provider settings");
       }
     } catch (error: any) {
       toast.error(`Failed to load settings: ${error.message || "Network error"}`);
@@ -121,10 +126,11 @@ export function AIProviderSettings() {
   const saveSettings = async () => {
     try {
       setSaving(true);
+      // Send only the fields the backend understands
       const response = await fetch("/api/v1/settings/ai-provider", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(config),
+        body: JSON.stringify({ defaultModel: config.model }),
       });
 
       if (!response.ok) throw new Error("Failed to save settings");

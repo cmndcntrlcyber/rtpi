@@ -38,6 +38,7 @@ import {
   analyzeGitHubRepository,
   installToolFromGitHub,
 } from "../../services/github-tool-installer";
+import { multiContainerExecutor } from "../../services/agents/multi-container-executor";
 import type { ToolConfiguration } from "../../../shared/types/tool-config";
 
 const router = Router();
@@ -783,7 +784,7 @@ router.post("/refresh", ensureRole("admin", "operator"), async (req, res) => {
           description: tool.description,
           command: tool.command,
           dockerImage: tool.dockerImage,
-          status: tool.isInstalled ? "available" : "unavailable",
+          status: tool.isInstalled ? "available" : "stopped",
           version: tool.version || undefined,
           configPath: tool.installPath,
           metadata: {
@@ -801,7 +802,7 @@ router.post("/refresh", ensureRole("admin", "operator"), async (req, res) => {
         await db
           .update(securityTools)
           .set({
-            status: tool.isInstalled ? "available" : "unavailable",
+            status: tool.isInstalled ? "available" : "stopped",
             version: tool.version || existing[0].version,
             configPath: tool.installPath || existing[0].configPath,
             metadata: {
@@ -836,6 +837,139 @@ router.post("/refresh", ensureRole("admin", "operator"), async (req, res) => {
     await logAudit(user.id, "refresh_tools_registry", "/tools/refresh", null, false, req);
     res.status(500).json({
       error: "Failed to refresh tools registry",
+      details: error.message,
+    });
+  }
+});
+
+// ============================================================================
+// MULTI-CONTAINER TOOL EXECUTION ENDPOINTS
+// ============================================================================
+
+/**
+ * POST /api/v1/tools/execute - Execute any registered tool by name
+ * Automatically routes to the correct container based on tool registry
+ */
+router.post("/execute", ensureRole("admin", "operator"), async (req, res) => {
+  const user = req.user as any;
+  const { tool, args = [], timeout, containerOverride } = req.body;
+
+  if (!tool) {
+    return res.status(400).json({ error: "Tool name is required" });
+  }
+
+  try {
+    const result = await multiContainerExecutor.executeTool(tool, args, {
+      timeout,
+      containerOverride,
+    });
+
+    await logAudit(user.id, "execute_tool_multi", "/tools/execute", tool, true, req);
+
+    res.json({
+      success: result.exitCode === 0,
+      tool,
+      result: {
+        exitCode: result.exitCode,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        duration: result.duration,
+      },
+    });
+  } catch (error: any) {
+    await logAudit(user.id, "execute_tool_multi", "/tools/execute", tool, false, req);
+    res.status(500).json({
+      error: "Failed to execute tool",
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/v1/tools/containers/status - Get status of all tool containers
+ */
+router.get("/containers/status", async (_req, res) => {
+  try {
+    const statuses = await multiContainerExecutor.getContainerStatuses();
+
+    const containerList = Array.from(statuses.entries()).map(([name, running]) => ({
+      name,
+      running,
+      status: running ? "running" : "stopped",
+    }));
+
+    res.json({
+      containers: containerList,
+      totalRunning: containerList.filter(c => c.running).length,
+      totalContainers: containerList.length,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      error: "Failed to get container statuses",
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/v1/tools/by-container - Get tools grouped by container
+ */
+router.get("/by-container", async (_req, res) => {
+  try {
+    const toolsByContainer = await multiContainerExecutor.listToolsByContainer();
+
+    const result: Record<string, any[]> = {};
+    const entries = Array.from(toolsByContainer.entries());
+    for (const [container, tools] of entries) {
+      result[container] = tools.map(t => ({
+        toolId: t.toolId,
+        name: t.name,
+        category: t.category,
+        version: t.version,
+        binaryPath: t.binaryPath,
+      }));
+    }
+
+    res.json({
+      containers: result,
+      totalTools: entries.reduce((sum, [_, tools]) => sum + tools.length, 0),
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      error: "Failed to get tools by container",
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/v1/tools/lookup/:toolName - Lookup tool info and container location
+ */
+router.get("/lookup/:toolName", async (req, res) => {
+  const { toolName } = req.params;
+
+  try {
+    const toolInfo = await multiContainerExecutor.getToolInfo(toolName);
+
+    if (!toolInfo) {
+      return res.status(404).json({
+        error: `Tool '${toolName}' not found in registry`,
+        suggestion: "Run tool discovery to populate the registry",
+      });
+    }
+
+    const containerAvailable = await multiContainerExecutor.isContainerAvailable(
+      toolInfo.containerName
+    );
+
+    res.json({
+      tool: toolInfo,
+      containerAvailable,
+      ready: containerAvailable,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      error: "Failed to lookup tool",
       details: error.message,
     });
   }

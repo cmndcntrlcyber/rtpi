@@ -10,7 +10,7 @@
  * - Enable/disable schedules
  */
 
-// import { CronJob } from "cron"; // NOTE: Requires: npm install cron
+import { CronJob } from "cron";
 import { db } from "../db";
 import { scanSchedules, axScanResults } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
@@ -35,6 +35,12 @@ export interface ScanSchedule {
       targets: string[];
       templates?: string[];
       severity?: string[];
+      config?: Record<string, any>;
+    };
+    nmap?: {
+      targets: string[];
+      ports?: string;
+      timing?: string;
       config?: Record<string, any>;
     };
   };
@@ -104,8 +110,6 @@ export class ScanScheduler {
   async addSchedule(schedule: ScanSchedule): Promise<void> {
     console.log(`[ScanScheduler] Adding schedule: ${schedule.name} (${schedule.cronExpression})`);
 
-    // NOTE: Uncomment when cron library is installed
-    /*
     try {
       const job = new CronJob(
         schedule.cronExpression,
@@ -126,11 +130,6 @@ export class ScanScheduler {
     } catch (error) {
       console.error(`[ScanScheduler] Failed to add schedule ${schedule.name}:`, error);
     }
-    */
-
-    // Mock implementation - calculate next run
-    await this.updateNextRun(schedule.id);
-    console.log(`[ScanScheduler] Schedule added (mock): ${schedule.name}`);
   }
 
   /**
@@ -172,6 +171,10 @@ export class ScanScheduler {
         await this.executeNucleiScan(schedule);
       }
 
+      if (schedule.toolConfig.nmap) {
+        await this.executeNmapScan(schedule);
+      }
+
       // Update next run time
       await this.updateNextRun(schedule.id);
 
@@ -190,55 +193,70 @@ export class ScanScheduler {
   }
 
   /**
-   * Execute BBOT scan
+   * Execute BBOT scan via bbotExecutor
    */
   private async executeBBOTScan(schedule: ScanSchedule): Promise<void> {
     const config = schedule.toolConfig.bbot!;
 
-    // Create scan result record
-    const [scanResult] = await db
-      .insert(axScanResults)
-      .values({
-        operationId: schedule.operationId,
-        toolName: "bbot",
-        status: "pending",
-        targets: config.targets,
-        config: config.config || {},
-        createdBy: schedule.createdBy,
-      })
-      .returning();
-
-    // TODO: Trigger BBOT scan execution
-    // This would integrate with bbot-executor.ts
-    console.log(`[ScanScheduler] BBOT scan triggered: ${scanResult.id}`);
+    try {
+      const { bbotExecutor } = await import('./bbot-executor');
+      const { scanId } = await bbotExecutor.startScan(
+        config.targets,
+        { flags: config.flags, ...config.config },
+        schedule.operationId,
+        schedule.createdBy
+      );
+      console.log(`[ScanScheduler] BBOT scan started: ${scanId}`);
+    } catch (error) {
+      console.error('[ScanScheduler] Failed to start BBOT scan:', error);
+      throw error;
+    }
   }
 
   /**
-   * Execute Nuclei scan
+   * Execute Nuclei scan via nucleiExecutor
    */
   private async executeNucleiScan(schedule: ScanSchedule): Promise<void> {
     const config = schedule.toolConfig.nuclei!;
 
-    // Create scan result record
-    const [scanResult] = await db
-      .insert(axScanResults)
-      .values({
-        operationId: schedule.operationId,
-        toolName: "nuclei",
-        status: "pending",
-        targets: config.targets,
-        config: {
+    try {
+      const { nucleiExecutor } = await import('./nuclei-executor');
+      const { scanId } = await nucleiExecutor.startScan(
+        config.targets,
+        {
           templates: config.templates,
-          severity: config.severity,
+          severity: config.severity?.join(','),
           ...config.config,
         },
-        createdBy: schedule.createdBy,
-      })
-      .returning();
+        schedule.operationId,
+        schedule.createdBy
+      );
+      console.log(`[ScanScheduler] Nuclei scan started: ${scanId}`);
+    } catch (error) {
+      console.error('[ScanScheduler] Failed to start Nuclei scan:', error);
+      throw error;
+    }
+  }
 
-    // TODO: Trigger Nuclei scan execution
-    // This would integrate with nuclei-executor.ts
-    console.log(`[ScanScheduler] Nuclei scan triggered: ${scanResult.id}`);
+  /**
+   * Execute Nmap scan via nmapExecutor
+   */
+  private async executeNmapScan(schedule: ScanSchedule): Promise<void> {
+    const config = schedule.toolConfig.nmap!;
+
+    try {
+      const { nmapExecutor } = await import('./nmap-executor');
+      const { scanId } = await nmapExecutor.startScan(
+        config.targets,
+        { ports: config.ports, timing: config.timing, ...config.config },
+        schedule.operationId,
+        schedule.createdBy
+      );
+      console.log(`[ScanScheduler] Nmap scan started: ${scanId}`);
+    } catch (error) {
+      console.error('[ScanScheduler] Failed to start Nmap scan:', error);
+      throw error;
+    }
   }
 
   /**
@@ -251,24 +269,14 @@ export class ScanScheduler {
 
     if (!schedule) return;
 
-    // NOTE: Uncomment when cron library is installed
-    /*
     const job = this.jobs.get(scheduleId);
     if (job) {
-      const nextDate = job.nextDate().toDate();
+      const nextDate = job.nextDate().toJSDate();
       await db
         .update(scanSchedules)
         .set({ nextRun: nextDate })
         .where(eq(scanSchedules.id, scheduleId));
     }
-    */
-
-    // Mock implementation - calculate next run (every hour for demo)
-    const nextRun = new Date(Date.now() + 60 * 60 * 1000);
-    await db
-      .update(scanSchedules)
-      .set({ nextRun })
-      .where(eq(scanSchedules.id, scheduleId));
   }
 
   /**

@@ -67,7 +67,7 @@ export class DockerExecutor {
         Cmd: cmd,
         AttachStdout: true,
         AttachStderr: true,
-        WorkingDir: options.workDir || "/home/rtpi-tools",
+        WorkingDir: options.workDir || "/tmp",
         User: options.user || this.DEFAULT_USER,
         Env: options.env ? Object.entries(options.env).map(([k, v]) => `${k}=${v}`) : undefined,
       });
@@ -174,7 +174,7 @@ export class DockerExecutor {
       Cmd: cmd,
       AttachStdout: true,
       AttachStderr: true,
-      WorkingDir: options.workDir || "/home/rtpi-tools",
+      WorkingDir: options.workDir || "/tmp",
       User: options.user || this.DEFAULT_USER,
       Env: options.env ? Object.entries(options.env).map(([k, v]) => `${k}=${v}`) : undefined,
     });

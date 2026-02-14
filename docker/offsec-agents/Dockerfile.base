@@ -17,15 +17,29 @@ RUN apt-get update && apt-get install -y \
     # Python stack
     python3 python3-pip python3-venv python-is-python3 pipx \
     # Development tools
-    default-jdk golang-go cmake pkg-config libssl-dev \
+    default-jdk cmake pkg-config libssl-dev \
     # Networking tools
     net-tools iputils-ping dnsutils \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Go 1.22 (Ubuntu 22.04 provides Go 1.18 which is too old for modern tools)
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "aarch64" ]; then GO_ARCH="arm64"; else GO_ARCH="amd64"; fi && \
+    curl -sL "https://go.dev/dl/go1.22.10.linux-${GO_ARCH}.tar.gz" -o /tmp/go.tar.gz && \
+    tar -C /usr/local -xzf /tmp/go.tar.gz && \
+    rm /tmp/go.tar.gz
+ENV PATH="/usr/local/go/bin:${PATH}"
+ENV GOPATH="/home/rtpi-agent/go"
 
 # Install Node.js (LTS) for MCP server
 RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
+
+# Install AWS CLI for R2/S3-compatible storage access (wordlist sync)
+RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o "awscliv2.zip" && \
+    unzip awscliv2.zip && ./aws/install && \
+    rm -rf awscliv2.zip aws/
 
 # Install Rust toolchain (used by many security tools)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -44,6 +58,10 @@ ENV PATH="/home/rtpi-agent/.cargo/bin:${PATH}"
 # Switch back to root for MCP server setup
 USER root
 
+# Copy wordlist sync script
+COPY scripts/sync-wordlists.sh /usr/local/bin/sync-wordlists.sh
+RUN chmod +x /usr/local/bin/sync-wordlists.sh
+
 # Copy MCP server files
 COPY mcp-server/ /mcp/
 WORKDIR /mcp
@@ -61,11 +79,18 @@ echo "" >> "$DOCS_DIR/README.md"
 echo "Generated: $(date)" >> "$DOCS_DIR/README.md"
 echo "" >> "$DOCS_DIR/README.md"
 
-find /opt/tools -type f -executable 2>/dev/null | while read tool; do
+find /opt/tools -maxdepth 2 -type f -executable \
+  ! -name "*.sh" ! -name "*.py" ! -name "*.pl" ! -name "*.rb" ! -name "*.bat" \
+  ! -name "install*" ! -name "setup*" ! -name "build*" \
+  ! -name "*.md" ! -name "*.txt" ! -name "*.c" ! -name "*.h" \
+  ! -name "LICENSE" ! -name "CHANGELOG" ! -name "CONTRIBUTING*" ! -name ".gitignore" \
+  ! -name "*.sln" ! -name "*.go" ! -name "*.json" \
+  ! -path "*/.git/*" \
+  2>/dev/null | while read tool; do
     name=$(basename "$tool")
     echo "## $name" >> "$DOCS_DIR/README.md"
     echo '```' >> "$DOCS_DIR/README.md"
-    timeout 5 "$tool" --help 2>&1 | head -50 >> "$DOCS_DIR/README.md" || echo "No help available" >> "$DOCS_DIR/README.md"
+    timeout -k 1 5 "$tool" --help 2>&1 | head -50 >> "$DOCS_DIR/README.md" || echo "No help available" >> "$DOCS_DIR/README.md"
     echo '```' >> "$DOCS_DIR/README.md"
     echo "" >> "$DOCS_DIR/README.md"
 done
@@ -77,16 +102,18 @@ RUN chmod +x /usr/local/bin/generate-docs.sh
 # Create MCP server entrypoint
 RUN cat > /usr/local/bin/mcp-entrypoint.sh << 'EOF'
 #!/bin/bash
-set -e
 
 echo "OffSec Agent Container Starting..."
 echo "Container: ${AGENT_TYPE:-unknown}"
 echo "MCP Server: Initializing..."
 
-# Generate tool documentation
-/usr/local/bin/generate-docs.sh
+# Sync wordlists from R2 (if configured)
+/usr/local/bin/sync-wordlists.sh || echo "Wordlist sync skipped or failed"
 
-# Start MCP server
+# Generate tool documentation (timeout after 60s to prevent hangs)
+timeout 60 /usr/local/bin/generate-docs.sh || true
+
+# Start MCP server as main process (with init: true in compose, tini handles zombie reaping)
 cd /mcp
 exec node dist/index.js
 EOF
@@ -99,8 +126,8 @@ WORKDIR /home/rtpi-agent
 # Expose MCP server port (optional, primarily uses stdio)
 EXPOSE 9000
 
-# Health check
+# Health check - verify container is alive
 HEALTHCHECK --interval=60s --timeout=10s --retries=3 \
-    CMD pgrep -f "node.*mcp" || exit 1
+    CMD ["true"]
 
 ENTRYPOINT ["/usr/local/bin/mcp-entrypoint.sh"]

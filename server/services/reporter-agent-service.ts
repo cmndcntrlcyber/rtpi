@@ -4,9 +4,11 @@ import {
   reporterQuestions,
   reporterTasks,
   agents,
+  agentActivityReports,
 } from "@shared/schema";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { EventEmitter } from "events";
+import { memoryService } from "./memory-service";
 
 interface ReporterConfig {
   pollIntervalMs?: number;
@@ -208,7 +210,7 @@ class ReporterAgentService extends EventEmitter {
         })
         .where(eq(reporters.id, reporterId));
 
-      // If there are significant changes, emit event
+      // If there are significant changes, emit event and store in memory
       if (changes.length > 0) {
         this.emit("data_changed", {
           reporterId,
@@ -216,6 +218,18 @@ class ReporterAgentService extends EventEmitter {
           newData,
           previousData,
         });
+
+        // Store significant changes in memory
+        if (reporter.operationId && changes.length >= 2) {
+          this.storeReportInMemory(reporter.operationId, {
+            reporterId,
+            pageId: reporter.pageId,
+            changes,
+            timestamp: new Date().toISOString(),
+          }).catch((err) =>
+            console.error("[ReporterService] Failed to store poll in memory:", err),
+          );
+        }
       }
 
       return {
@@ -457,6 +471,81 @@ class ReporterAgentService extends EventEmitter {
     });
 
     return data;
+  }
+
+  // ==========================================
+  // MEMORY INTEGRATION
+  // ==========================================
+
+  /**
+   * Store a report in the memory system
+   */
+  async storeReportInMemory(
+    operationId: string,
+    reportData: Record<string, any>,
+  ): Promise<string | null> {
+    try {
+      const context = await memoryService.createContext({
+        contextType: "operation",
+        contextId: operationId,
+        contextName: `Operation ${operationId}`,
+      });
+
+      const memory = await memoryService.addMemory({
+        contextId: context.id,
+        memoryText: `Reporter ${reportData.pageId || "unknown"}: ${JSON.stringify(reportData.changes || reportData).substring(0, 500)}`,
+        memoryType: "event",
+        tags: ["reporter", reportData.pageId || "unknown"],
+        metadata: {
+          reporterId: reportData.reporterId,
+          timestamp: reportData.timestamp,
+        },
+      });
+
+      return memory.id;
+    } catch (error) {
+      console.error("[ReporterService] storeReportInMemory failed:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Query relevant memories for a reporter's page
+   */
+  async queryRelevantMemories(
+    pageId: string,
+    operationId: string,
+    limit: number = 10,
+  ): Promise<any[]> {
+    try {
+      return await memoryService.searchMemories({
+        query: pageId,
+        contextId: operationId,
+        limit,
+      });
+    } catch (error) {
+      console.error("[ReporterService] queryRelevantMemories failed:", error);
+      return [];
+    }
+  }
+
+  /**
+   * Create a 'supersedes' relationship between a new report memory and the previous one
+   */
+  async createMemoryRelationships(
+    newMemoryId: string,
+    previousMemoryId: string,
+  ): Promise<void> {
+    try {
+      await memoryService.addRelationship({
+        sourceMemoryId: newMemoryId,
+        targetMemoryId: previousMemoryId,
+        relationshipType: "supersedes",
+        strength: 1.0,
+      });
+    } catch (error) {
+      console.error("[ReporterService] createMemoryRelationships failed:", error);
+    }
   }
 
   /**

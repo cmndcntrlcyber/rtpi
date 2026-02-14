@@ -2,6 +2,9 @@ import { Router } from "express";
 import { ensureAuthenticated, ensureRole } from "../../auth/middleware";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
+import fs from "fs";
+import path from "path";
+import { invalidateAIClients } from "../../services/ai-clients";
 
 const router = Router();
 
@@ -9,20 +12,89 @@ const router = Router();
 router.use(ensureAuthenticated);
 router.use(ensureRole("admin"));
 
-// In-memory storage for LLM settings (can be moved to database later)
+// In-memory storage for LLM settings (synced with process.env and .env file)
 const llmSettings = {
   openaiApiKey: process.env.OPENAI_API_KEY || "",
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || "",
   tavilyApiKey: process.env.TAVILY_API_KEY || "",
-  defaultModel: process.env.DEFAULT_MODEL || "claude-sonnet-4-5-20250929",
+  defaultModel: process.env.DEFAULT_MODEL || "claude-sonnet-4-5",
 };
+
+/**
+ * Persist API key changes to both process.env and the .env file on disk.
+ * This ensures keys survive server restarts and are immediately available
+ * to all services via process.env.
+ */
+function persistEnvKeys(updates: Record<string, string>): void {
+  // 1. Update process.env in the running process
+  for (const [key, value] of Object.entries(updates)) {
+    process.env[key] = value;
+  }
+
+  // 2. Write to .env file on disk
+  const envPath = path.resolve(process.cwd(), ".env");
+  let envContent = "";
+  try {
+    envContent = fs.readFileSync(envPath, "utf-8");
+  } catch {
+    // .env doesn't exist yet — will create it
+  }
+
+  for (const [key, value] of Object.entries(updates)) {
+    const regex = new RegExp(`^${key}=.*$`, "m");
+    if (regex.test(envContent)) {
+      envContent = envContent.replace(regex, `${key}=${value}`);
+    } else {
+      envContent += `\n${key}=${value}`;
+    }
+  }
+
+  fs.writeFileSync(envPath, envContent, "utf-8");
+
+  // 3. Invalidate cached AI clients so they pick up the new keys
+  invalidateAIClients();
+}
+
+/**
+ * Apply key updates: save to llmSettings, process.env, and .env file.
+ * Only updates keys that are provided and not masked placeholders from the GET response.
+ */
+function applyKeyUpdates(body: {
+  openaiApiKey?: string;
+  anthropicApiKey?: string;
+  tavilyApiKey?: string;
+  defaultModel?: string;
+}): void {
+  const envUpdates: Record<string, string> = {};
+
+  if (body.openaiApiKey && !body.openaiApiKey.startsWith("sk-...")) {
+    llmSettings.openaiApiKey = body.openaiApiKey;
+    envUpdates.OPENAI_API_KEY = body.openaiApiKey;
+  }
+  if (body.anthropicApiKey && !body.anthropicApiKey.startsWith("sk-ant-...")) {
+    llmSettings.anthropicApiKey = body.anthropicApiKey;
+    envUpdates.ANTHROPIC_API_KEY = body.anthropicApiKey;
+  }
+  if (body.tavilyApiKey && !body.tavilyApiKey.startsWith("tvly-...")) {
+    llmSettings.tavilyApiKey = body.tavilyApiKey;
+    envUpdates.TAVILY_API_KEY = body.tavilyApiKey;
+  }
+  if (body.defaultModel) {
+    llmSettings.defaultModel = body.defaultModel;
+    envUpdates.DEFAULT_MODEL = body.defaultModel;
+  }
+
+  if (Object.keys(envUpdates).length > 0) {
+    persistEnvKeys(envUpdates);
+  }
+}
 
 // GET /api/v1/settings/llm - Get LLM settings
 router.get("/llm", async (_req, res) => {
   try {
     // Mask API keys for security (show only last 4 characters)
     const maskedSettings = {
-      openaiApiKey: llmSettings.openaiApiKey 
+      openaiApiKey: llmSettings.openaiApiKey
         ? `sk-...${llmSettings.openaiApiKey.slice(-4)}`
         : "",
       anthropicApiKey: llmSettings.anthropicApiKey
@@ -36,7 +108,6 @@ router.get("/llm", async (_req, res) => {
 
     res.json({ settings: maskedSettings });
   } catch (error: any) {
-    // Error logged for debugging
     res.status(500).json({ error: "Failed to get settings", details: error?.message || "Internal server error" });
   }
 });
@@ -44,28 +115,12 @@ router.get("/llm", async (_req, res) => {
 // POST /api/v1/settings/llm - Save LLM settings
 router.post("/llm", async (req, res) => {
   try {
-    const { openaiApiKey, anthropicApiKey, tavilyApiKey, defaultModel } = req.body;
-
-    // Only update keys if they're not masked (don't overwrite with "sk-...XXXX")
-    if (openaiApiKey && !openaiApiKey.startsWith("sk-...")) {
-      llmSettings.openaiApiKey = openaiApiKey;
-    }
-    if (anthropicApiKey && !anthropicApiKey.startsWith("sk-ant-...")) {
-      llmSettings.anthropicApiKey = anthropicApiKey;
-    }
-    if (tavilyApiKey && !tavilyApiKey.startsWith("tvly-...")) {
-      llmSettings.tavilyApiKey = tavilyApiKey;
-    }
-    if (defaultModel) {
-      llmSettings.defaultModel = defaultModel;
-    }
-
-    res.json({ 
-      success: true, 
-      message: "LLM settings saved successfully" 
+    applyKeyUpdates(req.body);
+    res.json({
+      success: true,
+      message: "LLM settings saved successfully"
     });
   } catch (error: any) {
-    // Error logged for debugging
     res.status(500).json({ error: "Failed to save settings", details: error?.message || "Internal server error" });
   }
 });
@@ -73,7 +128,6 @@ router.post("/llm", async (req, res) => {
 // GET /api/v1/settings/ai-provider - Get AI provider settings (alias for /llm)
 router.get("/ai-provider", async (_req, res) => {
   try {
-    // Mask API keys for security (show only last 4 characters)
     const maskedSettings = {
       openaiApiKey: llmSettings.openaiApiKey
         ? `sk-...${llmSettings.openaiApiKey.slice(-4)}`
@@ -96,22 +150,7 @@ router.get("/ai-provider", async (_req, res) => {
 // PUT /api/v1/settings/ai-provider - Update AI provider settings (alias for POST /llm)
 router.put("/ai-provider", async (req, res) => {
   try {
-    const { openaiApiKey, anthropicApiKey, tavilyApiKey, defaultModel } = req.body;
-
-    // Only update keys if they're not masked (don't overwrite with "sk-...XXXX")
-    if (openaiApiKey && !openaiApiKey.startsWith("sk-...")) {
-      llmSettings.openaiApiKey = openaiApiKey;
-    }
-    if (anthropicApiKey && !anthropicApiKey.startsWith("sk-ant-...")) {
-      llmSettings.anthropicApiKey = anthropicApiKey;
-    }
-    if (tavilyApiKey && !tavilyApiKey.startsWith("tvly-...")) {
-      llmSettings.tavilyApiKey = tavilyApiKey;
-    }
-    if (defaultModel) {
-      llmSettings.defaultModel = defaultModel;
-    }
-
+    applyKeyUpdates(req.body);
     res.json({
       success: true,
       message: "AI provider settings saved successfully"
@@ -127,7 +166,6 @@ router.get("/ai-provider/status/:provider", async (req, res) => {
 
   try {
     if (provider === "openai") {
-      // Test OpenAI API connection
       if (!llmSettings.openaiApiKey) {
         return res.json({
           connected: false,
@@ -138,7 +176,6 @@ router.get("/ai-provider/status/:provider", async (req, res) => {
 
       try {
         const openai = new OpenAI({ apiKey: llmSettings.openaiApiKey });
-        // Simple API call to test connection
         await openai.models.list();
 
         res.json({
@@ -155,7 +192,6 @@ router.get("/ai-provider/status/:provider", async (req, res) => {
         });
       }
     } else if (provider === "anthropic") {
-      // Test Anthropic API connection
       if (!llmSettings.anthropicApiKey) {
         return res.json({
           connected: false,
@@ -166,8 +202,6 @@ router.get("/ai-provider/status/:provider", async (req, res) => {
 
       try {
         const anthropic = new Anthropic({ apiKey: llmSettings.anthropicApiKey });
-        // Simple API call to test connection - just check if we can create a client
-        // Note: Anthropic doesn't have a models.list() endpoint, so we check if the key format is valid
         if (llmSettings.anthropicApiKey.startsWith("sk-ant-")) {
           res.json({
             connected: true,

@@ -28,6 +28,15 @@ export interface DiscoveredTool {
   category: string;
   parameters: ToolParameter[];
   helpText: string;
+  containerName: string;
+  containerUser: string;
+}
+
+export interface ToolContainer {
+  name: string;
+  user: string;
+  category: string;
+  enabledToolCategories: string[];
 }
 
 export interface ToolParameter {
@@ -62,6 +71,58 @@ const DEFAULT_CONFIG: ToolConnectorConfig = {
   enabledCategories: ['reconnaissance', 'vulnerability', 'exploitation', 'web', 'network'],
 };
 
+// Multi-container support: All tool containers to poll
+const TOOL_CONTAINERS: ToolContainer[] = [
+  {
+    name: 'rtpi-tools',
+    user: 'rtpi-tools',
+    category: 'general',
+    enabledToolCategories: ['reconnaissance', 'vulnerability', 'exploitation', 'web', 'network'],
+  },
+  {
+    name: 'rtpi-maldev-agent',
+    user: 'rtpi-agent',
+    category: 'maldev',
+    enabledToolCategories: ['reverse-engineering', 'binary-analysis', 'exploitation'],
+  },
+  {
+    name: 'rtpi-azure-ad-agent',
+    user: 'rtpi-agent',
+    category: 'azure-ad',
+    enabledToolCategories: ['azure', 'active-directory', 'enumeration'],
+  },
+  {
+    name: 'rtpi-burp-agent',
+    user: 'rtpi-agent',
+    category: 'web',
+    enabledToolCategories: ['web', 'proxy', 'vulnerability', 'web-recon'],
+  },
+  {
+    name: 'rtpi-empire-agent',
+    user: 'rtpi-agent',
+    category: 'c2',
+    enabledToolCategories: ['c2', 'exploitation', 'post-exploitation'],
+  },
+  {
+    name: 'rtpi-fuzzing-agent',
+    user: 'rtpi-agent',
+    category: 'fuzzing',
+    enabledToolCategories: ['fuzzing', 'web', 'discovery'],
+  },
+  {
+    name: 'rtpi-framework-agent',
+    user: 'rtpi-agent',
+    category: 'framework',
+    enabledToolCategories: ['reconnaissance', 'fingerprinting', 'cms', 'security-scanning'],
+  },
+  {
+    name: 'rtpi-research-agent',
+    user: 'rtpi-agent',
+    category: 'research',
+    enabledToolCategories: ['reconnaissance', 'vulnerability', 'exploitation', 'web', 'network'],
+  },
+];
+
 // ============================================================================
 // Tool Connector Agent
 // ============================================================================
@@ -89,7 +150,6 @@ export class ToolConnectorAgent extends EventEmitter {
       'which nuclei && nuclei -version 2>&1 | head -1',
       'which nikto && nikto -Version 2>&1 | head -2',
       'which wpscan && wpscan --version 2>&1 | head -1',
-      'which sqlmap && sqlmap --version 2>&1 | head -1',
     ],
     web: [
       'which ffuf && ffuf -V 2>&1 | head -1',
@@ -99,12 +159,95 @@ export class ToolConnectorAgent extends EventEmitter {
     ],
     network: [
       'which masscan && masscan --version 2>&1 | head -2',
-      'which rustscan && rustscan --version 2>&1 | head -1',
       'which testssl.sh && testssl.sh --version 2>&1 | head -1',
     ],
     exploitation: [
       'which msfconsole && msfconsole --version 2>&1 | head -1',
-      'which searchsploit && searchsploit --version 2>&1 | head -1',
+      'which searchsploit && searchsploit -h 2>&1 | head -3',
+    ],
+    // OffSec agent container-specific categories
+    fuzzing: [
+      'which ffuf && ffuf -V 2>&1 | head -1',
+      'which gobuster && gobuster version 2>&1 | head -1',
+      'which feroxbuster && feroxbuster --version 2>&1 | head -1',
+      'which dirsearch && dirsearch --version 2>&1 | head -1',
+      'which wfuzz && wfuzz --version 2>&1 | head -1',
+      'which x8 && x8 --version 2>&1 | head -1',
+    ],
+    'reverse-engineering': [
+      'which radare2 && radare2 -v 2>&1 | head -1',
+      'which r2 && r2 -v 2>&1 | head -1',
+      'which objdump && objdump --version 2>&1 | head -1',
+      'which strings && strings --version 2>&1 | head -1',
+      'which nm && nm --version 2>&1 | head -1',
+    ],
+    'binary-analysis': [
+      'which checksec && checksec --version 2>&1 | head -1',
+      'which file && file --version 2>&1 | head -1',
+      'which readelf && readelf --version 2>&1 | head -1',
+    ],
+    fingerprinting: [
+      'which whatweb && whatweb --version 2>&1 | head -1',
+      'which wafw00f && wafw00f --version 2>&1 | head -1',
+    ],
+    cms: [
+      'which wpscan && wpscan --version 2>&1 | head -1',
+      'which droopescan && droopescan version 2>&1 | head -1',
+      'which joomscan && echo joomscan installed',
+      'which cmsmap && echo cmsmap installed',
+    ],
+    azure: [
+      'which az && az --version 2>&1 | head -3',
+      'which roadrecon && roadrecon -h 2>&1 | head -1',
+    ],
+    'active-directory': [
+      'which bloodhound-python && bloodhound-python -h 2>&1 | head -1',
+      'which ldapsearch && ldapsearch -VV 2>&1 | head -1',
+      'which kerbrute && kerbrute version 2>&1 | head -1',
+    ],
+    enumeration: [
+      'which enum4linux && enum4linux -h 2>&1 | head -1',
+      'which smbclient && smbclient --version 2>&1 | head -1',
+      'which rpcclient && rpcclient --version 2>&1 | head -1',
+    ],
+    c2: [
+      'which ps-empire && ps-empire --version 2>&1 | head -1',
+      'which freeze && freeze --version 2>&1 | head -1',
+      'which scarecrow && scarecrow --version 2>&1 | head -1',
+    ],
+    'post-exploitation': [
+      'which evil-winrm && evil-winrm --version 2>&1 | head -1',
+      'which impacket-secretsdump && impacket-secretsdump -h 2>&1 | head -1',
+      'which impacket-psexec && impacket-psexec -h 2>&1 | head -1',
+      'which impacket-smbexec && impacket-smbexec -h 2>&1 | head -1',
+      'which nxc && nxc --version 2>&1 | head -1',
+      'which crackmapexec && crackmapexec --version 2>&1 | head -1',
+    ],
+    proxy: [
+      'which mitmproxy && mitmproxy --version 2>&1 | head -1',
+      'which proxychains && proxychains --version 2>&1 | head -1',
+    ],
+    'web-recon': [
+      'which gau && gau --version 2>&1 | head -1',
+      'which gospider && gospider --version 2>&1 | head -1',
+      'which hakrawler && hakrawler --version 2>&1 | head -1',
+      'which waybackurls && echo waybackurls installed',
+      'which unfurl && unfurl --version 2>&1 | head -1',
+      'which qsreplace && echo qsreplace installed',
+      'which x8 && x8 --version 2>&1 | head -1',
+      'which dalfox && dalfox version 2>&1 | head -1',
+    ],
+    'security-scanning': [
+      'which grype && grype version 2>&1 | head -1',
+      'which trivy && trivy version 2>&1 | head -1',
+      'which testssl.sh && testssl.sh --version 2>&1 | head -1',
+      'which graphw00f && echo graphw00f installed',
+      'which shcheck && echo shcheck installed',
+      'which securityheaders && echo securityheaders installed',
+    ],
+    discovery: [
+      'which masscan && masscan --version 2>&1 | head -2',
+      'which zmap && zmap --version 2>&1 | head -1',
     ],
   };
 
@@ -240,28 +383,52 @@ export class ToolConnectorAgent extends EventEmitter {
   }
 
   /**
-   * Execute a single poll cycle
+   * Check if a container is running
+   */
+  private async isContainerRunning(containerName: string): Promise<boolean> {
+    try {
+      const status = await this.dockerExecutor.getContainerStatus(containerName);
+      return status.running;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Execute a single poll cycle - polls all configured containers
    */
   async poll(): Promise<DiscoveredTool[]> {
     console.log('Tool Connector Agent: Starting poll...');
     this.lastPollTime = new Date();
 
     try {
-      // Discover all tools
       const discoveredTools: DiscoveredTool[] = [];
 
-      for (const category of this.config.enabledCategories) {
-        const commands = this.TOOL_DISCOVERY_COMMANDS[category] || [];
+      // Poll all tool containers
+      for (const container of TOOL_CONTAINERS) {
+        // Check if container is running
+        const isRunning = await this.isContainerRunning(container.name);
+        if (!isRunning) {
+          console.log(`Tool Connector Agent: Container ${container.name} not running, skipping`);
+          continue;
+        }
 
-        for (const cmd of commands) {
-          try {
-            const tool = await this.discoverTool(cmd, category);
-            if (tool) {
-              discoveredTools.push(tool);
+        console.log(`Tool Connector Agent: Polling container ${container.name}...`);
+
+        // Discover tools in this container
+        for (const category of container.enabledToolCategories) {
+          const commands = this.TOOL_DISCOVERY_COMMANDS[category] || [];
+
+          for (const cmd of commands) {
+            try {
+              const tool = await this.discoverToolInContainer(cmd, category, container);
+              if (tool) {
+                discoveredTools.push(tool);
+              }
+            } catch (error) {
+              // Tool not found or error - skip silently
+              console.debug(`Tool discovery skipped: ${cmd.split('&&')[0].trim()} in ${container.name}`);
             }
-          } catch (error) {
-            // Tool not found or error - skip silently
-            console.debug(`Tool discovery skipped: ${cmd.split('&&')[0].trim()}`);
           }
         }
       }
@@ -270,7 +437,7 @@ export class ToolConnectorAgent extends EventEmitter {
       await this.syncRegistry(discoveredTools);
 
       this.emit('poll_complete', discoveredTools);
-      console.log(`Tool Connector Agent: Discovered ${discoveredTools.length} tools`);
+      console.log(`Tool Connector Agent: Discovered ${discoveredTools.length} tools across ${TOOL_CONTAINERS.length} containers`);
 
       // Update agent stats
       if (this.agentId) {
@@ -294,15 +461,23 @@ export class ToolConnectorAgent extends EventEmitter {
   }
 
   /**
-   * Discover a single tool
+   * Discover a single tool in a specific container
    */
-  private async discoverTool(versionCmd: string, category: string): Promise<DiscoveredTool | null> {
+  private async discoverToolInContainer(
+    versionCmd: string,
+    category: string,
+    container: ToolContainer
+  ): Promise<DiscoveredTool | null> {
     // Execute version command in container
-    const result = await this.dockerExecutor.exec(versionCmd, {
-      timeout: 15000,
-    });
+    const result = await this.dockerExecutor.exec(
+      container.name,
+      ['bash', '-c', versionCmd],
+      { timeout: 15000, user: container.user }
+    );
 
-    if (result.exitCode !== 0 || !result.stdout) {
+    // Accept output from either stdout or stderr (some tools output version to stderr)
+    const output = result.stdout || result.stderr || '';
+    if (!output.trim()) {
       return null;
     }
 
@@ -311,13 +486,15 @@ export class ToolConnectorAgent extends EventEmitter {
     if (!toolName) return null;
 
     // Get tool path
-    const whichResult = await this.dockerExecutor.exec(`which ${toolName}`, {
-      timeout: 5000,
-    });
+    const whichResult = await this.dockerExecutor.exec(
+      container.name,
+      ['which', toolName],
+      { timeout: 5000, user: container.user }
+    );
     const toolPath = whichResult.stdout?.trim() || `/usr/bin/${toolName}`;
 
     // Parse version from output
-    const version = this.parseVersion(result.stdout);
+    const version = this.parseVersion(output);
 
     // Get help text and parse parameters
     let helpText = '';
@@ -325,8 +502,9 @@ export class ToolConnectorAgent extends EventEmitter {
 
     try {
       const helpResult = await this.dockerExecutor.exec(
-        `${toolName} --help 2>&1 || ${toolName} -h 2>&1 || true`,
-        { timeout: 15000 }
+        container.name,
+        ['bash', '-c', `${toolName} --help 2>&1 || ${toolName} -h 2>&1 || true`],
+        { timeout: 15000, user: container.user }
       );
       helpText = helpResult.stdout?.substring(0, 10000) || '';
       parameters = this.parseParameters(toolName, helpText);
@@ -344,7 +522,22 @@ export class ToolConnectorAgent extends EventEmitter {
       category,
       parameters,
       helpText: helpText.substring(0, 5000), // Limit stored help text
+      containerName: container.name,
+      containerUser: container.user,
     };
+  }
+
+  /**
+   * Legacy method for backwards compatibility - discovers tool in default container
+   */
+  private async discoverTool(versionCmd: string, category: string): Promise<DiscoveredTool | null> {
+    const defaultContainer: ToolContainer = {
+      name: this.config.containerName,
+      user: 'rtpi-tools',
+      category: 'general',
+      enabledToolCategories: this.config.enabledCategories,
+    };
+    return this.discoverToolInContainer(versionCmd, category, defaultContainer);
   }
 
   /**
@@ -474,6 +667,8 @@ export class ToolConnectorAgent extends EventEmitter {
               version: tool.version,
               description: tool.description || existing.description,
               binaryPath: tool.path,
+              containerName: tool.containerName,
+              containerUser: tool.containerUser,
               updatedAt: new Date(),
             })
             .where(eq(toolRegistry.id, existing.id));
@@ -492,6 +687,8 @@ export class ToolConnectorAgent extends EventEmitter {
               version: tool.version,
               description: tool.description,
               binaryPath: tool.path,
+              containerName: tool.containerName,
+              containerUser: tool.containerUser,
               installMethod: 'manual',
               installStatus: 'installed',
               config: {

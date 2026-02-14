@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from "axios";
+import https from "https";
 import { db } from "../db";
 import {
   empireServers,
@@ -162,7 +163,7 @@ class EmpireExecutor {
     // Get or create user token
     const userToken = await this.getUserToken(serverId, userId);
 
-    // Create axios instance
+    // Create axios instance (accept self-signed certs for Empire's default HTTPS)
     const client = axios.create({
       baseURL: server.restApiUrl,
       headers: {
@@ -170,6 +171,7 @@ class EmpireExecutor {
         "Content-Type": "application/json",
       },
       timeout: 30000,
+      httpsAgent: new https.Agent({ rejectUnauthorized: false }),
     });
 
     // Cache the client
@@ -209,10 +211,11 @@ class EmpireExecutor {
       throw new Error(`Empire server ${serverId} not found`);
     }
 
-    // Login to Empire to get a token
+    // Login to Empire to get a token (accept self-signed certs)
     const loginClient = axios.create({
       baseURL: server.restApiUrl,
       timeout: 10000,
+      httpsAgent: new https.Agent({ rejectUnauthorized: false }),
     });
 
     const loginResponse = await loginClient.post<EmpireLoginResponse>("/api/admin/login", {
@@ -252,18 +255,58 @@ class EmpireExecutor {
       const client = await this.getApiClient(serverId, userId);
       const response = await client.get("/api/version");
 
-      // Update server status
       await db
         .update(empireServers)
         .set({
           status: "connected",
-          version: response.data.version || null,
+          version: response.data?.version || response.data?.empire_version || null,
           lastHeartbeat: new Date(),
         })
         .where(eq(empireServers.id, serverId));
 
       return true;
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[Empire] Connection check failed for ${serverId}: ${errorMsg}`);
+
+      // If primary URL failed, try auto-switching protocol (HTTP↔HTTPS)
+      try {
+        const server = await db.query.empireServers.findFirst({
+          where: eq(empireServers.id, serverId),
+        });
+
+        if (server) {
+          const altUrl = server.restApiUrl.startsWith("http://")
+            ? server.restApiUrl.replace("http://", "https://")
+            : server.restApiUrl.replace("https://", "http://");
+
+          const altClient = axios.create({
+            baseURL: altUrl,
+            timeout: 10000,
+            httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+          });
+          const altResponse = await altClient.get("/api/version");
+
+          // Auto-fix the URL in the database
+          console.log(`[Empire] Auto-corrected URL to ${altUrl} for server ${serverId}`);
+          await db
+            .update(empireServers)
+            .set({
+              status: "connected",
+              restApiUrl: altUrl,
+              version: altResponse.data?.version || altResponse.data?.empire_version || null,
+              lastHeartbeat: new Date(),
+            })
+            .where(eq(empireServers.id, serverId));
+
+          // Clear cached client so next call uses new URL
+          this.apiClients.clear();
+          return true;
+        }
+      } catch {
+        // Alt protocol also failed
+      }
+
       await db
         .update(empireServers)
         .set({

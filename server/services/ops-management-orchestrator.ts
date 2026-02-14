@@ -9,6 +9,7 @@ import {
 import { eq, and, asc } from "drizzle-orm";
 import { pageReporterAgent } from "./page-reporter-agent";
 import { operationsManagerAgent } from "./operations-manager-agent";
+import { memoryService } from "./memory-service";
 
 /**
  * Operations Management Orchestrator
@@ -126,6 +127,17 @@ class OpsManagementOrchestrator {
           },
         })
         .where(eq(workflowTasks.id, createdTasks[createdTasks.length - 1].id));
+
+      // Ensure memory context exists for this operation
+      try {
+        await memoryService.createContext({
+          contextType: "operation",
+          contextId: operationId,
+          contextName: `Operation ${operationId}`,
+        });
+      } catch {
+        // Context may already exist, which is fine
+      }
 
       // Log workflow start
       await this.logWorkflow(createdWorkflow.id, "info", "Workflow created and ready to execute");
@@ -337,11 +349,19 @@ class OpsManagementOrchestrator {
         })
         .where(eq(workflowTasks.id, task.id));
 
-      // Execute operations manager
-      const result = await operationsManagerAgent.executeOperationsManager(
-        task.inputData.operationId,
-        task.inputData.reporterTaskIds
-      );
+      // Execute operations manager with memory-enhanced synthesis
+      let result: any;
+      try {
+        result = await operationsManagerAgent.synthesizeReports(
+          task.inputData.operationId,
+        );
+      } catch {
+        // Fallback to legacy method if synthesizeReports fails
+        result = await (operationsManagerAgent as any).executeOperationsManager?.(
+          task.inputData.operationId,
+          task.inputData.reporterTaskIds,
+        ) ?? { summary: "Synthesis fallback", reportCount: 0 };
+      }
 
       // Update task with results
       await db

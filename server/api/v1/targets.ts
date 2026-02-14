@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { db } from "../../db";
-import { targets } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { targets, discoveredAssets, discoveredServices } from "@shared/schema";
+import { eq, and } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import { dockerExecutor } from "../../services/docker-executor";
+import { nmapExecutor } from "../../services/nmap-executor";
 import { TargetSanitizer, type TargetType } from "../../../shared/utils/target-sanitizer";
 import { ScanTimeoutCalculator } from "../../../shared/utils/scan-timeout-calculator";
 
@@ -115,6 +116,82 @@ router.delete("/:id", ensureRole("admin"), async (req, res) => {
   }
 });
 
+// GET /api/v1/targets/:id/linked-services - Get discovered services linked to this target
+router.get("/:id/linked-services", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Get the target
+    const [target] = await db
+      .select()
+      .from(targets)
+      .where(eq(targets.id, id))
+      .limit(1);
+
+    if (!target) {
+      return res.status(404).json({ error: "Target not found" });
+    }
+
+    // Find linked discovered asset(s) via discoveredAssetId or by matching value+operationId
+    let linkedAssets;
+    if (target.discoveredAssetId) {
+      linkedAssets = await db
+        .select()
+        .from(discoveredAssets)
+        .where(eq(discoveredAssets.id, target.discoveredAssetId));
+    } else if (target.operationId) {
+      linkedAssets = await db
+        .select()
+        .from(discoveredAssets)
+        .where(
+          and(
+            eq(discoveredAssets.operationId, target.operationId),
+            eq(discoveredAssets.value, target.value)
+          )
+        );
+    } else {
+      linkedAssets = [];
+    }
+
+    if (linkedAssets.length === 0) {
+      return res.json({ services: [], asset: null });
+    }
+
+    const asset = linkedAssets[0];
+
+    // Fetch discovered services for this asset
+    const services = await db
+      .select({
+        id: discoveredServices.id,
+        name: discoveredServices.name,
+        port: discoveredServices.port,
+        protocol: discoveredServices.protocol,
+        version: discoveredServices.version,
+        state: discoveredServices.state,
+        banner: discoveredServices.banner,
+        discoveryMethod: discoveredServices.discoveryMethod,
+        discoveredAt: discoveredServices.discoveredAt,
+      })
+      .from(discoveredServices)
+      .where(eq(discoveredServices.assetId, asset.id));
+
+    res.json({
+      services,
+      asset: {
+        id: asset.id,
+        value: asset.value,
+        type: asset.type,
+        hostname: asset.hostname,
+        ipAddress: asset.ipAddress,
+        status: asset.status,
+        discoveryMethod: asset.discoveryMethod,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to get linked services", details: error?.message || "Internal server error" });
+  }
+});
+
 // POST /api/v1/targets/:id/scan - Initiate nmap scan
 router.post("/:id/scan", ensureRole("admin", "operator"), async (req, res) => {
   const { id } = req.params;
@@ -174,20 +251,56 @@ router.post("/:id/scan", ensureRole("admin", "operator"), async (req, res) => {
     }
 
     // Execute nmap scan with SANITIZED target value and DYNAMIC timeout
-    // Using sudo for raw socket access and -Pn to skip host discovery
+    // Using sudo for raw socket access, -Pn to skip host discovery, -oX - for XML output
     const scanResult = await dockerExecutor.exec(
       "rtpi-tools",
-      ["sudo", "nmap", "-Pn", "-sV", "-T5", "-v5", "-p1-65535", sanitizationResult.nmapTarget],
-      { timeout: timeoutCalc.timeout } // FIX BUG #4: Dynamic timeout based on target size
+      ["sudo", "nmap", "-Pn", "-sV", "-T5", "-v5", "-p1-65535", "-oX", "-", sanitizationResult.nmapTarget],
+      { timeout: timeoutCalc.timeout }
     );
-
-    // Debug logging removed
 
     // Parse scan results for key information
     const openPorts = (scanResult.stdout.match(/open/gi) || []).length;
     const scanTimestamp = new Date().toISOString();
 
-    // Store scan results in metadata (including sanitization info)
+    // Store results in discoveredAssets and discoveredServices tables
+    // so they appear in Surface Assessment and Linked Services views
+    let servicesStored = 0;
+    if (target.operationId) {
+      try {
+        const parsed = nmapExecutor.parseXmlOutput(scanResult.stdout);
+        const counts = await nmapExecutor.storeResults(parsed, target.operationId, `target-scan-${id}`);
+        servicesStored = counts.servicesCount;
+
+        // Link target to the discovered asset (bidirectional)
+        if (parsed.hosts.length > 0) {
+          const [linkedAsset] = await db
+            .select()
+            .from(discoveredAssets)
+            .where(
+              and(
+                eq(discoveredAssets.operationId, target.operationId),
+                eq(discoveredAssets.value, parsed.hosts[0].ip)
+              )
+            )
+            .limit(1);
+
+          if (linkedAsset) {
+            await db.update(targets).set({
+              discoveredAssetId: linkedAsset.id,
+              updatedAt: new Date(),
+            }).where(eq(targets.id, id));
+
+            await db.update(discoveredAssets).set({
+              targetId: id,
+            }).where(eq(discoveredAssets.id, linkedAsset.id));
+          }
+        }
+      } catch (storeError) {
+        console.error("[Nmap] Failed to store results in discoveredServices:", storeError);
+      }
+    }
+
+    // Store scan summary in metadata for backward compatibility
     const currentMetadata = (target.metadata as any) || {};
     const updatedMetadata = {
       ...currentMetadata,
@@ -196,9 +309,8 @@ router.post("/:id/scan", ensureRole("admin", "operator"), async (req, res) => {
         duration: scanResult.duration,
         openPorts,
         output: scanResult.stdout,
-        command: `sudo nmap -Pn -sV -T5 -v5 -p1-65535 ${sanitizationResult.nmapTarget}`,
+        command: `sudo nmap -Pn -sV -T5 -v5 -p1-65535 -oX - ${sanitizationResult.nmapTarget}`,
         success: scanResult.exitCode === 0,
-        // BUG #3 FIX: Include sanitization details for transparency
         sanitization: {
           originalValue: sanitizationResult.originalValue,
           sanitizedValue: sanitizationResult.sanitized,
@@ -207,7 +319,6 @@ router.post("/:id/scan", ensureRole("admin", "operator"), async (req, res) => {
       },
     };
 
-    // Update target with scan results
     await db
       .update(targets)
       .set({
@@ -224,6 +335,7 @@ router.post("/:id/scan", ensureRole("admin", "operator"), async (req, res) => {
       scanOutput: scanResult.stdout,
       scanDuration: scanResult.duration,
       openPorts,
+      servicesStored,
       exitCode: scanResult.exitCode,
     });
   } catch (error: any) {

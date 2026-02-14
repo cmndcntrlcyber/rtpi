@@ -1,4 +1,5 @@
 import express from "express";
+import { z } from "zod";
 import { db } from "../../db";
 import {
   operations,
@@ -10,6 +11,8 @@ import {
 } from "../../../shared/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { opsManagerScheduler } from "../../services/ops-manager-scheduler";
+import { operationsManagerAgent } from "../../services/operations-manager-agent";
+import { memoryService } from "../../services/memory-service";
 
 const router = express.Router();
 
@@ -279,6 +282,130 @@ router.post("/questions/:questionId/answer", async (req, res) => {
     console.error("Error answering question:", error);
     res.status(500).json({
       error: "Failed to answer question",
+      details: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+});
+
+// ============================================================================
+// ENHANCED QUESTION MANAGEMENT (Phase 2 Memory Integration)
+// ============================================================================
+
+/**
+ * GET /api/v1/operations-management/questions/pending
+ * Get pending questions enriched with memory context
+ */
+router.get("/questions/pending", async (req, res) => {
+  try {
+    const { operationId } = req.query;
+
+    const questions = await db
+      .select()
+      .from(assetQuestions)
+      .where(eq(assetQuestions.status, "pending"))
+      .orderBy(desc(assetQuestions.askedAt));
+
+    // Enrich with memory context
+    const enriched = await Promise.all(
+      questions
+        .filter((q) => !operationId || q.operationId === operationId)
+        .map(async (question) => {
+          let memoryContext: any[] = [];
+          if (question.operationId) {
+            try {
+              memoryContext = await memoryService.searchMemories({
+                query: question.question,
+                contextId: question.operationId,
+                limit: 3,
+              });
+            } catch {
+              // Memory search is best-effort
+            }
+          }
+          return {
+            ...question,
+            memoryContext: memoryContext.map((m) => ({
+              id: m.id,
+              text: m.memoryText,
+              type: m.memoryType,
+            })),
+          };
+        }),
+    );
+
+    res.json({ questions: enriched, count: enriched.length });
+  } catch (error) {
+    console.error("Error fetching pending questions:", error);
+    res.status(500).json({
+      error: "Failed to fetch pending questions",
+      details: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+});
+
+const respondSchema = z.object({
+  answer: z.string().min(1),
+});
+
+/**
+ * POST /api/v1/operations-management/questions/:id/respond
+ * Respond to a question with memory storage
+ */
+router.post("/questions/:id/respond", async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    const { id } = req.params;
+    const parsed = respondSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+
+    const result = await operationsManagerAgent.processResponse(
+      id,
+      parsed.data.answer,
+      req.user.id,
+    );
+
+    res.json({
+      success: true,
+      memoryId: result.memoryId,
+      taskGenerated: result.taskGenerated,
+    });
+  } catch (error) {
+    console.error("Error responding to question:", error);
+    res.status(500).json({
+      error: "Failed to respond to question",
+      details: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+});
+
+/**
+ * POST /api/v1/operations-management/questions/:id/dismiss
+ * Dismiss a question with optional reason
+ */
+router.post("/questions/:id/dismiss", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    await db
+      .update(assetQuestions)
+      .set({
+        status: "dismissed",
+        answer: reason || "Dismissed by operator",
+        answeredAt: new Date(),
+      })
+      .where(eq(assetQuestions.id, id));
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error dismissing question:", error);
+    res.status(500).json({
+      error: "Failed to dismiss question",
       details: error instanceof Error ? error.message : "Unknown error",
     });
   }

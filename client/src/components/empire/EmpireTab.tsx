@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
@@ -186,6 +187,28 @@ export default function EmpireTab() {
     }
   };
 
+  // Delete an Empire server
+  const handleDeleteServer = async (server: EmpireServer) => {
+    if (!confirm(`Delete server "${server.name}"? This cannot be undone.`)) return;
+
+    try {
+      const response = await fetch(`/api/v1/empire/servers/${server.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      if (response.ok) {
+        toast.success("Server deleted");
+        fetchServers();
+        if (selectedServerId === server.id) {
+          setSelectedServerId(null);
+        }
+      }
+    } catch (error) {
+      toast.error("Failed to delete server");
+    }
+  };
+
   // Stop a listener
   const handleStopListener = async (listenerName: string) => {
     if (!selectedServerId) return;
@@ -308,6 +331,7 @@ export default function EmpireTab() {
                 server={server}
                 onCheckConnection={handleCheckConnection}
                 onRefreshToken={handleRefreshToken}
+                onDelete={handleDeleteServer}
               />
             ))}
           </div>

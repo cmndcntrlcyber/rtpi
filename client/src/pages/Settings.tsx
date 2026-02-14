@@ -14,7 +14,7 @@ export default function Settings() {
     openaiApiKey: "",
     anthropicApiKey: "",
     tavilyApiKey: "",
-    defaultModel: "claude-sonnet-4-5-20250929",
+    defaultModel: "claude-sonnet-4-5",
   });
   const [showOpenAI, setShowOpenAI] = useState(false);
   const [showAnthropic, setShowAnthropic] = useState(false);
@@ -43,7 +43,7 @@ export default function Settings() {
           openaiApiKey: response.settings.openaiApiKey || "",
           anthropicApiKey: response.settings.anthropicApiKey || "",
           tavilyApiKey: response.settings.tavilyApiKey || "",
-          defaultModel: response.settings.defaultModel || "claude-sonnet-4-5-20250929",
+          defaultModel: response.settings.defaultModel || "claude-sonnet-4-5",
         });
       }
     } catch (error) {
@@ -214,13 +214,16 @@ export default function Settings() {
                   value={llmSettings.defaultModel}
                   onChange={(e) => setLlmSettings({ ...llmSettings, defaultModel: e.target.value })}
                 >
-                  <option value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5</option>
-                  <option value="claude-opus-4-5-20251101">Claude Opus 4.5</option>
-                  <option value="claude-3-5-sonnet-20241022">Claude Sonnet 3.5</option>
-                  <option value="gpt-4o">GPT-4o</option>
-                  <option value="gpt-4o-mini">GPT-4o Mini</option>
-                  <option value="o1">O1</option>
-                  <option value="o1-mini">O1 Mini</option>
+                  <optgroup label="Anthropic">
+                    <option value="claude-opus-4-6">Claude Opus 4.6 (Thinking)</option>
+                    <option value="claude-sonnet-4-5">Claude Sonnet 4.5 (Standard)</option>
+                    <option value="claude-haiku-4-5">Claude Haiku 4.5 (Fast)</option>
+                  </optgroup>
+                  <optgroup label="OpenAI">
+                    <option value="gpt-5.2">GPT-5.2 (Thinking)</option>
+                    <option value="gpt-5.2-chat-latest">GPT-5.2 Instant (Standard)</option>
+                    <option value="gpt-4.1-mini">GPT-4.1 Mini (Fast)</option>
+                  </optgroup>
                 </select>
               </div>
 

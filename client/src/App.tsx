@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Route, Switch } from "wouter";
+import { Route, Switch, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster, toast } from "sonner";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
@@ -26,6 +26,10 @@ import Profile from "@/pages/Profile";
 import Users from "@/pages/Users";
 import SurfaceAssessment from "@/pages/SurfaceAssessment";
 import AttackFramework from "@/pages/AttackFramework";
+import Frameworks from "@/pages/Frameworks";
+import ATLASFramework from "@/pages/ATLASFramework";
+import OWASPLLMFramework from "@/pages/OWASPLLMFramework";
+import NISTAIFramework from "@/pages/NISTAIFramework";
 import Empire from "@/pages/Empire";
 import Implants from "@/pages/Implants";
 import Ollama from "@/pages/Ollama";
@@ -47,11 +51,17 @@ function AuthenticatedApp() {
         <Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/operations" component={Operations} />
-          <Route path="/operations-manager" component={OperationsManager} />
+          <Route path="/operations-manager">
+            <Redirect to="/operations?chat=open" />
+          </Route>
           <Route path="/targets" component={Targets} />
           <Route path="/vulnerabilities" component={Vulnerabilities} />
           <Route path="/surface-assessment" component={SurfaceAssessment} />
+          <Route path="/frameworks" component={Frameworks} />
           <Route path="/attack" component={AttackFramework} />
+          <Route path="/atlas" component={ATLASFramework} />
+          <Route path="/owasp-llm" component={OWASPLLMFramework} />
+          <Route path="/nist-ai" component={NISTAIFramework} />
           <Route path="/agents" component={Agents} />
           <Route path="/empire" component={Empire} />
           <Route path="/implants" component={Implants} />

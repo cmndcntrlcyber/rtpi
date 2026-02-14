@@ -50,6 +50,13 @@
       "when": 1768975995869,
       "tag": "0006_workable_dracula",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1770981656312,
+      "tag": "0007_crazy_nextwave",
+      "breakpoints": true
     }
   ]
 }

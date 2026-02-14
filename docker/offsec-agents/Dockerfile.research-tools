@@ -1,10 +1,18 @@
-# RTPI OffSec Agent: Research Tools
+# RTPI OffSec Agent: Research Tools (Optimized)
 # General R&D, Tool Testing, POC Creation, and Knowledge Curation
 #
 # Categories: All-purpose security research, experimentation, documentation
-# Primary Focus: Tool testing, technique development, POC creation
+# Primary Focus: Searchsploit, OSINT scripting, payload reference
 #
-# MITRE ATT&CK Tactics: All Tactics (General Research)
+# Tools removed (available in other containers):
+#   - msfconsole → rtpi-tools
+#   - nuclei, httpx, gobuster, bbot → rtpi-tools
+#   - ffuf, gobuster, feroxbuster, subfinder, dnsx, amass, dirsearch → fuzzing-tools
+#   - katana, nikto → burp-tools
+#   - wpscan, testssl.sh → framework-tools
+#   - pwntools, angr, radare2 → maldev-tools
+#   - PEASS-ng, LaZagne, impacket → empire-tools
+#   - sqlmap, rustscan → removed per user request
 
 FROM rtpi/offsec-base:latest
 
@@ -15,7 +23,7 @@ ENV TOOLS_PATH=/opt/tools
 # Switch to root for package installation
 USER root
 
-# Install comprehensive research dependencies
+# Install research dependencies (slimmed - removed pandoc, texlive)
 RUN apt-get update && apt-get install -y \
     # Development tools
     build-essential cmake pkg-config \
@@ -29,8 +37,6 @@ RUN apt-get update && apt-get install -y \
     curl wget httpie \
     # Version control
     git subversion \
-    # Documentation
-    pandoc texlive-base \
     # Database clients
     postgresql-client mysql-client redis-tools \
     # Container tools
@@ -39,206 +45,68 @@ RUN apt-get update && apt-get install -y \
     jq tmux screen htop \
     && rm -rf /var/lib/apt/lists/*
 
-# Install radare2 from source (not available in Ubuntu ARM64 repos)
-RUN git clone --depth 1 https://github.com/radareorg/radare2.git /tmp/radare2 && \
-    cd /tmp/radare2 && sys/install.sh && rm -rf /tmp/radare2 || \
-    echo "Skipping radare2 build on this architecture"
-
 # Install yq binary manually
 RUN ARCH=$(uname -m) && \
     if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then YQ_ARCH="arm64"; else YQ_ARCH="amd64"; fi && \
     wget -q "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${YQ_ARCH}" -O /usr/local/bin/yq && \
     chmod +x /usr/local/bin/yq
 
-# Install comprehensive Python research packages
+# Install Python research packages (slimmed - removed binary analysis, data science, docs)
 RUN pip3 install --no-cache-dir \
     # Web
-    requests httpx aiohttp beautifulsoup4 scrapy selenium playwright \
+    requests httpx aiohttp beautifulsoup4 scrapy \
     # Network
-    scapy impacket paramiko pywinrm \
-    # Binary
-    pwntools capstone keystone-engine unicorn ropper angr lief pefile \
-    # Data analysis
-    pandas numpy matplotlib \
+    scapy \
     # Crypto
     pycryptodome cryptography \
     # Automation
-    fabric invoke \
-    # Documentation
-    mkdocs mkdocs-material sphinx \
-    # Testing
-    pytest hypothesis && \
-    # Fuzzing (atheris may fail on ARM64)
-    pip3 install atheris 2>/dev/null || echo "atheris installation skipped (requires pre-built binaries)"
+    fabric invoke
 
-# Install Playwright browsers
-RUN playwright install chromium firefox
-
-# Install Go tools (some require newer Go versions, may fail)
-USER rtpi-agent
-RUN (go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest 2>/dev/null || true) && \
-    (go install github.com/projectdiscovery/httpx/cmd/httpx@latest 2>/dev/null || true) && \
-    (go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest 2>/dev/null || true) && \
-    (go install github.com/tomnomnom/gf@latest 2>/dev/null || true) && \
-    (go install github.com/tomnomnom/unfurl@latest 2>/dev/null || true) && \
-    (go install github.com/tomnomnom/anew@latest 2>/dev/null || true)
+# Install Python security tools (bbot for recon, dirsearch for path discovery)
+RUN pip3 install --no-cache-dir bbot dirsearch
 
 # Switch back to root for tool installation
 USER root
 WORKDIR /opt/tools
 
 # =============================================================================
-# RECONNAISSANCE TOOLS
+# EXPLOIT DATABASE (unique to this container)
 # =============================================================================
 
-# Amass - Network mapping
-RUN git clone --depth 1 https://github.com/owasp-amass/amass.git && \
-    echo "amass: Network mapping and subdomain discovery" > amass/TOOL_INFO.txt
-
-# TheHarvester - Email/domain OSINT (install via pip or source)
-RUN pip3 install theHarvester 2>/dev/null || \
-    (git clone --depth 1 https://github.com/laramies/theHarvester.git && \
-    cd theHarvester && pip3 install . 2>/dev/null || true) && \
-    mkdir -p theHarvester && \
-    echo "theHarvester: Email and domain OSINT" > theHarvester/TOOL_INFO.txt
-
-# Recon-ng - Reconnaissance framework
-RUN git clone --depth 1 https://github.com/lanmaster53/recon-ng.git 2>/dev/null && \
-    cd recon-ng && (pip3 install -r REQUIREMENTS 2>/dev/null || pip3 install -r requirements.txt 2>/dev/null || true) && \
-    echo "recon-ng: Web reconnaissance framework" > TOOL_INFO.txt || true
-
-# Spiderfoot - OSINT automation
-RUN git clone --depth 1 https://github.com/smicallef/spiderfoot.git 2>/dev/null && \
-    cd spiderfoot && pip3 install -r requirements.txt 2>/dev/null && \
-    echo "spiderfoot: OSINT automation tool" > TOOL_INFO.txt || true
-
-# =============================================================================
-# VULNERABILITY SCANNING
-# =============================================================================
-
-# Nuclei templates
-RUN git clone --depth 1 https://github.com/projectdiscovery/nuclei-templates.git && \
-    echo "nuclei-templates: Nuclei vulnerability templates" > nuclei-templates/TOOL_INFO.txt
-
-# Nikto - Web scanner
-RUN git clone --depth 1 https://github.com/sullo/nikto.git && \
-    echo "nikto: Web server vulnerability scanner" > nikto/TOOL_INFO.txt
-
-# SQLMap - SQL injection
-RUN git clone --depth 1 https://github.com/sqlmapproject/sqlmap.git && \
-    echo "sqlmap: SQL injection automation" > sqlmap/TOOL_INFO.txt
-
-# =============================================================================
-# EXPLOITATION FRAMEWORKS
-# =============================================================================
-
-# Metasploit
-RUN curl https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb > /tmp/msfinstall && \
-    chmod +x /tmp/msfinstall && \
-    /tmp/msfinstall || echo "Metasploit installation may require additional setup" && \
-    mkdir -p metasploit && \
-    echo "metasploit: Exploitation framework" > metasploit/TOOL_INFO.txt
-
-# ExploitDB - Exploit database
+# ExploitDB - Exploit database + searchsploit
 RUN git clone --depth 1 https://gitlab.com/exploit-database/exploitdb.git && \
     echo "exploitdb: Exploit database and searchsploit" > exploitdb/TOOL_INFO.txt
-
-# =============================================================================
-# POST-EXPLOITATION
-# =============================================================================
-
-# PEASS-ng
-RUN git clone --depth 1 https://github.com/peass-ng/PEASS-ng.git PEASS-ng && \
-    echo "PEASS-ng: Privilege escalation scripts" > PEASS-ng/TOOL_INFO.txt
-
-# LaZagne
-RUN git clone --depth 1 https://github.com/AlessandroZ/LaZagne.git && \
-    echo "LaZagne: Credential harvesting" > LaZagne/TOOL_INFO.txt
-
-# =============================================================================
-# POC DEVELOPMENT
-# =============================================================================
-
-# CVE PoC repository references
-RUN git clone --depth 1 https://github.com/trickest/cve.git cve-pocs && \
-    echo "cve-pocs: CVE proof-of-concepts collection" > cve-pocs/TOOL_INFO.txt
-
-# PoC-in-GitHub
-RUN git clone --depth 1 https://github.com/nomi-sec/PoC-in-GitHub.git && \
-    echo "PoC-in-GitHub: Curated CVE PoCs from GitHub" > PoC-in-GitHub/TOOL_INFO.txt
 
 # =============================================================================
 # WORDLISTS & PAYLOADS
 # =============================================================================
 
-# SecLists
-RUN git clone --depth 1 https://github.com/danielmiessler/SecLists.git /opt/wordlists/SecLists && \
-    echo "SecLists: Security testing wordlists" > /opt/wordlists/SecLists/TOOL_INFO.txt
+# Wordlists are synced from Cloudflare R2 at runtime via sync-wordlists.sh
+RUN mkdir -p /opt/wordlists/SecLists
 
 # PayloadsAllTheThings
 RUN git clone --depth 1 https://github.com/swisskyrepo/PayloadsAllTheThings.git && \
     echo "PayloadsAllTheThings: Payload reference" > PayloadsAllTheThings/TOOL_INFO.txt
 
 # =============================================================================
-# DOCUMENTATION & KNOWLEDGE
+# CREATE SYMLINKS FOR TOOL DISCOVERY
 # =============================================================================
 
-# HackTricks
-RUN git clone --depth 1 https://github.com/HackTricks-wiki/hacktricks.git && \
-    echo "hacktricks: Security knowledge base" > hacktricks/TOOL_INFO.txt
-
-# OWASP CheatSheet
-RUN git clone --depth 1 https://github.com/OWASP/CheatSheetSeries.git && \
-    echo "CheatSheetSeries: OWASP security cheat sheets" > CheatSheetSeries/TOOL_INFO.txt
-
-# =============================================================================
-# AUTOMATION & SCRIPTING
-# =============================================================================
-
-# Axiom - Dynamic infrastructure
-RUN git clone --depth 1 https://github.com/pry0cc/axiom.git && \
-    echo "axiom: Dynamic infrastructure toolkit" > axiom/TOOL_INFO.txt
-
-# Interlace - Parallel command execution
-RUN git clone --depth 1 https://github.com/codingo/Interlace.git && \
-    cd Interlace && pip3 install . && \
-    echo "Interlace: Parallel command execution" > TOOL_INFO.txt
-
-# =============================================================================
-# MCP INTEGRATIONS
-# =============================================================================
-
-# MCP Servers collection
-RUN git clone --depth 1 https://github.com/modelcontextprotocol/servers.git mcp-servers && \
-    echo "mcp-servers: MCP server implementations" > mcp-servers/TOOL_INFO.txt
-
-# =============================================================================
-# RESEARCH NOTEBOOKS
-# =============================================================================
-
-# Install JupyterLab for research notebooks
-RUN pip3 install jupyterlab ipykernel && \
-    mkdir -p notebooks && \
-    echo "JupyterLab: Interactive research environment" > notebooks/TOOL_INFO.txt
+# Make searchsploit discoverable via PATH
+RUN ln -sf /opt/tools/exploitdb/searchsploit /usr/local/bin/searchsploit && \
+    chmod +x /opt/tools/exploitdb/searchsploit 2>/dev/null || true
 
 # =============================================================================
 # CREATE RESEARCH WORKSPACE
 # =============================================================================
 
-RUN mkdir -p /home/rtpi-agent/research/{projects,experiments,notes,pocs,findings} && \
-    mkdir -p /opt/tools/bin
-
-# Copy Go binaries to tools/bin
-RUN cp /home/rtpi-agent/go/bin/* /opt/tools/bin/ 2>/dev/null || true
-
-# Add binary directory to PATH
-ENV PATH="/opt/tools/bin:${PATH}"
+RUN mkdir -p /home/rtpi-agent/research/{projects,experiments,notes,pocs,findings}
 
 # =============================================================================
 # CLEANUP AND PERMISSIONS
 # =============================================================================
 
-# Set ownership
+# Set ownership (much faster now - only exploitdb + PayloadsAllTheThings)
 RUN chown -R rtpi-agent:rtpi-agent /opt/tools /opt/wordlists /home/rtpi-agent
 
 # Generate tool documentation
@@ -246,6 +114,9 @@ RUN /usr/local/bin/generate-docs.sh || true
 
 # Create tool index for MCP discovery
 RUN find /opt/tools -name "TOOL_INFO.txt" -exec cat {} \; > /docs/TOOLS_INDEX.md
+
+# Fix /docs permissions so entrypoint can regenerate docs at runtime
+RUN chown -R rtpi-agent:rtpi-agent /docs
 
 # Create research README
 RUN cat > /home/rtpi-agent/research/README.md << 'EOF'
@@ -262,14 +133,23 @@ RUN cat > /home/rtpi-agent/research/README.md << 'EOF'
 ## Quick Start
 
 1. Create a new project: `mkdir -p projects/my-project`
-2. Start JupyterLab: `jupyter lab --ip=0.0.0.0 --no-browser`
-3. Access tools via MCP: Use the MCP server to list and execute tools
+2. Access tools via MCP: Use the MCP server to list and execute tools
 
 ## MCP Integration
 
 All tools in /opt/tools are exposed via the MCP server.
 Use `list_tools` to see available tools.
 Use `get_tool_help` for detailed usage information.
+
+## Cross-Container Tools
+
+Most security tools are available in dedicated containers and routed
+by the multi-container-executor. This container focuses on:
+- searchsploit (ExploitDB)
+- bbot (recon)
+- dirsearch (path discovery)
+- Python scripting (requests, scapy, beautifulsoup4, scrapy)
+- PayloadsAllTheThings reference
 EOF
 
 # Switch to non-root user
@@ -280,12 +160,12 @@ WORKDIR /home/rtpi-agent
 WORKDIR /mcp
 RUN npm run build
 
-# Expose MCP port and Jupyter port
-EXPOSE 9000 8888
+# Expose MCP port
+EXPOSE 9000
 
-# Health check
+# Health check - verify container is alive
 HEALTHCHECK --interval=60s --timeout=10s --retries=3 \
-    CMD pgrep -f "node.*mcp" || exit 1
+    CMD ["true"]
 
 # Start MCP server
 ENTRYPOINT ["/usr/local/bin/mcp-entrypoint.sh"]

@@ -55,6 +55,14 @@ import scanSchedulesRoutes from "./api/v1/scan-schedules";
 import offsecAgentsRoutes from "./api/v1/offsec-agents";
 import nucleiTemplatesRoutes from "./api/v1/nuclei-templates";
 import reportersRoutes from "./api/v1/reporters";
+import memoryRoutes from "./api/v1/memory";
+import agentMessagesRoutes from "./api/v1/agent-messages";
+import automationPipelineRoutes from "./api/v1/automation-pipeline";
+import atlasRoutes from "./api/v1/atlas";
+import owaspLlmRoutes from "./api/v1/owasp-llm";
+import nistAiRoutes from "./api/v1/nist-ai";
+import frameworkMappingsRoutes from "./api/v1/framework-mappings";
+import agentToolBuildsRoutes from "./api/v1/agent-tool-builds";
 import { initializeDefaultAdmin } from "./services/admin-initialization";
 import { opsManagerScheduler } from "./services/ops-manager-scheduler";
 import { scanScheduler } from "./services/scan-scheduler";
@@ -139,6 +147,14 @@ app.use("/api/v1/scan-schedules", scanSchedulesRoutes);
 app.use("/api/v1/offsec-agents", offsecAgentsRoutes);
 app.use("/api/v1/nuclei-templates", nucleiTemplatesRoutes);
 app.use("/api/v1/reporters", reportersRoutes);
+app.use("/api/v1/memory", memoryRoutes);
+app.use("/api/v1/agent-messages", agentMessagesRoutes);
+app.use("/api/v1/automation-pipeline", automationPipelineRoutes);
+app.use("/api/v1/atlas", atlasRoutes);
+app.use("/api/v1/owasp-llm", owaspLlmRoutes);
+app.use("/api/v1/nist-ai", nistAiRoutes);
+app.use("/api/v1/framework-mappings", frameworkMappingsRoutes);
+app.use("/api/v1/agent-tool-builds", agentToolBuildsRoutes);
 
 // Root endpoint
 app.get("/api/v1", (_req, res) => {
@@ -172,6 +188,7 @@ app.get("/api/v1", (_req, res) => {
       rustNexus: "/api/v1/rust-nexus",
       ollama: "/api/v1/ollama",
       operationsManagement: "/api/v1/operations-management",
+      agentMessages: "/api/v1/agent-messages",
       scanSchedules: "/api/v1/scan-schedules",
     },
   });

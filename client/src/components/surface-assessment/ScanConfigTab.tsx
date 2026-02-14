@@ -7,7 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Play, Clock, CheckCircle, XCircle, Crosshair, CalendarClock } from 'lucide-react';
+import { Play, Clock, CheckCircle, XCircle, Crosshair, CalendarClock, StopCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { targetsService, type Target } from '@/services/targets';
 import ScheduleManagerTab from './ScheduleManagerTab';
@@ -275,6 +275,8 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
         return CheckCircle;
       case 'failed':
         return XCircle;
+      case 'cancelled':
+        return StopCircle;
       default:
         return Clock;
     }
@@ -299,6 +301,17 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
   const handleCloseDialog = () => {
     setSelectedScanId(null);
     setScanOutput('');
+  };
+
+  const handleCancelScan = async (scanId: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Don't trigger tile click (output dialog)
+    try {
+      await api.post(`/surface-assessment/${operationId}/scans/${scanId}/cancel`);
+      toast.success("Scan cancelled");
+      await loadScanHistory();
+    } catch (error) {
+      toast.error("Failed to cancel scan");
+    }
   };
 
   if (!operationId) {
@@ -604,11 +617,23 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
                         )}
                       </div>
                     </div>
-                    <div className="text-right text-xs text-muted-foreground">
-                      {scan.completedAt && new Date(scan.completedAt).toLocaleString()}
-                      {scan.duration && (
-                        <p className="mt-1">Duration: {Math.round(scan.duration / 60)}min</p>
+                    <div className="flex items-start gap-2">
+                      {(scan.status === 'running' || scan.status === 'pending') && (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={(e) => handleCancelScan(scan.id, e)}
+                        >
+                          <StopCircle className="w-3 h-3 mr-1" />
+                          Cancel
+                        </Button>
                       )}
+                      <div className="text-right text-xs text-muted-foreground">
+                        {scan.completedAt && new Date(scan.completedAt).toLocaleString()}
+                        {scan.duration && (
+                          <p className="mt-1">Duration: {Math.round(scan.duration / 60)}min</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

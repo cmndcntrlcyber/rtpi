@@ -173,6 +173,15 @@ export class NucleiExecutor {
     } catch (error) {
       // Stop keepalive on error
       stopKeepalive();
+
+      // Check if scan was externally cancelled (don't overwrite 'cancelled' status)
+      const [currentScan] = await db.select({ status: axScanResults.status })
+        .from(axScanResults).where(eq(axScanResults.id, scanId)).limit(1);
+      if (currentScan?.status === 'cancelled') {
+        console.log(`⛔ Nuclei scan ${scanId} was cancelled, skipping error status update`);
+        return { vulnerabilitiesCount: 0, results: { vulnerabilities: [], stats: { total: 0, critical: 0, high: 0, medium: 0, low: 0, info: 0 } } };
+      }
+
       // Prepare error raw output if available
       const errorOutput = error && typeof error === 'object' && 'stdout' in error && 'stderr' in error
         ? [
@@ -299,6 +308,15 @@ export class NucleiExecutor {
     } catch (error) {
       // Stop keepalive on error
       stopKeepalive();
+
+      // Check if scan was externally cancelled (don't overwrite 'cancelled' status)
+      const [currentScan2] = await db.select({ status: axScanResults.status })
+        .from(axScanResults).where(eq(axScanResults.id, scanId)).limit(1);
+      if (currentScan2?.status === 'cancelled') {
+        console.log(`⛔ Nuclei scan ${scanId} was cancelled, skipping error status update`);
+        throw new Error('Scan was cancelled');
+      }
+
       // Prepare error raw output if available
       const errorOutput = error && typeof error === 'object' && 'stdout' in error && 'stderr' in error
         ? [

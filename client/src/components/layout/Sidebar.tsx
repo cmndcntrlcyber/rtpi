@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
+import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
   Target,
@@ -23,7 +24,6 @@ import {
   Download,
   Brain,
   Microscope,
-  ClipboardList,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -33,26 +33,71 @@ interface SidebarProps {
   onClose: () => void;
 }
 
-const navItems = [
-  { path: "/", label: "Dashboard", icon: LayoutDashboard },
-  { path: "/operations", label: "Operations", icon: ListTodo },
-  { path: "/operations-manager", label: "Operations Manager", icon: ClipboardList },
-  { path: "/targets", label: "Targets", icon: Target },
-  { path: "/vulnerabilities", label: "Vulnerabilities", icon: AlertTriangle },
-  { path: "/surface-assessment", label: "Surface Assessment", icon: BarChart3 },
-  { path: "/attack", label: "ATT&CK Framework", icon: Shield },
-  { path: "/agents", label: "Agents", icon: Bot },
-  { path: "/empire", label: "Empire C2", icon: Crown },
-  { path: "/implants", label: "Agentic Implants", icon: Cpu },
-  { path: "/infrastructure", label: "Infrastructure", icon: Server },
-  { path: "/ollama", label: "Ollama AI", icon: Brain },
-  { path: "/tools", label: "Tools", icon: Wrench },
-  { path: "/tool-registry", label: "Tool Registry", icon: Package },
-  { path: "/tool-migration", label: "Tool Migration", icon: Download },
-  { path: "/reports", label: "Reports", icon: FileText },
-  { path: "/offsec-rd", label: "OffSec Team R&D", icon: Microscope },
-  { path: "/settings", label: "Settings", icon: Settings },
-  { path: "/profile", label: "Profile", icon: User },
+interface NavItem {
+  path: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
+const navGroups: NavGroup[] = [
+  {
+    label: "",
+    items: [
+      { path: "/", label: "Dashboard", icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: "Operations",
+    items: [
+      { path: "/operations", label: "Operations", icon: ListTodo },
+      { path: "/targets", label: "Targets", icon: Target },
+      { path: "/vulnerabilities", label: "Vulnerabilities", icon: AlertTriangle },
+      { path: "/surface-assessment", label: "Surface Assessment", icon: BarChart3 },
+    ],
+  },
+  {
+    label: "Intelligence",
+    items: [
+      { path: "/frameworks", label: "Frameworks", icon: Shield },
+      { path: "/reports", label: "Reports", icon: FileText },
+      { path: "/offsec-rd", label: "OffSec Team R&D", icon: Microscope },
+    ],
+  },
+  {
+    label: "Automation",
+    items: [
+      { path: "/agents", label: "Agents", icon: Bot },
+      { path: "/empire", label: "Empire C2", icon: Crown },
+      { path: "/implants", label: "Agentic Implants", icon: Cpu },
+      { path: "/ollama", label: "Ollama AI", icon: Brain },
+    ],
+  },
+  {
+    label: "Tools",
+    items: [
+      { path: "/tools", label: "Tools", icon: Wrench },
+      { path: "/tool-registry", label: "Tool Registry", icon: Package },
+      { path: "/tool-migration", label: "Tool Migration", icon: Download },
+    ],
+  },
+  {
+    label: "Infrastructure",
+    items: [
+      { path: "/infrastructure", label: "Infrastructure", icon: Server },
+    ],
+  },
+  {
+    label: "Settings",
+    items: [
+      { path: "/settings", label: "Settings", icon: Settings },
+      { path: "/profile", label: "Profile", icon: User },
+    ],
+  },
 ];
 
 const adminNavItems = [
@@ -119,35 +164,55 @@ export default function Sidebar({ isOpen, isCollapsed, onToggleCollapse, onClose
 
       {/* Navigation */}
       <nav className="p-4 space-y-1">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = location === item.path;
+        {navGroups.map((group, groupIndex) => (
+          <div key={group.label || `group-${groupIndex}`}>
+            {group.label && !isCollapsed && (
+              <div className="pt-4 pb-2 px-4">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  {group.label}
+                </p>
+              </div>
+            )}
+            {isCollapsed && group.label && (
+              <div className="pt-2 pb-1 flex justify-center">
+                <div className="w-6 border-t border-border" />
+              </div>
+            )}
+            {group.items.map((item) => {
+              const Icon = item.icon;
+              const isActive = location === item.path;
 
-          return (
-            <Link
-              key={item.path}
-              href={item.path}
-              onClick={onClose}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                isActive
-                  ? "bg-primary/10 text-primary font-medium"
-                  : "text-foreground hover:bg-secondary"
-              } ${isCollapsed ? "justify-center" : ""}`}
-              title={isCollapsed ? item.label : undefined}
-            >
-              <Icon className="w-5 h-5 flex-shrink-0" />
-              {!isCollapsed && <span>{item.label}</span>}
-            </Link>
-          );
-        })}
+              return (
+                <Link
+                  key={item.path}
+                  href={item.path}
+                  onClick={onClose}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                    isActive
+                      ? "bg-primary/10 text-primary font-medium"
+                      : "text-foreground hover:bg-secondary"
+                  } ${isCollapsed ? "justify-center" : ""}`}
+                  title={isCollapsed ? item.label : undefined}
+                >
+                  <Icon className="w-5 h-5 flex-shrink-0" />
+                  {!isCollapsed && <span>{item.label}</span>}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
 
         {isAdmin() && (
           <>
-            {!isCollapsed && (
+            {!isCollapsed ? (
               <div className="pt-4 pb-2 px-4">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Administration
                 </p>
+              </div>
+            ) : (
+              <div className="pt-2 pb-1 flex justify-center">
+                <div className="w-6 border-t border-border" />
               </div>
             )}
             {adminNavItems.map((item) => {

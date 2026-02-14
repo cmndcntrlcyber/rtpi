@@ -14,6 +14,7 @@ import {
   Activity,
   Loader2,
   Circle,
+  BrainCircuit,
 } from "lucide-react";
 import type { WorkflowDetails } from "@/hooks/useWorkflows";
 
@@ -103,6 +104,7 @@ export default function WorkflowDetailsDialog({
             <TabsList className="w-full">
               <TabsTrigger value="tasks" className="flex-1">Tasks</TabsTrigger>
               <TabsTrigger value="logs" className="flex-1">Logs</TabsTrigger>
+              <TabsTrigger value="ai-logs" className="flex-1">AI Logs</TabsTrigger>
               <TabsTrigger value="details" className="flex-1">Details</TabsTrigger>
             </TabsList>
 
@@ -176,6 +178,7 @@ export default function WorkflowDetailsDialog({
                   <p className="text-sm text-muted-foreground text-center py-4">No logs available</p>
                 ) : (
                   logs
+                    .filter((log) => log.level !== "ai_call")
                     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
                     .map((log, index) => (
                       <div
@@ -198,6 +201,99 @@ export default function WorkflowDetailsDialog({
                       </div>
                     ))
                 )}
+              </div>
+            </TabsContent>
+
+            {/* AI Logs Tab */}
+            <TabsContent value="ai-logs" className="mt-4">
+              <div className="space-y-3 max-h-[500px] overflow-y-auto">
+                {(() => {
+                  const aiLogs = logs
+                    .filter((log) => log.level === "ai_call")
+                    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+                  if (aiLogs.length === 0) {
+                    return (
+                      <div className="text-sm text-muted-foreground text-center py-8 border border-border rounded-lg bg-secondary">
+                        <BrainCircuit className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+                        <p>No AI communication logs available</p>
+                        <p className="text-xs mt-1">AI logs will appear here once the workflow makes LLM calls</p>
+                      </div>
+                    );
+                  }
+
+                  return aiLogs.map((log, index) => (
+                    <div key={log.id || index} className="border border-border rounded-lg overflow-hidden">
+                      {/* Header */}
+                      <div className="flex items-center justify-between p-3 bg-secondary">
+                        <div className="flex items-center gap-2">
+                          <BrainCircuit className="h-4 w-4 text-purple-500" />
+                          <span className="font-medium text-sm text-foreground">
+                            {log.context?.phase || "AI Call"}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          {log.context?.provider && log.context?.model && (
+                            <Badge variant="secondary" className="bg-purple-500/10 text-purple-600 text-xs">
+                              {log.context.provider}/{log.context.model}
+                            </Badge>
+                          )}
+                          {log.context?.durationMs != null && (
+                            <span className="flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {(log.context.durationMs / 1000).toFixed(1)}s
+                            </span>
+                          )}
+                          <span>{new Date(log.timestamp).toLocaleTimeString()}</span>
+                        </div>
+                      </div>
+
+                      {/* Stats bar */}
+                      <div className="flex items-center gap-4 px-3 py-1.5 bg-card text-xs text-muted-foreground border-b border-border">
+                        {log.context?.promptCharCount != null && (
+                          <span>Prompt: {log.context.promptCharCount.toLocaleString()} chars</span>
+                        )}
+                        {log.context?.responseCharCount != null && (
+                          <span>Response: {log.context.responseCharCount.toLocaleString()} chars</span>
+                        )}
+                        {log.context?.error && (
+                          <span className="text-red-500">Error: {log.context.error}</span>
+                        )}
+                      </div>
+
+                      {/* Prompt (collapsible) */}
+                      {log.context?.prompt && Array.isArray(log.context.prompt) && (
+                        <details className="border-b border-border">
+                          <summary className="px-3 py-2 text-xs font-medium text-muted-foreground cursor-pointer hover:bg-secondary/50 select-none">
+                            Prompt Sent ({log.context.prompt.length} message{log.context.prompt.length !== 1 ? "s" : ""})
+                          </summary>
+                          <div className="px-3 py-2 bg-card">
+                            {log.context.prompt.map((msg: { role: string; content: string }, i: number) => (
+                              <div key={i} className="mb-2 last:mb-0">
+                                <span className="text-xs font-semibold uppercase text-purple-500">[{msg.role}]</span>
+                                <pre className="mt-1 text-xs font-mono whitespace-pre-wrap text-foreground max-h-64 overflow-y-auto bg-secondary rounded p-2">
+                                  {msg.content}
+                                </pre>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+
+                      {/* Response (collapsible) */}
+                      {log.context?.response && (
+                        <details>
+                          <summary className="px-3 py-2 text-xs font-medium text-muted-foreground cursor-pointer hover:bg-secondary/50 select-none">
+                            Response Received
+                          </summary>
+                          <pre className="px-3 py-2 text-xs font-mono whitespace-pre-wrap text-foreground max-h-64 overflow-y-auto bg-card">
+                            {log.context.response}
+                          </pre>
+                        </details>
+                      )}
+                    </div>
+                  ));
+                })()}
               </div>
             </TabsContent>
 

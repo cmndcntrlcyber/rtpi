@@ -81,7 +81,7 @@ const DEFAULT_CONFIG: WebHackerConfig = {
   customTemplatesPath: '/home/rtpi-tools/nuclei-templates/custom',
   maxConcurrentScans: 5,
   aiProvider: 'anthropic',
-  aiModel: 'claude-3-5-sonnet-20241022',
+  aiModel: 'claude-sonnet-4-5',
   scanTimeout: 300000, // 5 minutes per scan
   enableCustomTemplateGeneration: true,
   templateGenerationPrompt: `You are a security researcher generating Nuclei templates.
@@ -249,8 +249,9 @@ export class WebHackerAgent extends EventEmitter {
   private async ensureCustomTemplatesDir(): Promise<void> {
     try {
       await this.dockerExecutor.exec(
-        `mkdir -p ${this.config.customTemplatesPath}`,
-        { container: 'rtpi-tools', timeout: 10000 }
+        'rtpi-tools',
+        ['mkdir', '-p', this.config.customTemplatesPath],
+        { timeout: 10000 }
       );
     } catch (error) {
       console.warn('Could not create custom templates directory:', error);

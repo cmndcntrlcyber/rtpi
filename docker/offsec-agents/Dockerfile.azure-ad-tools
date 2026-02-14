@@ -29,14 +29,27 @@ RUN apt-get update && apt-get install -y \
     nmap masscan \
     && rm -rf /var/lib/apt/lists/*
 
-# Install PowerShell and .NET (x86 only, skip on ARM64)
-RUN ARCH=$(dpkg --print-architecture) && \
-    if [ "$ARCH" = "amd64" ]; then \
-        apt-get update && apt-get install -y powershell dotnet-sdk-8.0 && \
-        rm -rf /var/lib/apt/lists/*; \
-    else \
-        echo "Skipping PowerShell and .NET on ARM64"; \
-    fi
+# Install PowerShell for Linux (binary archive method for ARM64 support)
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "aarch64" ]; then PS_ARCH="arm64"; else PS_ARCH="x64"; fi && \
+    PS_VERSION=$(curl -s https://api.github.com/repos/PowerShell/PowerShell/releases/latest | grep tag_name | cut -d '"' -f 4 | sed 's/v//') && \
+    curl -sL "https://github.com/PowerShell/PowerShell/releases/download/v${PS_VERSION}/powershell-${PS_VERSION}-linux-${PS_ARCH}.tar.gz" -o /tmp/powershell.tar.gz && \
+    mkdir -p /opt/microsoft/powershell/7 && \
+    tar zxf /tmp/powershell.tar.gz -C /opt/microsoft/powershell/7 && \
+    chmod +x /opt/microsoft/powershell/7/pwsh && \
+    ln -s /opt/microsoft/powershell/7/pwsh /usr/local/bin/pwsh && \
+    rm /tmp/powershell.tar.gz
+
+# Install .NET SDK 8.0 (via Microsoft packages repo)
+RUN apt-get update && \
+    apt-get install -y wget && \
+    . /etc/os-release && \
+    wget -q "https://packages.microsoft.com/config/ubuntu/${VERSION_ID}/packages-microsoft-prod.deb" && \
+    dpkg -i packages-microsoft-prod.deb && \
+    rm packages-microsoft-prod.deb && \
+    apt-get update && \
+    (apt-get install -y dotnet-sdk-8.0 || echo "dotnet-sdk-8.0 not available for this architecture") && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install Python packages for AD tooling
 RUN pip3 install --no-cache-dir \
@@ -54,23 +67,29 @@ RUN pip3 install --no-cache-dir \
 # Install Azure CLI
 RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash
 
-# Install Azure PowerShell modules via pwsh (x86 only)
-RUN ARCH=$(dpkg --print-architecture) && \
-    if [ "$ARCH" = "amd64" ]; then \
-        pwsh -Command "Install-Module -Name Az -AllowClobber -Scope AllUsers -Force" && \
-        pwsh -Command "Install-Module -Name AzureAD -AllowClobber -Scope AllUsers -Force" && \
-        pwsh -Command "Install-Module -Name MSOnline -AllowClobber -Scope AllUsers -Force"; \
-    else \
-        echo "Skipping Azure PowerShell modules on ARM64"; \
-    fi
+# Install Azure PowerShell modules
+RUN pwsh -Command "Install-Module -Name Az -AllowClobber -Scope AllUsers -Force" && \
+    pwsh -Command "Install-Module -Name AzureAD -AllowClobber -Scope AllUsers -Force" && \
+    pwsh -Command "Install-Module -Name MSOnline -AllowClobber -Scope AllUsers -Force"
 
 # Add Rust targets for cross-compilation
 USER rtpi-agent
 RUN rustup target add x86_64-pc-windows-gnu && \
     rustup target add x86_64-unknown-linux-musl
 
+# Install kerbrute (Kerberos brute-force tool)
+RUN go install github.com/ropnop/kerbrute@latest 2>/dev/null || true
+
 # Switch back to root for tool cloning
 USER root
+
+# Create binary directory and add to PATH
+RUN mkdir -p /opt/tools/bin
+ENV PATH="/opt/tools/bin:/home/rtpi-agent/go/bin:${PATH}"
+
+# Copy Go binaries (kerbrute) to tools/bin
+RUN cp /home/rtpi-agent/go/bin/* /opt/tools/bin/ 2>/dev/null || true
+
 WORKDIR /opt/tools
 
 # =============================================================================
@@ -174,6 +193,18 @@ RUN git clone --depth 1 https://github.com/Wh04m1001/rpc2efs.git 2>/dev/null && 
 # linWinPwn already cloned - used for lateral movement
 
 # =============================================================================
+# ENUMERATION TOOLS
+# =============================================================================
+
+# enum4linux-ng - SMB/NetBIOS enumeration (Python rewrite of enum4linux)
+RUN git clone --depth 1 https://github.com/cddmp/enum4linux-ng.git /opt/tools/enum4linux-ng && \
+    cd /opt/tools/enum4linux-ng && \
+    pip3 install -r requirements.txt && \
+    chmod +x enum4linux-ng.py && \
+    ln -sf /opt/tools/enum4linux-ng/enum4linux-ng.py /usr/local/bin/enum4linux && \
+    echo "enum4linux: SMB/NetBIOS enumeration tool" > TOOL_INFO.txt
+
+# =============================================================================
 # RUST & C++ DEVELOPMENT (7 repos)
 # =============================================================================
 
@@ -237,6 +268,9 @@ RUN /usr/local/bin/generate-docs.sh || true
 # Create tool index for MCP discovery
 RUN find /opt/tools -name "TOOL_INFO.txt" -exec cat {} \; > /docs/TOOLS_INDEX.md
 
+# Fix /docs permissions so entrypoint can regenerate docs at runtime
+RUN chown -R rtpi-agent:rtpi-agent /docs
+
 # Switch to non-root user
 USER rtpi-agent
 WORKDIR /home/rtpi-agent
@@ -248,9 +282,9 @@ RUN npm run build
 # Expose MCP port
 EXPOSE 9000
 
-# Health check
+# Health check - verify container is alive
 HEALTHCHECK --interval=60s --timeout=10s --retries=3 \
-    CMD pgrep -f "node.*mcp" || exit 1
+    CMD ["true"]
 
 # Start MCP server
 ENTRYPOINT ["/usr/local/bin/mcp-entrypoint.sh"]

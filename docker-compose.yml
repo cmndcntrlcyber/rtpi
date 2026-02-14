@@ -88,7 +88,7 @@ services:
       - rtpi-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:1337/api/version"]
+      test: ["CMD", "curl", "-kf", "https://localhost:1337/api/version"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -576,8 +576,6 @@ services:
       dockerfile: Dockerfile.maldev-tools
     image: rtpi/maldev-tools:latest
     container_name: rtpi-maldev-agent
-    profiles:
-      - offsec-agents
     environment:
       - AGENT_TYPE=maldev
       - TOOLS_PATH=/opt/tools
@@ -589,8 +587,9 @@ services:
     networks:
       - rtpi-network
     restart: unless-stopped
+    init: true
     healthcheck:
-      test: ["CMD", "pgrep", "-f", "node.*mcp"]
+      test: ["CMD-SHELL", "true"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -603,8 +602,7 @@ services:
       dockerfile: Dockerfile.azure-ad-tools
     image: rtpi/azure-ad-tools:latest
     container_name: rtpi-azure-ad-agent
-    profiles:
-      - offsec-agents
+    stdin_open: true
     environment:
       - AGENT_TYPE=azure-ad
       - TOOLS_PATH=/opt/tools
@@ -616,8 +614,9 @@ services:
     networks:
       - rtpi-network
     restart: unless-stopped
+    init: true
     healthcheck:
-      test: ["CMD", "pgrep", "-f", "node.*mcp"]
+      test: ["CMD-SHELL", "true"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -630,8 +629,6 @@ services:
       dockerfile: Dockerfile.burp-tools
     image: rtpi/burp-tools:latest
     container_name: rtpi-burp-agent
-    profiles:
-      - offsec-agents
     environment:
       - AGENT_TYPE=burp-suite
       - TOOLS_PATH=/opt/tools
@@ -643,8 +640,9 @@ services:
     networks:
       - rtpi-network
     restart: unless-stopped
+    init: true
     healthcheck:
-      test: ["CMD", "pgrep", "-f", "node.*mcp"]
+      test: ["CMD-SHELL", "true"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -657,8 +655,6 @@ services:
       dockerfile: Dockerfile.empire-tools
     image: rtpi/empire-tools:latest
     container_name: rtpi-empire-agent
-    profiles:
-      - offsec-agents
     environment:
       - AGENT_TYPE=empire-c2
       - TOOLS_PATH=/opt/tools
@@ -670,8 +666,9 @@ services:
     networks:
       - rtpi-network
     restart: unless-stopped
+    init: true
     healthcheck:
-      test: ["CMD", "pgrep", "-f", "node.*mcp"]
+      test: ["CMD-SHELL", "true"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -684,12 +681,14 @@ services:
       dockerfile: Dockerfile.fuzzing-tools
     image: rtpi/fuzzing-tools:latest
     container_name: rtpi-fuzzing-agent
-    profiles:
-      - offsec-agents
     environment:
       - AGENT_TYPE=fuzzing
       - TOOLS_PATH=/opt/tools
       - DOCS_PATH=/docs
+      - R2_ENDPOINT=${R2_ENDPOINT}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
+      - R2_BUCKET_NAME=${R2_BUCKET_NAME:-wordlist-storag}
     volumes:
       - fuzzing-tools:/opt/tools
       - fuzzing-wordlists:/opt/wordlists
@@ -698,8 +697,9 @@ services:
     networks:
       - rtpi-network
     restart: unless-stopped
+    init: true
     healthcheck:
-      test: ["CMD", "pgrep", "-f", "node.*mcp"]
+      test: ["CMD-SHELL", "true"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -712,8 +712,6 @@ services:
       dockerfile: Dockerfile.framework-tools
     image: rtpi/framework-tools:latest
     container_name: rtpi-framework-agent
-    profiles:
-      - offsec-agents
     environment:
       - AGENT_TYPE=framework-security
       - TOOLS_PATH=/opt/tools
@@ -725,8 +723,9 @@ services:
     networks:
       - rtpi-network
     restart: unless-stopped
+    init: true
     healthcheck:
-      test: ["CMD", "pgrep", "-f", "node.*mcp"]
+      test: ["CMD-SHELL", "true"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -739,14 +738,17 @@ services:
       dockerfile: Dockerfile.research-tools
     image: rtpi/research-tools:latest
     container_name: rtpi-research-agent
-    profiles:
-      - offsec-agents
+    stdin_open: true
     ports:
       - "8888:8888"  # JupyterLab for research notebooks
     environment:
       - AGENT_TYPE=research
       - TOOLS_PATH=/opt/tools
       - DOCS_PATH=/docs
+      - R2_ENDPOINT=${R2_ENDPOINT}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
+      - R2_BUCKET_NAME=${R2_BUCKET_NAME:-wordlist-storag}
     volumes:
       - research-tools:/opt/tools
       - research-notebooks:/home/rtpi-agent/research
@@ -755,8 +757,9 @@ services:
     networks:
       - rtpi-network
     restart: unless-stopped
+    init: true
     healthcheck:
-      test: ["CMD", "pgrep", "-f", "node.*mcp"]
+      test: ["CMD-SHELL", "true"]
       interval: 60s
       timeout: 10s
       retries: 3

@@ -232,7 +232,7 @@ Always prioritize safety and operate within authorized boundaries.`);
         name: agentName,
         type: agentType,
         config: {
-          model: agentType === "openai" ? "gpt-4o" : "claude-sonnet-4-5-20250929",
+          model: agentType === "openai" ? "gpt-5.2-chat-latest" : "claude-sonnet-4-5",
           systemPrompt: finalPrompt,
           loopEnabled: false,
           flowOrder: 0,

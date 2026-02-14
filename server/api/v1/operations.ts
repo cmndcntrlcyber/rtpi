@@ -207,6 +207,14 @@ router.post("/:id/start", ensureRole("admin", "operator"), async (req, res) => {
       return res.status(404).json({ error: "Operation not found" });
     }
 
+    // Phase 3: Trigger automation pipeline on activation
+    try {
+      const { operationLifecycleAutomation } = await import('../../services/operation-lifecycle-automation');
+      await operationLifecycleAutomation.handleOperationActivated(id, user.id);
+    } catch (automationError) {
+      console.error('Lifecycle automation failed (non-fatal):', automationError);
+    }
+
     await logAudit(user.id, "start_operation", "/operations", id, true, req);
 
     res.json({ operation: result[0], message: "Operation started" });
@@ -234,6 +242,14 @@ router.post("/:id/complete", ensureRole("admin", "operator"), async (req, res) =
 
     if (!result || result.length === 0) {
       return res.status(404).json({ error: "Operation not found" });
+    }
+
+    // Phase 3: Complete pipeline on operation completion
+    try {
+      const { operationLifecycleAutomation } = await import('../../services/operation-lifecycle-automation');
+      await operationLifecycleAutomation.handleOperationCompleted(id, user.id);
+    } catch (automationError) {
+      console.error('Lifecycle automation failed (non-fatal):', automationError);
     }
 
     await logAudit(user.id, "complete_operation", "/operations", id, true, req);
@@ -292,6 +308,20 @@ router.patch("/:id/status", ensureRole("admin", "operator"), async (req, res) =>
       .set(updates)
       .where(eq(operations.id, id))
       .returning();
+
+    // Phase 3: Lifecycle hooks for status transitions
+    try {
+      const { operationLifecycleAutomation } = await import('../../services/operation-lifecycle-automation');
+      if (status === 'active') {
+        await operationLifecycleAutomation.handleOperationActivated(id, user.id);
+      } else if (status === 'paused') {
+        await operationLifecycleAutomation.handleOperationPaused(id);
+      } else if (status === 'completed' || status === 'cancelled') {
+        await operationLifecycleAutomation.handleOperationCompleted(id, user.id);
+      }
+    } catch (automationError) {
+      console.error('Lifecycle automation failed (non-fatal):', automationError);
+    }
 
     await logAudit(user.id, "update_operation_status", "/operations", id, true, req);
 

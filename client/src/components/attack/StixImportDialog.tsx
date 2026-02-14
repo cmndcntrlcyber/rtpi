@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -30,6 +30,17 @@ export default function StixImportDialog() {
   const [progress, setProgress] = useState(0);
   const [stats, setStats] = useState<ImportStats | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-trigger file picker when dialog opens
+  useEffect(() => {
+    if (open && !importing && !stats && !error) {
+      const timer = setTimeout(() => {
+        fileInputRef.current?.click();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [open, importing, stats, error]);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -128,6 +139,7 @@ export default function StixImportDialog() {
                     Click to upload STIX JSON file
                   </span>
                   <input
+                    ref={fileInputRef}
                     id="file-upload"
                     type="file"
                     accept=".json"

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import { db } from "../../db";
 import { reporters, reporterQuestions, reporterTasks } from "@shared/schema";
 import { eq, and, desc, inArray } from "drizzle-orm";
@@ -434,6 +435,89 @@ router.put("/tasks/:taskId/status", ensureRole("admin", "operator"), async (req,
 // ============================================================================
 // Global Question Queue Routes (for Operations Manager)
 // ============================================================================
+
+// ============================================================================
+// Reporter Memory Routes
+// ============================================================================
+
+// GET /api/v1/reporters/:id/memory-context - Get memory context for reporter
+router.get("/:id/memory-context", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const [reporter] = await db
+      .select()
+      .from(reporters)
+      .where(eq(reporters.id, id))
+      .limit(1);
+
+    if (!reporter) {
+      return res.status(404).json({ error: "Reporter not found" });
+    }
+
+    if (!reporter.operationId) {
+      return res.json({ memories: [], message: "Reporter has no operation context" });
+    }
+
+    const memories = await reporterAgentService.queryRelevantMemories(
+      reporter.pageId,
+      reporter.operationId,
+    );
+
+    res.json({ memories, reporterId: id, pageId: reporter.pageId });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to get memory context", details: error?.message });
+  }
+});
+
+const storeMemorySchema = z.object({
+  memoryText: z.string().min(1),
+  memoryType: z.enum(["fact", "insight", "event", "pattern"]).default("event"),
+  tags: z.array(z.string()).optional(),
+});
+
+// POST /api/v1/reporters/:id/store-memory - Store memory for reporter
+router.post("/:id/store-memory", ensureRole("admin", "operator"), async (req, res) => {
+  const { id } = req.params;
+  const user = req.user as any;
+
+  try {
+    const parsed = storeMemorySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
+    }
+
+    const [reporter] = await db
+      .select()
+      .from(reporters)
+      .where(eq(reporters.id, id))
+      .limit(1);
+
+    if (!reporter) {
+      return res.status(404).json({ error: "Reporter not found" });
+    }
+
+    if (!reporter.operationId) {
+      return res.status(400).json({ error: "Reporter has no operation context for memory storage" });
+    }
+
+    const memoryId = await reporterAgentService.storeReportInMemory(
+      reporter.operationId,
+      {
+        reporterId: id,
+        pageId: reporter.pageId,
+        ...parsed.data,
+        storedBy: user.id,
+      },
+    );
+
+    await logAudit(user.id, "store_reporter_memory", "/reporters", id, true, req);
+
+    res.status(201).json({ memoryId, success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to store memory", details: error?.message });
+  }
+});
 
 // GET /api/v1/reporters/questions/pending - Get all pending questions
 router.get("/questions/pending", async (req, res) => {

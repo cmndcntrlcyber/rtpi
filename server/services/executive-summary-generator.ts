@@ -10,8 +10,7 @@
  * - Support for multiple AI providers (Anthropic, OpenAI)
  */
 
-import Anthropic from "@anthropic-ai/sdk";
-import OpenAI from "openai";
+import { getOpenAIClient, getAnthropicClient } from "./ai-clients";
 
 // ============================================================================
 // Types
@@ -71,23 +70,18 @@ export interface ExecutiveSummary {
 // ============================================================================
 
 export class ExecutiveSummaryGenerator {
-  private anthropicClient: Anthropic | null = null;
-  private openaiClient: OpenAI | null = null;
   private provider: "anthropic" | "openai";
 
   constructor(provider: "anthropic" | "openai" = "anthropic") {
     this.provider = provider;
+  }
 
-    // Initialize AI clients
-    if (provider === "anthropic" && process.env.ANTHROPIC_API_KEY) {
-      this.anthropicClient = new Anthropic({
-        apiKey: process.env.ANTHROPIC_API_KEY,
-      });
-    } else if (provider === "openai" && process.env.OPENAI_API_KEY) {
-      this.openaiClient = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY,
-      });
-    }
+  private get anthropicClient() {
+    return getAnthropicClient();
+  }
+
+  private get openaiClient() {
+    return getOpenAIClient();
   }
 
   /**
@@ -222,7 +216,7 @@ Ensure the JSON is valid and parseable.`;
     }
 
     const response = await this.anthropicClient.messages.create({
-      model: "claude-3-5-sonnet-20241022",
+      model: "claude-sonnet-4-5",
       max_tokens: 4096,
       messages: [
         {
@@ -249,7 +243,7 @@ Ensure the JSON is valid and parseable.`;
     }
 
     const response = await this.openaiClient.chat.completions.create({
-      model: "gpt-4-turbo-preview",
+      model: "gpt-5.2-chat-latest",
       messages: [
         {
           role: "system",

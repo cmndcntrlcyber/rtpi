@@ -7,9 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Target, Trash2, RotateCcw } from "lucide-react";
+import { Target, Trash2, RotateCcw, Workflow } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import DynamicFieldList from "@/components/shared/DynamicFieldList";
 import LinkedVulnerabilities from "./LinkedVulnerabilities";
+import LinkedServices from "./LinkedServices";
+import { useWorkflowTemplates } from "@/hooks/useWorkflowTemplates";
 
 interface TargetData {
   id?: string;
@@ -53,6 +56,7 @@ export default function EditTargetDialog({
   onAddVulnerability,
   onRunAgentLoop,
 }: EditTargetDialogProps) {
+  const { templates: workflowTemplates } = useWorkflowTemplates();
   const [formData, setFormData] = useState<TargetData>({
     name: "",
     type: "ip",
@@ -60,8 +64,8 @@ export default function EditTargetDialog({
     priority: 3,
     tags: [""],
   });
-  const [servicesJson, setServicesJson] = useState("");
   const [metadataJson, setMetadataJson] = useState("");
+  const [selectedWorkflowIds, setSelectedWorkflowIds] = useState<string[]>([]);
 
   // Initialize form when dialog opens or target changes
   useEffect(() => {
@@ -70,14 +74,10 @@ export default function EditTargetDialog({
         ...target,
         tags: target.tags || [""],
       });
-      setServicesJson(
-        target.discoveredServices
-          ? JSON.stringify(target.discoveredServices, null, 2)
-          : ""
-      );
       setMetadataJson(
         target.metadata ? JSON.stringify(target.metadata, null, 2) : ""
       );
+      setSelectedWorkflowIds(target.metadata?.workflowTemplateIds || []);
     } else {
       setFormData({
         name: "",
@@ -86,8 +86,8 @@ export default function EditTargetDialog({
         priority: 3,
         tags: [""],
       });
-      setServicesJson("");
       setMetadataJson("");
+      setSelectedWorkflowIds([]);
     }
   }, [target, open]);
 
@@ -97,18 +97,8 @@ export default function EditTargetDialog({
     // Clean up tags (remove empty values)
     const cleanTags = formData.tags?.filter((t) => t.trim() !== "") || [];
 
-    // Parse JSON fields
-    let discoveredServices = null;
+    // Parse metadata JSON field
     let metadata = null;
-
-    try {
-      if (servicesJson.trim()) {
-        discoveredServices = JSON.parse(servicesJson);
-      }
-    } catch (err) {
-      toast.error("Invalid JSON in Discovered Services field");
-      return;
-    }
 
     try {
       if (metadataJson.trim()) {
@@ -119,11 +109,16 @@ export default function EditTargetDialog({
       return;
     }
 
+    // Merge workflow template IDs into metadata
+    const mergedMetadata = {
+      ...(metadata || {}),
+      workflowTemplateIds: selectedWorkflowIds.length > 0 ? selectedWorkflowIds : undefined,
+    };
+
     onSave({
       ...formData,
       tags: cleanTags,
-      discoveredServices,
-      metadata,
+      metadata: Object.keys(mergedMetadata).some((k) => mergedMetadata[k] !== undefined) ? mergedMetadata : null,
     });
   };
 
@@ -287,21 +282,59 @@ export default function EditTargetDialog({
               maxFields={5}
             />
 
-            {/* Discovered Services (JSON) */}
-            <div>
-              <Label htmlFor="services">Discovered Services (JSON)</Label>
-              <Textarea
-                id="services"
-                value={servicesJson}
-                onChange={(e) => setServicesJson(e.target.value)}
-                placeholder='{"ports": [80, 443], "services": ["http", "https"]}'
-                rows={4}
-                className="font-mono text-sm"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Optional JSON object for discovered services
-              </p>
-            </div>
+            {/* Workflow Templates */}
+            {workflowTemplates.length > 0 && (
+              <div>
+                <Label className="mb-2 block flex items-center gap-2">
+                  <Workflow className="h-4 w-4 text-indigo-600" />
+                  Assigned Workflows
+                </Label>
+                <div className="space-y-2 max-h-48 overflow-y-auto border border-border rounded-lg p-2">
+                  {workflowTemplates.map((wt) => (
+                    <div
+                      key={wt.id}
+                      className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-colors ${
+                        selectedWorkflowIds.includes(wt.id)
+                          ? 'bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800'
+                          : 'hover:bg-secondary'
+                      }`}
+                      onClick={() => {
+                        setSelectedWorkflowIds((prev) =>
+                          prev.includes(wt.id)
+                            ? prev.filter((id) => id !== wt.id)
+                            : [...prev, wt.id]
+                        );
+                      }}
+                    >
+                      <Checkbox
+                        checked={selectedWorkflowIds.includes(wt.id)}
+                        onCheckedChange={(checked) => {
+                          setSelectedWorkflowIds((prev) =>
+                            checked
+                              ? [...prev, wt.id]
+                              : prev.filter((id) => id !== wt.id)
+                          );
+                        }}
+                      />
+                      <div className="flex-1">
+                        <span className="text-sm font-medium text-foreground">{wt.name}</span>
+                        <span className="text-xs text-muted-foreground ml-2">
+                          ({wt.configuration?.agents?.length || 0} agents)
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Select workflow templates to assign to this target
+                </p>
+              </div>
+            )}
+
+            {/* Linked Discovered Services */}
+            {isEditing && target?.id && (
+              <LinkedServices targetId={target.id} />
+            )}
 
             {/* Notes/Metadata (JSON) */}
             <div>

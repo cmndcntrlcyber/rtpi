@@ -1,0 +1,168 @@
+FROM rtpi/offsec-base:latest
+
+# Set agent type for MCP server
+ENV AGENT_TYPE=llm-sec-tools
+ENV TOOLS_PATH=/opt/tools
+
+# Switch to root for package installation
+USER root
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    # Python development
+    python3-dev \
+    # JADX dependencies
+    unzip \
+    # Additional utilities
+    jq \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create directories
+RUN mkdir -p /opt/tools/bin
+
+# =============================================================================
+# LLM EVALUATION AND TESTING TOOLS
+# =============================================================================
+
+WORKDIR /opt/tools
+
+# Promptfoo - LLM testing and evaluation
+RUN git clone --depth 1 https://github.com/promptfoo/promptfoo.git && \
+    cd promptfoo && \
+    npm install && \
+    npm run build && \
+    npm link && \
+    ln -s /usr/local/bin/promptfoo /opt/tools/bin/promptfoo 2>/dev/null || true && \
+    echo "promptfoo: LLM testing and evaluation framework" > TOOL_INFO.txt
+
+# DeepEval - LLM evaluation framework
+RUN git clone --depth 1 https://github.com/confident-ai/deepeval.git && \
+    cd deepeval && \
+    pip3 install -U deepeval && \
+    echo "deepeval: LLM evaluation framework" > TOOL_INFO.txt
+
+# DeepTeam - LLM red teaming
+RUN git clone --depth 1 https://github.com/confident-ai/deepteam.git && \
+    cd deepteam && \
+    pip3 install -e . && \
+    echo "deepteam: LLM red teaming framework" > TOOL_INFO.txt
+
+# Garak - LLM vulnerability scanner
+RUN git clone --depth 1 https://github.com/NVIDIA/garak.git && \
+    cd garak && \
+    pip3 install maturin && \
+    pip3 install -e . && \
+    echo "garak: NVIDIA LLM vulnerability scanner" > TOOL_INFO.txt
+
+# =============================================================================
+# MODEL SECURITY TOOLS
+# =============================================================================
+
+# ModelScan - Protection against model serialization attacks
+RUN git clone --depth 1 https://github.com/protectai/modelscan.git && \
+    cd modelscan && \
+    pip3 install . && \
+    echo "modelscan: Protection against model serialization attacks" > TOOL_INFO.txt
+
+# =============================================================================
+# PICKLE SECURITY TOOLS
+# =============================================================================
+
+# Pker - Python pickle analyzer (Go)
+RUN git clone --depth 1 https://github.com/EddieIvan01/pker.git && \
+    cd pker && \
+    /usr/local/go/bin/go build -o /opt/tools/bin/pker . 2>/dev/null || true && \
+    echo "pker: Python pickle analyzer and converter" > TOOL_INFO.txt
+
+# Pickora - Pickle analyzer (Rust)
+RUN git clone --depth 1 https://github.com/splitline/Pickora.git && \
+    cd Pickora && \
+    cargo build --release 2>/dev/null || true && \
+    cp target/release/pickora /opt/tools/bin/ 2>/dev/null || true && \
+    echo "pickora: Pickle format analyzer" > TOOL_INFO.txt
+
+# =============================================================================
+# PROMPT LIBRARIES AND RESOURCES
+# =============================================================================
+
+# Prompts - Red team prompt collection
+RUN git clone --depth 1 https://github.com/sneakerhax/Prompts.git && \
+    cd Prompts && \
+    echo "prompts: Red team tactics and prompt collection" > TOOL_INFO.txt
+
+# =============================================================================
+# ADDITIONAL UTILITIES
+# =============================================================================
+
+# Install JADX for APK/DEX analysis (useful for pker)
+RUN mkdir -p /opt/tools/jadx && \
+    cd /opt/tools/jadx && \
+    wget -q https://github.com/skylot/jadx/releases/latest/download/jadx-1.5.0.zip -O jadx.zip && \
+    unzip -q jadx.zip && \
+    rm jadx.zip && \
+    ln -s /opt/tools/jadx/bin/jadx /opt/tools/bin/jadx && \
+    ln -s /opt/tools/jadx/bin/jadx-gui /opt/tools/bin/jadx-gui && \
+    echo "jadx: DEX/APK decompiler" > /opt/tools/jadx/TOOL_INFO.txt
+
+# Install dex2jar
+RUN mkdir -p /opt/tools/dex2jar && \
+    cd /opt/tools/dex2jar && \
+    wget -q https://github.com/pxb1988/dex2jar/releases/download/v2.4/dex-tools-v2.4.zip -O dex2jar.zip && \
+    unzip -q dex2jar.zip && \
+    mv dex-tools-v2.4/* . && \
+    rm -rf dex-tools-v2.4 dex2jar.zip && \
+    chmod +x *.sh && \
+    ln -s /opt/tools/dex2jar/d2j-dex2jar.sh /opt/tools/bin/d2j-dex2jar && \
+    echo "dex2jar: DEX to JAR converter" > TOOL_INFO.txt
+
+# =============================================================================
+# CONFIGURATION
+# =============================================================================
+
+# Create promptfoo config directory
+RUN mkdir -p /home/rtpi-agent/.promptfoo
+
+# Create garak config directory
+RUN mkdir -p /home/rtpi-agent/.garak
+
+# Create deepeval config
+RUN mkdir -p /home/rtpi-agent/.deepeval && \
+    cat > /home/rtpi-agent/.deepeval/config.json << 'EOF'
+{
+  "environment": "production"
+}
+EOF
+
+# =============================================================================
+# CLEANUP AND PERMISSIONS
+# =============================================================================
+
+# Add binary directory to PATH
+ENV PATH="/opt/tools/bin:${PATH}"
+
+# Set ownership
+RUN chown -R rtpi-agent:rtpi-agent /opt/tools /home/rtpi-agent
+
+# Generate tool documentation
+RUN /usr/local/bin/generate-docs.sh || true
+
+# Create tool index for MCP discovery
+RUN find /opt/tools -name "TOOL_INFO.txt" -exec cat {} \; > /docs/TOOLS_INDEX.md
+
+# Switch to non-root user
+USER rtpi-agent
+WORKDIR /home/rtpi-agent
+
+# Build MCP server
+WORKDIR /mcp
+RUN npm run build
+
+# Expose MCP port
+EXPOSE 9000
+
+# Health check
+HEALTHCHECK --interval=60s --timeout=10s --retries=3 \
+    CMD pgrep -f "node.*mcp" || exit 1
+
+# Start MCP server
+ENTRYPOINT ["/usr/local/bin/mcp-entrypoint.sh"]

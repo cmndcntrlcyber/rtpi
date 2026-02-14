@@ -19,7 +19,9 @@ import {
   Search,
   Filter,
   Plus,
+  Wrench,
 } from "lucide-react";
+import GitHubToolsDialog from "@/components/tools/GitHubToolsDialog";
 
 interface Tool {
   id: string;
@@ -60,6 +62,8 @@ export default function ToolRegistry() {
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [installStatusFilter, setInstallStatusFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [installDialogOpen, setInstallDialogOpen] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['tool-registry', categoryFilter, installStatusFilter, searchQuery],
@@ -121,9 +125,13 @@ export default function ToolRegistry() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button>
+          <Button onClick={() => setInstallDialogOpen(true)}>
             <Download className="mr-2 h-4 w-4" />
             Install from GitHub
+          </Button>
+          <Button onClick={() => setCreateDialogOpen(true)}>
+            <Wrench className="mr-2 h-4 w-4" />
+            Create Agent Tools
           </Button>
           <Button>
             <Plus className="mr-2 h-4 w-4" />
@@ -290,6 +298,9 @@ export default function ToolRegistry() {
           </CardContent>
         </Card>
       )}
+
+      <GitHubToolsDialog mode="install" open={installDialogOpen} onOpenChange={setInstallDialogOpen} />
+      <GitHubToolsDialog mode="create" open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
     </div>
   );
 }

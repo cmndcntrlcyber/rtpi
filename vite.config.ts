@@ -32,6 +32,8 @@ export default defineConfig({
       "rtpi.local",
       "localhost",
       ".local",
+      "c3s-rtpi.attck.nexus",
+      ".attck.nexus",
     ],
     proxy: {
       "/api": {

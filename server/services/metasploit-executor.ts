@@ -162,7 +162,11 @@ class MetasploitExecutor {
     module: MetasploitModule,
     targetValue: string
   ): string[] {
-    const fullModulePath = `${module.type}/${module.path}`;
+    // Strip type prefix from path if AI included it (e.g. "auxiliary/scanner/..." → "scanner/...")
+    const cleanPath = module.path.startsWith(`${module.type}/`)
+      ? module.path.slice(module.type.length + 1)
+      : module.path;
+    const fullModulePath = `${module.type}/${cleanPath}`;
     
     // Build msfconsole resource script commands
     const commands: string[] = [

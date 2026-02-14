@@ -23,6 +23,7 @@ export default function AddServerDialog({ onServerAdded }: AddServerDialogProps)
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
+    protocol: "https",
     host: "localhost",
     port: "1337",
     adminUsername: "empireadmin",
@@ -43,7 +44,7 @@ export default function AddServerDialog({ onServerAdded }: AddServerDialogProps)
         body: JSON.stringify({
           ...formData,
           port: parseInt(formData.port, 10),
-          restApiUrl: `http://${formData.host}:${formData.port}`,
+          restApiUrl: `${formData.protocol}://${formData.host}:${formData.port}`,
         }),
       });
 
@@ -54,6 +55,7 @@ export default function AddServerDialog({ onServerAdded }: AddServerDialogProps)
       setOpen(false);
       setFormData({
         name: "",
+        protocol: "https",
         host: "localhost",
         port: "1337",
         adminUsername: "empireadmin",
@@ -97,8 +99,21 @@ export default function AddServerDialog({ onServerAdded }: AddServerDialogProps)
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               <div className="space-y-2">
+                <Label htmlFor="protocol">Protocol</Label>
+                <select
+                  id="protocol"
+                  value={formData.protocol}
+                  onChange={(e) => setFormData({ ...formData, protocol: e.target.value })}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <option value="https">HTTPS</option>
+                  <option value="http">HTTP</option>
+                </select>
+              </div>
+
+              <div className="space-y-2 col-span-2">
                 <Label htmlFor="host">Host</Label>
                 <Input
                   id="host"

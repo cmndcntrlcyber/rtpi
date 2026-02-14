@@ -3,8 +3,7 @@ import { api } from '@/lib/api';
 import SeverityDistributionChart from './charts/SeverityDistributionChart';
 import StatusDistributionChart from './charts/StatusDistributionChart';
 import SummaryStatsCard from './SummaryStatsCard';
-import TopVulnerableAssetsTable from './TopVulnerableAssetsTable';
-import ActivityFeed from './ActivityFeed';
+import BurpSuiteUploadCard from './BurpSuiteUploadCard';
 
 interface OverviewTabProps {
   operationId: string;
@@ -164,11 +163,8 @@ export default function OverviewTab({ operationId }: OverviewTabProps) {
         <StatusDistributionChart data={statusData} />
       </div>
 
-      {/* Middle Row: Top Assets and Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <TopVulnerableAssetsTable assets={topAssets} />
-        <ActivityFeed events={recentActivity} />
-      </div>
+      {/* BurpSuite Pro Integration */}
+      <BurpSuiteUploadCard operationId={operationId} />
     </div>
   );
 }

@@ -6,8 +6,8 @@
  */
 
 import { db } from '../db';
-import { operations, agents, workflowTemplates } from '../../shared/schema';
-import { eq, and } from 'drizzle-orm';
+import { operations, agents, workflowTemplates, targets, discoveredAssets, discoveredServices } from '../../shared/schema';
+import { eq, and, inArray } from 'drizzle-orm';
 import { EventEmitter } from 'events';
 
 // ============================================================================
@@ -89,6 +89,63 @@ const DEFAULT_WORKFLOW_TEMPLATES = [
     },
     isActive: true,
   },
+  // Phase 3: Operations Management Automation templates
+  {
+    name: "Target Auto-Creation Workflow",
+    description: "Automatically creates targets from discovered assets after BBOT scan completion.",
+    triggerEvent: "bbot_scan_completed",
+    requiredCapabilities: ["target_creation"],
+    optionalCapabilities: [],
+    configuration: {
+      maxParallelAgents: 1,
+      timeoutPerPhase: 300000,
+      retryPolicy: { maxRetries: 2, backoffMultiplier: 2 },
+      fallbackBehavior: "skip",
+    },
+    isActive: true,
+  },
+  {
+    name: "Nmap Port Scan Workflow",
+    description: "Runs Nmap port scans against auto-created targets to discover services.",
+    triggerEvent: "targets_auto_created",
+    requiredCapabilities: ["port_scanning"],
+    optionalCapabilities: [],
+    configuration: {
+      maxParallelAgents: 3,
+      timeoutPerPhase: 1800000,
+      retryPolicy: { maxRetries: 2, backoffMultiplier: 2 },
+      fallbackBehavior: "skip",
+    },
+    isActive: true,
+  },
+  {
+    name: "Nuclei Post-Nmap Workflow",
+    description: "Runs Nuclei vulnerability scans against web services discovered by Nmap.",
+    triggerEvent: "nmap_scan_completed",
+    requiredCapabilities: ["vulnerability_scanning"],
+    optionalCapabilities: [],
+    configuration: {
+      maxParallelAgents: 3,
+      timeoutPerPhase: 7200000,
+      retryPolicy: { maxRetries: 1, backoffMultiplier: 1 },
+      fallbackBehavior: "skip",
+    },
+    isActive: true,
+  },
+  {
+    name: "Vulnerability Reporting Workflow",
+    description: "Reports new vulnerabilities to Operations Manager after Nuclei scan completion.",
+    triggerEvent: "nuclei_scan_completed",
+    requiredCapabilities: ["vulnerability_reporting"],
+    optionalCapabilities: [],
+    configuration: {
+      maxParallelAgents: 1,
+      timeoutPerPhase: 300000,
+      retryPolicy: { maxRetries: 1, backoffMultiplier: 1 },
+      fallbackBehavior: "skip",
+    },
+    isActive: true,
+  },
 ];
 
 // ============================================================================
@@ -100,6 +157,12 @@ export interface WorkflowEventHandlerConfig {
   enableSurfaceAssessmentOnOperationCreate: boolean;
   enableWebHackerOnSurfaceAssessmentComplete: boolean;
   requireScopeForSurfaceAssessment: boolean;
+
+  // Phase 3: Pipeline automation flags
+  enableTargetAutoCreation: boolean;
+  enableNmapOnTargetCreation: boolean;
+  enableNucleiOnNmapCompletion: boolean;
+  enableVulnReporterOnNucleiComplete: boolean;
 }
 
 const DEFAULT_CONFIG: WorkflowEventHandlerConfig = {
@@ -107,6 +170,12 @@ const DEFAULT_CONFIG: WorkflowEventHandlerConfig = {
   enableSurfaceAssessmentOnOperationCreate: true,
   enableWebHackerOnSurfaceAssessmentComplete: true,
   requireScopeForSurfaceAssessment: true,
+
+  // Phase 3 defaults
+  enableTargetAutoCreation: true,
+  enableNmapOnTargetCreation: true,
+  enableNucleiOnNmapCompletion: true,
+  enableVulnReporterOnNucleiComplete: true,
 };
 
 // ============================================================================
@@ -299,7 +368,7 @@ class WorkflowEventHandlers extends EventEmitter {
    */
   async handleScanCompleted(
     scanId: string,
-    scanType: 'bbot' | 'nuclei' | 'other',
+    scanType: 'bbot' | 'nuclei' | 'nmap' | 'other',
     operationId: string,
     userId: string
   ): Promise<void> {
@@ -308,9 +377,282 @@ class WorkflowEventHandlers extends EventEmitter {
     // Emit event for listeners
     this.emit('scan_completed', { scanId, scanType, operationId, userId });
 
-    // BBOT scan completion triggers Surface Assessment completion
     if (scanType === 'bbot') {
+      // Phase 3: Auto-create targets from discovered assets before triggering web hacker
+      if (this.config.enableTargetAutoCreation) {
+        await this.handleBBOTScanCompleted(operationId, scanId, userId);
+      }
+      // Existing: BBOT scan completion triggers Surface Assessment -> Web Hacker
       await this.handleSurfaceAssessmentCompleted(operationId, userId);
+    } else if (scanType === 'nmap') {
+      if (this.config.enableNucleiOnNmapCompletion) {
+        await this.handleNmapScanCompleted(operationId, scanId, userId);
+      }
+    } else if (scanType === 'nuclei') {
+      if (this.config.enableVulnReporterOnNucleiComplete) {
+        await this.handleNucleiScanCompleted(operationId, scanId, userId);
+      }
+    }
+  }
+
+  // ============================================================================
+  // Phase 3: Pipeline Cascade Handlers
+  // ============================================================================
+
+  /**
+   * Handle BBOT scan completed: auto-create targets from discovered assets
+   */
+  private async handleBBOTScanCompleted(
+    operationId: string,
+    scanId: string,
+    userId: string
+  ): Promise<void> {
+    console.log(`Pipeline: BBOT scan completed, auto-creating targets for operation ${operationId}`);
+
+    try {
+      const { targetAutoCreationService } = await import('./target-auto-creation-service');
+      const result = await targetAutoCreationService.autoCreateTargetsFromAssets(operationId, scanId);
+
+      console.log(`Pipeline: Auto-created ${result.created} targets, skipped ${result.skipped}, linked ${result.linked}`);
+
+      // Update pipeline status
+      await this.updatePipelineStatus(operationId, 'target_creation', 'completed', {
+        scanId,
+        resultSummary: { created: result.created, skipped: result.skipped, linked: result.linked },
+      });
+
+      this.emit('targets_auto_created', {
+        operationId,
+        scanId,
+        targetCount: result.created,
+        targetIds: result.targetIds,
+      });
+
+      // Cascade: trigger nmap on newly created targets
+      if (this.config.enableNmapOnTargetCreation && result.created > 0) {
+        await this.handleTargetsAutoCreated(operationId, scanId, userId, result.targetIds);
+      }
+    } catch (error) {
+      console.error('Pipeline: Target auto-creation failed:', error);
+      await this.updatePipelineStatus(operationId, 'target_creation', 'failed');
+    }
+  }
+
+  /**
+   * Handle targets auto-created: trigger nmap port scans
+   */
+  private async handleTargetsAutoCreated(
+    operationId: string,
+    scanId: string,
+    userId: string,
+    targetIds: string[]
+  ): Promise<void> {
+    console.log(`Pipeline: Triggering Nmap scans for ${targetIds.length} auto-created targets`);
+
+    try {
+      // Query auto-created targets (IP and domain types are scannable by nmap)
+      const autoTargets = await db
+        .select()
+        .from(targets)
+        .where(
+          and(
+            eq(targets.operationId, operationId),
+            eq(targets.autoCreated, true),
+            inArray(targets.type, ['ip', 'domain'])
+          )
+        );
+
+      if (autoTargets.length === 0) {
+        console.log('Pipeline: No scannable targets found for Nmap');
+        return;
+      }
+
+      // Batch targets (max 10 per nmap scan for performance)
+      const BATCH_SIZE = 10;
+      const batches: string[][] = [];
+      for (let i = 0; i < autoTargets.length; i += BATCH_SIZE) {
+        batches.push(autoTargets.slice(i, i + BATCH_SIZE).map(t => t.value));
+      }
+
+      // Get userId from operation owner if not provided
+      let effectiveUserId = userId;
+      if (!effectiveUserId || effectiveUserId === 'system') {
+        const [op] = await db.select().from(operations).where(eq(operations.id, operationId));
+        if (op) effectiveUserId = op.ownerId;
+      }
+
+      const { nmapExecutor } = await import('./nmap-executor');
+
+      for (const batch of batches) {
+        try {
+          await nmapExecutor.startScan(
+            batch,
+            { ports: '1-1024', timing: 'T4', serviceDetection: true },
+            operationId,
+            effectiveUserId
+          );
+        } catch (nmapError) {
+          console.error('Pipeline: Nmap batch scan failed:', nmapError);
+        }
+      }
+
+      await this.updatePipelineStatus(operationId, 'nmap', 'running', {
+        batchCount: batches.length,
+        totalTargets: autoTargets.length,
+      });
+    } catch (error) {
+      console.error('Pipeline: Failed to trigger Nmap scans:', error);
+      await this.updatePipelineStatus(operationId, 'nmap', 'failed');
+    }
+  }
+
+  /**
+   * Handle nmap scan completed: trigger nuclei vulnerability scans on web services
+   */
+  private async handleNmapScanCompleted(
+    operationId: string,
+    scanId: string,
+    userId: string
+  ): Promise<void> {
+    console.log(`Pipeline: Nmap scan completed, checking for web services in operation ${operationId}`);
+
+    try {
+      // Query discovered services for web ports
+      const WEB_PORTS = [80, 443, 8080, 8443, 8888, 3000, 3443, 8000];
+      const TLS_PORTS = [443, 8443, 3443];
+
+      const webServices = await db
+        .select({
+          port: discoveredServices.port,
+          assetValue: discoveredAssets.value,
+          assetHostname: discoveredAssets.hostname,
+        })
+        .from(discoveredServices)
+        .innerJoin(discoveredAssets, eq(discoveredServices.assetId, discoveredAssets.id))
+        .where(
+          and(
+            eq(discoveredAssets.operationId, operationId),
+            inArray(discoveredServices.port, WEB_PORTS),
+            eq(discoveredServices.state, 'open')
+          )
+        );
+
+      if (webServices.length === 0) {
+        console.log('Pipeline: No web services found for Nuclei scanning');
+        await this.updatePipelineStatus(operationId, 'nuclei', 'skipped');
+        return;
+      }
+
+      // Build target URLs from host:port pairs
+      const targetUrls = new Set<string>();
+      for (const svc of webServices) {
+        const host = svc.assetHostname || svc.assetValue;
+        const scheme = TLS_PORTS.includes(svc.port) ? 'https' : 'http';
+        // Avoid redundant port for standard ports
+        if ((scheme === 'http' && svc.port === 80) || (scheme === 'https' && svc.port === 443)) {
+          targetUrls.add(`${scheme}://${host}`);
+        } else {
+          targetUrls.add(`${scheme}://${host}:${svc.port}`);
+        }
+      }
+
+      console.log(`Pipeline: Found ${targetUrls.size} web targets for Nuclei`);
+
+      // Get userId from operation owner if needed
+      let effectiveUserId = userId;
+      if (!effectiveUserId || effectiveUserId === 'system') {
+        const [op] = await db.select().from(operations).where(eq(operations.id, operationId));
+        if (op) effectiveUserId = op.ownerId;
+      }
+
+      const { nucleiExecutor } = await import('./nuclei-executor');
+      await nucleiExecutor.startScan(
+        Array.from(targetUrls),
+        {},
+        operationId,
+        effectiveUserId
+      );
+
+      await this.updatePipelineStatus(operationId, 'nuclei', 'running', {
+        targetCount: targetUrls.size,
+      });
+    } catch (error) {
+      console.error('Pipeline: Failed to trigger Nuclei scan:', error);
+      await this.updatePipelineStatus(operationId, 'nuclei', 'failed');
+    }
+  }
+
+  /**
+   * Handle nuclei scan completed: trigger vulnerability reporting
+   */
+  private async handleNucleiScanCompleted(
+    operationId: string,
+    scanId: string,
+    userId: string
+  ): Promise<void> {
+    console.log(`Pipeline: Nuclei scan completed for operation ${operationId}`);
+
+    this.emit('nuclei_scan_completed', { operationId, scanId, userId });
+
+    try {
+      // Trigger immediate vulnerability reporter poll
+      const { vulnerabilityReporterAgent } = await import('./vulnerability-reporter-agent');
+      if (vulnerabilityReporterAgent.isPolling()) {
+        await vulnerabilityReporterAgent.pollNow();
+      }
+    } catch (error) {
+      console.error('Pipeline: Failed to trigger vulnerability reporter:', error);
+    }
+
+    await this.updatePipelineStatus(operationId, 'completed', 'completed');
+  }
+
+  /**
+   * Update pipeline status on operations table
+   */
+  private async updatePipelineStatus(
+    operationId: string,
+    currentPhase: string,
+    phaseStatus: string,
+    resultSummary?: Record<string, any>
+  ): Promise<void> {
+    try {
+      const [op] = await db.select().from(operations).where(eq(operations.id, operationId));
+      if (!op) return;
+
+      const existing = (op.pipelineStatus as any) || { phases: [] };
+      const phases = existing.phases || [];
+
+      // Update or add phase entry
+      const phaseIndex = phases.findIndex((p: any) => p.name === currentPhase);
+      const phaseEntry = {
+        name: currentPhase,
+        status: phaseStatus,
+        startedAt: phaseStatus === 'running' ? new Date().toISOString() : (phaseIndex >= 0 ? phases[phaseIndex].startedAt : new Date().toISOString()),
+        completedAt: ['completed', 'failed', 'skipped'].includes(phaseStatus) ? new Date().toISOString() : undefined,
+        resultSummary,
+      };
+
+      if (phaseIndex >= 0) {
+        phases[phaseIndex] = { ...phases[phaseIndex], ...phaseEntry };
+      } else {
+        phases.push(phaseEntry);
+      }
+
+      await db
+        .update(operations)
+        .set({
+          pipelineStatus: {
+            currentPhase,
+            automationEnabled: op.automationEnabled,
+            phases,
+            lastUpdated: new Date().toISOString(),
+          },
+          updatedAt: new Date(),
+        })
+        .where(eq(operations.id, operationId));
+    } catch (error) {
+      console.error('Failed to update pipeline status:', error);
     }
   }
 
@@ -401,6 +743,60 @@ class WorkflowEventHandlers extends EventEmitter {
       console.error('Failed to initialize Dynamic Workflow Orchestrator:', error);
     }
 
+    // Phase 3: Initialize Vulnerability Reporter Agent
+    try {
+      const { vulnerabilityReporterAgent } = await import('./vulnerability-reporter-agent');
+      await vulnerabilityReporterAgent.initialize();
+      await vulnerabilityReporterAgent.startPolling();
+      console.log('Vulnerability Reporter Agent initialized and polling');
+    } catch (error) {
+      console.error('Failed to initialize Vulnerability Reporter Agent:', error);
+    }
+
+    // Phase 3: Seed Operations Manager + Page Reporter agents
+    try {
+      const existingAgents = await db.select().from(agents);
+      const existingNames = new Set(existingAgents.map((a) => a.name));
+
+      const agentsToCreate: { name: string; type: "custom"; status: "idle"; config: Record<string, string> }[] = [];
+
+      // Operations Manager agent
+      if (!existingNames.has("Operations Manager")) {
+        agentsToCreate.push({
+          name: "Operations Manager",
+          type: "custom",
+          status: "idle",
+          config: { role: "operations_manager" },
+        });
+      }
+
+      // Page Reporter agents (one per page role)
+      const pageRoles = [
+        "dashboard", "operations", "targets", "vulnerabilities",
+        "surface_assessment", "agents", "tools", "workflows",
+      ];
+      for (const pageRole of pageRoles) {
+        const name = `Reporter: ${pageRole.charAt(0).toUpperCase() + pageRole.slice(1).replace(/_/g, " ")}`;
+        if (!existingNames.has(name)) {
+          agentsToCreate.push({
+            name,
+            type: "custom",
+            status: "idle",
+            config: { role: "page_reporter", pageRole },
+          });
+        }
+      }
+
+      if (agentsToCreate.length > 0) {
+        await db.insert(agents).values(agentsToCreate);
+        console.log(`Seeded ${agentsToCreate.length} ops management agents`);
+      } else {
+        console.log('Ops management agents already exist');
+      }
+    } catch (error) {
+      console.error('Failed to seed ops management agents:', error);
+    }
+
     this.initialized = true;
     console.log('Agent System initialization complete');
     this.emit('agent_system_initialized');
@@ -424,6 +820,14 @@ class WorkflowEventHandlers extends EventEmitter {
       dynamicWorkflowOrchestrator.destroy();
     } catch (error) {
       console.error('Error destroying Dynamic Workflow Orchestrator:', error);
+    }
+
+    // Phase 3: Stop Vulnerability Reporter Agent
+    try {
+      const { vulnerabilityReporterAgent } = await import('./vulnerability-reporter-agent');
+      await vulnerabilityReporterAgent.stopPolling();
+    } catch (error) {
+      console.error('Error stopping Vulnerability Reporter Agent:', error);
     }
 
     this.initialized = false;
@@ -509,7 +913,7 @@ export const handleSurfaceAssessmentCompleted = (operationId: string, userId: st
 
 export const handleScanCompleted = (
   scanId: string,
-  scanType: 'bbot' | 'nuclei' | 'other',
+  scanType: 'bbot' | 'nuclei' | 'nmap' | 'other',
   operationId: string,
   userId: string
 ) => workflowEventHandlers.handleScanCompleted(scanId, scanType, operationId, userId);

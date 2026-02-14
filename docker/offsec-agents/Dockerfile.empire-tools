@@ -31,14 +31,27 @@ RUN apt-get update && apt-get install -y \
     ruby ruby-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install PowerShell and .NET (x86 only, skip on ARM64)
-RUN ARCH=$(dpkg --print-architecture) && \
-    if [ "$ARCH" = "amd64" ]; then \
-        apt-get update && apt-get install -y powershell dotnet-sdk-8.0 && \
-        rm -rf /var/lib/apt/lists/*; \
-    else \
-        echo "Skipping PowerShell and .NET on ARM64"; \
-    fi
+# Install PowerShell for Linux (binary archive method for ARM64 support)
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "aarch64" ]; then PS_ARCH="arm64"; else PS_ARCH="x64"; fi && \
+    PS_VERSION=$(curl -s https://api.github.com/repos/PowerShell/PowerShell/releases/latest | grep tag_name | cut -d '"' -f 4 | sed 's/v//') && \
+    curl -sL "https://github.com/PowerShell/PowerShell/releases/download/v${PS_VERSION}/powershell-${PS_VERSION}-linux-${PS_ARCH}.tar.gz" -o /tmp/powershell.tar.gz && \
+    mkdir -p /opt/microsoft/powershell/7 && \
+    tar zxf /tmp/powershell.tar.gz -C /opt/microsoft/powershell/7 && \
+    chmod +x /opt/microsoft/powershell/7/pwsh && \
+    ln -s /opt/microsoft/powershell/7/pwsh /usr/local/bin/pwsh && \
+    rm /tmp/powershell.tar.gz
+
+# Install .NET SDK 8.0 (via Microsoft packages repo)
+RUN apt-get update && \
+    apt-get install -y wget && \
+    . /etc/os-release && \
+    wget -q "https://packages.microsoft.com/config/ubuntu/${VERSION_ID}/packages-microsoft-prod.deb" && \
+    dpkg -i packages-microsoft-prod.deb && \
+    rm packages-microsoft-prod.deb && \
+    apt-get update && \
+    (apt-get install -y dotnet-sdk-8.0 || echo "dotnet-sdk-8.0 not available for this architecture") && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install Python packages for C2 operations
 RUN pip3 install --no-cache-dir \

@@ -60,9 +60,8 @@ services:
     image: bcsecurity/empire:latest
     container_name: rtpi-empire
     ports:
-      - "1337:1337"     # Empire REST API
-      - "5001:5001"     # Empire Web UI (optional)
-      - "8080-8100:8080-8100"  # Dynamic listener ports
+      # REST API (1337) and Web UI (5001) proxied through empire-proxy
+      - "8080-8100:8080-8100"  # Dynamic listener ports (direct, no proxy needed)
     environment:
       # Database connection (shared PostgreSQL)
       POSTGRES_HOST: postgres
@@ -72,7 +71,7 @@ services:
       POSTGRES_PASSWORD: rtpi
       # Empire configuration
       EMPIRE_USERNAME: empireadmin
-      EMPIRE_PASSWORD: ${EMPIRE_PASSWORD:-ChangeMeNow123!}
+      EMPIRE_PASSWORD: ${EMPIRE_PASSWORD:-Islamist-Repeal1-Unhealthy-Amulet-Survival}
       RESTPORT: 1337
       # Optional: Enable SocketIO for real-time events
       SOCKETIO_ENABLED: "true"
@@ -88,11 +87,26 @@ services:
       - rtpi-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-kf", "https://localhost:1337/api/version"]
+      test: ["CMD", "curl", "-sf", "-o", "/dev/null", "http://0.0.0.0:1337/"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 60s
+
+  # Empire Reverse Proxy — normalizes paths (fixes Starkiller //token double-slash)
+  empire-proxy:
+    image: nginx:alpine
+    container_name: rtpi-empire-proxy
+    ports:
+      - "1337:1337"     # Empire REST API (proxied)
+      - "5001:5001"     # Empire Web UI (proxied)
+    volumes:
+      - ./docker/empire-proxy.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - empire-server
+    networks:
+      - rtpi-network
+    restart: unless-stopped
 
   # ATT&CK Workbench MongoDB Database
   workbench-db:

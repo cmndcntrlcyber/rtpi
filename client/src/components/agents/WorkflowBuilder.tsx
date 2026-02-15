@@ -513,9 +513,9 @@ export default function WorkflowBuilder({
                         <div className="flex items-center gap-2">
                           <Target className="h-4 w-4" />
                           {target.name}
-                          {target.ipAddress && (
+                          {target.value && (
                             <span className="text-xs text-muted-foreground">
-                              ({target.ipAddress})
+                              ({target.value})
                             </span>
                           )}
                         </div>

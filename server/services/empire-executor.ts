@@ -23,7 +23,11 @@ import { kasmNginxManager } from "./kasm-nginx-manager";
 
 // Empire REST API interfaces
 export interface EmpireLoginResponse {
-  token: string;
+  // Empire 5.x OAuth2 response
+  access_token?: string;
+  token_type?: string;
+  // Empire 4.x legacy response
+  token?: string;
 }
 
 export interface EmpireListener {
@@ -165,7 +169,7 @@ class EmpireExecutor {
 
     // Create axios instance (accept self-signed certs for Empire's default HTTPS)
     const client = axios.create({
-      baseURL: server.restApiUrl,
+      baseURL: server.restApiUrl.replace(/\/+$/, ''),
       headers: {
         "Authorization": `Bearer ${userToken}`,
         "Content-Type": "application/json",
@@ -213,17 +217,39 @@ class EmpireExecutor {
 
     // Login to Empire to get a token (accept self-signed certs)
     const loginClient = axios.create({
-      baseURL: server.restApiUrl,
+      baseURL: server.restApiUrl.replace(/\/+$/, ''),
       timeout: 10000,
       httpsAgent: new https.Agent({ rejectUnauthorized: false }),
     });
 
-    const loginResponse = await loginClient.post<EmpireLoginResponse>("/api/admin/login", {
-      username: server.adminUsername,
-      password: decrypt(server.adminPasswordHash), // Decrypt password for Empire API authentication
-    });
+    const password = decrypt(server.adminPasswordHash);
+    let token: string;
 
-    const token = loginResponse.data.token;
+    try {
+      // Empire 5.x: OAuth2 password grant at POST /token (form-urlencoded)
+      const formData = new URLSearchParams();
+      formData.append("username", server.adminUsername);
+      formData.append("password", password);
+      formData.append("grant_type", "password");
+
+      const loginResponse = await loginClient.post<EmpireLoginResponse>("/token", formData, {
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      });
+
+      token = loginResponse.data.access_token || loginResponse.data.token || "";
+    } catch {
+      // Fallback: Empire 4.x JSON login at POST /api/admin/login
+      const loginResponse = await loginClient.post<EmpireLoginResponse>("/api/admin/login", {
+        username: server.adminUsername,
+        password,
+      });
+
+      token = loginResponse.data.token || loginResponse.data.access_token || "";
+    }
+
+    if (!token) {
+      throw new Error("Empire login succeeded but no token was returned");
+    }
 
     // Store the token in database
     if (tokenRecord) {
@@ -253,7 +279,7 @@ class EmpireExecutor {
   async checkConnection(serverId: string, userId: string): Promise<boolean> {
     try {
       const client = await this.getApiClient(serverId, userId);
-      const response = await client.get("/api/version");
+      const response = await client.get("/api/v2/meta/version");
 
       await db
         .update(empireServers)
@@ -281,11 +307,11 @@ class EmpireExecutor {
             : server.restApiUrl.replace("https://", "http://");
 
           const altClient = axios.create({
-            baseURL: altUrl,
+            baseURL: altUrl.replace(/\/+$/, ''),
             timeout: 10000,
             httpsAgent: new https.Agent({ rejectUnauthorized: false }),
           });
-          const altResponse = await altClient.get("/api/version");
+          const altResponse = await altClient.get("/api/v2/meta/version");
 
           // Auto-fix the URL in the database
           console.log(`[Empire] Auto-corrected URL to ${altUrl} for server ${serverId}`);

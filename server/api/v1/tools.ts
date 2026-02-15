@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "../../db";
-import { securityTools, toolUploads } from "@shared/schema";
+import { securityTools, toolUploads, toolRegistry } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import { dockerExecutor } from "../../services/docker-executor";
@@ -290,15 +290,62 @@ router.post("/:id/execute-docker", ensureRole("admin", "operator"), async (req, 
       .limit(1);
     
     if (!result || result.length === 0) {
-      return res.status(404).json({ error: "Tool not found" });
+      // Fallback: check toolRegistry table (Tool Registry page uses registry IDs)
+      const registryResult = await db
+        .select()
+        .from(toolRegistry)
+        .where(eq(toolRegistry.id, id))
+        .limit(1);
+
+      if (!registryResult || registryResult.length === 0) {
+        return res.status(404).json({ error: "Tool not found" });
+      }
+
+      const regTool = registryResult[0];
+      const config = regTool.config as any;
+      const containerName = regTool.containerName || "rtpi-tools";
+
+      let cmdArgs: string[];
+      if (command) {
+        cmdArgs = Array.isArray(command) ? command : [command];
+      } else {
+        const baseCmd = config?.baseCommand || regTool.binaryPath || regTool.toolId;
+        cmdArgs = [baseCmd];
+        if (params && typeof params === "object") {
+          for (const [key, value] of Object.entries(params)) {
+            if (value !== undefined && value !== null && value !== "") {
+              cmdArgs.push(`--${key}`, String(value));
+            }
+          }
+        }
+      }
+
+      let executionResult;
+      if (agentId && targetId) {
+        executionResult = await agentToolConnector.execute(
+          agentId, regTool.id, targetId, JSON.stringify(params || {})
+        );
+      } else {
+        executionResult = await dockerExecutor.exec(containerName, cmdArgs, {
+          timeout: 300000,
+        });
+      }
+
+      await logAudit(user.id, "execute_tool_docker", "/tools", id, true, req);
+
+      return res.json({
+        success: true,
+        tool: regTool.name,
+        result: executionResult,
+      });
     }
 
     const tool = result[0];
 
     // Check if tool is Docker-based
     if (tool.dockerImage !== "rtpi-tools") {
-      return res.status(400).json({ 
-        error: "Tool is not configured for Docker execution" 
+      return res.status(400).json({
+        error: "Tool is not configured for Docker execution"
       });
     }
 
@@ -767,8 +814,15 @@ router.post("/refresh", ensureRole("admin", "operator"), async (req, res) => {
     let added = 0;
     let updated = 0;
 
+    // Helper to reject error strings from version/description fields
+    const isErrorString = (s?: string) =>
+      !!s && /OCI runtime|exec failed|not found|No such file|Permission denied|unable to start/i.test(s);
+
     // Sync discovered tools to database
     for (const tool of discoveredTools) {
+      const cleanVersion = isErrorString(tool.version) ? undefined : tool.version;
+      const cleanDescription = isErrorString(tool.description) ? undefined : tool.description;
+
       // Check if tool already exists in database
       const existing = await db
         .select()
@@ -781,11 +835,11 @@ router.post("/refresh", ensureRole("admin", "operator"), async (req, res) => {
         await db.insert(securityTools).values({
           name: tool.name,
           category: tool.category,
-          description: tool.description,
+          description: cleanDescription || tool.description,
           command: tool.command,
           dockerImage: tool.dockerImage,
           status: tool.isInstalled ? "available" : "stopped",
-          version: tool.version || undefined,
+          version: cleanVersion || undefined,
           configPath: tool.installPath,
           metadata: {
             ...tool.metadata,
@@ -798,12 +852,13 @@ router.post("/refresh", ensureRole("admin", "operator"), async (req, res) => {
         added++;
         console.log(`  Added: ${tool.name}`);
       } else {
-        // Update existing tool
+        // Update existing tool — preserve good description, sanitize version
         await db
           .update(securityTools)
           .set({
             status: tool.isInstalled ? "available" : "stopped",
-            version: tool.version || existing[0].version,
+            version: cleanVersion || existing[0].version || undefined,
+            description: cleanDescription || existing[0].description || tool.description,
             configPath: tool.installPath || existing[0].configPath,
             metadata: {
               ...(existing[0].metadata as Record<string, any> || {}),

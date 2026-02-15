@@ -214,7 +214,7 @@ export default function MetasploitCard({ tool }: MetasploitCardProps) {
                   ) : (
                     targets.map((target) => (
                       <SelectItem key={target.id} value={target.id}>
-                        {target.name || target.hostname || target.ipAddress || target.domain || target.id}
+                        {target.name} ({target.value})
                       </SelectItem>
                     ))
                   )}

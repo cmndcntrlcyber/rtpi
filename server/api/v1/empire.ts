@@ -85,7 +85,7 @@ router.post("/servers", async (req, res) => {
         name,
         host,
         port: port || 1337,
-        restApiUrl: restApiUrl || `http://${host}:${port || 1337}`,
+        restApiUrl: (restApiUrl || `http://${host}:${port || 1337}`).replace(/\/+$/, ''),
         restApiPort: restApiPort || 1337,
         socketioUrl: socketioUrl || null,
         socketioPort: socketioPort || null,
@@ -115,7 +115,7 @@ router.patch("/servers/:id", async (req, res) => {
     if (req.body.name) updates.name = req.body.name;
     if (req.body.host) updates.host = req.body.host;
     if (req.body.port) updates.port = req.body.port;
-    if (req.body.restApiUrl) updates.restApiUrl = req.body.restApiUrl;
+    if (req.body.restApiUrl) updates.restApiUrl = req.body.restApiUrl.replace(/\/+$/, '');
     if (req.body.restApiPort) updates.restApiPort = req.body.restApiPort;
     if (req.body.socketioUrl) updates.socketioUrl = req.body.socketioUrl;
     if (req.body.socketioPort) updates.socketioPort = req.body.socketioPort;

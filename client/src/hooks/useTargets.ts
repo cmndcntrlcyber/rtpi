@@ -3,15 +3,16 @@ import { targetsService } from "@/services/targets";
 
 interface Target {
   id: string;
-  name?: string;
-  hostname?: string;
-  ipAddress?: string;
-  domain?: string;
-  port?: number;
-  status: string;
+  name: string;
+  type: string;
+  value: string;
+  description?: string;
+  priority?: number;
+  tags?: string[];
   operationId?: string;
-  notes?: string;
-  lastScanAt?: string;
+  metadata?: any;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export function useTargets() {

@@ -78,7 +78,7 @@ const DOCKERFILE_TOOLS: Omit<DiscoveredTool, 'isInstalled' | 'version'>[] = [
   {
     toolId: 'nuclei',
     name: 'Nuclei',
-    category: 'vulnerability_scanning',
+    category: 'scanning',
     description: 'Fast and customizable vulnerability scanner. Uses YAML templates to detect security vulnerabilities.',
     command: 'nuclei',
     installMethod: 'binary',
@@ -134,7 +134,7 @@ const DOCKERFILE_TOOLS: Omit<DiscoveredTool, 'isInstalled' | 'version'>[] = [
   {
     toolId: 'hashcat',
     name: 'Hashcat',
-    category: 'password_cracking',
+    category: 'password-cracking',
     description: 'World\'s fastest password cracker. Supports numerous hash types and attack modes.',
     command: 'hashcat',
     installMethod: 'apt',
@@ -152,7 +152,7 @@ const DOCKERFILE_TOOLS: Omit<DiscoveredTool, 'isInstalled' | 'version'>[] = [
   {
     toolId: 'hydra',
     name: 'Hydra',
-    category: 'password_cracking',
+    category: 'password-cracking',
     description: 'Fast network logon cracker supporting numerous protocols. Performs brute force attacks against login forms.',
     command: 'hydra',
     installMethod: 'apt',
@@ -172,7 +172,7 @@ const DOCKERFILE_TOOLS: Omit<DiscoveredTool, 'isInstalled' | 'version'>[] = [
   {
     toolId: 'bloodhound-python',
     name: 'BloodHound (Python)',
-    category: 'active_directory',
+    category: 'active-directory',
     description: 'Active Directory relationship mapper. Reveals hidden relationships and attack paths in AD environments.',
     command: 'bloodhound-python',
     installMethod: 'pip',
@@ -190,7 +190,7 @@ const DOCKERFILE_TOOLS: Omit<DiscoveredTool, 'isInstalled' | 'version'>[] = [
   {
     toolId: 'impacket',
     name: 'Impacket',
-    category: 'active_directory',
+    category: 'active-directory',
     description: 'Collection of Python classes for working with network protocols. Essential for Windows/AD penetration testing.',
     command: 'impacket-secretsdump',
     installMethod: 'pip',
@@ -211,7 +211,7 @@ const DOCKERFILE_TOOLS: Omit<DiscoveredTool, 'isInstalled' | 'version'>[] = [
   {
     toolId: 'powersploit',
     name: 'PowerSploit',
-    category: 'post_exploitation',
+    category: 'post-exploitation',
     description: 'PowerShell post-exploitation framework. Collection of Microsoft PowerShell modules for penetration testing.',
     command: 'pwsh',
     installMethod: 'github',
@@ -229,7 +229,7 @@ const DOCKERFILE_TOOLS: Omit<DiscoveredTool, 'isInstalled' | 'version'>[] = [
   {
     toolId: 'winpwn',
     name: 'WinPwn',
-    category: 'post_exploitation',
+    category: 'post-exploitation',
     description: 'Windows post-exploitation toolkit. Automation for internal penetration testing.',
     command: 'pwsh',
     installMethod: 'github',
@@ -243,7 +243,7 @@ const DOCKERFILE_TOOLS: Omit<DiscoveredTool, 'isInstalled' | 'version'>[] = [
   {
     toolId: 'bloodhound-repo',
     name: 'BloodHound',
-    category: 'active_directory',
+    category: 'active-directory',
     description: 'BloodHound repository with queries and tools for Active Directory analysis.',
     command: 'bloodhound',
     installMethod: 'github',
@@ -259,7 +259,7 @@ const DOCKERFILE_TOOLS: Omit<DiscoveredTool, 'isInstalled' | 'version'>[] = [
   {
     toolId: 'tshark',
     name: 'Wireshark (tshark)',
-    category: 'network_analysis',
+    category: 'network',
     description: 'Network protocol analyzer. Capture and analyze network traffic.',
     command: 'tshark',
     installMethod: 'apt',
@@ -276,7 +276,7 @@ const DOCKERFILE_TOOLS: Omit<DiscoveredTool, 'isInstalled' | 'version'>[] = [
   {
     toolId: 'proxychains',
     name: 'Proxychains',
-    category: 'network_analysis',
+    category: 'network',
     description: 'Force any TCP connection through proxy chains. Useful for anonymity and pivoting.',
     command: 'proxychains4',
     installMethod: 'apt',
@@ -293,7 +293,7 @@ const DOCKERFILE_TOOLS: Omit<DiscoveredTool, 'isInstalled' | 'version'>[] = [
   {
     toolId: 'gobuster',
     name: 'Gobuster',
-    category: 'web_application',
+    category: 'web-application',
     description: 'Directory/file & DNS busting tool. Fast brute forcing for web directories and DNS subdomains.',
     command: 'gobuster',
     installMethod: 'binary',
@@ -312,7 +312,7 @@ const DOCKERFILE_TOOLS: Omit<DiscoveredTool, 'isInstalled' | 'version'>[] = [
   {
     toolId: 'python3',
     name: 'Python3',
-    category: 'development',
+    category: 'other',
     description: 'Python programming language. For custom script development and tool execution.',
     command: 'python3',
     installMethod: 'apt',
@@ -328,7 +328,7 @@ const DOCKERFILE_TOOLS: Omit<DiscoveredTool, 'isInstalled' | 'version'>[] = [
   {
     toolId: 'powershell',
     name: 'PowerShell',
-    category: 'development',
+    category: 'other',
     description: 'PowerShell Core. Cross-platform automation and scripting language.',
     command: 'pwsh',
     installMethod: 'apt',
@@ -344,7 +344,7 @@ const DOCKERFILE_TOOLS: Omit<DiscoveredTool, 'isInstalled' | 'version'>[] = [
   {
     toolId: 'nodejs',
     name: 'Node.js',
-    category: 'development',
+    category: 'other',
     description: 'Node.js JavaScript runtime. For executing JavaScript-based security tools and scripts.',
     command: 'node',
     installMethod: 'installer',
@@ -362,7 +362,7 @@ const DOCKERFILE_TOOLS: Omit<DiscoveredTool, 'isInstalled' | 'version'>[] = [
   {
     toolId: 'certbot',
     name: 'Certbot',
-    category: 'ssl_tls',
+    category: 'other',
     description: 'Let\'s Encrypt certificate management tool. Useful for SSL/TLS testing and certificate operations.',
     command: 'certbot',
     installMethod: 'apt',
@@ -376,6 +376,40 @@ const DOCKERFILE_TOOLS: Omit<DiscoveredTool, 'isInstalled' | 'version'>[] = [
     },
   },
 ];
+
+/**
+ * Extract a clean version string from raw command output.
+ * Returns undefined if no version pattern is found (avoids storing error messages).
+ */
+function parseVersionString(raw: string): string | undefined {
+  if (!raw) return undefined;
+  const trimmed = raw.trim();
+
+  // Reject if it looks like an error message
+  if (/OCI runtime|exec failed|not found|No such file|Permission denied|unable to start/i.test(trimmed)) {
+    return undefined;
+  }
+
+  // Try to extract a version number pattern
+  const patterns = [
+    /v?(\d+\.\d+(?:\.\d+)?(?:-[a-zA-Z0-9._-]+)?)/,
+    /version\s+v?(\d+\.\d+(?:\.\d+)?)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = trimmed.match(pattern);
+    if (match) {
+      return match[0].substring(0, 50);
+    }
+  }
+
+  // If short and no error indicators, keep as-is
+  if (trimmed.length <= 50 && !/error|failed|denied/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  return undefined;
+}
 
 /**
  * Check if a tool is installed in the rtpi-tools container
@@ -393,8 +427,9 @@ async function checkToolInstalled(command: string): Promise<{ installed: boolean
         const versionResult = await dockerExecutor.exec('rtpi-tools', [command, '--version'], {
           timeout: 10000,
         });
-        const versionLine = versionResult.stdout.split('\n')[0] || versionResult.stderr.split('\n')[0];
-        return { installed: true, version: versionLine.trim().substring(0, 50) };
+        const rawOutput = versionResult.stdout.split('\n')[0] || versionResult.stderr.split('\n')[0];
+        const version = parseVersionString(rawOutput);
+        return { installed: true, version };
       } catch {
         return { installed: true };
       }
@@ -490,7 +525,7 @@ export async function discoverTools(): Promise<DiscoveredTool[]> {
     discoveredTools.push({
       toolId: dirName.toLowerCase().replace(/[^a-z0-9]/g, '-'),
       name: dirName,
-      category: 'custom',
+      category: 'other',
       description: `Custom tool from /opt/tools/${dirName}`,
       command: dirName.toLowerCase(),
       installMethod: 'github',

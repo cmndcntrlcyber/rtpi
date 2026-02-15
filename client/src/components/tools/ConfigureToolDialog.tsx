@@ -231,8 +231,7 @@ export default function ConfigureToolDialog({
                 <SelectContent>
                   {targets.map((target) => (
                     <SelectItem key={target.id} value={target.id}>
-                      {target.hostname || target.ipAddress || target.domain || "Target"} 
-                      {target.port && `:${target.port}`}
+                      {target.name} ({target.value})
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -1,8 +1,8 @@
-# RTPI OffSec Agent: Fuzzing Tools
-# Web Fuzzing, Parameter Discovery, and Content Bruteforcing
+# RTPI OffSec Agent: Fuzzing & Reconnaissance Tools
+# Web Fuzzing, Parameter Discovery, Content Bruteforcing, and Full PD Recon Pipeline
 #
-# Categories: Directory Fuzzing, Parameter Discovery, Wordlist Management
-# Primary Focus: FFUF, Gobuster, Feroxbuster, and advanced fuzzing
+# Categories: Directory Fuzzing, Parameter Discovery, Subdomain Enumeration,
+#             DNS Resolution, Vulnerability Scanning, Wordlist Management
 #
 # MITRE ATT&CK Tactics: Discovery (TA0007), Reconnaissance (TA0043)
 
@@ -15,176 +15,223 @@ ENV TOOLS_PATH=/opt/tools
 # Switch to root for package installation
 USER root
 
-# Install fuzzing dependencies
+# Install dependencies (libpcap needed by naabu for SYN scanning)
 RUN apt-get update && apt-get install -y \
-    # HTTP tools
     curl wget \
-    # Compression
     p7zip-full unzip \
-    # Text processing
     jq \
-    # Network utilities
     dnsutils \
+    libpcap0.8 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create directories
 RUN mkdir -p /opt/tools/bin /opt/wordlists
 
-# Install fuzzing tools via Go
-USER rtpi-agent
+# =============================================================================
+# HELPER: Download pre-built binary from GitHub releases
+# Usage: install_gh_release <repo> <cmd_name> [<asset_format>]
+#   asset_format: "zip" (default) or "tar.gz"
+#   Binary naming convention: <cmd>_<version>_linux_<arch>.<ext>
+# =============================================================================
+# Detect architecture once
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then \
+      echo "arm64" > /tmp/.pd_arch; \
+    else \
+      echo "amd64" > /tmp/.pd_arch; \
+    fi
+
+# Helper script for installing from GitHub releases
+RUN cat > /usr/local/bin/install-gh-release.sh << 'SCRIPT'
+#!/bin/bash
+set -e
+REPO="$1"
+CMD_NAME="$2"
+FORMAT="${3:-zip}"
+CUSTOM_URL="$4"
+PD_ARCH=$(cat /tmp/.pd_arch)
+
+if [ -x "/opt/tools/bin/$CMD_NAME" ]; then
+  echo "  [SKIP] $CMD_NAME already installed"
+  exit 0
+fi
+
+VERSION=$(curl -sf --max-time 15 "https://api.github.com/repos/${REPO}/releases/latest" \
+  | grep '"tag_name"' | head -1 | cut -d'"' -f4 | sed 's/^v//' 2>/dev/null) || true
+
+if [ -z "$VERSION" ]; then
+  echo "  [FAIL] $CMD_NAME — could not fetch version from GitHub API"
+  exit 1
+fi
+
+if [ -n "$CUSTOM_URL" ]; then
+  URL=$(echo "$CUSTOM_URL" | sed "s/{VERSION}/$VERSION/g" | sed "s/{ARCH}/$PD_ARCH/g")
+else
+  if [ "$FORMAT" = "tar.gz" ]; then
+    URL="https://github.com/${REPO}/releases/download/v${VERSION}/${CMD_NAME}_${VERSION}_linux_${PD_ARCH}.tar.gz"
+  else
+    URL="https://github.com/${REPO}/releases/download/v${VERSION}/${CMD_NAME}_${VERSION}_linux_${PD_ARCH}.zip"
+  fi
+fi
+
+TMP="/tmp/gh-install-${CMD_NAME}"
+rm -rf "$TMP" && mkdir -p "$TMP"
+
+echo "  [INSTALL] $CMD_NAME v$VERSION from $REPO"
+
+if ! curl -sfL --max-time 120 "$URL" -o "$TMP/archive" 2>/dev/null; then
+  echo "  [FAIL] $CMD_NAME — download failed: $URL"
+  rm -rf "$TMP"
+  exit 1
+fi
+
+if [ "$FORMAT" = "tar.gz" ]; then
+  tar xzf "$TMP/archive" -C "$TMP" 2>/dev/null
+else
+  unzip -o "$TMP/archive" -d "$TMP" >/dev/null 2>&1
+fi
+
+# Find the binary (may be in a subdirectory)
+BIN=$(find "$TMP" -name "$CMD_NAME" -type f | head -1)
+if [ -z "$BIN" ]; then
+  echo "  [FAIL] $CMD_NAME — binary not found in archive"
+  rm -rf "$TMP"
+  exit 1
+fi
+
+mv "$BIN" "/opt/tools/bin/$CMD_NAME"
+chmod +x "/opt/tools/bin/$CMD_NAME"
+rm -rf "$TMP"
+echo "    -> Installed $CMD_NAME v$VERSION"
+SCRIPT
+RUN chmod +x /usr/local/bin/install-gh-release.sh
+
+# =============================================================================
+# PHASE 1: ProjectDiscovery Core Tools (pre-built ARM64/AMD64 binaries)
+# =============================================================================
+
+# Vulnerability scanning
+RUN /usr/local/bin/install-gh-release.sh projectdiscovery/nuclei nuclei
+RUN /usr/local/bin/install-gh-release.sh projectdiscovery/httpx httpx
+RUN /usr/local/bin/install-gh-release.sh projectdiscovery/naabu naabu
+
+# Subdomain & DNS
+RUN /usr/local/bin/install-gh-release.sh projectdiscovery/subfinder subfinder
+RUN /usr/local/bin/install-gh-release.sh projectdiscovery/dnsx dnsx
+RUN /usr/local/bin/install-gh-release.sh projectdiscovery/shuffledns shuffledns
+RUN /usr/local/bin/install-gh-release.sh projectdiscovery/alterx alterx
+
+# Web crawling & discovery
+RUN /usr/local/bin/install-gh-release.sh projectdiscovery/katana katana
+RUN /usr/local/bin/install-gh-release.sh projectdiscovery/uncover uncover
+
+# Network & infrastructure
+RUN /usr/local/bin/install-gh-release.sh projectdiscovery/mapcidr mapcidr
+RUN /usr/local/bin/install-gh-release.sh projectdiscovery/tlsx tlsx
+RUN /usr/local/bin/install-gh-release.sh projectdiscovery/cdncheck cdncheck
+RUN /usr/local/bin/install-gh-release.sh projectdiscovery/asnmap asnmap
+RUN /usr/local/bin/install-gh-release.sh projectdiscovery/cloudlist cloudlist
+
+# Proxy & interaction
+RUN /usr/local/bin/install-gh-release.sh projectdiscovery/proxify proxify
+RUN /usr/local/bin/install-gh-release.sh projectdiscovery/interactsh interactsh-client
+
+# Notification & CVE mapping
+RUN /usr/local/bin/install-gh-release.sh projectdiscovery/notify notify
+RUN /usr/local/bin/install-gh-release.sh projectdiscovery/cvemap cvemap
+
+# PD tool manager
+RUN /usr/local/bin/install-gh-release.sh projectdiscovery/pdtm pdtm
+
+# =============================================================================
+# PHASE 2: Fuzzing Tools (pre-built binaries)
+# =============================================================================
 
 # FFUF - Fast web fuzzer
-RUN go install github.com/ffuf/ffuf/v2@latest && \
-    cp ~/go/bin/ffuf /opt/tools/bin/ 2>/dev/null || true
+RUN /usr/local/bin/install-gh-release.sh ffuf/ffuf ffuf tar.gz
 
 # Gobuster - Directory/DNS/vhost busting
-RUN go install github.com/OJ/gobuster/v3@latest && \
-    cp ~/go/bin/gobuster /opt/tools/bin/ 2>/dev/null || true
+# Gobuster uses different naming: gobuster_Linux_<arch>.tar.gz
+RUN /usr/local/bin/install-gh-release.sh OJ/gobuster gobuster tar.gz \
+    "https://github.com/OJ/gobuster/releases/download/v{VERSION}/gobuster_Linux_{ARCH}.tar.gz"
 
-# Feroxbuster - Rust-based directory scanner
+# Amass - Network mapping (uses tar.gz, lowercase linux)
+RUN /usr/local/bin/install-gh-release.sh owasp-amass/amass amass tar.gz \
+    "https://github.com/owasp-amass/amass/releases/download/v{VERSION}/amass_linux_{ARCH}.tar.gz"
+
+# =============================================================================
+# PHASE 3: Tools that require compilation (Go/Rust/Python)
+# =============================================================================
+
+USER rtpi-agent
+
+# Feroxbuster - Rust-based recursive content discovery
 RUN cargo install feroxbuster && \
-    cp ~/.cargo/bin/feroxbuster /opt/tools/bin/ 2>/dev/null || true
+    cargo cache -a 2>/dev/null || true
 
-# Switch to root for additional installations
+# x8 - Hidden parameter discovery (Rust)
+RUN cargo install x8 && \
+    cargo cache -a 2>/dev/null || true
+
+# PureDNS - DNS bruteforce (Go - no pre-built release binaries)
+RUN go install github.com/d3mondev/puredns/v2@latest
+
+# Switch to root to copy binaries to /opt/tools/bin
 USER root
+RUN cp /home/rtpi-agent/.cargo/bin/feroxbuster /opt/tools/bin/ && \
+    cp /home/rtpi-agent/.cargo/bin/x8 /opt/tools/bin/ && \
+    cp /home/rtpi-agent/go/bin/puredns /opt/tools/bin/ && \
+    chown rtpi-agent:rtpi-agent /opt/tools/bin/feroxbuster /opt/tools/bin/x8 /opt/tools/bin/puredns
+
+# Tomnomnom utilities - compile as rtpi-agent, copy as root
+USER rtpi-agent
+RUN go install github.com/tomnomnom/anew@latest || true && \
+    go install github.com/tomnomnom/meg@latest || true && \
+    go install github.com/tomnomnom/qsreplace@latest || true && \
+    go install github.com/tomnomnom/unfurl@latest || true
+
+USER root
+RUN cp /home/rtpi-agent/go/bin/anew /opt/tools/bin/ 2>/dev/null || true && \
+    cp /home/rtpi-agent/go/bin/meg /opt/tools/bin/ 2>/dev/null || true && \
+    cp /home/rtpi-agent/go/bin/qsreplace /opt/tools/bin/ 2>/dev/null || true && \
+    cp /home/rtpi-agent/go/bin/unfurl /opt/tools/bin/ 2>/dev/null || true && \
+    chown rtpi-agent:rtpi-agent /opt/tools/bin/anew /opt/tools/bin/meg /opt/tools/bin/qsreplace /opt/tools/bin/unfurl 2>/dev/null || true
 
 # =============================================================================
-# FUZZING TOOLS
+# PHASE 4: Python Tools
 # =============================================================================
 
-WORKDIR /opt/tools
-
-# FFUF source
-RUN git clone --depth 1 https://github.com/ffuf/ffuf.git && \
-    (cd ffuf && go build -o /opt/tools/bin/ffuf . 2>/dev/null || true) && \
-    echo "ffuf: Fast web fuzzer" > ffuf/TOOL_INFO.txt
-
-# Gobuster source (requires newer Go, may fail)
-RUN git clone --depth 1 https://github.com/OJ/gobuster.git && \
-    (cd gobuster && go build -o /opt/tools/bin/gobuster . 2>/dev/null || true) && \
-    echo "gobuster: Directory/DNS/vhost bruteforcing" > gobuster/TOOL_INFO.txt
-
-# Feroxbuster source
-RUN git clone --depth 1 https://github.com/epi052/feroxbuster.git && \
-    echo "feroxbuster: Fast, recursive content discovery" > feroxbuster/TOOL_INFO.txt
-
-# Dirsearch - Web path discovery (install via pip3 directly)
-RUN pip3 install dirsearch 2>/dev/null || true && \
-    git clone --depth 1 https://github.com/maurosoria/dirsearch.git && \
-    echo "dirsearch: Web path discovery" > dirsearch/TOOL_INFO.txt
+# Dirsearch - Web path discovery
+RUN pip3 install --no-cache-dir dirsearch 2>/dev/null || true
 
 # Wfuzz - Web application fuzzer
-RUN pip3 install wfuzz && \
-    mkdir -p wfuzz && \
-    echo "wfuzz: Web application fuzzer" > wfuzz/TOOL_INFO.txt
+RUN pip3 install --no-cache-dir wfuzz 2>/dev/null || true
 
-# Rustbuster - Rust directory buster
-RUN git clone --depth 1 https://github.com/phra/rustbuster.git && \
-    cd rustbuster && cargo build --release 2>/dev/null || true && \
-    echo "rustbuster: Rust-based web fuzzer" > TOOL_INFO.txt
-
-# =============================================================================
-# PARAMETER FUZZING TOOLS
-# =============================================================================
-
-# x8 - Hidden parameter discovery
-RUN git clone --depth 1 https://github.com/Sh1Yo/x8.git && \
-    cd x8 && cargo build --release && \
-    cp target/release/x8 /opt/tools/bin/ && \
-    echo "x8: Hidden parameter discovery" > TOOL_INFO.txt
-
-# Arjun - Parameter discovery
-RUN git clone --depth 1 https://github.com/s0md3v/Arjun.git && \
-    cd Arjun && pip3 install . && \
-    echo "Arjun: HTTP parameter discovery" > TOOL_INFO.txt
+# Arjun - HTTP parameter discovery
+RUN pip3 install --no-cache-dir arjun 2>/dev/null || true
 
 # ParamSpider - Parameter mining
-RUN git clone --depth 1 https://github.com/devanshbatham/ParamSpider.git && \
-    cd ParamSpider && pip3 install . && \
-    echo "ParamSpider: Parameter mining from archives" > TOOL_INFO.txt
-
-# =============================================================================
-# SUBDOMAIN FUZZING
-# =============================================================================
-
-# Subfinder - Subdomain discovery (requires newer Go, may fail)
-RUN git clone --depth 1 https://github.com/projectdiscovery/subfinder.git && \
-    (cd subfinder/v2/cmd/subfinder && go build -o /opt/tools/bin/subfinder . 2>/dev/null || true) && \
-    echo "subfinder: Subdomain discovery tool" > subfinder/TOOL_INFO.txt
-
-# Amass - Network mapping (requires newer Go, may fail)
-RUN git clone --depth 1 https://github.com/owasp-amass/amass.git && \
-    (cd amass/cmd/amass && go build -o /opt/tools/bin/amass . 2>/dev/null || true) && \
-    echo "amass: Network mapping and subdomain discovery" > amass/TOOL_INFO.txt
-
-# DNSx - DNS toolkit (requires newer Go, may fail)
-RUN git clone --depth 1 https://github.com/projectdiscovery/dnsx.git && \
-    (cd dnsx/cmd/dnsx && go build -o /opt/tools/bin/dnsx . 2>/dev/null || true) && \
-    echo "dnsx: Fast DNS toolkit" > dnsx/TOOL_INFO.txt
-
-# Shuffledns - DNS bruteforcer (requires newer Go, may fail)
-RUN git clone --depth 1 https://github.com/projectdiscovery/shuffledns.git && \
-    (cd shuffledns/cmd/shuffledns && go build -o /opt/tools/bin/shuffledns . 2>/dev/null || true) && \
-    echo "shuffledns: Massdns wrapper for subdomain resolution" > shuffledns/TOOL_INFO.txt
-
-# PureDNS - DNS bruteforce (requires newer Go, may fail)
-RUN git clone --depth 1 https://github.com/d3mondev/puredns.git && \
-    (cd puredns/v2 && go build -o /opt/tools/bin/puredns . 2>/dev/null || true) && \
-    echo "puredns: Fast domain resolver and subdomain bruteforcer" > puredns/TOOL_INFO.txt
-
-# =============================================================================
-# VIRTUAL HOST DISCOVERY
-# =============================================================================
-
-# VHostScan - Virtual host scanner
-RUN git clone --depth 1 https://github.com/codingo/VHostScan.git && \
-    cd VHostScan && pip3 install . && \
-    echo "VHostScan: Virtual host scanner" > TOOL_INFO.txt
+RUN pip3 install --no-cache-dir paramspider 2>/dev/null || true
 
 # =============================================================================
 # WORDLIST MANAGEMENT
 # =============================================================================
 
 # Wordlists are synced from Cloudflare R2 at runtime via sync-wordlists.sh
-# Create placeholder directories for volume mount points
 RUN mkdir -p /opt/wordlists/SecLists \
     /opt/wordlists/fuzzdb \
     /opt/wordlists/assetnote \
     /opt/wordlists/OneListForAll
 
 # =============================================================================
-# UTILITY TOOLS
+# CONFIG FILES
 # =============================================================================
 
-# Unfurl - URL parser
-RUN git clone --depth 1 https://github.com/tomnomnom/unfurl.git && \
-    (cd unfurl && go build -o /opt/tools/bin/unfurl . 2>/dev/null || true) && \
-    echo "unfurl: URL parser utility" > unfurl/TOOL_INFO.txt
-
-# Qsreplace - Query string replacer
-RUN git clone --depth 1 https://github.com/tomnomnom/qsreplace.git && \
-    (cd qsreplace && go build -o /opt/tools/bin/qsreplace . 2>/dev/null || true) && \
-    echo "qsreplace: Query string value replacer" > qsreplace/TOOL_INFO.txt
-
-# Meg - Many paths, many hosts
-RUN git clone --depth 1 https://github.com/tomnomnom/meg.git && \
-    (cd meg && go build -o /opt/tools/bin/meg . 2>/dev/null || true) && \
-    echo "meg: Fetch many paths for many hosts" > meg/TOOL_INFO.txt
-
-# Anew - Append new lines
-RUN git clone --depth 1 https://github.com/tomnomnom/anew.git && \
-    (cd anew && go build -o /opt/tools/bin/anew . 2>/dev/null || true) && \
-    echo "anew: Append new lines to output" > anew/TOOL_INFO.txt
-
-# =============================================================================
-# CREATE CONFIG FILES
-# =============================================================================
-
-# Create FFUF config
+# FFUF config
 RUN mkdir -p /home/rtpi-agent/.ffuf && \
     echo '{"headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}}' > /home/rtpi-agent/.ffuf/config.json
 
-# Create feroxbuster config
+# Feroxbuster config
 RUN mkdir -p /home/rtpi-agent/.config/feroxbuster && \
     cat > /home/rtpi-agent/.config/feroxbuster/ferox-config.toml << 'EOF'
 # Feroxbuster default configuration
@@ -196,20 +243,58 @@ user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 EOF
 
 # =============================================================================
+# STARTUP VERIFICATION SCRIPT
+# =============================================================================
+
+COPY scripts/verify-pd-tools.sh /usr/local/bin/verify-pd-tools.sh
+COPY scripts/fuzzing-entrypoint.sh /usr/local/bin/fuzzing-entrypoint.sh
+RUN chmod +x /usr/local/bin/verify-pd-tools.sh /usr/local/bin/fuzzing-entrypoint.sh
+
+# =============================================================================
 # CLEANUP AND PERMISSIONS
 # =============================================================================
 
-# Add binary directory to PATH
 ENV PATH="/opt/tools/bin:${PATH}"
 
+# Clean build caches to reduce image size
+USER rtpi-agent
+RUN go clean -modcache 2>/dev/null || true && \
+    rm -rf ~/go/pkg/mod/cache 2>/dev/null || true
+USER root
+
+# Remove Rust build artifacts (saves ~400MB+)
+RUN rm -rf /opt/tools/rustbuster/target /opt/tools/x8/target 2>/dev/null || true && \
+    rm -rf /home/rtpi-agent/.cargo/registry /home/rtpi-agent/.cargo/git 2>/dev/null || true
+
+# Remove the helper script arch file
+RUN rm -f /tmp/.pd_arch
+
 # Set ownership
-RUN chown -R rtpi-agent:rtpi-agent /opt/tools /opt/wordlists /home/rtpi-agent
+RUN chown -R rtpi-agent:rtpi-agent /opt/tools /opt/wordlists /home/rtpi-agent /docs
 
 # Generate tool documentation
 RUN /usr/local/bin/generate-docs.sh || true
 
-# Create tool index for MCP discovery
-RUN find /opt/tools -name "TOOL_INFO.txt" -exec cat {} \; > /docs/TOOLS_INDEX.md
+# =============================================================================
+# VERIFICATION — fail the build if critical tools are missing
+# =============================================================================
+
+RUN echo "=== Verifying critical tools ===" && \
+    MISSING="" && \
+    for tool in nuclei naabu httpx katana subfinder dnsx shuffledns uncover \
+                cloudlist alterx mapcidr tlsx cdncheck asnmap proxify \
+                interactsh-client notify cvemap pdtm ffuf gobuster \
+                feroxbuster amass puredns anew meg qsreplace unfurl x8; do \
+      if [ ! -x "/opt/tools/bin/$tool" ]; then \
+        echo "  [MISSING] $tool" && MISSING="$MISSING $tool"; \
+      else \
+        echo "  [OK] $tool"; \
+      fi; \
+    done && \
+    if [ -n "$MISSING" ]; then \
+      echo "FATAL: Missing tools:$MISSING" && exit 1; \
+    fi && \
+    echo "=== All tools verified ==="
 
 # Switch to non-root user
 USER rtpi-agent
@@ -226,5 +311,5 @@ EXPOSE 9000
 HEALTHCHECK --interval=60s --timeout=10s --retries=3 \
     CMD pgrep -f "node.*mcp" || exit 1
 
-# Start MCP server
-ENTRYPOINT ["/usr/local/bin/mcp-entrypoint.sh"]
+# Start MCP server (verify-pd-tools.sh runs first to repair stale volume mounts)
+ENTRYPOINT ["/usr/local/bin/fuzzing-entrypoint.sh"]

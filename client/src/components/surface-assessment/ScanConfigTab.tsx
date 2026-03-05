@@ -289,7 +289,9 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
 
     try {
       const response = await api.get<{ rawOutput: string }>(`/surface-assessment/${operationId}/scan/${scanId}/output`);
-      setScanOutput(response.rawOutput || 'No output available');
+      const raw = response.rawOutput || 'No output available';
+      // Strip ANSI escape codes for clean display
+      setScanOutput(raw.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, ''));
     } catch (error) {
       console.error('Failed to load scan output:', error);
       setScanOutput('Failed to load output. The scan may not have completed yet or output was not captured.');

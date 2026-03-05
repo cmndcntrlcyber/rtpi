@@ -3,10 +3,9 @@
  * Executes security tools with parameter validation and output parsing
  */
 
-import { spawn } from 'child_process';
 import { db } from '../db';
-import { toolExecutions } from '../../shared/schema';
-import { eq } from 'drizzle-orm';
+import { toolExecutions, toolRegistry, agents } from '../../shared/schema';
+import { eq, sql } from 'drizzle-orm';
 import type {
   ToolExecutionRequest,
   ToolExecutionResult,
@@ -15,6 +14,7 @@ import type {
 import { getToolByToolId, getToolOutputParser } from './tool-registry-manager';
 import { validateToolExecutionRequest } from '../validation/tool-config-schema';
 import { outputParserManager } from './output-parser-manager';
+import { dockerExecutor } from './docker-executor';
 
 // Maximum concurrent tool executions
 const MAX_CONCURRENT_EXECUTIONS = parseInt(
@@ -85,12 +85,15 @@ export async function executeTool(
     // Update status to running
     await updateExecutionStatus(executionId, 'running');
 
-    // Execute the command
+    // Execute the command in the tool's container
+    const containerName = (tool as any).containerName || 'rtpi-tools';
+    const containerUser = (tool as any).containerUser || 'rtpi-tools';
     const result = await runCommand(
       config.binaryPath,
       command,
       request.timeout || DEFAULT_TIMEOUT,
-      config.workingDirectory
+      containerName,
+      containerUser,
     );
 
     // Parse output if requested and parser is available
@@ -132,6 +135,32 @@ export async function executeTool(
       })
       .where(eq(toolExecutions.id, executionId));
 
+    // Update denormalized stats on toolRegistry
+    try {
+      await db.update(toolRegistry)
+        .set({
+          usageCount: sql`${toolRegistry.usageCount} + 1`,
+          lastUsed: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(toolRegistry.id, tool.id));
+    } catch (e) { console.warn('[ToolExecutor] Failed to update tool stats:', e); }
+
+    // Update agent stats if agent-initiated
+    if (request.agentId) {
+      try {
+        const isSuccess = result.exitCode === 0;
+        await db.update(agents)
+          .set({
+            ...(isSuccess
+              ? { tasksCompleted: sql`${agents.tasksCompleted} + 1` }
+              : { tasksFailed: sql`${agents.tasksFailed} + 1` }),
+            lastActivity: new Date(),
+          })
+          .where(eq(agents.id, request.agentId));
+      } catch (e) { console.warn('[ToolExecutor] Failed to update agent stats:', e); }
+    }
+
     const executionResult: ToolExecutionResult = {
       executionId,
       toolId: request.toolId,
@@ -156,6 +185,15 @@ export async function executeTool(
         endTime: new Date(),
       })
       .where(eq(toolExecutions.id, executionId));
+
+    // Update agent failure stats if agent-initiated
+    if (request.agentId) {
+      try {
+        await db.update(agents)
+          .set({ tasksFailed: sql`${agents.tasksFailed} + 1`, lastActivity: new Date() })
+          .where(eq(agents.id, request.agentId));
+      } catch (e) { console.warn('[ToolExecutor] Failed to update agent failure stats:', e); }
+    }
 
     throw error;
   } finally {
@@ -289,57 +327,33 @@ function formatParameter(paramDef: any, value: any): string {
 }
 
 /**
- * Run command with timeout
+ * Run command inside a Docker container via dockerExecutor.
+ * Tools live in various containers (rtpi-tools, rtpi-framework-agent, etc.),
+ * so we must execute remotely rather than via local spawn().
  */
-function runCommand(
+async function runCommand(
   binaryPath: string,
   command: string,
   timeout: number,
-  workingDirectory?: string
+  containerName: string,
+  containerUser: string,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    let stdout = '';
-    let stderr = '';
+  // Build the full command: binaryPath + args from the command string
+  // command already contains the base command + formatted params
+  // Perl scripts need an interpreter prefix
+  const cmdPrefix = binaryPath.endsWith('.pl') ? ['perl', binaryPath] : [binaryPath];
+  const cmd = [...cmdPrefix, ...command.split(' ').filter(a => a.length > 0)];
 
-    const args = command.split(' ').filter(arg => arg.length > 0);
-
-    const child = spawn(binaryPath, args, {
-      cwd: workingDirectory || process.cwd(),
-      shell: true,
-    });
-
-    // Set timeout
-    const timeoutId = setTimeout(() => {
-      child.kill('SIGTERM');
-      reject(new Error(`Command execution timeout after ${timeout}ms`));
-    }, timeout);
-
-    // Capture stdout
-    child.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    // Capture stderr
-    child.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    // Handle completion
-    child.on('close', (code) => {
-      clearTimeout(timeoutId);
-      resolve({
-        exitCode: code || 0,
-        stdout,
-        stderr,
-      });
-    });
-
-    // Handle errors
-    child.on('error', (error) => {
-      clearTimeout(timeoutId);
-      reject(new Error(`Command execution failed: ${error.message}`));
-    });
+  const result = await dockerExecutor.exec(containerName, cmd, {
+    timeout,
+    user: containerUser,
   });
+
+  return {
+    exitCode: result.exitCode,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
 }
 
 

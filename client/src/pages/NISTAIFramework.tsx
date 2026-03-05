@@ -1,6 +1,10 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileCheck, Layers, ListChecks } from "lucide-react";
+import NISTFunctionsAccordion from "@/components/nist-ai/NISTFunctionsAccordion";
+import NISTCategoriesTable from "@/components/nist-ai/NISTCategoriesTable";
+import NISTImplementationGuide from "@/components/nist-ai/NISTImplementationGuide";
+import NISTAIAssessment from "@/components/nist-ai/NISTAIAssessment";
 
 export default function NISTAIFramework() {
   const [stats, setStats] = useState({ functions: 0, categories: 0, subcategories: 0 });
@@ -96,60 +100,24 @@ export default function NISTAIFramework() {
           <TabsTrigger value="functions">Functions</TabsTrigger>
           <TabsTrigger value="categories">Categories</TabsTrigger>
           <TabsTrigger value="implementation">Implementation Guide</TabsTrigger>
+          <TabsTrigger value="assessment">Assessment</TabsTrigger>
           <TabsTrigger value="mappings">OWASP LLM Mappings</TabsTrigger>
         </TabsList>
 
         <TabsContent value="functions">
-          <div className="bg-card p-6 rounded-lg border border-border">
-            <h3 className="text-lg font-semibold mb-4">Core Functions</h3>
-            <div className="space-y-4">
-              <div>
-                <h4 className="font-medium text-blue-600">Govern</h4>
-                <p className="text-sm text-muted-foreground">
-                  Cultivates a culture of risk management and establishes processes for AI governance
-                </p>
-              </div>
-              <div>
-                <h4 className="font-medium text-purple-600">Map</h4>
-                <p className="text-sm text-muted-foreground">
-                  Establishes context for AI system risks
-                </p>
-              </div>
-              <div>
-                <h4 className="font-medium text-orange-600">Measure</h4>
-                <p className="text-sm text-muted-foreground">
-                  Employs tools, techniques, and methodologies to assess AI risks
-                </p>
-              </div>
-              <div>
-                <h4 className="font-medium text-green-600">Manage</h4>
-                <p className="text-sm text-muted-foreground">
-                  Allocates resources to manage AI risks on a regular basis
-                </p>
-              </div>
-            </div>
-            {stats.functions === 0 && (
-              <p className="text-muted-foreground mt-4">
-                Import the NIST AI RMF to view detailed function breakdowns.
-              </p>
-            )}
-          </div>
+          <NISTFunctionsAccordion />
         </TabsContent>
 
         <TabsContent value="categories">
-          <div className="bg-card p-6 rounded-lg border border-border">
-            <p className="text-muted-foreground">
-              Categories organize related risk management outcomes within each function.
-            </p>
-          </div>
+          <NISTCategoriesTable />
         </TabsContent>
 
         <TabsContent value="implementation">
-          <div className="bg-card p-6 rounded-lg border border-border">
-            <p className="text-muted-foreground">
-              Implementation examples and informative references for each subcategory.
-            </p>
-          </div>
+          <NISTImplementationGuide />
+        </TabsContent>
+
+        <TabsContent value="assessment">
+          <NISTAIAssessment />
         </TabsContent>
 
         <TabsContent value="mappings">

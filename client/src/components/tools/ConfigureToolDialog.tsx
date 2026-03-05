@@ -1,12 +1,14 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Settings, Play, Save } from "lucide-react";
+import { Settings, Play, Save, Sparkles, Copy, Check, Shield, KeyRound, Crosshair } from "lucide-react";
 import { Tool } from "@/services/tools";
 import { useTargets } from "@/hooks/useTargets";
 import { useExecuteDockerTool } from "@/hooks/useTools";
@@ -28,10 +30,116 @@ export default function ConfigureToolDialog({
 }: ConfigureToolDialogProps) {
   const { targets } = useTargets();
   const { executeDocker, executing } = useExecuteDockerTool();
-  
+  const queryClient = useQueryClient();
+
   const [selectedTargetId, setSelectedTargetId] = useState("");
   const [params, setParams] = useState<Record<string, any>>({});
   const [executionResult, setExecutionResult] = useState<any>(null);
+  const [generatedCommand, setGeneratedCommand] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [credentialInfo, setCredentialInfo] = useState<{ used: boolean; test: number; harvested: number } | null>(null);
+  const [selectedTacticId, setSelectedTacticId] = useState<string>("");
+  const [selectedTechniqueIds, setSelectedTechniqueIds] = useState<Set<string>>(new Set());
+  const [attackMappingChanged, setAttackMappingChanged] = useState(false);
+
+  // Fetch all available tactics
+  const { data: allTacticsData } = useQuery({
+    queryKey: ['attack-tactics'],
+    queryFn: async () => {
+      const res = await fetch('/api/v1/attack/tactics', { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: open,
+  });
+  const allTactics = Array.isArray(allTacticsData) ? allTacticsData : (allTacticsData as any)?.tactics || [];
+
+  // Fetch tool's current tactic + techniques
+  const { data: toolMappingData } = useQuery({
+    queryKey: ['tool-tactics', tool?.id],
+    queryFn: async () => {
+      if (!tool) return { tactics: [], techniques: [] };
+      const res = await fetch(`/api/v1/tools/registry/${tool.id}/tactics`, { credentials: 'include' });
+      if (!res.ok) return { tactics: [], techniques: [] };
+      return res.json();
+    },
+    enabled: open && !!tool,
+  });
+
+  // Fetch techniques for the selected tactic
+  const { data: tacticTechniquesData } = useQuery({
+    queryKey: ['techniques-by-tactic', selectedTacticId],
+    queryFn: async () => {
+      if (!selectedTacticId) return { techniques: [] };
+      const res = await fetch(`/api/v1/tools/techniques-by-tactic/${selectedTacticId}`, { credentials: 'include' });
+      if (!res.ok) return { techniques: [] };
+      return res.json();
+    },
+    enabled: !!selectedTacticId,
+  });
+  const availableTechniques = tacticTechniquesData?.techniques || [];
+
+  // Sync tool mapping into local state when loaded
+  useEffect(() => {
+    if (toolMappingData) {
+      const tactics = toolMappingData.tactics || [];
+      const techniques = toolMappingData.techniques || [];
+      setSelectedTacticId(tactics[0]?.tacticId || "");
+      setSelectedTechniqueIds(new Set(techniques.map((t: any) => t.techniqueId)));
+      setAttackMappingChanged(false);
+    }
+  }, [toolMappingData]);
+
+  const handleTacticChange = (tacticId: string) => {
+    setSelectedTacticId(tacticId);
+    // Clear techniques when tactic changes since they belong to the old tactic
+    setSelectedTechniqueIds(new Set());
+    setAttackMappingChanged(true);
+  };
+
+  const toggleTechnique = (techniqueId: string) => {
+    setSelectedTechniqueIds(prev => {
+      const next = new Set(prev);
+      if (next.has(techniqueId)) {
+        next.delete(techniqueId);
+      } else {
+        if (next.size >= 3) {
+          toast.warning("Maximum 3 techniques per tool");
+          return prev;
+        }
+        next.add(techniqueId);
+      }
+      return next;
+    });
+    setAttackMappingChanged(true);
+  };
+
+  const saveAttackMapping = async () => {
+    if (!tool || !selectedTacticId) return;
+    if (selectedTechniqueIds.size === 0) {
+      toast.warning("Select at least 1 technique");
+      return;
+    }
+    try {
+      const res = await fetch(`/api/v1/tools/registry/${tool.id}/tactics`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tacticId: selectedTacticId,
+          techniqueIds: [...selectedTechniqueIds],
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to save ATT&CK mapping');
+      toast.success('ATT&CK mapping updated');
+      setAttackMappingChanged(false);
+      queryClient.invalidateQueries({ queryKey: ['tool-registry'] });
+      queryClient.invalidateQueries({ queryKey: ['tool-tactics', tool.id] });
+    } catch (err: any) {
+      toast.error(`Failed to save: ${err.message}`);
+    }
+  };
 
   // Initialize form when tool changes
   useEffect(() => {
@@ -39,7 +147,10 @@ export default function ConfigureToolDialog({
       setParams({});
       setSelectedTargetId("");
       setExecutionResult(null);
-      
+      setGeneratedCommand(null);
+      setCopied(false);
+      setCredentialInfo(null);
+
       // Pre-populate with saved params if available
       if (tool.metadata?.targets && selectedTargetId) {
         const savedParams = tool.metadata.targets[selectedTargetId]?.lastParams;
@@ -100,22 +211,86 @@ export default function ConfigureToolDialog({
     }
 
     try {
-      const result = await executeDocker(tool.id, {
+      const execPayload: any = {
         targetId: selectedTargetId,
         agentId,
         params,
-      });
+      };
+
+      // If AI-generated command exists, use it directly
+      if (generatedCommand) {
+        execPayload.command = generatedCommand.split(/\s+/);
+      }
+
+      const result = await executeDocker(tool.id, execPayload);
       
       setExecutionResult(result);
-      toast.success(`Tool ${tool.name} executed successfully!`);
-      
+
+      // Check for non-zero exit code
+      if (result.result?.exitCode && result.result.exitCode !== 0) {
+        toast.warning(`Tool exited with code ${result.result.exitCode}`);
+      } else {
+        toast.success(`Tool ${tool.name} executed successfully!`);
+      }
+
       // Auto-save params after successful execution
       if (onSave && selectedTargetId) {
         onSave(tool.id, selectedTargetId, params);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Execution error:", err);
-      toast.error(`Execution failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+      const errMsg = err?.message || "Unknown error";
+      const details = err?.data?.details;
+      toast.error(`Execution failed: ${errMsg}`, details ? { description: details } : undefined);
+    }
+  };
+
+  const handleGenerateCommand = async () => {
+    if (!tool || !selectedTargetId) {
+      toast.warning("Please select a target first");
+      return;
+    }
+
+    setGenerating(true);
+    setGeneratedCommand(null);
+    setCredentialInfo(null);
+
+    try {
+      const response = await fetch(`/api/v1/tools/registry/${tool.id}/generate-command`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetId: selectedTargetId }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Generation failed');
+      }
+
+      const data = await response.json();
+      setGeneratedCommand(data.command);
+      if (data.credentialSources) {
+        setCredentialInfo({
+          used: data.credentialsUsed,
+          test: data.credentialSources.test || 0,
+          harvested: data.credentialSources.harvested || 0,
+        });
+      }
+      toast.success(`Command generated via ${data.provider}`);
+    } catch (err: any) {
+      toast.error(`Failed to generate command: ${err.message}`);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleCopyCommand = () => {
+    if (generatedCommand) {
+      navigator.clipboard.writeText(generatedCommand);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      toast.success("Command copied to clipboard");
     }
   };
 
@@ -218,6 +393,81 @@ export default function ConfigureToolDialog({
             </div>
           </div>
 
+          {/* MITRE ATT&CK Mapping */}
+          {!agentId && allTactics.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-1.5">
+                  <Shield className="h-4 w-4" />
+                  MITRE ATT&CK Mapping
+                </Label>
+                {attackMappingChanged && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={saveAttackMapping}
+                    disabled={!selectedTacticId || selectedTechniqueIds.size === 0}
+                  >
+                    Save Mapping
+                  </Button>
+                )}
+              </div>
+
+              {/* Tactic Select (exactly 1) */}
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1 block">Tactic (1 required)</Label>
+                <Select value={selectedTacticId} onValueChange={handleTacticChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a tactic..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allTactics
+                      .sort((a: any, b: any) => (a.attackId || '').localeCompare(b.attackId || ''))
+                      .map((tactic: any) => (
+                      <SelectItem key={tactic.id} value={tactic.id}>
+                        {tactic.attackId}: {tactic.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Techniques Picker (1-3) — shown after tactic is selected */}
+              {selectedTacticId && (
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-1 block">
+                    <Crosshair className="h-3 w-3 inline mr-1" />
+                    Techniques (select 1-3)
+                    <span className="ml-2 text-purple-400">{selectedTechniqueIds.size}/3</span>
+                  </Label>
+                  {availableTechniques.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-2">Loading techniques...</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-2 border border-border rounded-lg">
+                      {availableTechniques
+                        .sort((a: any, b: any) => (a.attackId || '').localeCompare(b.attackId || ''))
+                        .map((tech: any) => (
+                        <Badge
+                          key={tech.id}
+                          variant="outline"
+                          className={`text-xs cursor-pointer transition-colors ${
+                            selectedTechniqueIds.has(tech.id)
+                              ? 'bg-purple-950/30 text-purple-300 border-purple-700'
+                              : 'hover:bg-muted'
+                          }`}
+                          onClick={() => toggleTechnique(tech.id)}
+                        >
+                          {tech.attackId}: {tech.name}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Target Selection - Only show if no agentId */}
           {!agentId && (
             <div>
@@ -236,6 +486,56 @@ export default function ConfigureToolDialog({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          )}
+
+          {/* AI Command Generation */}
+          {!agentId && selectedTargetId && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleGenerateCommand}
+                  disabled={generating}
+                >
+                  <Sparkles className="h-4 w-4 mr-1.5" />
+                  {generating ? "Generating..." : "Generate Command"}
+                </Button>
+              </div>
+
+              {generatedCommand && (
+                <div className="bg-gray-950 p-3 rounded-lg border border-gray-800">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-semibold text-gray-200">Generated Command</h4>
+                    <Button type="button" variant="ghost" size="sm" onClick={handleCopyCommand} className="text-gray-400 hover:text-white">
+                      {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                    </Button>
+                  </div>
+                  <pre className="text-xs bg-black text-green-400 p-2 rounded overflow-x-auto whitespace-pre-wrap break-all">
+                    {generatedCommand}
+                  </pre>
+                  {credentialInfo && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <KeyRound className={`h-3.5 w-3.5 ${credentialInfo.used ? 'text-amber-400' : 'text-gray-600'}`} />
+                      {credentialInfo.used ? (
+                        <span className="text-xs text-amber-400">
+                          Credentials applied
+                          {credentialInfo.test > 0 && ` (${credentialInfo.test} test)`}
+                          {credentialInfo.harvested > 0 && ` (${credentialInfo.harvested} harvested)`}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-500">
+                          {credentialInfo.test + credentialInfo.harvested > 0
+                            ? 'Credentials available but not applicable to this tool'
+                            : 'No operation credentials found'}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

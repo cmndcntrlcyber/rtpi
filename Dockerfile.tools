@@ -144,8 +144,8 @@ RUN chmod +x /usr/local/bin/tools-entrypoint.sh
 USER rtpi-tools
 WORKDIR /home/rtpi-tools
 
-# Download Nuclei templates as rtpi-tools user (ensures correct permissions)
-RUN nuclei -update-templates -silent || true
+# Nuclei templates are downloaded on-demand before each scan and cleaned up
+# after to save disk space (~82MB). See nuclei-executor.ts ensureTemplates().
 
 # Expose common tool ports (if needed for specific tools)
 EXPOSE 4444 5555

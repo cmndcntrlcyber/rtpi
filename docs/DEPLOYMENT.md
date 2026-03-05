@@ -441,7 +441,113 @@ On SIGTERM/SIGINT, the agent system:
 
 ## OffSec Agent Containers
 
+> ⚠️ **CRITICAL: Read Before Building OffSec Agents**
+> 
+> **DO NOT run `docker compose up -d --build` without reading this section!**
+> 
+> The OffSec agents require a **base image** to be built first, which takes 30-45 minutes. If you attempt to build everything at once without the base image, the build will fail with:
+> ```
+> rtpi/offsec-base:latest: failed to resolve source metadata
+> pull access denied, repository does not exist
+> ```
+> 
+> **Quick Start Options:**
+> - **Option A (Recommended)**: Skip OffSec agents entirely - [See Core-Only Deployment](#scenario-1-core-only-deployment-recommended)
+> - **Option B**: Build base image first, then selective agents - [See Build Sequence](#building-the-base-image-required-first)
+> - **Option C**: Full deployment (4-5 hours) - [See Complete Build](#scenario-3-complete-full-deployment)
+> 
+> **Troubleshooting Guide**: If you already encountered build errors, see [OffSec Agents Build Failure Troubleshooting](./troubleshooting/offsec-agents-build-failure.md)
+
+---
+
+### Overview
+
 The OffSec Team Agent containers are specialized Docker images for security research and penetration testing. Each container includes curated tools for specific MITRE ATT&CK tactics and exposes them via MCP (Model Context Protocol) servers.
+
+**Important**: These containers are **optional** and not required for basic RTPI operations. Core services (PostgreSQL, Redis, rtpi-tools, Empire, ATT&CK Workbench) work independently.
+
+---
+
+### Deployment Scenarios
+
+Choose the deployment path that matches your needs:
+
+#### Scenario 1: Core-Only Deployment (Recommended)
+
+**Time**: 5-10 minutes  
+**Disk**: 2-3 GB  
+**Best For**: Development, getting started, basic RTPI operations
+
+```bash
+cd /home/cmndcntrl/code/rtpi
+sudo docker compose up -d postgres redis rtpi-tools \
+  empire-server empire-proxy \
+  workbench-db workbench-api workbench-frontend
+```
+
+**What You Get**: PostgreSQL, Redis, rtpi-tools (19 security tools), Empire C2, ATT&CK Workbench  
+**What You Skip**: OffSec agent containers (not needed for basic operations)
+
+---
+
+#### Scenario 2: Core + Selective OffSec Agents
+
+**Time**: 2-3 hours  
+**Disk**: 10-15 GB  
+**Best For**: When you need specific security research tools
+
+```bash
+cd /home/cmndcntrl/code/rtpi
+
+# Step 1: Start core services (5-10 min)
+sudo docker compose up -d postgres redis rtpi-tools \
+  empire-server empire-proxy \
+  workbench-db workbench-api workbench-frontend
+
+# Step 2: Build base image (30-45 min) - REQUIRED FIRST!
+sudo docker compose --profile build-only build offsec-base
+
+# Step 3: Build specific agents you need (20-60 min each)
+sudo docker compose build offsec-framework offsec-research
+
+# Step 4: Start agents
+sudo docker compose up -d offsec-framework offsec-research
+```
+
+**Recommended Agents**:
+- `offsec-framework`: Technology detection, CMS scanning
+- `offsec-research`: General R&D, JupyterLab notebooks
+- `offsec-fuzzing`: Web fuzzing, directory discovery
+
+---
+
+#### Scenario 3: Complete Full Deployment
+
+**Time**: 4-5 hours  
+**Disk**: 50+ GB  
+**Best For**: Full security research lab setup
+
+```bash
+cd /home/cmndcntrl/code/rtpi
+
+# Step 1: Start core services
+sudo docker compose up -d postgres redis rtpi-tools \
+  empire-server empire-proxy \
+  workbench-db workbench-api workbench-frontend
+
+# Step 2: Build base image (30-45 min) - REQUIRED FIRST!
+sudo docker compose --profile build-only build offsec-base
+
+# Step 3: Build all agents (2-4 hours)
+sudo docker compose --profile offsec-agents build
+
+# Step 4: Start all agents
+sudo docker compose --profile offsec-agents up -d
+```
+
+**Parallel Build Tip**: Open multiple terminals and build agents simultaneously to save time.
+
+---
 
 ### Container Overview
 

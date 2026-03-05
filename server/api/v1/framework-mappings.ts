@@ -49,29 +49,44 @@ router.post("/", async (req, res) => {
 router.get("/coverage/:operationId", async (req, res) => {
   try {
     const coverage = await db.select().from(operationFrameworkCoverage).where(eq(operationFrameworkCoverage.operationId, req.params.operationId));
-
-    // Group by framework type
-    const grouped = coverage.reduce((acc, item) => {
-      if (!acc[item.frameworkType]) {
-        acc[item.frameworkType] = [];
-      }
-      acc[item.frameworkType].push(item);
-      return acc;
-    }, {} as Record<string, typeof coverage>);
-
-    res.json(grouped);
+    res.json(coverage);
   } catch (error: any) {
     res.status(500).json({ error: "Failed to fetch coverage" });
   }
 });
 
 /**
- * Update operation coverage
+ * Create operation coverage
  */
 router.post("/coverage", async (req, res) => {
   try {
     const coverage = await db.insert(operationFrameworkCoverage).values(req.body).returning();
     res.json(coverage[0]);
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to create coverage", message: error.message });
+  }
+});
+
+/**
+ * Update existing operation coverage entry
+ */
+router.put("/coverage/:id", async (req, res) => {
+  try {
+    const { coverageStatus, notes, testResults } = req.body;
+    const updates: Record<string, any> = {};
+    if (coverageStatus !== undefined) updates.coverageStatus = coverageStatus;
+    if (notes !== undefined) updates.notes = notes;
+    if (testResults !== undefined) updates.testResults = testResults;
+
+    const result = await db.update(operationFrameworkCoverage)
+      .set(updates)
+      .where(eq(operationFrameworkCoverage.id, req.params.id))
+      .returning();
+
+    if (result.length === 0) {
+      return res.status(404).json({ error: "Coverage entry not found" });
+    }
+    res.json(result[0]);
   } catch (error: any) {
     res.status(500).json({ error: "Failed to update coverage", message: error.message });
   }

@@ -1,0 +1,21 @@
+[Unit]
+Description=RKLLama NPU LLM Server (Ollama API-compatible)
+Documentation=https://github.com/NotPunchnox/rkllama
+After=network.target
+
+[Service]
+Type=simple
+User=cmndcntrl
+ExecStart=/home/cmndcntrl/.local/bin/rkllama_server --port 11434 --models /home/cmndcntrl/code/rtpi/rkllama/models --processor rk3588
+Restart=always
+RestartSec=5
+Environment=RKLLAMA_AUTO_UNLOAD=30
+WorkingDirectory=/home/cmndcntrl/code/rtpi/rkllama
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rkllama
+
+[Install]
+WantedBy=multi-user.target

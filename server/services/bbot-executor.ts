@@ -26,6 +26,9 @@ interface BBOTResult {
   urls: BBOTEvent[];
   ports: BBOTEvent[];
   technologies: BBOTEvent[];
+  asns: BBOTEvent[];
+  emails: BBOTEvent[];
+  storageBuckets: BBOTEvent[];
   vulnerabilities: BBOTEvent[];
   findings: BBOTEvent[];
   raw: BBOTEvent[];
@@ -173,7 +176,7 @@ export class BBOTExecutor {
         .from(axScanResults).where(eq(axScanResults.id, scanId)).limit(1);
       if (currentScan?.status === 'cancelled') {
         console.log(`⛔ BBOT scan ${scanId} was cancelled, skipping error status update`);
-        return { assetsCount: 0, servicesCount: 0, vulnerabilitiesCount: 0, results: { domains: [], ips: [], urls: [], ports: [], technologies: [], vulnerabilities: [], findings: [], raw: [] } };
+        return { assetsCount: 0, servicesCount: 0, vulnerabilitiesCount: 0, results: { domains: [], ips: [], urls: [], ports: [], technologies: [], asns: [], emails: [], storageBuckets: [], vulnerabilities: [], findings: [], raw: [] } };
       }
 
       // Prepare error raw output if available
@@ -404,6 +407,9 @@ export class BBOTExecutor {
       urls: [],
       ports: [],
       technologies: [],
+      asns: [],
+      emails: [],
+      storageBuckets: [],
       vulnerabilities: [],
       findings: [],
       raw: [],
@@ -436,6 +442,15 @@ export class BBOTExecutor {
           case 'TECHNOLOGY':
           case 'WAF':
             result.technologies.push(event);
+            break;
+          case 'ASN':
+            result.asns.push(event);
+            break;
+          case 'EMAIL_ADDRESS':
+            result.emails.push(event);
+            break;
+          case 'STORAGE_BUCKET':
+            result.storageBuckets.push(event);
             break;
           case 'VULNERABILITY':
             result.vulnerabilities.push(event);
@@ -574,6 +589,97 @@ export class BBOTExecutor {
         if (service) servicesCount++;
       } catch (err) {
         console.warn(`Failed to store port ${event.data}:`, err);
+      }
+    }
+
+    // Store discovered technologies
+    for (const event of results.technologies) {
+      try {
+        const dataStr = typeof event.data === 'string' ? event.data : JSON.stringify(event.data);
+        const [asset] = await db
+          .insert(discoveredAssets)
+          .values({
+            operationId,
+            type: 'technology',
+            value: dataStr,
+            hostname: event.host || undefined,
+            status: 'active',
+            discoveryMethod: 'bbot',
+            metadata: { bbotEvent: event },
+          })
+          .onConflictDoNothing()
+          .returning();
+
+        if (asset) assetsCount++;
+      } catch (err) {
+        console.warn(`Failed to store technology ${event.data}:`, err);
+      }
+    }
+
+    // Store discovered ASNs
+    for (const event of results.asns) {
+      try {
+        const dataStr = typeof event.data === 'string' ? event.data : JSON.stringify(event.data);
+        const [asset] = await db
+          .insert(discoveredAssets)
+          .values({
+            operationId,
+            type: 'asn',
+            value: dataStr,
+            status: 'active',
+            discoveryMethod: 'bbot',
+            metadata: { bbotEvent: event },
+          })
+          .onConflictDoNothing()
+          .returning();
+
+        if (asset) assetsCount++;
+      } catch (err) {
+        console.warn(`Failed to store ASN ${event.data}:`, err);
+      }
+    }
+
+    // Store discovered email addresses
+    for (const event of results.emails) {
+      try {
+        const [asset] = await db
+          .insert(discoveredAssets)
+          .values({
+            operationId,
+            type: 'email',
+            value: event.data,
+            status: 'active',
+            discoveryMethod: 'bbot',
+            metadata: { bbotEvent: event },
+          })
+          .onConflictDoNothing()
+          .returning();
+
+        if (asset) assetsCount++;
+      } catch (err) {
+        console.warn(`Failed to store email ${event.data}:`, err);
+      }
+    }
+
+    // Store discovered storage buckets
+    for (const event of results.storageBuckets) {
+      try {
+        const [asset] = await db
+          .insert(discoveredAssets)
+          .values({
+            operationId,
+            type: 'storage_bucket',
+            value: event.data,
+            status: 'active',
+            discoveryMethod: 'bbot',
+            metadata: { bbotEvent: event },
+          })
+          .onConflictDoNothing()
+          .returning();
+
+        if (asset) assetsCount++;
+      } catch (err) {
+        console.warn(`Failed to store storage bucket ${event.data}:`, err);
       }
     }
 

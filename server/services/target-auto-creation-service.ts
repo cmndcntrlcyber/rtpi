@@ -9,6 +9,7 @@
 import { db } from '../db';
 import { targets, discoveredAssets, operations } from '@shared/schema';
 import { eq, and, isNull, inArray } from 'drizzle-orm';
+import { getOperationTag } from './operation-tag-helper';
 
 // ============================================================================
 // Types
@@ -63,6 +64,9 @@ class TargetAutoCreationService {
     };
 
     try {
+      // Fetch operation tag once for all targets in this batch
+      const opTag = await getOperationTag(operationId);
+
       // First, link any existing manually-created targets to discovered assets
       result.linked = await this.linkExistingTargetsToAssets(operationId);
 
@@ -143,7 +147,7 @@ class TargetAutoCreationService {
               value: asset.value,
               description: `Auto-created from ${asset.discoveryMethod} scan`,
               priority: 3,
-              tags: ['auto-created', asset.discoveryMethod],
+              tags: ['auto-created', asset.discoveryMethod, ...(opTag ? [opTag] : [])],
               operationId,
               discoveredAssetId: asset.id,
               autoCreated: true,

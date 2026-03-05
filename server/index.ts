@@ -62,6 +62,7 @@ import atlasRoutes from "./api/v1/atlas";
 import owaspLlmRoutes from "./api/v1/owasp-llm";
 import nistAiRoutes from "./api/v1/nist-ai";
 import frameworkMappingsRoutes from "./api/v1/framework-mappings";
+import cisRoutes from "./api/v1/cis";
 import agentToolBuildsRoutes from "./api/v1/agent-tool-builds";
 import { initializeDefaultAdmin } from "./services/admin-initialization";
 import { opsManagerScheduler } from "./services/ops-manager-scheduler";
@@ -154,6 +155,7 @@ app.use("/api/v1/atlas", atlasRoutes);
 app.use("/api/v1/owasp-llm", owaspLlmRoutes);
 app.use("/api/v1/nist-ai", nistAiRoutes);
 app.use("/api/v1/framework-mappings", frameworkMappingsRoutes);
+app.use("/api/v1/cis", cisRoutes);
 app.use("/api/v1/agent-tool-builds", agentToolBuildsRoutes);
 
 // Root endpoint

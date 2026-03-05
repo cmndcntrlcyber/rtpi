@@ -178,7 +178,7 @@ export interface ToolConfiguration {
   // Metadata
   tags?: string[];
   lastValidated?: string; // ISO 8601 date
-  validationStatus?: 'validated' | 'pending' | 'failed';
+  validationStatus?: 'discovered' | 'untested' | 'tested' | 'validated';
   notes?: string;
 }
 

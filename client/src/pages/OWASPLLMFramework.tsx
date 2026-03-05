@@ -1,6 +1,10 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Lock, AlertTriangle, Shield } from "lucide-react";
+import VulnerabilitiesTable from "@/components/owasp-llm/VulnerabilitiesTable";
+import AttackVectorsTable from "@/components/owasp-llm/AttackVectorsTable";
+import MitigationsTable from "@/components/owasp-llm/MitigationsTable";
+import OWASPLLMAssessment from "@/components/owasp-llm/OWASPLLMAssessment";
 
 export default function OWASPLLMFramework() {
   const [stats, setStats] = useState({ vulnerabilities: 0, attackVectors: 0, mitigations: 0 });
@@ -96,33 +100,24 @@ export default function OWASPLLMFramework() {
           <TabsTrigger value="top10">Top 10 Vulnerabilities</TabsTrigger>
           <TabsTrigger value="attackVectors">Attack Vectors</TabsTrigger>
           <TabsTrigger value="mitigations">Mitigations</TabsTrigger>
+          <TabsTrigger value="assessment">Assessment</TabsTrigger>
           <TabsTrigger value="mappings">ATLAS Mappings</TabsTrigger>
         </TabsList>
 
         <TabsContent value="top10">
-          <div className="bg-card p-6 rounded-lg border border-border">
-            <p className="text-muted-foreground">
-              OWASP LLM Top 10 vulnerabilities including Prompt Injection, Insecure Output Handling,
-              Training Data Poisoning, and more.
-              {stats.vulnerabilities === 0 && " Import the OWASP LLM Top 10 to view vulnerabilities."}
-            </p>
-          </div>
+          <VulnerabilitiesTable />
         </TabsContent>
 
         <TabsContent value="attackVectors">
-          <div className="bg-card p-6 rounded-lg border border-border">
-            <p className="text-muted-foreground">
-              Specific attack vectors and exploitation techniques for each vulnerability.
-            </p>
-          </div>
+          <AttackVectorsTable />
         </TabsContent>
 
         <TabsContent value="mitigations">
-          <div className="bg-card p-6 rounded-lg border border-border">
-            <p className="text-muted-foreground">
-              Prevention strategies and implementation guidance for securing LLM applications.
-            </p>
-          </div>
+          <MitigationsTable />
+        </TabsContent>
+
+        <TabsContent value="assessment">
+          <OWASPLLMAssessment />
         </TabsContent>
 
         <TabsContent value="mappings">

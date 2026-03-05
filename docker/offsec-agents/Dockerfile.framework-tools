@@ -108,6 +108,7 @@ RUN pip3 install droopescan && \
 
 # Joomscan - Joomla scanner
 RUN git clone --depth 1 https://github.com/OWASP/joomscan.git 2>/dev/null && \
+    ln -sf /opt/tools/joomscan/joomscan.pl /opt/tools/bin/joomscan && \
     echo "joomscan: OWASP Joomla vulnerability scanner" > joomscan/TOOL_INFO.txt || true
 
 # Magescan - Magento scanner
@@ -205,6 +206,7 @@ RUN pip3 install sslyze && \
 # TestSSL - SSL/TLS testing
 RUN git clone --depth 1 https://github.com/drwetter/testssl.sh.git testssl 2>/dev/null && \
     chmod +x testssl/testssl.sh && \
+    ln -sf /opt/tools/testssl/testssl.sh /opt/tools/bin/testssl.sh && \
     echo "testssl: SSL/TLS testing tool" > testssl/TOOL_INFO.txt || true
 
 # =============================================================================
@@ -222,6 +224,15 @@ RUN git clone --depth 1 https://github.com/koenbuyens/securityheaders.git 2>/dev
     echo "securityheaders: HTTP security headers analyzer" > TOOL_INFO.txt || true
 
 # =============================================================================
+# WAF DETECTION
+# =============================================================================
+
+# wafw00f - WAF fingerprinter
+RUN pip3 install wafw00f && \
+    mkdir -p wafw00f && \
+    echo "wafw00f: Web Application Firewall fingerprinter" > wafw00f/TOOL_INFO.txt
+
+# =============================================================================
 # CREATE BINARY DIRECTORY
 # =============================================================================
 
@@ -236,7 +247,7 @@ ENV PATH="/opt/tools/bin:${PATH}"
 # =============================================================================
 
 # Set ownership
-RUN chown -R rtpi-agent:rtpi-agent /opt/tools
+RUN chown -R rtpi-agent:rtpi-agent /opt/tools /docs
 
 # Generate tool documentation
 RUN /usr/local/bin/generate-docs.sh || true

@@ -176,8 +176,6 @@ services:
     networks:
       - rtpi-network
     restart: unless-stopped
-    profiles:
-      - workbench-ui  # Optional profile - only start if explicitly enabled
 
   # ============================================================================
   # Kasm Workspaces - Browser-Based Desktop Streaming Platform
@@ -479,15 +477,38 @@ services:
       - certbot  # Optional profile - only start if SSL automation is needed
 
   # ===========================================================================
-  # Ollama AI Services (Enhancement #08 - Ollama AI Integration)
+  # Local LLM Inference Services
+  # ===========================================================================
+  #
+  # RKLLama (RK3588 NPU-accelerated inference) — RECOMMENDED for Orange Pi 5 Plus
+  #
+  # RKLLama runs as a native systemd service on the host (not in Docker) for
+  # direct NPU device access. It implements the Ollama API on port 11434, so
+  # RTPI connects via OLLAMA_HOST=http://localhost:11434 with zero changes.
+  #
+  # Setup:
+  #   git clone https://github.com/notpunchnox/rkllama && cd rkllama
+  #   pip install "packaging>=24.2" && pip install --no-build-isolation .
+  #   rkllama_client pull qwen2.5:3b
+  #   rkllama_client pull tinyllama:1.1b
+  #   sudo cp scripts/rkllama.service /etc/systemd/system/
+  #   sudo systemctl enable --now rkllama
+  #
+  # .env config:
+  #   RKLLM_MODE=true
+  #   PREFER_LOCAL_AI=true
+  #   OLLAMA_HOST=http://localhost:11434
+  #
+  # The Ollama Docker services below are retained for non-RK3588 deployments.
+  # They use Docker profiles and will NOT start unless explicitly activated.
   # ===========================================================================
 
-  # Ollama (GPU-accelerated inference)
+  # Ollama (GPU-accelerated inference — for NVIDIA GPU deployments only)
   ollama:
     image: ollama/ollama:latest
     container_name: rtpi-ollama
     profiles:
-      - gpu  # Only start if GPU is available
+      - gpu  # Only start if GPU is available (not used on RK3588)
     ports:
       - "11434:11434"
     volumes:
@@ -515,12 +536,12 @@ services:
       retries: 3
       start_period: 40s
 
-  # Ollama CPU Fallback (for systems without GPU)
+  # Ollama CPU Fallback (for systems without GPU or NPU)
   ollama-cpu:
     image: ollama/ollama:latest
     container_name: rtpi-ollama-cpu
     profiles:
-      - cpu  # Only start if no GPU available
+      - cpu  # Only start if no GPU/NPU available (not used on RK3588)
     ports:
       - "11434:11434"
     volumes:
@@ -542,22 +563,20 @@ services:
       retries: 3
       start_period: 40s
 
-  # Ollama WebUI (Model management interface)
-  ollama-webui:
+  # Open WebUI (LLM chat interface — connects to RKLLama on host)
+  open-webui:
     image: ghcr.io/open-webui/open-webui:main
-    container_name: rtpi-ollama-webui
-    profiles:
-      - ollama-ui  # Optional - only if you want the web interface
+    container_name: rtpi-open-webui
     ports:
-      - "3002:8080"  # Avoid conflict with backend port 3001
+      - "3000:8080"
     volumes:
-      - ollama-webui-data:/app/backend/data
+      - open-webui-data:/app/backend/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - WEBUI_AUTH=false  # Disable auth since it's internal
-      - WEBUI_NAME=RTPI Ollama Manager
-    depends_on:
-      - ollama
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - WEBUI_AUTH=false
+      - WEBUI_NAME=RTPI Local LLM (RKLLama NPU)
     networks:
       - rtpi-network
     restart: unless-stopped
@@ -590,6 +609,7 @@ services:
       dockerfile: Dockerfile.maldev-tools
     image: rtpi/maldev-tools:latest
     container_name: rtpi-maldev-agent
+    stdin_open: true
     environment:
       - AGENT_TYPE=maldev
       - TOOLS_PATH=/opt/tools
@@ -643,6 +663,7 @@ services:
       dockerfile: Dockerfile.burp-tools
     image: rtpi/burp-tools:latest
     container_name: rtpi-burp-agent
+    stdin_open: true
     environment:
       - AGENT_TYPE=burp-suite
       - TOOLS_PATH=/opt/tools
@@ -669,6 +690,7 @@ services:
       dockerfile: Dockerfile.empire-tools
     image: rtpi/empire-tools:latest
     container_name: rtpi-empire-agent
+    stdin_open: true
     environment:
       - AGENT_TYPE=empire-c2
       - TOOLS_PATH=/opt/tools
@@ -695,6 +717,7 @@ services:
       dockerfile: Dockerfile.fuzzing-tools
     image: rtpi/fuzzing-tools:latest
     container_name: rtpi-fuzzing-agent
+    stdin_open: true
     environment:
       - AGENT_TYPE=fuzzing
       - TOOLS_PATH=/opt/tools
@@ -726,6 +749,7 @@ services:
       dockerfile: Dockerfile.framework-tools
     image: rtpi/framework-tools:latest
     container_name: rtpi-framework-agent
+    stdin_open: true
     environment:
       - AGENT_TYPE=framework-security
       - TOOLS_PATH=/opt/tools
@@ -829,9 +853,9 @@ volumes:
   kasm-certs:
   certbot-conf:
   certbot-www:
-  # Ollama AI volumes
+  # LLM / AI volumes
   ollama-models:
-  ollama-webui-data:
+  open-webui-data:
   # OffSec Agent volumes (v2.2)
   maldev-tools:
   azure-ad-tools:

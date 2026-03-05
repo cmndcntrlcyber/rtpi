@@ -10,7 +10,10 @@ import ReactFlow, {
   Panel,
   BackgroundVariant,
   MarkerType,
+  ReactFlowProvider,
+  useReactFlow,
 } from "reactflow";
+import { toPng, toSvg } from "html-to-image";
 import "reactflow/dist/style.css";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,13 +28,16 @@ import {
 import {
   Download,
   RefreshCw,
-  Maximize2,
-  Filter,
   Network,
   Server,
   Globe,
   Shield,
   AlertTriangle,
+  Crosshair,
+  Radar,
+  Search,
+  MousePointer,
+  Layers,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -40,12 +46,18 @@ import { toast } from "sonner";
 // Types
 // ============================================================================
 
+type LayoutType = "hierarchical" | "force" | "subnet" | "discovery";
+
 interface Asset {
   id: string;
   ip: string;
+  value?: string;
   hostname?: string;
   type: "host" | "domain" | "service";
   subnet?: string;
+  discoveryMethod?: string;
+  targetTags?: string[];
+  targetName?: string;
   vulnerabilityCount?: number;
   criticalVulnerabilities?: number;
   services?: {
@@ -61,6 +73,49 @@ interface NetworkConnection {
   type: "network" | "service" | "dependency";
   protocol?: string;
   port?: number;
+}
+
+// ============================================================================
+// Discovery Flow Helpers
+// ============================================================================
+
+const DISCOVERY_METHODS = ["bbot", "nmap", "nuclei", "scope", "manual"] as const;
+
+const METHOD_COLORS: Record<string, string> = {
+  bbot: "border-emerald-500 bg-emerald-50 dark:bg-emerald-950",
+  nmap: "border-blue-500 bg-blue-50 dark:bg-blue-950",
+  nuclei: "border-amber-500 bg-amber-50 dark:bg-amber-950",
+  manual: "border-purple-500 bg-purple-50 dark:bg-purple-950",
+  scope: "border-gray-500 bg-gray-50 dark:bg-gray-950",
+  unknown: "border-slate-400 bg-slate-50 dark:bg-slate-950",
+};
+
+const METHOD_LABELS: Record<string, string> = {
+  bbot: "BBOT Recon",
+  nmap: "Nmap Scan",
+  nuclei: "Nuclei Scan",
+  manual: "Manual",
+  scope: "Scope Import",
+  unknown: "Unknown",
+};
+
+/**
+ * Determine the discovery group for an asset using target tags (preferred)
+ * with fallback to discoveredAsset.discoveryMethod.
+ */
+function getDiscoveryGroup(asset: Asset): string {
+  // 1. Check target tags for discovery source (most accurate, set by auto-tagging)
+  const targetTags = asset.targetTags || [];
+  const discoveryTag = targetTags.find((t) =>
+    DISCOVERY_METHODS.includes(t as any)
+  );
+  if (discoveryTag) return discoveryTag;
+
+  // 2. Fall back to discoveredAsset.discoveryMethod
+  if (asset.discoveryMethod) return asset.discoveryMethod;
+
+  // 3. Default
+  return "unknown";
 }
 
 // ============================================================================
@@ -132,10 +187,50 @@ function ServiceNode({ data }: any) {
   );
 }
 
+function OperationNode({ data }: any) {
+  return (
+    <Card className="p-4 min-w-[220px] border-2 border-cyan-500 bg-cyan-50 dark:bg-cyan-950">
+      <div className="flex items-center gap-2 mb-1">
+        <Crosshair className="h-5 w-5 text-cyan-600" />
+        <div className="font-bold text-base">{data.label}</div>
+      </div>
+      <div className="text-xs text-muted-foreground">
+        {data.assetCount} assets discovered
+      </div>
+    </Card>
+  );
+}
+
+function DiscoveryMethodNode({ data }: any) {
+  const iconMap: Record<string, React.ReactNode> = {
+    bbot: <Radar className="h-4 w-4 text-emerald-600" />,
+    nmap: <Search className="h-4 w-4 text-blue-600" />,
+    nuclei: <AlertTriangle className="h-4 w-4 text-amber-600" />,
+    manual: <MousePointer className="h-4 w-4 text-purple-600" />,
+    scope: <Layers className="h-4 w-4 text-gray-600" />,
+  };
+
+  const colorClass = METHOD_COLORS[data.method] || METHOD_COLORS.unknown;
+
+  return (
+    <Card className={`p-3 min-w-[160px] border-2 ${colorClass}`}>
+      <div className="flex items-center gap-2 mb-1">
+        {iconMap[data.method] || <Network className="h-4 w-4" />}
+        <div className="font-semibold text-sm">{data.label}</div>
+      </div>
+      <div className="text-xs text-muted-foreground">
+        {data.assetCount} asset{data.assetCount !== 1 ? "s" : ""}
+      </div>
+    </Card>
+  );
+}
+
 const nodeTypes = {
   host: HostNode,
   domain: DomainNode,
   service: ServiceNode,
+  operation: OperationNode,
+  discoveryMethod: DiscoveryMethodNode,
 };
 
 // ============================================================================
@@ -144,34 +239,66 @@ const nodeTypes = {
 
 interface NetworkTopologyViewProps {
   operationId: string;
+  operationName?: string;
 }
 
-export default function NetworkTopologyView({ operationId }: NetworkTopologyViewProps) {
+export default function NetworkTopologyView(props: NetworkTopologyViewProps) {
+  return (
+    <ReactFlowProvider>
+      <NetworkTopologyViewInner {...props} />
+    </ReactFlowProvider>
+  );
+}
+
+function NetworkTopologyViewInner({
+  operationId,
+  operationName,
+}: NetworkTopologyViewProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [loading, setLoading] = useState(false);
   const [assets, setAssets] = useState<Asset[]>([]);
-  const [layoutType, setLayoutType] = useState<"hierarchical" | "force" | "subnet">(
-    "subnet"
-  );
-  const [filterSeverity, setFilterSeverity] = useState<"all" | "critical" | "high">("all");
+  const [layoutType, setLayoutType] = useState<LayoutType>("subnet");
+  const [filterAssetType, setFilterAssetType] = useState<"all" | "host" | "domain" | "service">("all");
+  const [filterVulnLevel, setFilterVulnLevel] = useState<"all" | "critical" | "high" | "medium">("all");
+  const [canvasHeight, setCanvasHeight] = useState(600);
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startHeight = canvasHeight;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const delta = moveEvent.clientY - startY;
+      setCanvasHeight(Math.max(400, Math.min(1200, startHeight + delta)));
+    };
+    const onMouseUp = () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }, [canvasHeight]);
 
   // Fetch assets and build topology
   const fetchTopology = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch discovered assets
-      const response = await api.get<any[]>(
-        `/surface-assessment/operations/${operationId}/assets`
+      // Fetch discovered assets (API returns { assets: [...] })
+      const response = await api.get<any>(
+        `/surface-assessment/${operationId}/assets`
       );
 
-      setAssets(response);
+      const assetData: Asset[] = response.assets || response || [];
+      setAssets(assetData);
 
       // Build nodes and edges
       const { nodes: generatedNodes, edges: generatedEdges } = buildTopology(
-        response,
+        assetData,
         layoutType,
-        filterSeverity
+        filterAssetType,
+        filterVulnLevel,
+        operationName
       );
 
       setNodes(generatedNodes);
@@ -182,7 +309,7 @@ export default function NetworkTopologyView({ operationId }: NetworkTopologyView
     } finally {
       setLoading(false);
     }
-  }, [operationId, layoutType, filterSeverity, setNodes, setEdges]);
+  }, [operationId, layoutType, filterAssetType, filterVulnLevel, operationName, setNodes, setEdges]);
 
   useEffect(() => {
     if (operationId) {
@@ -190,19 +317,103 @@ export default function NetworkTopologyView({ operationId }: NetworkTopologyView
     }
   }, [operationId, fetchTopology]);
 
-  // Export topology as PNG
-  const handleExportPNG = () => {
-    // Get React Flow instance and export
-    const viewport = document.querySelector(".react-flow__viewport");
-    if (!viewport) return;
+  const reactFlowInstance = useReactFlow();
 
-    // Use html-to-image or similar library in production
-    toast.info("Export feature requires html-to-image library");
+  const getExportFilename = (ext: string) => {
+    const name = (operationName || "topology").toLowerCase().replace(/\s+/g, "-");
+    const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    return `topology-${name}-${ts}.${ext}`;
   };
 
-  // Export topology as SVG
-  const handleExportSVG = () => {
-    toast.info("SVG export coming soon");
+  const getGraphBounds = () => {
+    const allNodes = reactFlowInstance.getNodes();
+    if (allNodes.length === 0) return null;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const node of allNodes) {
+      minX = Math.min(minX, node.position.x);
+      minY = Math.min(minY, node.position.y);
+      maxX = Math.max(maxX, node.position.x + (node.width || 200));
+      maxY = Math.max(maxY, node.position.y + (node.height || 100));
+    }
+    const padding = 50;
+    return {
+      width: Math.ceil(maxX - minX + padding * 2),
+      height: Math.ceil(maxY - minY + padding * 2),
+      minX: minX - padding,
+      minY: minY - padding,
+    };
+  };
+
+  const handleExportPNG = async () => {
+    const flowEl = document.querySelector(".react-flow") as HTMLElement;
+    if (!flowEl) {
+      toast.error("Could not find topology container");
+      return;
+    }
+    try {
+      toast.info("Generating PNG...");
+      const bounds = getGraphBounds();
+      if (!bounds) { toast.error("No nodes to export"); return; }
+
+      // Save current viewport, then set to zoom=1 showing all nodes
+      const savedViewport = reactFlowInstance.getViewport();
+      reactFlowInstance.setViewport({ x: -bounds.minX, y: -bounds.minY, zoom: 1 });
+      await new Promise((r) => setTimeout(r, 200));
+
+      const dataUrl = await toPng(flowEl, {
+        backgroundColor: "#ffffff",
+        pixelRatio: 2,
+        width: bounds.width,
+        height: bounds.height,
+      });
+
+      // Restore original viewport
+      reactFlowInstance.setViewport(savedViewport);
+
+      const link = document.createElement("a");
+      link.download = getExportFilename("png");
+      link.href = dataUrl;
+      link.click();
+      toast.success("PNG exported successfully");
+    } catch (err) {
+      console.error("PNG export failed:", err);
+      toast.error("Failed to export PNG");
+    }
+  };
+
+  const handleExportSVG = async () => {
+    const flowEl = document.querySelector(".react-flow") as HTMLElement;
+    if (!flowEl) {
+      toast.error("Could not find topology container");
+      return;
+    }
+    try {
+      toast.info("Generating SVG...");
+      const bounds = getGraphBounds();
+      if (!bounds) { toast.error("No nodes to export"); return; }
+
+      const savedViewport = reactFlowInstance.getViewport();
+      reactFlowInstance.setViewport({ x: -bounds.minX, y: -bounds.minY, zoom: 1 });
+      await new Promise((r) => setTimeout(r, 200));
+
+      const dataUrl = await toSvg(flowEl, {
+        backgroundColor: "#ffffff",
+        width: bounds.width,
+        height: bounds.height,
+      });
+
+      reactFlowInstance.setViewport(savedViewport);
+
+      const link = document.createElement("a");
+      link.download = getExportFilename("svg");
+      link.href = dataUrl;
+      link.click();
+      toast.success("SVG exported successfully");
+    } catch (err) {
+      console.error("SVG export failed:", err);
+      toast.error("Failed to export SVG");
+    }
   };
 
   return (
@@ -215,34 +426,59 @@ export default function NetworkTopologyView({ operationId }: NetworkTopologyView
               <Shield className="h-5 w-5 text-cyan-600" />
               <h3 className="text-lg font-semibold">Network Topology</h3>
             </div>
-            <Badge variant="outline">{assets.length} assets</Badge>
+            <Badge variant="outline">
+              {(() => {
+                const displayed = nodes.filter((n) => n.type !== "operation" && n.type !== "discoveryMethod").length;
+                return displayed < assets.length
+                  ? `${displayed} / ${assets.length} assets`
+                  : `${assets.length} assets`;
+              })()}
+            </Badge>
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
             {/* Layout Type */}
             <Select value={layoutType} onValueChange={(v: any) => setLayoutType(v)}>
-              <SelectTrigger className="w-[160px]">
+              <SelectTrigger className="w-[170px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="subnet">Subnet Clusters</SelectItem>
                 <SelectItem value="hierarchical">Hierarchical</SelectItem>
                 <SelectItem value="force">Force-Directed</SelectItem>
+                <SelectItem value="discovery">Discovery Flow</SelectItem>
               </SelectContent>
             </Select>
 
-            {/* Severity Filter */}
+            {/* Asset Type Filter */}
             <Select
-              value={filterSeverity}
-              onValueChange={(v: any) => setFilterSeverity(v)}
+              value={filterAssetType}
+              onValueChange={(v: any) => setFilterAssetType(v)}
             >
-              <SelectTrigger className="w-[140px]">
+              <SelectTrigger className="w-[130px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Assets</SelectItem>
-                <SelectItem value="critical">Critical Only</SelectItem>
-                <SelectItem value="high">High+ Only</SelectItem>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="host">Hosts</SelectItem>
+                <SelectItem value="domain">Domains</SelectItem>
+                <SelectItem value="service">Services</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Vulnerability Level Filter */}
+            <Select
+              value={filterVulnLevel}
+              onValueChange={(v: any) => setFilterVulnLevel(v)}
+            >
+              <SelectTrigger className="w-[130px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Levels</SelectItem>
+                <SelectItem value="critical">Critical</SelectItem>
+                <SelectItem value="high">High+</SelectItem>
+                <SelectItem value="medium">Medium+</SelectItem>
               </SelectContent>
             </Select>
 
@@ -291,11 +527,23 @@ export default function NetworkTopologyView({ operationId }: NetworkTopologyView
             <div className="w-4 h-4 border-2 border-blue-500 bg-blue-50 dark:bg-blue-950 rounded"></div>
             <span>Domain/External</span>
           </div>
+          {layoutType === "discovery" && (
+            <>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-cyan-500 bg-cyan-50 dark:bg-cyan-950 rounded"></div>
+                <span>Operation</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-emerald-500 bg-emerald-50 dark:bg-emerald-950 rounded"></div>
+                <span>Discovery Method</span>
+              </div>
+            </>
+          )}
         </div>
       </Card>
 
       {/* React Flow Canvas */}
-      <Card className="p-0" style={{ height: "600px" }}>
+      <Card className="p-0 relative" style={{ height: `${canvasHeight}px` }}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -309,6 +557,8 @@ export default function NetworkTopologyView({ operationId }: NetworkTopologyView
           <Controls />
           <MiniMap
             nodeColor={(node) => {
+              if (node.type === "operation") return "#06b6d4";
+              if (node.type === "discoveryMethod") return "#10b981";
               if (node.type === "host") {
                 const critical = (node.data as any).criticalVulnerabilities || 0;
                 const total = (node.data as any).vulnerabilityCount || 0;
@@ -324,12 +574,17 @@ export default function NetworkTopologyView({ operationId }: NetworkTopologyView
           />
           <Panel position="top-right">
             <Card className="p-2 text-xs">
-              <div>🔍 Scroll to zoom</div>
-              <div>🖱️ Drag to pan</div>
-              <div>📌 Click nodes for details</div>
+              <div>Scroll to zoom</div>
+              <div>Drag to pan</div>
+              <div>Drag bottom edge to resize</div>
             </Card>
           </Panel>
         </ReactFlow>
+        {/* Resize handle */}
+        <div
+          className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize bg-transparent hover:bg-muted/50 z-50 transition-colors"
+          onMouseDown={handleResizeStart}
+        />
       </Card>
     </div>
   );
@@ -341,20 +596,34 @@ export default function NetworkTopologyView({ operationId }: NetworkTopologyView
 
 function buildTopology(
   assets: Asset[],
-  layoutType: "hierarchical" | "force" | "subnet",
-  filterSeverity: "all" | "critical" | "high"
+  layoutType: LayoutType,
+  filterAssetType: "all" | "host" | "domain" | "service",
+  filterVulnLevel: "all" | "critical" | "high" | "medium",
+  operationName?: string
 ): { nodes: Node[]; edges: Edge[] } {
-  // Filter assets by severity
+  // Filter by asset type
   let filteredAssets = assets;
-  if (filterSeverity === "critical") {
-    filteredAssets = assets.filter((a) => (a.criticalVulnerabilities || 0) > 0);
-  } else if (filterSeverity === "high") {
-    filteredAssets = assets.filter(
-      (a) => (a.criticalVulnerabilities || 0) > 0 || (a.vulnerabilityCount || 0) > 5
-    );
+  if (filterAssetType !== "all") {
+    filteredAssets = filteredAssets.filter((a) => a.type === filterAssetType);
   }
 
-  // Build nodes
+  // Filter by vulnerability level
+  if (filterVulnLevel === "critical") {
+    filteredAssets = filteredAssets.filter((a) => (a.criticalVulnerabilities || 0) > 0);
+  } else if (filterVulnLevel === "high") {
+    filteredAssets = filteredAssets.filter(
+      (a) => (a.criticalVulnerabilities || 0) > 0 || (a.vulnerabilityCount || 0) > 5
+    );
+  } else if (filterVulnLevel === "medium") {
+    filteredAssets = filteredAssets.filter((a) => (a.vulnerabilityCount || 0) > 0);
+  }
+
+  // Discovery Flow layout is fully custom
+  if (layoutType === "discovery") {
+    return buildDiscoveryFlowTopology(filteredAssets, operationName || "Operation");
+  }
+
+  // Build nodes for other layouts
   const nodes: Node[] = filteredAssets.map((asset, index) => {
     const position = calculateNodePosition(asset, index, filteredAssets, layoutType);
 
@@ -362,7 +631,7 @@ function buildTopology(
       id: asset.id,
       type: asset.type,
       data: {
-        label: asset.ip,
+        label: asset.value || asset.ip,
         hostname: asset.hostname,
         subnet: asset.subnet,
         vulnerabilityCount: asset.vulnerabilityCount,
@@ -397,50 +666,188 @@ function buildTopology(
   return { nodes, edges };
 }
 
-// Calculate node position based on layout type
+// ============================================================================
+// Discovery Flow Layout (Tag-Aware)
+// ============================================================================
+
+function buildDiscoveryFlowTopology(
+  assets: Asset[],
+  operationName: string
+): { nodes: Node[]; edges: Edge[] } {
+  const nodes: Node[] = [];
+  const edges: Edge[] = [];
+
+  // Root node: Operation
+  const rootId = "op-root";
+  nodes.push({
+    id: rootId,
+    type: "operation",
+    data: {
+      label: operationName,
+      assetCount: assets.length,
+    },
+    position: { x: 0, y: 0 }, // will be centered below
+  });
+
+  // Group assets by discovery method using tag-aware logic
+  const methodGroups = new Map<string, Asset[]>();
+  assets.forEach((asset) => {
+    const method = getDiscoveryGroup(asset);
+    if (!methodGroups.has(method)) {
+      methodGroups.set(method, []);
+    }
+    methodGroups.get(method)!.push(asset);
+  });
+
+  const methods = Array.from(methodGroups.keys()).sort((a, b) => {
+    // Sort by pipeline order: scope → bbot → nmap → nuclei → manual → unknown
+    const order = ["scope", "bbot", "nmap", "nuclei", "manual", "unknown"];
+    return (order.indexOf(a) === -1 ? 99 : order.indexOf(a)) -
+           (order.indexOf(b) === -1 ? 99 : order.indexOf(b));
+  });
+
+  // Calculate method spacing based on widest group
+  const colSpacing = 250;
+  const maxGroupCols = Math.max(
+    ...Array.from(methodGroups.values()).map((g) =>
+      Math.min(g.length > 8 ? 4 : g.length > 4 ? 3 : g.length, 4)
+    )
+  );
+  const methodSpacing = Math.max(400, maxGroupCols * colSpacing + 100);
+  const totalWidth = (methods.length - 1) * methodSpacing;
+  const startX = -totalWidth / 2;
+
+  // Center the root node
+  nodes[0].position = { x: 0, y: 0 };
+
+  // Discovery method intermediate nodes (row 2)
+  methods.forEach((method, methodIndex) => {
+    const methodNodeId = `method-${method}`;
+    const methodAssets = methodGroups.get(method)!;
+    const x = startX + methodIndex * methodSpacing;
+
+    nodes.push({
+      id: methodNodeId,
+      type: "discoveryMethod",
+      data: {
+        label: METHOD_LABELS[method] || method.toUpperCase(),
+        method,
+        assetCount: methodAssets.length,
+      },
+      position: { x, y: 180 },
+    });
+
+    // Edge from root to method group
+    edges.push({
+      id: `edge-root-${method}`,
+      source: rootId,
+      target: methodNodeId,
+      type: "smoothstep",
+      animated: true,
+      markerEnd: { type: MarkerType.ArrowClosed },
+      style: { stroke: "#64748b", strokeWidth: 2.5 },
+    });
+
+    // Asset leaf nodes (row 3+)
+    // Scale columns based on group size to prevent overlap
+    const cols = methodAssets.length > 8 ? 4 : methodAssets.length > 4 ? 3 : methodAssets.length;
+    const rowSpacing = 130;
+    const groupWidth = (Math.min(cols, methodAssets.length) - 1) * colSpacing;
+    const assetStartX = x - groupWidth / 2;
+
+    methodAssets.forEach((asset, assetIndex) => {
+      const col = assetIndex % cols;
+      const row = Math.floor(assetIndex / cols);
+      const assetX = assetStartX + col * colSpacing;
+      const assetY = 370 + row * rowSpacing;
+
+      const nodeType = asset.type === "domain" ? "domain" : "host";
+
+      nodes.push({
+        id: asset.id,
+        type: nodeType,
+        data: {
+          label: asset.value || asset.ip || asset.hostname || "unknown",
+          hostname: asset.hostname,
+          ip: asset.ip,
+          subnet: asset.subnet,
+          vulnerabilityCount: asset.vulnerabilityCount,
+          criticalVulnerabilities: asset.criticalVulnerabilities,
+        },
+        position: { x: assetX, y: assetY },
+      });
+
+      // Edge from method to asset
+      edges.push({
+        id: `edge-${method}-${asset.id}`,
+        source: methodNodeId,
+        target: asset.id,
+        type: "smoothstep",
+        markerEnd: { type: MarkerType.ArrowClosed },
+        style: { stroke: "#94a3b8", strokeWidth: 1.5 },
+      });
+    });
+  });
+
+  return { nodes, edges };
+}
+
+// ============================================================================
+// Standard Layout Helpers
+// ============================================================================
+
 function calculateNodePosition(
   asset: Asset,
   index: number,
   allAssets: Asset[],
-  layoutType: "hierarchical" | "force" | "subnet"
+  layoutType: Exclude<LayoutType, "discovery">
 ): { x: number; y: number } {
   if (layoutType === "subnet") {
-    // Group by subnet
     const subnets = Array.from(new Set(allAssets.map((a) => a.subnet || "unknown")));
     const subnetIndex = subnets.indexOf(asset.subnet || "unknown");
     const assetsInSubnet = allAssets.filter((a) => a.subnet === asset.subnet);
     const indexInSubnet = assetsInSubnet.findIndex((a) => a.id === asset.id);
 
     return {
-      x: subnetIndex * 300,
-      y: indexInSubnet * 120,
+      x: subnetIndex * 350,
+      y: indexInSubnet * 130,
     };
   } else if (layoutType === "hierarchical") {
-    // Hierarchical layout (domains at top, hosts below)
-    const row = asset.type === "domain" ? 0 : 1;
-    const col = index % 5;
+    // Separate domains (row 0) from hosts, then wrap into grid
+    const domains = allAssets.filter((a) => a.type === "domain");
+    const hosts = allAssets.filter((a) => a.type !== "domain");
+    const colsPerRow = 8;
 
+    if (asset.type === "domain") {
+      const di = domains.findIndex((a) => a.id === asset.id);
+      return {
+        x: (di % colsPerRow) * 280,
+        y: Math.floor(di / colsPerRow) * 130,
+      };
+    }
+    const hi = hosts.findIndex((a) => a.id === asset.id);
+    const domainRows = Math.ceil(domains.length / colsPerRow);
     return {
-      x: col * 250,
-      y: row * 200,
+      x: (hi % colsPerRow) * 280,
+      y: (domainRows + 1) * 130 + Math.floor(hi / colsPerRow) * 130,
     };
   } else {
-    // Force-directed (simple circular for now)
+    // Force-directed (circular scaled to node count)
     const angle = (index / allAssets.length) * 2 * Math.PI;
-    const radius = 300;
+    const radius = Math.max(400, allAssets.length * 25);
+    const cx = radius + 100;
+    const cy = radius + 100;
 
     return {
-      x: 400 + radius * Math.cos(angle),
-      y: 400 + radius * Math.sin(angle),
+      x: cx + radius * Math.cos(angle),
+      y: cy + radius * Math.sin(angle),
     };
   }
 }
 
-// Infer connections between assets
 function inferConnections(assets: Asset[]): NetworkConnection[] {
   const connections: NetworkConnection[] = [];
 
-  // Group assets by subnet
   const subnetMap = new Map<string, Asset[]>();
   assets.forEach((asset) => {
     const subnet = asset.subnet || "unknown";
@@ -450,13 +857,10 @@ function inferConnections(assets: Asset[]): NetworkConnection[] {
     subnetMap.get(subnet)!.push(asset);
   });
 
-  // Create connections within subnets
   subnetMap.forEach((subnetAssets) => {
     for (let i = 0; i < subnetAssets.length - 1; i++) {
       for (let j = i + 1; j < subnetAssets.length; j++) {
-        // Only connect if they share services or are on the same network
         if (Math.random() > 0.7) {
-          // Random sampling to avoid overcrowding
           connections.push({
             sourceId: subnetAssets[i].id,
             targetId: subnetAssets[j].id,
@@ -467,10 +871,8 @@ function inferConnections(assets: Asset[]): NetworkConnection[] {
     }
   });
 
-  // Create service connections
   assets.forEach((asset) => {
     if (asset.services && asset.services.length > 0) {
-      // Connect to other assets that might depend on these services
       const potentialTargets = assets.filter(
         (a) => a.id !== asset.id && a.subnet === asset.subnet
       );

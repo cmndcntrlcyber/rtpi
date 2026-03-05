@@ -181,6 +181,60 @@ router.post("/start", ensureRole("admin", "operator"), async (req, res) => {
 });
 
 /**
+ * POST /api/v1/agent-workflows/execute-tools
+ * Start a generic tool execution workflow for any agent.
+ * Inventories the agent's enabledTools and executes each sequentially.
+ */
+router.post("/execute-tools", ensureRole("admin", "operator"), async (req, res) => {
+  const user = req.user as any;
+  const { agentId, targetId, operationId } = req.body;
+
+  if (!agentId || !targetId) {
+    return res.status(400).json({ error: "agentId and targetId are required" });
+  }
+
+  try {
+    const result = await agentWorkflowOrchestrator.startToolExecutionWorkflow(
+      agentId,
+      targetId,
+      user.id,
+      operationId,
+    );
+
+    await logAudit(
+      user.id,
+      "start_tool_execution_workflow",
+      "/agent-workflows/execute-tools",
+      result.workflow.id,
+      true,
+      req
+    );
+
+    return res.status(201).json({
+      success: true,
+      workflow: result.workflow,
+      tasks: result.tasks,
+    });
+  } catch (error: any) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+
+    await logAudit(
+      user.id,
+      "start_tool_execution_workflow",
+      "/agent-workflows/execute-tools",
+      null,
+      false,
+      req
+    );
+
+    res.status(500).json({
+      error: "Failed to start tool execution workflow",
+      details: errorMsg,
+    });
+  }
+});
+
+/**
  * GET /api/v1/agent-workflows
  * List all workflows
  */

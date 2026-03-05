@@ -1,5 +1,6 @@
 import { db } from "../db";
 import { owaspLlmVulnerabilities, owaspLlmAttackVectors, owaspLlmMitigations } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 interface OWASPLLMVulnerability {
   id: string;          // 'LLM01', 'LLM02', etc.
@@ -252,7 +253,7 @@ export async function importOWASPLLMTop10(): Promise<number> {
   let count = 0;
 
   for (const vuln of OWASP_LLM_TOP_10) {
-    await db.insert(owaspLlmVulnerabilities).values({
+    const [inserted] = await db.insert(owaspLlmVulnerabilities).values({
       owaspId: vuln.id,
       name: vuln.name,
       description: vuln.description,
@@ -262,12 +263,62 @@ export async function importOWASPLLMTop10(): Promise<number> {
       exampleAttackScenarios: vuln.exampleAttackScenarios,
       references: vuln.references,
       cweMappings: vuln.cweMappings,
-    }).onConflictDoNothing();
+    }).onConflictDoNothing().returning();
+
+    if (!inserted) {
+      // Already existed — look it up for seeding child rows
+      const [existing] = await db.select().from(owaspLlmVulnerabilities)
+        .where(eq(owaspLlmVulnerabilities.owaspId, vuln.id));
+      if (existing) {
+        await seedAttackVectorsAndMitigations(existing.id, vuln);
+      }
+    } else {
+      await seedAttackVectorsAndMitigations(inserted.id, vuln);
+    }
 
     count++;
   }
 
   return count;
+}
+
+async function seedAttackVectorsAndMitigations(
+  vulnerabilityId: string,
+  vuln: OWASPLLMVulnerability
+): Promise<void> {
+  // Seed attack vectors from commonExamples and exampleAttackScenarios
+  const attackVectorEntries = [
+    ...vuln.commonExamples.map((example, i) => ({
+      vulnerabilityId,
+      name: `${vuln.id} Example ${i + 1}`,
+      description: example,
+      attackComplexity: vuln.riskRating === 'Critical' ? 'Low' : 'Medium',
+      prerequisites: [] as string[],
+      payloadExamples: [] as string[],
+    })),
+    ...vuln.exampleAttackScenarios.map((scenario, i) => ({
+      vulnerabilityId,
+      name: `${vuln.id} Scenario ${i + 1}`,
+      description: scenario,
+      attackComplexity: 'Medium',
+      prerequisites: [] as string[],
+      payloadExamples: [] as string[],
+    })),
+  ];
+
+  for (const av of attackVectorEntries) {
+    await db.insert(owaspLlmAttackVectors).values(av).onConflictDoNothing();
+  }
+
+  // Seed mitigations from preventionStrategies
+  for (let i = 0; i < vuln.preventionStrategies.length; i++) {
+    await db.insert(owaspLlmMitigations).values({
+      vulnerabilityId,
+      name: `${vuln.id} Mitigation ${i + 1}`,
+      description: vuln.preventionStrategies[i],
+      effectiveness: vuln.riskRating === 'Critical' ? 'High' : 'Medium',
+    }).onConflictDoNothing();
+  }
 }
 
 export async function getOWASPLLMStats() {

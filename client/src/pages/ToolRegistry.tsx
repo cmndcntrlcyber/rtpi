@@ -28,6 +28,25 @@ import RegisterToolDialog from "@/components/tools/RegisterToolDialog";
 import ConfigureToolDialog from "@/components/tools/ConfigureToolDialog";
 import type { Tool as LegacyTool } from "@/services/tools";
 
+interface ToolParameter {
+  name: string;
+  type: string;
+  description: string;
+  required: boolean;
+}
+
+interface ToolConfig {
+  parameters?: ToolParameter[];
+  baseCommand?: string;
+}
+
+interface ToolTactic {
+  tacticId: string;
+  attackId: string;
+  name: string;
+  shortName: string;
+}
+
 interface Tool {
   id: string;
   toolId: string;
@@ -38,8 +57,14 @@ interface Tool {
   installStatus: string;
   validationStatus: string;
   tags: string[];
+  tactics?: ToolTactic[];
   lastValidated?: string;
   installedAt?: string;
+  binaryPath?: string;
+  containerName?: string;
+  config?: ToolConfig;
+  usageCount?: number;
+  lastUsed?: string;
 }
 
 const TOOL_CATEGORIES = [
@@ -75,11 +100,13 @@ const TOOL_CATEGORIES = [
 async function fetchTools(filters?: {
   category?: string;
   installStatus?: string;
+  validationStatus?: string;
   search?: string;
 }) {
   const params = new URLSearchParams();
   if (filters?.category) params.append('category', filters.category);
   if (filters?.installStatus) params.append('installStatus', filters.installStatus);
+  if (filters?.validationStatus) params.append('validationStatus', filters.validationStatus);
   if (filters?.search) params.append('search', filters.search);
 
   const response = await fetch(`/api/v1/tools/registry?${params.toString()}`, {
@@ -103,7 +130,8 @@ function registryToolToLegacy(tool: Tool): LegacyTool {
     command: tool.toolId,
     dockerImage: 'rtpi-tools',
     version: tool.version,
-    usageCount: 0,
+    usageCount: tool.usageCount || 0,
+    lastUsed: tool.lastUsed || undefined,
     createdAt: '',
     updatedAt: '',
   };
@@ -113,6 +141,8 @@ export default function ToolRegistry() {
   const queryClient = useQueryClient();
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [installStatusFilter, setInstallStatusFilter] = useState<string>('all');
+  const [validationStatusFilter, setValidationStatusFilter] = useState<string>('all');
+  const [tacticFilter, setTacticFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [installDialogOpen, setInstallDialogOpen] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -143,11 +173,22 @@ export default function ToolRegistry() {
     });
   };
 
+  // Fetch ATT&CK tactics for filter dropdown
+  const { data: tacticsData } = useQuery({
+    queryKey: ['attack-tactics'],
+    queryFn: async () => {
+      const res = await fetch('/api/v1/attack/tactics', { credentials: 'include' });
+      if (!res.ok) return { tactics: [] };
+      return res.json();
+    },
+  });
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ['tool-registry', categoryFilter, installStatusFilter, searchQuery],
+    queryKey: ['tool-registry', categoryFilter, installStatusFilter, validationStatusFilter, searchQuery],
     queryFn: () => fetchTools({
       category: categoryFilter && categoryFilter !== 'all' ? categoryFilter : undefined,
       installStatus: installStatusFilter && installStatusFilter !== 'all' ? installStatusFilter : undefined,
+      validationStatus: validationStatusFilter && validationStatusFilter !== 'all' ? validationStatusFilter : undefined,
       search: searchQuery || undefined,
     }),
   });
@@ -196,13 +237,34 @@ export default function ToolRegistry() {
     switch (status) {
       case 'validated':
         return 'bg-green-500';
-      case 'pending':
+      case 'tested':
+        return 'bg-orange-500';
+      case 'untested':
         return 'bg-yellow-500';
-      case 'failed':
-        return 'bg-red-500';
+      case 'discovered':
+        return 'bg-blue-500';
       default:
         return 'bg-secondary';
     }
+  };
+
+  const getTargetType = (tool: Tool) => {
+    const cat = tool.category?.toLowerCase() || '';
+    if (['web-application', 'web', 'cms', 'fuzzing', 'web-recon'].includes(cat)) return 'url';
+    if (['reconnaissance', 'scanning', 'network', 'enumeration'].includes(cat)) return 'ip/cidr';
+    if (['discovery', 'fingerprinting'].includes(cat)) return 'domain';
+    if (['active-directory'].includes(cat)) return 'domain/ip';
+    if (['exploitation', 'c2', 'post-exploitation'].includes(cat)) return 'ip';
+    if (['password-cracking'].includes(cat)) return 'hash/file';
+    if (['wireless'].includes(cat)) return 'interface';
+    return 'varies';
+  };
+
+  const getRequiredParams = (tool: Tool): string[] => {
+    if (!tool.config?.parameters) return [];
+    return tool.config.parameters
+      .filter((p) => p.required)
+      .map((p) => p.name);
   };
 
   const getCategoryColor = (category: string) => {
@@ -258,7 +320,7 @@ export default function ToolRegistry() {
       {/* Filters */}
       <Card className="mb-6">
         <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
@@ -296,11 +358,40 @@ export default function ToolRegistry() {
               </SelectContent>
             </Select>
 
+            <Select value={validationStatusFilter} onValueChange={setValidationStatusFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Validation" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Validation</SelectItem>
+                <SelectItem value="validated">Validated</SelectItem>
+                <SelectItem value="tested">Tested</SelectItem>
+                <SelectItem value="untested">Untested</SelectItem>
+                <SelectItem value="discovered">Discovered</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={tacticFilter} onValueChange={setTacticFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="MITRE Tactic" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Tactics</SelectItem>
+                {(tacticsData?.tactics || []).map((tactic: any) => (
+                  <SelectItem key={tactic.id} value={tactic.id}>
+                    {tactic.attackId}: {tactic.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
             <Button
               variant="outline"
               onClick={() => {
                 setCategoryFilter('all');
                 setInstallStatusFilter('all');
+                setValidationStatusFilter('all');
+                setTacticFilter('all');
                 setSearchQuery('');
               }}
             >
@@ -327,7 +418,12 @@ export default function ToolRegistry() {
 
       {data && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {data.tools.map((tool: Tool) => (
+          {data.tools
+            .filter((tool: Tool) => {
+              if (tacticFilter === 'all') return true;
+              return tool.tactics?.some(t => t.tacticId === tacticFilter);
+            })
+            .map((tool: Tool) => (
             <Card key={tool.id} className="hover:shadow-lg transition-shadow">
               <CardHeader>
                 <div className="flex justify-between items-start">
@@ -343,11 +439,32 @@ export default function ToolRegistry() {
                 </div>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                  {tool.description}
+                {tool.description && (
+                  <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
+                    {tool.description}
+                  </p>
+                )}
+
+                <p className="text-sm text-muted-foreground mb-1">
+                  <span className="font-medium">Command:</span>{' '}
+                  <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono">{tool.toolId}</code>
                 </p>
 
-                <div className="flex flex-wrap gap-2 mb-4">
+                {getRequiredParams(tool).length > 0 && (
+                  <p className="text-sm text-muted-foreground mb-1">
+                    <span className="font-medium">Required:</span>{' '}
+                    {getRequiredParams(tool).map((p) => (
+                      <code key={p} className="bg-muted px-1 py-0.5 rounded text-xs font-mono mr-1">--{p}</code>
+                    ))}
+                  </p>
+                )}
+
+                <p className="text-sm text-muted-foreground mb-2">
+                  <span className="font-medium">Target:</span>{' '}
+                  <span className="text-xs">{getTargetType(tool)}</span>
+                </p>
+
+                <div className="flex flex-wrap gap-2 mb-2">
                   {tool.tags?.slice(0, 3).map((tag) => (
                     <Badge key={tag} variant="outline" className="text-xs">
                       {tag}
@@ -359,6 +476,31 @@ export default function ToolRegistry() {
                     </Badge>
                   )}
                 </div>
+
+                {(tool.tactics?.length > 0 || tool.techniques?.length > 0) ? (
+                  <div className="flex flex-wrap gap-1 mb-4">
+                    {tool.tactics?.map((tactic) => (
+                      <Badge
+                        key={tactic.tacticId}
+                        variant="outline"
+                        className="text-xs bg-purple-950/30 text-purple-300 border-purple-700"
+                      >
+                        {tactic.attackId}
+                      </Badge>
+                    ))}
+                    {tool.techniques?.map((tech) => (
+                      <Badge
+                        key={tech.techniqueId}
+                        variant="outline"
+                        className="text-xs bg-blue-950/30 text-blue-300 border-blue-700"
+                      >
+                        {tech.attackId}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mb-4" />
+                )}
 
                 <div className="flex items-center gap-2 mb-4 text-sm">
                   <span className="text-muted-foreground">Install:</span>

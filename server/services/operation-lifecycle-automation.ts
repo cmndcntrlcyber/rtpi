@@ -9,6 +9,7 @@
 import { db } from '../db';
 import { operations, axScanResults, targets } from '@shared/schema';
 import { eq, and, inArray } from 'drizzle-orm';
+import { buildOperationTag } from './operation-tag-helper';
 
 // ============================================================================
 // Types
@@ -74,7 +75,7 @@ class OperationLifecycleAutomation {
       console.log(`[Lifecycle] Found ${scopeTargets.length} scope targets: ${scopeTargets.join(', ')}`);
 
       // Create targets directly from scope data
-      const createdCount = await this.createTargetsFromScope(operationId, scopeTargets);
+      const createdCount = await this.createTargetsFromScope(operationId, scopeTargets, operation.name);
       console.log(`[Lifecycle] Created ${createdCount} targets from scope data`);
 
       // Initialize pipeline status
@@ -167,8 +168,9 @@ class OperationLifecycleAutomation {
    * Create targets directly from scope data (without waiting for BBOT).
    * Uses upsert logic to avoid duplicates.
    */
-  private async createTargetsFromScope(operationId: string, scopeTargets: string[]): Promise<number> {
+  private async createTargetsFromScope(operationId: string, scopeTargets: string[], operationName?: string): Promise<number> {
     let created = 0;
+    const opTag = operationName ? buildOperationTag(operationName) : null;
 
     // Get existing targets to avoid duplicates
     const existingTargets = await db
@@ -188,7 +190,7 @@ class OperationLifecycleAutomation {
           value: target,
           description: 'Auto-created from operation scope',
           priority: 3,
-          tags: ['auto-created', 'scope'],
+          tags: ['auto-created', 'scope', ...(opTag ? [opTag] : [])],
           operationId,
           autoCreated: true,
           metadata: {

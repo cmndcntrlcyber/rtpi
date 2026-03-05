@@ -1,9 +1,10 @@
 /**
  * Tool Testing and Validation Service
  * Performs automated testing and validation of security tools
+ * Tests run INSIDE Docker containers via dockerExecutor (not local spawn)
  */
 
-import { spawn } from 'child_process';
+import { dockerExecutor } from './docker-executor';
 import { db } from '../db';
 import { toolRegistry, toolTestResults } from '../../shared/schema';
 import { eq } from 'drizzle-orm';
@@ -31,6 +32,60 @@ export interface TestResult {
 }
 
 /**
+ * Per-tool help command configuration
+ * Maps toolId → correct help flag, acceptable exit codes, and verification string
+ * Sourced from docs/TOOL-REFERENCE.md
+ */
+const TOOL_HELP_CONFIG: Record<string, { helpFlag: string; exitCodes: number[]; verifyString: string }> = {
+  'nmap':                 { helpFlag: '-h',      exitCodes: [0],    verifyString: 'Nmap' },
+  'ffuf':                 { helpFlag: '-h',      exitCodes: [0],    verifyString: 'Fuzz Faster' },
+  'nuclei':               { helpFlag: '-h',      exitCodes: [0],    verifyString: 'Nuclei' },
+  'gobuster':             { helpFlag: '--help',  exitCodes: [0],    verifyString: 'Usage:' },
+  'nikto':                { helpFlag: '-H',      exitCodes: [0],    verifyString: 'Nikto' },
+  'searchsploit':         { helpFlag: '-h',      exitCodes: [0, 2], verifyString: 'Usage: searchsploit' },
+  'proxychains4':         { helpFlag: '--help',  exitCodes: [0, 1], verifyString: 'Usage:' },
+  'hydra':                { helpFlag: '-h',      exitCodes: [0],    verifyString: 'Hydra' },
+  'hashcat':              { helpFlag: '--help',  exitCodes: [0],    verifyString: 'hashcat' },
+  'msfconsole':           { helpFlag: '-h',      exitCodes: [0],    verifyString: 'Usage: msfconsole' },
+  'wpscan':               { helpFlag: '--help',  exitCodes: [0],    verifyString: 'WordPress Security Scanner' },
+  'tshark':               { helpFlag: '-h',      exitCodes: [0],    verifyString: 'TShark' },
+  'bbot':                 { helpFlag: '-h',      exitCodes: [0],    verifyString: 'usage: bbot' },
+  'subfinder':            { helpFlag: '-h',      exitCodes: [0],    verifyString: 'subfinder' },
+  'amass':                { helpFlag: '-h',      exitCodes: [0],    verifyString: 'amass' },
+  'httpx':                { helpFlag: '-h',      exitCodes: [0],    verifyString: 'httpx' },
+  'katana':               { helpFlag: '-h',      exitCodes: [0],    verifyString: 'katana' },
+  'feroxbuster':          { helpFlag: '--help',  exitCodes: [0],    verifyString: 'feroxbuster' },
+  'dirsearch':            { helpFlag: '--help',  exitCodes: [0],    verifyString: 'dirsearch' },
+  'dnsx':                 { helpFlag: '-h',      exitCodes: [0],    verifyString: 'dnsx' },
+  'x8':                   { helpFlag: '--help',  exitCodes: [0],    verifyString: 'x8' },
+  'enum4linux':           { helpFlag: '-h',      exitCodes: [0],    verifyString: 'enum4linux' },
+  'nxc':                  { helpFlag: '--help',  exitCodes: [0],    verifyString: 'nxc' },
+  'testssl.sh':           { helpFlag: '--help',  exitCodes: [0],    verifyString: 'testssl' },
+  'evil-winrm':           { helpFlag: '-h',      exitCodes: [0],    verifyString: 'Evil-WinRM' },
+  'impacket-secretsdump': { helpFlag: '-h',      exitCodes: [0],    verifyString: 'Impacket' },
+  'bloodhound-python':    { helpFlag: '-h',      exitCodes: [0],    verifyString: 'bloodhound' },
+  'certbot':              { helpFlag: '--help',  exitCodes: [0],    verifyString: 'certbot' },
+  'masscan':              { helpFlag: '--help',  exitCodes: [0, 1], verifyString: 'masscan' },
+  'nbtscan':              { helpFlag: '-h',      exitCodes: [0],    verifyString: 'NBTscan' },
+  'python3':              { helpFlag: '--help',  exitCodes: [0],    verifyString: 'usage: python' },
+  'pwsh':                 { helpFlag: '--help',  exitCodes: [0],    verifyString: 'PowerShell' },
+  'node':                 { helpFlag: '--help',  exitCodes: [0],    verifyString: 'Usage: node' },
+  'az':                   { helpFlag: '--help',  exitCodes: [0],    verifyString: 'az' },
+  'whatweb':              { helpFlag: '--help',  exitCodes: [0],    verifyString: 'WhatWeb' },
+  'freeze':               { helpFlag: '--help',  exitCodes: [0],    verifyString: 'Freeze' },
+  'scarecrow':            { helpFlag: '--help',  exitCodes: [0],    verifyString: 'ScareCrow' },
+  'dalfox':               { helpFlag: '--help',  exitCodes: [0],    verifyString: 'DalFox' },
+  'zmap':                 { helpFlag: '--help',  exitCodes: [0, 1], verifyString: 'zmap' },
+  'wafw00f':              { helpFlag: '--help',  exitCodes: [0],    verifyString: 'wafw00f' },
+  'joomscan':             { helpFlag: '--help',  exitCodes: [0],    verifyString: 'OWASP' },
+  'r2':                   { helpFlag: '-h',      exitCodes: [0],    verifyString: 'radare2' },
+  'radare2':              { helpFlag: '-h',      exitCodes: [0],    verifyString: 'radare2' },
+};
+
+/** Default fallback for tools not in the config map */
+const DEFAULT_HELP_CONFIG = { helpFlag: '--help', exitCodes: [0, 1], verifyString: '' };
+
+/**
  * Run all tests for a tool
  */
 export async function runAllTests(
@@ -43,12 +98,17 @@ export async function runAllTests(
   }
 
   const config = tool.config as ToolConfiguration;
+  const containerName = (tool as any).containerName || 'rtpi-tools';
+  const containerUser = (tool as any).containerUser || 'root';
+  const toolShortId = (tool as any).toolId || '';
+  // Use baseCommand from config if set (e.g., 'perl /path/to/nikto.pl'), else binaryPath
+  const effectiveBinary = (config as any)?.baseCommand || tool.binaryPath;
   const results: TestResult[] = [];
 
-  console.log(`Running all tests for tool: ${config.name}`);
+  console.log(`Running all tests for tool: ${tool.name} (container: ${containerName}, user: ${containerUser})`);
 
-  // 1. Syntax test (binary exists and is executable)
-  const syntaxResult = await testSyntax(tool.binaryPath, config);
+  // 1. Syntax test — runs help command inside Docker container
+  const syntaxResult = await testSyntax(effectiveBinary, config, containerName, containerUser, toolShortId);
   results.push(syntaxResult);
 
   // Save syntax test result
@@ -68,14 +128,14 @@ export async function runAllTests(
 
   // If syntax test fails, don't continue with other tests
   if (!syntaxResult.passed) {
-    console.error(`Syntax test failed for ${config.name}`);
-    await updateValidationStatus(toolId, 'failed');
+    console.error(`Syntax test failed for ${tool.name}`);
+    await updateValidationStatus(toolId, 'tested');
     return results;
   }
 
   // 2. Health check test
   if (config.healthCheckCommand) {
-    const healthResult = await testHealthCheck(tool.binaryPath, config);
+    const healthResult = await testHealthCheck(tool.binaryPath, config, containerName, containerUser);
     results.push(healthResult);
 
     await addToolTestResult(
@@ -96,7 +156,7 @@ export async function runAllTests(
   // 3. Configuration-defined tests
   if (config.tests && config.tests.length > 0) {
     for (const test of config.tests) {
-      const testResult = await runConfigTest(tool.binaryPath, test, config);
+      const testResult = await runConfigTest(tool.binaryPath, test, config, containerName, containerUser);
       results.push(testResult);
 
       await addToolTestResult(
@@ -135,47 +195,56 @@ export async function runAllTests(
 
   // Update validation status based on all results
   const allPassed = results.every(r => r.passed);
-  await updateValidationStatus(toolId, allPassed ? 'validated' : 'failed');
+  await updateValidationStatus(toolId, allPassed ? 'validated' : 'tested');
 
   console.log(
-    `All tests completed for ${config.name}: ${allPassed ? 'PASSED' : 'FAILED'}`
+    `All tests completed for ${tool.name}: ${allPassed ? 'PASSED' : 'FAILED'}`
   );
 
   return results;
 }
 
 /**
- * Test if the tool binary exists and is executable (syntax test)
+ * Test if the tool binary exists and is executable via help command
+ * Runs the tool's help flag inside the Docker container and verifies output
  */
 async function testSyntax(
   binaryPath: string,
-  _config: ToolConfiguration
+  _config: ToolConfiguration,
+  containerName: string,
+  containerUser: string,
+  toolShortId: string
 ): Promise<TestResult> {
   const startTime = Date.now();
+  const helpConfig = TOOL_HELP_CONFIG[toolShortId] || DEFAULT_HELP_CONFIG;
 
   try {
-    // Try to run the tool with --version or --help to verify it's executable
-    const testCommand = `${binaryPath} --version`;
-    const result = await runTestCommand(testCommand, 5000); // 5 second timeout
-
+    // Split binaryPath on spaces to handle interpreter prefixes (e.g., 'perl /path/to/nikto.pl')
+    const cmdParts = binaryPath.includes(' ') ? binaryPath.split(/\s+/) : [binaryPath];
+    const cmd = [...cmdParts, helpConfig.helpFlag];
+    const result = await runTestCommand(cmd, 10000, containerName, containerUser);
     const executionTime = Date.now() - startTime;
+    const output = (result.stdout || '') + (result.stderr || '');
 
-    // Binary is executable if exit code is 0 or 1 (some tools return 1 for --version)
-    const passed = result.exitCode === 0 || result.exitCode === 1;
+    const exitOk = helpConfig.exitCodes.includes(result.exitCode);
+    const outputOk = !helpConfig.verifyString || output.toLowerCase().includes(helpConfig.verifyString.toLowerCase());
+    const passed = exitOk && outputOk;
 
     return {
       testType: 'syntax',
       passed,
       message: passed
-        ? 'Binary is executable and responds to commands'
-        : `Binary exists but returned unexpected exit code: ${result.exitCode}`,
+        ? `Tool responds to '${helpConfig.helpFlag}' — installation, execution, and output verified`
+        : `Help command failed: exit=${result.exitCode}${!outputOk ? `, expected output containing "${helpConfig.verifyString}"` : ''}`,
       details: {
-        command: testCommand,
+        command: cmd.join(' '),
         binaryPath,
+        helpFlag: helpConfig.helpFlag,
+        containerName,
       },
       executionTimeMs: executionTime,
       actualExitCode: result.exitCode,
-      actualOutput: result.stdout,
+      actualOutput: output.substring(0, 2000),
     };
   } catch (error: any) {
     const executionTime = Date.now() - startTime;
@@ -183,9 +252,10 @@ async function testSyntax(
     return {
       testType: 'syntax',
       passed: false,
-      message: `Binary not found or not executable: ${error.message}`,
+      message: `Binary not found or container not running: ${error.message}`,
       details: {
         binaryPath,
+        containerName,
         error: error.message,
       },
       executionTimeMs: executionTime,
@@ -198,7 +268,9 @@ async function testSyntax(
  */
 async function testHealthCheck(
   binaryPath: string,
-  config: ToolConfiguration
+  config: ToolConfiguration,
+  containerName: string,
+  containerUser: string
 ): Promise<TestResult> {
   if (!config.healthCheckCommand) {
     return {
@@ -211,10 +283,9 @@ async function testHealthCheck(
   const startTime = Date.now();
 
   try {
-    const result = await runTestCommand(
-      `${binaryPath} ${config.healthCheckCommand}`,
-      10000 // 10 second timeout
-    );
+    const healthArgs = config.healthCheckCommand.split(/\s+/);
+    const cmd = [binaryPath, ...healthArgs];
+    const result = await runTestCommand(cmd, 10000, containerName, containerUser);
 
     const executionTime = Date.now() - startTime;
     const passed = result.exitCode === 0;
@@ -247,13 +318,16 @@ async function testHealthCheck(
 async function runConfigTest(
   binaryPath: string,
   test: ToolTestConfig,
-  _config: ToolConfiguration
+  _config: ToolConfiguration,
+  containerName: string,
+  containerUser: string
 ): Promise<TestResult> {
   const startTime = Date.now();
 
   try {
-    const command = `${binaryPath} ${test.testCommand}`;
-    const result = await runTestCommand(command, test.timeout || 30000);
+    const testArgs = test.testCommand.split(/\s+/);
+    const cmd = [binaryPath, ...testArgs];
+    const result = await runTestCommand(cmd, test.timeout || 30000, containerName, containerUser);
 
     const executionTime = Date.now() - startTime;
 
@@ -334,9 +408,7 @@ async function testOutputParsing(
       };
     }
 
-    // TODO: Test parser with example data if available
-    // For now, just validate that parser configuration is valid
-
+    // Validate that parser configuration is valid
     const hasValidConfig =
       (parser.parserType === 'json' && !!parser.jsonPaths) ||
       (parser.parserType === 'xml' && !!parser.xmlPaths) ||
@@ -360,48 +432,23 @@ async function testOutputParsing(
 }
 
 /**
- * Run a test command with timeout
+ * Run a test command inside a Docker container
  */
-function runTestCommand(
-  command: string,
-  timeout: number
+async function runTestCommand(
+  cmd: string[],
+  timeout: number,
+  containerName: string,
+  containerUser: string
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    let stdout = '';
-    let stderr = '';
-
-    const child = spawn(command, {
-      shell: true,
-      timeout,
-    });
-
-    const timeoutId = setTimeout(() => {
-      child.kill('SIGTERM');
-      reject(new Error(`Command timeout after ${timeout}ms`));
-    }, timeout);
-
-    child.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    child.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    child.on('close', (code) => {
-      clearTimeout(timeoutId);
-      resolve({
-        exitCode: code || 0,
-        stdout,
-        stderr,
-      });
-    });
-
-    child.on('error', (error) => {
-      clearTimeout(timeoutId);
-      reject(error);
-    });
+  const result = await dockerExecutor.exec(containerName, cmd, {
+    timeout,
+    user: containerUser,
   });
+  return {
+    exitCode: result.exitCode,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
 }
 
 /**
@@ -414,14 +461,16 @@ export async function quickHealthCheck(toolId: string): Promise<boolean> {
   }
 
   const config = tool.config as ToolConfiguration;
+  const containerName = (tool as any).containerName || 'rtpi-tools';
+  const containerUser = (tool as any).containerUser || 'root';
 
   try {
-    // Just try to run --version or --help
-    const command = config.healthCheckCommand || '--version';
-    const result = await runTestCommand(
-      `${tool.binaryPath} ${command}`,
-      5000 // 5 second timeout
-    );
+    const commandStr = config.healthCheckCommand || '--help';
+    const args = commandStr.split(/\s+/);
+    const effectiveBin = (config as any)?.baseCommand || tool.binaryPath;
+    const binParts = effectiveBin.includes(' ') ? effectiveBin.split(/\s+/) : [effectiveBin];
+    const cmd = [...binParts, ...args];
+    const result = await runTestCommand(cmd, 5000, containerName, containerUser);
 
     return result.exitCode === 0 || result.exitCode === 1;
   } catch (error) {
@@ -616,3 +665,8 @@ export async function getToolsNeedingRevalidation(
     })
     .map(tool => tool.id);
 }
+
+/**
+ * Export the help config for use by other services (e.g., AI command generation)
+ */
+export { TOOL_HELP_CONFIG, DEFAULT_HELP_CONFIG };

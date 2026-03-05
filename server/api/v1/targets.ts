@@ -7,6 +7,7 @@ import { dockerExecutor } from "../../services/docker-executor";
 import { nmapExecutor } from "../../services/nmap-executor";
 import { TargetSanitizer, type TargetType } from "../../../shared/utils/target-sanitizer";
 import { ScanTimeoutCalculator } from "../../../shared/utils/scan-timeout-calculator";
+import { getOperationTag, mergeOperationTag } from "../../services/operation-tag-helper";
 
 const router = Router();
 
@@ -51,9 +52,18 @@ router.post("/", ensureRole("admin", "operator"), async (req, res) => {
   const user = req.user as any;
 
   try {
+    // Auto-inject operation tag if target is assigned to an operation
+    let tags: string[] = req.body.tags || [];
+    if (req.body.operationId) {
+      const opTag = await getOperationTag(req.body.operationId);
+      if (opTag) {
+        tags = mergeOperationTag(tags, opTag);
+      }
+    }
+
     const target = await db
       .insert(targets)
-      .values(req.body)
+      .values({ ...req.body, tags })
       .returning();
 
     await logAudit(user.id, "create_target", "/targets", target[0].id, true, req);
@@ -74,6 +84,25 @@ router.put("/:id", ensureRole("admin", "operator"), async (req, res) => {
   try {
     // Exclude timestamp fields from request body to avoid Date conversion errors
     const { createdAt: _createdAt, updatedAt: _updatedAt, ...updateData } = req.body;
+
+    // Ensure operation tag is present/updated when operationId or tags change
+    const effectiveOperationId = updateData.operationId;
+    if (effectiveOperationId !== undefined || updateData.tags !== undefined) {
+      // Resolve the operationId — use provided value, or fetch from existing target
+      let opId = effectiveOperationId;
+      if (opId === undefined) {
+        const [existing] = await db.select({ operationId: targets.operationId }).from(targets).where(eq(targets.id, id)).limit(1);
+        opId = existing?.operationId;
+      }
+
+      if (opId) {
+        const opTag = await getOperationTag(opId);
+        if (opTag) {
+          const currentTags: string[] = updateData.tags || [];
+          updateData.tags = mergeOperationTag(currentTags, opTag);
+        }
+      }
+    }
 
     const result = await db
       .update(targets)

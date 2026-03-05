@@ -10,8 +10,13 @@ import {
   toolExecutions,
   toolOutputParsers,
   toolTestResults,
+  toolRegistryTactics,
+  toolRegistryTechniques,
+  attackTactics,
+  attackTechniques,
+  attackTechniqueTactics,
 } from '../../shared/schema';
-import { eq, and, like } from 'drizzle-orm';
+import { eq, and, like, or, inArray } from 'drizzle-orm';
 import type {
   ToolConfiguration,
   ToolRegistryEntry,
@@ -60,7 +65,7 @@ export async function registerTool(config: ToolConfiguration, _userId?: string):
       homepage: config.homepage,
       documentation: config.documentation,
       installStatus: 'pending',
-      validationStatus: 'pending',
+      validationStatus: 'untested',
     }).returning();
 
     // Insert parameters
@@ -148,6 +153,7 @@ export async function listTools(filters?: {
   validationStatus?: string;
   search?: string;
   tags?: string[];
+  includeValidated?: boolean;
 }): Promise<ToolRegistryEntry[]> {
   let query = db.select().from(toolRegistry);
 
@@ -172,7 +178,17 @@ export async function listTools(filters?: {
   }
 
   if (conditions.length > 0) {
-    query = query.where(and(...conditions)) as any;
+    let whereClause = and(...conditions)!;
+
+    // Always include validated tools even when other filters are active
+    if (filters?.includeValidated) {
+      whereClause = or(
+        whereClause,
+        eq(toolRegistry.validationStatus, 'validated')
+      )!;
+    }
+
+    query = query.where(whereClause) as any;
   }
 
   const tools = await query;
@@ -246,7 +262,7 @@ export async function updateInstallStatus(
  */
 export async function updateValidationStatus(
   id: string,
-  status: 'validated' | 'pending' | 'failed'
+  status: 'discovered' | 'untested' | 'tested' | 'validated'
 ): Promise<void> {
   await db
     .update(toolRegistry)
@@ -474,4 +490,155 @@ export async function exportToolConfiguration(toolId: string): Promise<ToolConfi
  */
 export async function importToolConfiguration(config: ToolConfiguration): Promise<string> {
   return await registerTool(config);
+}
+
+// ============================================================================
+// TOOL-TACTIC MAPPING (ATT&CK)
+// ============================================================================
+
+/**
+ * Get tactics associated with a tool
+ */
+export async function getToolTactics(toolId: string) {
+  return await db
+    .select({
+      id: toolRegistryTactics.id,
+      tacticId: toolRegistryTactics.tacticId,
+      attackId: attackTactics.attackId,
+      name: attackTactics.name,
+      shortName: attackTactics.shortName,
+    })
+    .from(toolRegistryTactics)
+    .innerJoin(attackTactics, eq(toolRegistryTactics.tacticId, attackTactics.id))
+    .where(eq(toolRegistryTactics.toolId, toolId));
+}
+
+/**
+ * Set the single tactic for a tool (replaces any existing tactic)
+ */
+export async function setToolTactics(toolId: string, tacticIds: string[]): Promise<void> {
+  await db.delete(toolRegistryTactics).where(eq(toolRegistryTactics.toolId, toolId));
+
+  // Enforce single tactic — take only the first
+  const tacticId = tacticIds[0];
+  if (tacticId) {
+    await db.insert(toolRegistryTactics).values({ toolId, tacticId });
+  }
+}
+
+/**
+ * Get techniques associated with a tool
+ */
+export async function getToolTechniques(toolId: string) {
+  return await db
+    .select({
+      id: toolRegistryTechniques.id,
+      techniqueId: toolRegistryTechniques.techniqueId,
+      attackId: attackTechniques.attackId,
+      name: attackTechniques.name,
+      isSubtechnique: attackTechniques.isSubtechnique,
+    })
+    .from(toolRegistryTechniques)
+    .innerJoin(attackTechniques, eq(toolRegistryTechniques.techniqueId, attackTechniques.id))
+    .where(eq(toolRegistryTechniques.toolId, toolId));
+}
+
+/**
+ * Set techniques for a tool (replace all existing associations, max 3)
+ */
+export async function setToolTechniques(toolId: string, techniqueIds: string[]): Promise<void> {
+  if (techniqueIds.length > 3) {
+    throw new Error('A tool can have at most 3 ATT&CK techniques');
+  }
+
+  await db.delete(toolRegistryTechniques).where(eq(toolRegistryTechniques.toolId, toolId));
+
+  if (techniqueIds.length > 0) {
+    await db.insert(toolRegistryTechniques).values(
+      techniqueIds.map(techniqueId => ({
+        toolId,
+        techniqueId,
+      }))
+    );
+  }
+}
+
+/**
+ * Get techniques belonging to a specific tactic
+ */
+export async function getTechniquesByTactic(tacticId: string) {
+  const junctionRows = await db
+    .select({ techniqueId: attackTechniqueTactics.techniqueId })
+    .from(attackTechniqueTactics)
+    .where(eq(attackTechniqueTactics.tacticId, tacticId));
+
+  const techIds = junctionRows.map(r => r.techniqueId);
+  if (techIds.length === 0) return [];
+
+  return await db
+    .select({
+      id: attackTechniques.id,
+      attackId: attackTechniques.attackId,
+      name: attackTechniques.name,
+      isSubtechnique: attackTechniques.isSubtechnique,
+      description: attackTechniques.description,
+    })
+    .from(attackTechniques)
+    .where(
+      and(
+        inArray(attackTechniques.id, techIds),
+        eq(attackTechniques.deprecated, false),
+        eq(attackTechniques.revoked, false),
+      )
+    );
+}
+
+/**
+ * Get tools associated with a tactic
+ */
+export async function getToolsByTactic(tacticId: string): Promise<ToolRegistryEntry[]> {
+  const results = await db
+    .select({ toolId: toolRegistryTactics.toolId })
+    .from(toolRegistryTactics)
+    .where(eq(toolRegistryTactics.tacticId, tacticId));
+
+  const toolIds = results.map(r => r.toolId);
+  if (toolIds.length === 0) return [];
+
+  return await db
+    .select()
+    .from(toolRegistry)
+    .where(inArray(toolRegistry.id, toolIds));
+}
+
+/**
+ * Batch-fetch all tactic mappings for enriching tool listings
+ */
+export async function getAllToolTacticMappings() {
+  return await db
+    .select({
+      toolId: toolRegistryTactics.toolId,
+      tacticId: toolRegistryTactics.tacticId,
+      attackId: attackTactics.attackId,
+      name: attackTactics.name,
+      shortName: attackTactics.shortName,
+    })
+    .from(toolRegistryTactics)
+    .innerJoin(attackTactics, eq(toolRegistryTactics.tacticId, attackTactics.id));
+}
+
+/**
+ * Batch-fetch all technique mappings for enriching tool listings
+ */
+export async function getAllToolTechniqueMappings() {
+  return await db
+    .select({
+      toolId: toolRegistryTechniques.toolId,
+      techniqueId: toolRegistryTechniques.techniqueId,
+      attackId: attackTechniques.attackId,
+      name: attackTechniques.name,
+      isSubtechnique: attackTechniques.isSubtechnique,
+    })
+    .from(toolRegistryTechniques)
+    .innerJoin(attackTechniques, eq(toolRegistryTechniques.techniqueId, attackTechniques.id));
 }

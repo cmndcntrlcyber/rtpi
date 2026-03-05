@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "../../db";
-import { agents, agentCapabilities, workflowTemplates, workflowInstances } from "@shared/schema";
+import { agents, agentCapabilities, agentTactics, attackTactics, workflowTemplates, workflowInstances } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 
@@ -13,7 +13,37 @@ router.use(ensureAuthenticated);
 router.get("/", async (_req, res) => {
   try {
     const allAgents = await db.select().from(agents);
-    res.json({ agents: allAgents });
+
+    // Batch-fetch agent-tactic mappings (agents can have multiple tactics)
+    const allAgentTactics = await db
+      .select({
+        agentId: agentTactics.agentId,
+        tacticId: agentTactics.tacticId,
+        attackId: attackTactics.attackId,
+        name: attackTactics.name,
+        shortName: attackTactics.shortName,
+      })
+      .from(agentTactics)
+      .innerJoin(attackTactics, eq(agentTactics.tacticId, attackTactics.id));
+
+    // Group tactics by agent (supports multiple tactics per agent)
+    const tacticsByAgentId = new Map<string, typeof allAgentTactics>();
+    for (const t of allAgentTactics) {
+      const existing = tacticsByAgentId.get(t.agentId) || [];
+      existing.push(t);
+      tacticsByAgentId.set(t.agentId, existing);
+    }
+
+    const enrichedAgents = allAgents.map(a => {
+      const agentTacticsList = tacticsByAgentId.get(a.id) || [];
+      return {
+        ...a,
+        tactic: agentTacticsList[0] || null, // backwards compat: first tactic
+        tactics: agentTacticsList,            // new: all assigned tactics
+      };
+    });
+
+    res.json({ agents: enrichedAgents });
   } catch (error: any) {
     // Error logged for debugging
     res.status(500).json({ error: "Failed to list agents", details: error?.message || "Internal server error" });
@@ -323,6 +353,181 @@ router.post("/:agentId/capabilities", ensureRole("admin", "operator"), async (re
   } catch (error: any) {
     await logAudit(user.id, "add_agent_capability", "/agents/capabilities", agentId, false, req);
     res.status(500).json({ error: "Failed to add capability", details: error?.message });
+  }
+});
+
+// ============================================================================
+// Agent-Tactic Routes
+// ============================================================================
+
+// GET /api/v1/agents/:agentId/tactic - Get agent's assigned tactic
+router.get("/:agentId/tactic", async (req, res) => {
+  const { agentId } = req.params;
+
+  try {
+    const [result] = await db
+      .select({
+        id: agentTactics.id,
+        tacticId: agentTactics.tacticId,
+        attackId: attackTactics.attackId,
+        name: attackTactics.name,
+        shortName: attackTactics.shortName,
+      })
+      .from(agentTactics)
+      .innerJoin(attackTactics, eq(agentTactics.tacticId, attackTactics.id))
+      .where(eq(agentTactics.agentId, agentId))
+      .limit(1);
+
+    res.json({ tactic: result || null });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to get agent tactic", details: error?.message });
+  }
+});
+
+// PUT /api/v1/agents/:agentId/tactic - Set or move agent's tactic
+router.put("/:agentId/tactic", ensureRole("admin", "operator"), async (req, res) => {
+  const { agentId } = req.params;
+  const { tacticId } = req.body;
+  const user = req.user as any;
+
+  if (!tacticId) {
+    return res.status(400).json({ error: "tacticId is required" });
+  }
+
+  try {
+    // Remove existing tactic assignment
+    await db.delete(agentTactics).where(eq(agentTactics.agentId, agentId));
+
+    // Insert new assignment
+    await db.insert(agentTactics).values({ agentId, tacticId });
+
+    // Fetch enriched result
+    const [result] = await db
+      .select({
+        id: agentTactics.id,
+        tacticId: agentTactics.tacticId,
+        attackId: attackTactics.attackId,
+        name: attackTactics.name,
+        shortName: attackTactics.shortName,
+      })
+      .from(agentTactics)
+      .innerJoin(attackTactics, eq(agentTactics.tacticId, attackTactics.id))
+      .where(eq(agentTactics.agentId, agentId))
+      .limit(1);
+
+    await logAudit(user.id, "set_agent_tactic", "/agents/tactic", agentId, true, req);
+    res.json({ success: true, tactic: result });
+  } catch (error: any) {
+    await logAudit(user.id, "set_agent_tactic", "/agents/tactic", agentId, false, req);
+    res.status(500).json({ error: "Failed to set agent tactic", details: error?.message });
+  }
+});
+
+// DELETE /api/v1/agents/:agentId/tactic - Remove agent from tactic
+router.delete("/:agentId/tactic", ensureRole("admin", "operator"), async (req, res) => {
+  const { agentId } = req.params;
+  const user = req.user as any;
+
+  try {
+    await db.delete(agentTactics).where(eq(agentTactics.agentId, agentId));
+    await logAudit(user.id, "remove_agent_tactic", "/agents/tactic", agentId, true, req);
+    res.json({ success: true });
+  } catch (error: any) {
+    await logAudit(user.id, "remove_agent_tactic", "/agents/tactic", agentId, false, req);
+    res.status(500).json({ error: "Failed to remove agent tactic", details: error?.message });
+  }
+});
+
+// ============================================================================
+// Multi-Tactic Assignment Routes (for R&D ATT&CK Workflows)
+// ============================================================================
+
+// GET /api/v1/agents/:agentId/tactics - Get all tactics assigned to an agent
+router.get("/:agentId/tactics", async (req, res) => {
+  const { agentId } = req.params;
+
+  try {
+    const results = await db
+      .select({
+        id: agentTactics.id,
+        tacticId: agentTactics.tacticId,
+        attackId: attackTactics.attackId,
+        name: attackTactics.name,
+        shortName: attackTactics.shortName,
+      })
+      .from(agentTactics)
+      .innerJoin(attackTactics, eq(agentTactics.tacticId, attackTactics.id))
+      .where(eq(agentTactics.agentId, agentId));
+
+    res.json({ tactics: results });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to get agent tactics", details: error?.message });
+  }
+});
+
+// POST /api/v1/agents/:agentId/tactics - Add agent to one or more tactics
+router.post("/:agentId/tactics", ensureRole("admin", "operator"), async (req, res) => {
+  const { agentId } = req.params;
+  const { tacticIds } = req.body; // Array of tactic UUIDs
+  const user = req.user as any;
+
+  if (!Array.isArray(tacticIds) || tacticIds.length === 0) {
+    return res.status(400).json({ error: "tacticIds must be a non-empty array" });
+  }
+
+  try {
+    // Get existing assignments to avoid duplicates
+    const existing = await db
+      .select({ tacticId: agentTactics.tacticId })
+      .from(agentTactics)
+      .where(eq(agentTactics.agentId, agentId));
+    const existingIds = new Set(existing.map(e => e.tacticId));
+
+    // Insert only new assignments
+    const newAssignments = tacticIds
+      .filter((id: string) => !existingIds.has(id))
+      .map((tacticId: string) => ({ agentId, tacticId }));
+
+    if (newAssignments.length > 0) {
+      await db.insert(agentTactics).values(newAssignments);
+    }
+
+    // Return all current assignments
+    const results = await db
+      .select({
+        id: agentTactics.id,
+        tacticId: agentTactics.tacticId,
+        attackId: attackTactics.attackId,
+        name: attackTactics.name,
+        shortName: attackTactics.shortName,
+      })
+      .from(agentTactics)
+      .innerJoin(attackTactics, eq(agentTactics.tacticId, attackTactics.id))
+      .where(eq(agentTactics.agentId, agentId));
+
+    await logAudit(user.id, "add_agent_tactics", "/agents/tactics", agentId, true, req);
+    res.json({ success: true, tactics: results, added: newAssignments.length });
+  } catch (error: any) {
+    await logAudit(user.id, "add_agent_tactics", "/agents/tactics", agentId, false, req);
+    res.status(500).json({ error: "Failed to add agent tactics", details: error?.message });
+  }
+});
+
+// DELETE /api/v1/agents/:agentId/tactics/:tacticId - Remove agent from a specific tactic
+router.delete("/:agentId/tactics/:tacticId", ensureRole("admin", "operator"), async (req, res) => {
+  const { agentId, tacticId } = req.params;
+  const user = req.user as any;
+
+  try {
+    await db
+      .delete(agentTactics)
+      .where(and(eq(agentTactics.agentId, agentId), eq(agentTactics.tacticId, tacticId)));
+
+    await logAudit(user.id, "remove_agent_from_tactic", "/agents/tactics", agentId, true, req);
+    res.json({ success: true });
+  } catch (error: any) {
+    await logAudit(user.id, "remove_agent_from_tactic", "/agents/tactics", agentId, false, req);
+    res.status(500).json({ error: "Failed to remove agent from tactic", details: error?.message });
   }
 });
 

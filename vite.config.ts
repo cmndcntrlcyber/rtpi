@@ -39,6 +39,8 @@ export default defineConfig({
       "/api": {
         target: "http://localhost:3001",
         changeOrigin: true,
+        timeout: 7200000,       // 2 hours -- matches Express server timeout for large uploads + Docker builds
+        proxyTimeout: 7200000,
       },
       "/ws": {
         target: "ws://localhost:3001",

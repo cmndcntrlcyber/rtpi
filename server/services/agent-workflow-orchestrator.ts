@@ -10,9 +10,10 @@ import {
   empireServers,
   empireAgents,
   empireModules,
-  vulnerabilities
+  vulnerabilities,
+  toolRegistry,
 } from "@shared/schema";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, inArray } from "drizzle-orm";
 import { agentToolConnector } from "./agent-tool-connector";
 import { metasploitExecutor } from "./metasploit-executor";
 import { empireExecutor } from "./empire-executor";
@@ -21,6 +22,8 @@ import { ollamaAIClient } from "./ollama-ai-client";
 import type { AgentConfig, AgentAIConfig } from "../../shared/types/agent-config";
 import { mergeAgentAIConfig } from "../../shared/types/agent-config";
 import { getAnthropicClient } from "./ai-clients";
+import { executeTool as executeRegisteredTool } from "./tool-executor";
+import { multiContainerExecutor } from "./agents/multi-container-executor";
 import { randomUUID } from "crypto";
 
 // ============================================================================
@@ -77,6 +80,51 @@ interface AttackTreeState {
   visitedModules: Set<string>;
   roots: AttackTreeNode[];
   allNodes: Map<string, AttackTreeNode>;
+}
+
+// ============================================================================
+// GENERIC TOOL EXECUTION TYPES — Sequential tool workflow for any agent
+// ============================================================================
+
+/** Result of executing a single tool in the sequential workflow */
+interface ToolExecutionStepResult {
+  toolId: string;         // UUID from toolRegistry
+  toolStringId: string;   // Short ID (e.g., "nmap")
+  toolName: string;
+  category: string;
+  containerName: string;
+  execution: {
+    success: boolean;
+    exitCode: number;
+    stdout: string;
+    stderr: string;
+    parsedOutput: any;
+    duration: number;
+    timestamp: string;
+    executionId: string;
+    command: string;
+  } | null;
+  error: string | null;
+  status: "completed" | "failed" | "skipped";
+}
+
+/** Output of the entire sequential tool execution workflow */
+interface SequentialToolExecutionOutput {
+  type: "tool_execution";
+  agentId: string;
+  agentName: string;
+  targetId: string;
+  targetValue: string;
+  toolResults: ToolExecutionStepResult[];
+  summary: {
+    totalTools: number;
+    completed: number;
+    failed: number;
+    skipped: number;
+    totalDuration: number;
+    wallClockDuration: number;
+  };
+  aiSummary: string | null;
 }
 
 /**
@@ -306,6 +354,103 @@ export class AgentWorkflowOrchestrator {
   }
 
   /**
+   * Start a generic tool execution workflow for any agent.
+   * Inventories the agent's enabledTools and executes each sequentially.
+   */
+  async startToolExecutionWorkflow(
+    agentId: string,
+    targetId: string,
+    userId: string,
+    operationId?: string,
+  ): Promise<any> {
+    try {
+      // Validate agent
+      const [agent] = await db
+        .select()
+        .from(agents)
+        .where(eq(agents.id, agentId))
+        .limit(1);
+
+      if (!agent) {
+        throw new Error(`Agent ${agentId} not found`);
+      }
+
+      // Validate target
+      const [target] = await db
+        .select()
+        .from(targets)
+        .where(eq(targets.id, targetId))
+        .limit(1);
+
+      if (!target) {
+        throw new Error(`Target ${targetId} not found`);
+      }
+
+      const config = agent.config as AgentConfig;
+      const enabledToolCount = config?.enabledTools?.length || 0;
+
+      // Create workflow
+      const [workflow] = await db
+        .insert(agentWorkflows)
+        .values({
+          name: `Tool Execution - ${agent.name} → ${target.name}`,
+          workflowType: "tool_execution",
+          targetId: target.id,
+          operationId: operationId || target.operationId,
+          currentAgentId: agent.id,
+          status: "pending",
+          progress: 0,
+          metadata: {
+            targetName: target.name,
+            targetValue: target.value,
+            agentName: agent.name,
+            enabledToolCount,
+          },
+          createdBy: userId,
+        })
+        .returning();
+
+      const workflowId = workflow.id;
+
+      // Create single execute_tools task
+      await db.insert(workflowTasks).values({
+        workflowId,
+        agentId: agent.id,
+        taskType: "execute_tools" as const,
+        taskName: `Execute ${enabledToolCount} tools against ${target.name}`,
+        sequenceOrder: 1,
+        inputData: {
+          targetId: target.id,
+          targetValue: target.value,
+          metadata: target.metadata,
+        },
+      });
+
+      await this.log(workflowId, null, "info",
+        `Tool execution workflow created for agent "${agent.name}" with ${enabledToolCount} tools`,
+        { agentId: agent.id, targetId: target.id }
+      );
+
+      // Start processing in background
+      this.processWorkflow(workflowId).catch((error) => {
+        console.error("Tool execution workflow error:", error);
+      });
+
+      return {
+        workflow,
+        tasks: await db
+          .select()
+          .from(workflowTasks)
+          .where(eq(workflowTasks.workflowId, workflowId))
+          .orderBy(asc(workflowTasks.sequenceOrder)),
+      };
+    } catch (error) {
+      console.error("Failed to start tool execution workflow:", error);
+      throw error;
+    }
+  }
+
+  /**
    * Process workflow - execute tasks in sequence
    */
   private async processWorkflow(workflowId: string): Promise<void> {
@@ -401,6 +546,9 @@ export class AgentWorkflowOrchestrator {
               break;
             case "report":
               output = await this.executeTechnicalWriter(agent, { ...taskInput, workflowId }, workflowId, task.id);
+              break;
+            case "execute_tools":
+              output = await this.executeGenericToolWorkflow(agent, taskInput, workflowId, task.id);
               break;
             default:
               throw new Error(`Unknown task type: ${task.taskType}`);
@@ -1011,6 +1159,324 @@ export class AgentWorkflowOrchestrator {
       format: "markdown",
       exploitationResults,
     };
+  }
+
+  // ============================================================================
+  // GENERIC TOOL EXECUTION — Sequential workflow for any agent's enabledTools
+  // ============================================================================
+
+  /**
+   * Execute all enabled tools for an agent sequentially against a target.
+   * Inventories the agent's enabledTools, checks container availability,
+   * executes each tool, documents output, and optionally generates AI summary.
+   */
+  private async executeGenericToolWorkflow(
+    agent: any,
+    input: any,
+    workflowId: string,
+    taskId: string,
+  ): Promise<SequentialToolExecutionOutput> {
+    const wallClockStart = Date.now();
+    const config = agent.config as AgentConfig;
+    const enabledToolIds: string[] = config?.enabledTools || [];
+
+    await this.log(workflowId, taskId, "info",
+      `Starting generic tool execution for agent "${agent.name}" with ${enabledToolIds.length} enabled tools`,
+      { agentId: agent.id, enabledToolIds }
+    );
+
+    // Resolve target
+    const targetId = input.targetId || input.previousOutput?.metadata?.targetId;
+    if (!targetId) {
+      throw new Error("No targetId provided for tool execution workflow");
+    }
+
+    const [target] = await db
+      .select()
+      .from(targets)
+      .where(eq(targets.id, targetId))
+      .limit(1);
+
+    if (!target) {
+      throw new Error(`Target ${targetId} not found`);
+    }
+
+    await this.log(workflowId, taskId, "info",
+      `Target resolved: ${target.value} (${target.type})`,
+      { targetId: target.id, targetValue: target.value }
+    );
+
+    // No enabled tools — nothing to do
+    if (enabledToolIds.length === 0) {
+      await this.log(workflowId, taskId, "warn",
+        `Agent "${agent.name}" has no enabled tools — skipping execution`,
+      );
+      return {
+        type: "tool_execution",
+        agentId: agent.id,
+        agentName: agent.name,
+        targetId: target.id,
+        targetValue: target.value,
+        toolResults: [],
+        summary: { totalTools: 0, completed: 0, failed: 0, skipped: 0, totalDuration: 0, wallClockDuration: 0 },
+        aiSummary: null,
+      };
+    }
+
+    // Batch-fetch all enabled tools from registry
+    const registryTools = await db
+      .select()
+      .from(toolRegistry)
+      .where(inArray(toolRegistry.id, enabledToolIds));
+
+    // Index by UUID for ordered iteration
+    const toolMap = new Map(registryTools.map(t => [t.id, t]));
+
+    await this.log(workflowId, taskId, "info",
+      `Fetched ${registryTools.length}/${enabledToolIds.length} tools from registry`,
+      { found: registryTools.map(t => t.toolId), missing: enabledToolIds.filter(id => !toolMap.has(id)) }
+    );
+
+    // Check container availability (deduplicated)
+    const uniqueContainers = [...new Set(registryTools.map(t => t.containerName || "rtpi-tools"))];
+    const containerStatus = new Map<string, boolean>();
+    for (const container of uniqueContainers) {
+      const available = await multiContainerExecutor.isContainerAvailable(container);
+      containerStatus.set(container, available);
+      await this.log(workflowId, taskId, available ? "info" : "warn",
+        `Container "${container}": ${available ? "available" : "unavailable"}`,
+      );
+    }
+
+    // Sequential execution
+    const toolResults: ToolExecutionStepResult[] = [];
+
+    for (const toolId of enabledToolIds) {
+      const tool = toolMap.get(toolId);
+
+      // Skip: tool not found in registry
+      if (!tool) {
+        toolResults.push({
+          toolId,
+          toolStringId: "unknown",
+          toolName: "Unknown Tool",
+          category: "unknown",
+          containerName: "unknown",
+          execution: null,
+          error: `Tool UUID ${toolId} not found in registry`,
+          status: "skipped",
+        });
+        await this.log(workflowId, taskId, "warn",
+          `Skipping tool UUID ${toolId}: not found in registry`,
+        );
+        continue;
+      }
+
+      const containerName = tool.containerName || "rtpi-tools";
+
+      // Skip: tool not installed
+      if (tool.installStatus !== "installed") {
+        toolResults.push({
+          toolId: tool.id,
+          toolStringId: tool.toolId,
+          toolName: tool.name,
+          category: tool.category,
+          containerName,
+          execution: null,
+          error: `Tool not installed (status: ${tool.installStatus})`,
+          status: "skipped",
+        });
+        await this.log(workflowId, taskId, "warn",
+          `Skipping "${tool.name}": not installed (${tool.installStatus})`,
+        );
+        continue;
+      }
+
+      // Skip: container unavailable
+      if (!containerStatus.get(containerName)) {
+        toolResults.push({
+          toolId: tool.id,
+          toolStringId: tool.toolId,
+          toolName: tool.name,
+          category: tool.category,
+          containerName,
+          execution: null,
+          error: `Container "${containerName}" is unavailable`,
+          status: "skipped",
+        });
+        await this.log(workflowId, taskId, "warn",
+          `Skipping "${tool.name}": container "${containerName}" unavailable`,
+        );
+        continue;
+      }
+
+      // Execute the tool
+      await this.log(workflowId, taskId, "info",
+        `Executing "${tool.name}" (${tool.toolId}) in ${containerName}...`,
+        { toolId: tool.id, toolStringId: tool.toolId }
+      );
+
+      try {
+        const result = await executeRegisteredTool({
+          toolId: tool.toolId,
+          parameters: { target: target.value },
+          targetId: target.id,
+          agentId: agent.id,
+          userId: "system",
+          parseOutput: true,
+        });
+
+        // Truncate stdout to 50KB to prevent memory issues
+        const truncatedStdout = result.stdout && result.stdout.length > 50000
+          ? result.stdout.substring(0, 50000) + "\n... [truncated at 50KB]"
+          : result.stdout;
+
+        toolResults.push({
+          toolId: tool.id,
+          toolStringId: tool.toolId,
+          toolName: tool.name,
+          category: tool.category,
+          containerName,
+          execution: {
+            success: result.exitCode === 0,
+            exitCode: result.exitCode ?? -1,
+            stdout: truncatedStdout || "",
+            stderr: result.stderr || "",
+            parsedOutput: result.parsedOutput,
+            duration: result.duration || 0,
+            timestamp: result.startTime || new Date().toISOString(),
+            executionId: result.executionId,
+            command: result.command || "",
+          },
+          error: null,
+          status: result.exitCode === 0 ? "completed" : "failed",
+        });
+
+        await this.log(workflowId, taskId, result.exitCode === 0 ? "info" : "warn",
+          `"${tool.name}" finished: exit=${result.exitCode}, duration=${result.duration}ms`,
+          { executionId: result.executionId, exitCode: result.exitCode }
+        );
+      } catch (execError: any) {
+        toolResults.push({
+          toolId: tool.id,
+          toolStringId: tool.toolId,
+          toolName: tool.name,
+          category: tool.category,
+          containerName,
+          execution: null,
+          error: execError.message,
+          status: "failed",
+        });
+
+        await this.log(workflowId, taskId, "error",
+          `"${tool.name}" execution error: ${execError.message}`,
+          { toolId: tool.id, error: execError.message }
+        );
+        // Continue to next tool — don't abort
+      }
+    }
+
+    // Compute summary
+    const completed = toolResults.filter(r => r.status === "completed").length;
+    const failed = toolResults.filter(r => r.status === "failed").length;
+    const skipped = toolResults.filter(r => r.status === "skipped").length;
+    const totalDuration = toolResults.reduce((sum, r) => sum + (r.execution?.duration || 0), 0);
+    const wallClockDuration = Date.now() - wallClockStart;
+
+    await this.log(workflowId, taskId, "info",
+      `Tool execution complete: ${completed} completed, ${failed} failed, ${skipped} skipped (${wallClockDuration}ms wall clock)`,
+      { completed, failed, skipped, totalDuration, wallClockDuration }
+    );
+
+    // AI summary (optional — only if at least one tool completed)
+    let aiSummary: string | null = null;
+    if (completed > 0) {
+      try {
+        const summaryPrompt = this.buildToolSummaryPrompt(agent.name, target.value, toolResults);
+        aiSummary = await this.callAgentAI(
+          agent,
+          [{ role: "user", content: summaryPrompt }],
+          { maxTokens: 2000 },
+          { workflowId, taskId, phase: "tool_execution_summary" }
+        );
+
+        await this.log(workflowId, taskId, "info", "AI summary generated successfully");
+      } catch (aiError: any) {
+        await this.log(workflowId, taskId, "warn",
+          `AI summary generation failed: ${aiError.message}`,
+        );
+        // Non-fatal — results are still available without AI summary
+      }
+    }
+
+    return {
+      type: "tool_execution",
+      agentId: agent.id,
+      agentName: agent.name,
+      targetId: target.id,
+      targetValue: target.value,
+      toolResults,
+      summary: { totalTools: enabledToolIds.length, completed, failed, skipped, totalDuration, wallClockDuration },
+      aiSummary,
+    };
+  }
+
+  /**
+   * Build a prompt for AI summarization of sequential tool execution results
+   */
+  private buildToolSummaryPrompt(
+    agentName: string,
+    targetValue: string,
+    toolResults: ToolExecutionStepResult[],
+  ): string {
+    const completedResults = toolResults.filter(r => r.status === "completed" && r.execution);
+
+    let resultsSection = "";
+    for (const result of completedResults) {
+      const stdout = result.execution!.stdout;
+      // Limit each tool's output in the prompt to 5KB to stay within token limits
+      const trimmedOutput = stdout.length > 5000
+        ? stdout.substring(0, 5000) + "\n... [trimmed for summarization]"
+        : stdout;
+
+      resultsSection += `
+### ${result.toolName} (${result.toolStringId})
+- Category: ${result.category}
+- Exit Code: ${result.execution!.exitCode}
+- Duration: ${result.execution!.duration}ms
+- Command: ${result.execution!.command}
+
+**Output:**
+\`\`\`
+${trimmedOutput}
+\`\`\`
+
+`;
+    }
+
+    const failedResults = toolResults.filter(r => r.status === "failed");
+    let failedSection = "";
+    if (failedResults.length > 0) {
+      failedSection = `
+### Failed Tools
+${failedResults.map(r => `- ${r.toolName}: ${r.error || "Unknown error"}`).join("\n")}
+`;
+    }
+
+    return `You are the "${agentName}" agent. You just ran ${toolResults.length} security tools against target "${targetValue}".
+
+Analyze the results below and provide a concise summary covering:
+1. Key findings from each tool
+2. Notable vulnerabilities or exposures discovered
+3. Recommended next steps based on the combined results
+4. Overall risk assessment
+
+## Tool Execution Results
+
+${resultsSection}
+${failedSection}
+
+Provide a structured summary with clear headings. Focus on actionable findings.`;
   }
 
   /**

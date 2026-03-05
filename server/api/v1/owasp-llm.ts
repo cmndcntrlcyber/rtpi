@@ -50,6 +50,30 @@ router.get("/vulnerabilities", async (_req, res) => {
 });
 
 /**
+ * List all attack vectors
+ */
+router.get("/attack-vectors", async (_req, res) => {
+  try {
+    const vectors = await db.select().from(owaspLlmAttackVectors);
+    res.json(vectors);
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to fetch attack vectors" });
+  }
+});
+
+/**
+ * List all mitigations
+ */
+router.get("/mitigations", async (_req, res) => {
+  try {
+    const mitigations = await db.select().from(owaspLlmMitigations);
+    res.json(mitigations);
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to fetch mitigations" });
+  }
+});
+
+/**
  * Get single vulnerability with details
  */
 router.get("/vulnerabilities/:id", async (req, res) => {

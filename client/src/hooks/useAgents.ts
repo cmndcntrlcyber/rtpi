@@ -1,6 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "@/lib/api";
 
+export interface AgentTactic {
+  agentId: string;
+  tacticId: string;
+  attackId: string;
+  name: string;
+  shortName: string;
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -11,6 +19,7 @@ export interface Agent {
   lastActivity?: string;
   tasksCompleted: number;
   tasksFailed: number;
+  tactic?: AgentTactic | null;
   createdAt: string;
   updatedAt: string;
 }

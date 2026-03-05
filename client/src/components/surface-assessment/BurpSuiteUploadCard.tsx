@@ -20,9 +20,19 @@ export default function BurpSuiteUploadCard({ operationId }: BurpSuiteUploadCard
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
+  const MAX_JAR_SIZE = 800 * 1024 * 1024; // 800MB -- matches server limit
+
   const handleFileSelect = (selectedFile: File) => {
     if (!selectedFile.name.endsWith(".jar")) {
       setErrorMessage("Only JAR files are allowed");
+      setState("error");
+      return;
+    }
+
+    if (selectedFile.size > MAX_JAR_SIZE) {
+      setErrorMessage(
+        `File too large (${(selectedFile.size / 1024 / 1024).toFixed(0)}MB). Maximum is ${MAX_JAR_SIZE / 1024 / 1024}MB.`
+      );
       setState("error");
       return;
     }
@@ -58,34 +68,103 @@ export default function BurpSuiteUploadCard({ operationId }: BurpSuiteUploadCard
     }
   };
 
+  const CHUNK_SIZE = 50 * 1024 * 1024; // 50MB chunks — stays under Cloudflare's 100MB limit
+
+  /**
+   * Upload a single chunk via XHR with per-chunk progress tracking
+   */
+  const uploadChunk = (
+    uploadId: string,
+    chunkIndex: number,
+    chunkBlob: Blob,
+  ): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const formData = new FormData();
+      formData.append("chunk", chunkBlob);
+
+      const xhr = new XMLHttpRequest();
+
+      xhr.addEventListener("load", () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
+        } else {
+          try {
+            const errorData = JSON.parse(xhr.responseText);
+            reject(new Error(errorData.message || errorData.error || `Chunk ${chunkIndex} failed`));
+          } catch {
+            reject(new Error(`Chunk ${chunkIndex} failed with status ${xhr.status}`));
+          }
+        }
+      });
+
+      xhr.addEventListener("error", () => reject(new Error(`Network error on chunk ${chunkIndex}`)));
+      xhr.addEventListener("timeout", () => reject(new Error(`Chunk ${chunkIndex} timed out`)));
+
+      xhr.open("POST", `/api/v1/burp-builder/upload/chunked/${uploadId}/${chunkIndex}`);
+      xhr.withCredentials = true;
+      xhr.timeout = 120000; // 2 minutes per chunk (50MB)
+      xhr.send(formData);
+    });
+  };
+
   const handleEmbed = async () => {
     if (!file || !user) return;
 
     setState("uploading");
-    setProgress(10);
+    setProgress(0);
     setErrorMessage(null);
 
     try {
-      // Phase 1: Upload JAR
-      setProgress(30);
-      const formData = new FormData();
-      formData.append("jarFile", file);
-      formData.append("userId", user.id);
+      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
-      const uploadResponse = await fetch("/api/v1/burp-builder/upload", {
+      // Phase 1: Initialize chunked upload (0-2%)
+      const initResponse = await fetch("/api/v1/burp-builder/upload/chunked/init", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: formData,
+        body: JSON.stringify({
+          userId: user.id,
+          fileName: file.name,
+          totalChunks,
+          totalSize: file.size,
+        }),
       });
 
-      if (!uploadResponse.ok) {
-        const errorData = await uploadResponse.json();
-        throw new Error(errorData.message || "Failed to upload JAR file");
+      if (!initResponse.ok) {
+        const errorData = await initResponse.json();
+        throw new Error(errorData.message || errorData.error || "Failed to initialize upload");
       }
 
-      setProgress(60);
+      const { uploadId } = await initResponse.json();
+      setProgress(2);
 
-      // Phase 2: Build Docker image
+      // Phase 2: Upload chunks sequentially (2-55%)
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, file.size);
+        const chunkBlob = file.slice(start, end);
+
+        await uploadChunk(uploadId, i, chunkBlob);
+
+        const chunkPercent = 2 + Math.round(((i + 1) / totalChunks) * 53);
+        setProgress(chunkPercent);
+      }
+
+      // Phase 3: Reassemble chunks on server (55-65%)
+      setProgress(57);
+      const completeResponse = await fetch(
+        `/api/v1/burp-builder/upload/chunked/${uploadId}/complete`,
+        { method: "POST", credentials: "include" },
+      );
+
+      if (!completeResponse.ok) {
+        const errorData = await completeResponse.json();
+        throw new Error(errorData.message || errorData.error || "Failed to reassemble JAR");
+      }
+
+      setProgress(65);
+
+      // Phase 4: Build Docker image (65-95%)
       const buildResponse = await fetch(`/api/v1/burp-builder/build/${user.id}`, {
         method: "POST",
         credentials: "include",
@@ -149,7 +228,7 @@ export default function BurpSuiteUploadCard({ operationId }: BurpSuiteUploadCard
             Click to upload or drag and drop
           </p>
           <p className="text-xs text-muted-foreground mt-2">
-            JAR files only (BurpSuite Pro)
+            JAR files only, up to 800MB (BurpSuite Pro)
           </p>
           <input
             ref={fileInputRef}
@@ -189,7 +268,13 @@ export default function BurpSuiteUploadCard({ operationId }: BurpSuiteUploadCard
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4" />
             <p className="text-sm font-medium">Embedding BurpSuite Pro...</p>
             <p className="text-xs text-muted-foreground mt-1">
-              {progress < 60 ? "Uploading JAR file..." : "Building Docker image..."}
+              {progress < 2
+                ? "Initializing upload..."
+                : progress < 55
+                  ? "Uploading JAR file (chunked)..."
+                  : progress < 65
+                    ? "Reassembling on server..."
+                    : "Building Docker image..."}
             </p>
           </div>
           <Progress value={progress} className="w-full" />

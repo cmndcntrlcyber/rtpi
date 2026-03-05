@@ -56,7 +56,7 @@ export default function CommandPalette({ open, onOpenChange }: CommandPalettePro
     // Navigation
     { id: "nav-dashboard", label: "Dashboard", icon: LayoutDashboard, action: () => navigate("/"), category: "Navigation" },
     { id: "nav-operations", label: "Operations", icon: ListTodo, action: () => navigate("/operations"), category: "Navigation" },
-    { id: "nav-operations-manager", label: "Operations Manager", icon: ClipboardList, action: () => navigate("/operations-manager"), category: "Navigation" },
+    { id: "nav-operations-manager", label: "Operations Manager", icon: ClipboardList, action: () => navigate("/operations?chat=open"), category: "Navigation" },
     { id: "nav-targets", label: "Targets", icon: Target, action: () => navigate("/targets"), category: "Navigation" },
     { id: "nav-vulnerabilities", label: "Vulnerabilities", icon: AlertTriangle, action: () => navigate("/vulnerabilities"), category: "Navigation" },
     { id: "nav-surface-assessment", label: "Surface Assessment", icon: BarChart3, action: () => navigate("/surface-assessment"), category: "Navigation" },

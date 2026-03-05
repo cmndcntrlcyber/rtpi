@@ -78,6 +78,9 @@ router.post("/models/sync", ensureRole("admin", "operator"), async (req, res) =>
  *   "modelName": "llama3:8b",
  *   "stream": false
  * }
+ *
+ * Note: In RKLLama NPU mode, pulling is not supported via API.
+ * Use 'rkllama_client pull <model>' on the host instead.
  */
 router.post("/models/pull", ensureRole("admin", "operator"), async (req, res) => {
   const user = req.user as any;
@@ -85,6 +88,15 @@ router.post("/models/pull", ensureRole("admin", "operator"), async (req, res) =>
 
   if (!modelName) {
     return res.status(400).json({ error: "modelName is required" });
+  }
+
+  // RKLLama mode: inform the user to use the host CLI
+  if (process.env.RKLLM_MODE === "true") {
+    return res.status(400).json({
+      success: false,
+      rkllmMode: true,
+      error: `Model pulling not available in RKLLama NPU mode. Run 'rkllama_client pull ${modelName}' on the host.`,
+    });
   }
 
   try {
@@ -143,10 +155,22 @@ router.post("/models/pull", ensureRole("admin", "operator"), async (req, res) =>
  * Delete a model from Ollama
  *
  * Example: DELETE /api/v1/ollama/models/llama3:8b
+ *
+ * Note: In RKLLama NPU mode, deletion is not supported via API.
+ * Remove .rkllm files from the model directory on the host instead.
  */
 router.delete("/models/:name", ensureRole("admin"), async (req, res) => {
   const user = req.user as any;
   const { name } = req.params;
+
+  // RKLLama mode: inform the user to manage models on the host
+  if (process.env.RKLLM_MODE === "true") {
+    return res.status(400).json({
+      success: false,
+      rkllmMode: true,
+      error: "Model deletion not available in RKLLama NPU mode. Remove .rkllm files from the model directory on the host.",
+    });
+  }
 
   try {
     const result = await ollamaManager.deleteModel(name);
@@ -365,10 +389,12 @@ router.get("/health", async (_req, res) => {
     const health = await ollamaManager.healthCheck();
 
     if (health.healthy) {
+      const isRkllm = process.env.RKLLM_MODE === "true";
       res.json({
         healthy: true,
         status: "ok",
-        message: "Ollama service is healthy",
+        message: isRkllm ? "RKLLama NPU service is healthy" : "Ollama service is healthy",
+        rkllmMode: isRkllm,
       });
     } else {
       res.status(503).json({

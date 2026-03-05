@@ -1,0 +1,20 @@
+[Unit]
+Description=RTPI Nexus Restart Service
+Documentation=https://github.com/cmndcntrlcyber/rtpi
+After=network.target docker.service postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=cmndcntrl
+ExecStart=/home/cmndcntrl/code/rtpi/scripts/rtpi-nexus-restart.sh
+WorkingDirectory=/home/cmndcntrl/code/rtpi
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rtpi-nexus-restart
+
+# Give it time to complete
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

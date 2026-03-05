@@ -11,6 +11,7 @@ interface Target {
   tags?: string[];
   operationId?: string;
   metadata?: any;
+  status?: string;
   createdAt?: string;
   updatedAt?: string;
 }

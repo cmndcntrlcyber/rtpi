@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { api } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChevronDown, ChevronRight, Server, Globe, Network, Trash2, CheckSquare, Square } from 'lucide-react';
+import { ChevronDown, ChevronRight, Server, Globe, Network, Trash2, CheckSquare, Square, Cpu, Mail, HardDrive } from 'lucide-react';
 
 interface AssetsTabProps {
   operationId: string;
@@ -18,6 +18,16 @@ interface Asset {
   status: string;
   discoveryMethod: string;
   operatingSystem?: string;
+  metadata?: {
+    bbotEvent?: {
+      module?: string;
+      scope_distance?: number;
+      discovery_context?: string;
+      tags?: string[];
+      host?: string;
+      [key: string]: any;
+    };
+  };
   services: Service[];
   vulnerabilityCount: number;
   lastSeenAt: string;
@@ -74,6 +84,14 @@ export default function AssetsTab({ operationId }: AssetsTabProps) {
         return Globe;
       case 'ip':
         return Server;
+      case 'technology':
+        return Cpu;
+      case 'email':
+        return Mail;
+      case 'asn':
+        return Network;
+      case 'storage_bucket':
+        return HardDrive;
       default:
         return Network;
     }
@@ -308,42 +326,93 @@ export default function AssetsTab({ operationId }: AssetsTabProps) {
                     </div>
                   </div>
 
-                  {/* Expanded Services */}
-                  {isExpanded && asset.services.length > 0 && (
+                  {/* Expanded Details */}
+                  {isExpanded && (
                     <div className="px-4 pb-4 bg-secondary">
-                      <div className="ml-11 border-l-2 border-blue-200 pl-4">
-                        <h4 className="text-xs font-semibold text-foreground uppercase mb-2">
-                          Services ({asset.services.length})
-                        </h4>
-                        <div className="space-y-2">
-                          {asset.services.map((service) => (
-                            <div
-                              key={service.id}
-                              className="flex items-center justify-between bg-card p-3 rounded border border-border"
-                            >
-                              <div className="flex items-center gap-3">
-                                <Badge variant="outline">{service.port}/{service.protocol}</Badge>
-                                <span className="text-sm font-medium text-foreground">{service.name}</span>
-                                {service.version && (
-                                  <span className="text-xs text-muted-foreground">v{service.version}</span>
+                      <div className="ml-11 border-l-2 border-blue-200 pl-4 space-y-4">
+                        {/* Services */}
+                        {asset.services.length > 0 && (
+                          <div>
+                            <h4 className="text-xs font-semibold text-foreground uppercase mb-2">
+                              Services ({asset.services.length})
+                            </h4>
+                            <div className="space-y-2">
+                              {asset.services.map((service) => (
+                                <div
+                                  key={service.id}
+                                  className="flex items-center justify-between bg-card p-3 rounded border border-border"
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <Badge variant="outline">{service.port}/{service.protocol}</Badge>
+                                    <span className="text-sm font-medium text-foreground">{service.name}</span>
+                                    {service.version && (
+                                      <span className="text-xs text-muted-foreground">v{service.version}</span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Badge className={service.state === 'open' ? 'bg-green-100 text-green-800' : 'bg-secondary text-foreground'}>
+                                      {service.state}
+                                    </Badge>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => { e.stopPropagation(); handleDeleteService(service.id); }}
+                                      className="text-red-600 hover:text-red-700 hover:bg-red-50 h-7 w-7 p-0"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Discovery Details from BBOT metadata */}
+                        {asset.metadata?.bbotEvent && (
+                          <div>
+                            <h4 className="text-xs font-semibold text-foreground uppercase mb-2">
+                              Discovery Details
+                            </h4>
+                            <div className="bg-card p-3 rounded border border-border space-y-2">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {asset.metadata.bbotEvent.module && (
+                                  <Badge variant="outline" className="text-xs">
+                                    Module: {asset.metadata.bbotEvent.module}
+                                  </Badge>
+                                )}
+                                {asset.metadata.bbotEvent.scope_distance !== undefined && (
+                                  <Badge className={`text-xs ${
+                                    asset.metadata.bbotEvent.scope_distance === 0
+                                      ? 'bg-green-100 text-green-800'
+                                      : 'bg-yellow-100 text-yellow-800'
+                                  }`}>
+                                    {asset.metadata.bbotEvent.scope_distance === 0 ? 'In Scope' : `Distance ${asset.metadata.bbotEvent.scope_distance}`}
+                                  </Badge>
+                                )}
+                                {asset.metadata.bbotEvent.host && asset.metadata.bbotEvent.host !== asset.value && (
+                                  <Badge variant="outline" className="text-xs">
+                                    Host: {asset.metadata.bbotEvent.host}
+                                  </Badge>
                                 )}
                               </div>
-                              <div className="flex items-center gap-2">
-                                <Badge className={service.state === 'open' ? 'bg-green-100 text-green-800' : 'bg-secondary text-foreground'}>
-                                  {service.state}
-                                </Badge>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={(e) => { e.stopPropagation(); handleDeleteService(service.id); }}
-                                  className="text-red-600 hover:text-red-700 hover:bg-red-50 h-7 w-7 p-0"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
-                              </div>
+                              {asset.metadata.bbotEvent.discovery_context && (
+                                <p className="text-xs text-muted-foreground">
+                                  {asset.metadata.bbotEvent.discovery_context}
+                                </p>
+                              )}
+                              {asset.metadata.bbotEvent.tags && asset.metadata.bbotEvent.tags.length > 0 && (
+                                <div className="flex items-center gap-1 flex-wrap">
+                                  {asset.metadata.bbotEvent.tags.map((tag: string, i: number) => (
+                                    <Badge key={i} variant="secondary" className="text-xs">
+                                      {tag}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              )}
                             </div>
-                          ))}
-                        </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}

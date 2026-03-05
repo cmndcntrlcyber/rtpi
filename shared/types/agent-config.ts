@@ -20,7 +20,7 @@ export interface AgentAIConfig {
   /**
    * Specific model to use
    * Examples:
-   * - Ollama: "llama3:8b", "qwen2.5-coder:7b"
+   * - Ollama/RKLLama: "qwen2.5:3b", "qwen2.5-coder:3b", "tinyllama:1.1b", "qwen2.5:7b"
    * - OpenAI: "gpt-5.2", "gpt-5.2-chat-latest", "gpt-4.1-mini"
    * - Anthropic: "claude-opus-4-6", "claude-sonnet-4-5", "claude-haiku-4-5"
    */
@@ -108,27 +108,27 @@ export const DEFAULT_AI_CONFIG: AgentAIConfig = {
  * Model presets for different agent types
  */
 export const MODEL_PRESETS = {
-  // General purpose agents
+  // General purpose agents (vuln analysis, CVE extraction, CVSS, remediation)
   general: {
-    ollama: "llama3:8b",
+    ollama: "qwen2.5:3b",
     openai: "gpt-5.2-chat-latest",
     anthropic: "claude-sonnet-4-5",
   },
-  // Code analysis agents
+  // Code analysis agents (secure code review, exploit analysis)
   code: {
-    ollama: "qwen2.5-coder:7b",
+    ollama: "qwen2.5-coder:3b",
     openai: "gpt-5.2",
     anthropic: "claude-sonnet-4-5",
   },
-  // Technical writing agents
+  // Technical writing agents (reports, vuln descriptions)
   writing: {
-    ollama: "llama3:8b",
+    ollama: "qwen2.5:7b",
     openai: "gpt-5.2-chat-latest",
     anthropic: "claude-opus-4-6",
   },
-  // Fast response agents
+  // Fast response agents (tool commands, quick classification)
   fast: {
-    ollama: "llama3:8b",
+    ollama: "tinyllama:1.1b",
     openai: "gpt-4.1-mini",
     anthropic: "claude-haiku-4-5",
   },

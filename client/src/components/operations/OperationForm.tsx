@@ -58,7 +58,7 @@ interface OperationFormProps {
 const applicationOverviewRows: QuestionResponseRow[] = [
   { question: "Application Type", field: "applicationType", type: "text", placeholder: "Standard Web App and Supporting API" },
   { question: "In-Scope Domain(s)", field: "inScopeDomains", type: "textarea", placeholder: "dev-platform.example.com..." },
-  { question: "Tester Account", field: "testerAccount", type: "text", placeholder: "Security Admin, Organization Admin..." },
+  { question: "Test Credentials", field: "testCredentials", type: "credentials", placeholder: "Username" },
   { question: "Relevant Department", field: "relevantDept", type: "text", placeholder: "Customer Centric App" },
   { question: "User Base", field: "userBase", type: "text", placeholder: "50,000 - 100,000" },
   { question: "Use Cases (Services)", field: "useCases", type: "text", placeholder: "Medical Submission and Billing" },

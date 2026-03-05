@@ -55,6 +55,218 @@ interface NucleiResult {
 }
 
 export class NucleiExecutor {
+  private readonly containerName: string;
+  private readonly templateDir: string;
+  private readonly homeDir: string;
+
+  // Category paths in the nuclei-templates repo (relative to repo root)
+  private static readonly CATEGORY_MAP: Record<string, string[]> = {
+    'cves':              ['http/cves'],
+    'vulnerabilities':   ['http/vulnerabilities'],
+    'default-logins':    ['http/default-logins'],
+    'exposed-panels':    ['http/exposed-panels'],
+    'exposures':         ['http/exposures'],
+    'misconfiguration':  ['http/misconfiguration'],
+    'technologies':      ['http/technologies'],
+    'takeovers':         ['http/takeovers'],
+    'cloud':             ['cloud'],
+    'network':           ['network'],
+    'dns':               ['dns'],
+    'ssl':               ['ssl'],
+    'iot':               ['http/iot'],
+    'fuzzing':           ['http/fuzzing', 'dast'],
+    'workflows':         ['workflows'],
+    'helpers':           ['helpers'],
+  };
+
+  constructor(containerName: string = 'rtpi-tools') {
+    this.containerName = containerName;
+    this.homeDir = containerName === 'rtpi-fuzzing-agent'
+      ? '/home/rtpi-agent'
+      : '/home/rtpi-tools';
+    this.templateDir = `${this.homeDir}/nuclei-templates`;
+  }
+
+  /**
+   * Ensure Nuclei templates are present in the container.
+   * Downloads them on-demand if missing, so the Docker image stays lean.
+   */
+  private async ensureTemplates(): Promise<void> {
+    // Quick check: does the template dir exist and contain the http/ folder?
+    const check = await dockerExecutor.exec(this.containerName,
+      ['test', '-d', `${this.templateDir}/http`],
+      {}
+    ).catch(() => null);
+
+    if (check && check.exitCode === 0) {
+      return; // templates already present
+    }
+
+    console.log('Nuclei templates not found — downloading on-demand...');
+    const dl = await dockerExecutor.exec(this.containerName,
+      ['nuclei', '-update-templates', '-silent'],
+      { timeout: 300000 } // 5 min for download
+    );
+
+    if (dl.exitCode !== 0) {
+      console.warn('Template download exited with code', dl.exitCode, dl.stderr);
+    } else {
+      console.log('Nuclei templates downloaded successfully');
+    }
+  }
+
+  /**
+   * Ensure only specific template categories are present using git sparse-checkout.
+   * Downloads ~2-20MB per category instead of ~82MB for the full repo.
+   * Falls back to full download if sparse-checkout fails.
+   */
+  private async ensureTemplateCategories(categories: string[]): Promise<void> {
+    // Resolve category names to directory paths
+    const dirs = this.resolveCategoriesToDirs(categories);
+    if (dirs.length === 0) {
+      // No recognized categories — fall back to full download
+      return this.ensureTemplates();
+    }
+
+    // Check if all requested dirs already exist
+    const missingDirs: string[] = [];
+    for (const dir of dirs) {
+      const check = await dockerExecutor.exec(this.containerName,
+        ['test', '-d', `${this.templateDir}/${dir}`],
+        {}
+      ).catch(() => null);
+      if (!check || check.exitCode !== 0) {
+        missingDirs.push(dir);
+      }
+    }
+
+    if (missingDirs.length === 0) {
+      return; // all categories already present
+    }
+
+    // Always include helpers/ (required by many templates)
+    const allDirs = [...new Set([...dirs, 'helpers'])];
+
+    console.log(`Downloading nuclei template categories: ${allDirs.join(', ')}`);
+
+    // Try sparse-checkout first (much smaller download)
+    const sparseCmd = [
+      'bash', '-c',
+      `rm -rf ${this.templateDir} && ` +
+      `git clone --filter=blob:none --sparse --depth=1 ` +
+      `https://github.com/projectdiscovery/nuclei-templates.git ${this.templateDir} && ` +
+      `cd ${this.templateDir} && ` +
+      `git sparse-checkout set ${allDirs.join(' ')}`
+    ];
+
+    const result = await dockerExecutor.exec(this.containerName, sparseCmd, {
+      timeout: 180000 // 3 min
+    }).catch(() => null);
+
+    if (result && result.exitCode === 0) {
+      console.log(`Template categories downloaded via sparse-checkout: ${allDirs.join(', ')}`);
+      return;
+    }
+
+    console.warn('Sparse-checkout failed, falling back to full template download');
+    await this.ensureTemplates();
+  }
+
+  /**
+   * Map category names/template paths to nuclei-templates directory paths.
+   */
+  private resolveCategoriesToDirs(categories: string[]): string[] {
+    const dirs = new Set<string>();
+
+    for (const cat of categories) {
+      const normalized = cat.toLowerCase().replace(/^\/+|\/+$/g, '');
+
+      // Direct match in category map
+      if (NucleiExecutor.CATEGORY_MAP[normalized]) {
+        for (const d of NucleiExecutor.CATEGORY_MAP[normalized]) {
+          dirs.add(d);
+        }
+        continue;
+      }
+
+      // Check if it's already a valid path like "http/cves" or "cloud/aws"
+      const firstSegment = normalized.split('/')[0];
+      const knownTopLevel = ['cloud', 'code', 'dast', 'dns', 'file', 'headless',
+        'helpers', 'http', 'javascript', 'network', 'profiles', 'ssl', 'workflows'];
+      if (knownTopLevel.includes(firstSegment)) {
+        dirs.add(normalized);
+        continue;
+      }
+
+      // Assume it's an http/ subdirectory (e.g. "cves" → "http/cves")
+      dirs.add(`http/${normalized}`);
+    }
+
+    return [...dirs];
+  }
+
+  /**
+   * Resolve scan options to required template categories for sparse download.
+   */
+  private resolveRequiredCategories(options: NucleiOptions): string[] | null {
+    const categories: string[] = [];
+
+    // If specific templates are provided, extract categories from paths
+    if (options.templates && options.templates.length > 0) {
+      for (const t of options.templates) {
+        const p = t.trim().replace(/^\/.*nuclei-templates\//, '').replace(/^nuclei-templates\//, '');
+        // Extract the category directory (first 1-2 path segments)
+        const parts = p.split('/');
+        if (parts[0] === 'http' && parts.length >= 2) {
+          categories.push(`http/${parts[1]}`);
+        } else if (parts.length >= 1) {
+          categories.push(parts[0]);
+        }
+      }
+    }
+
+    // If tags are provided, map common tags to categories
+    if (options.tags && options.tags.length > 0) {
+      for (const tag of options.tags) {
+        const t = tag.toLowerCase();
+        if (t === 'cve' || t === 'cves') categories.push('cves');
+        else if (t === 'tech' || t === 'technologies') categories.push('technologies');
+        else if (t === 'panel' || t === 'panels') categories.push('exposed-panels');
+        else if (t === 'exposure' || t === 'exposures') categories.push('exposures');
+        else if (t === 'misconfig' || t === 'misconfiguration') categories.push('misconfiguration');
+        else if (t === 'takeover' || t === 'takeovers') categories.push('takeovers');
+        else if (t === 'default-login') categories.push('default-logins');
+        else if (t === 'cloud' || t === 'aws' || t === 'azure' || t === 'gcp') categories.push('cloud');
+        else if (t === 'network') categories.push('network');
+        else if (t === 'dns') categories.push('dns');
+        else if (t === 'ssl' || t === 'tls') categories.push('ssl');
+        else if (t === 'iot') categories.push('iot');
+        else if (t === 'fuzz' || t === 'fuzzing' || t === 'dast') categories.push('fuzzing');
+      }
+    }
+
+    // If we couldn't determine specific categories, return null (full download needed)
+    if (categories.length === 0) return null;
+
+    return [...new Set(categories)];
+  }
+
+  /**
+   * Remove Nuclei templates from the container to reclaim disk space.
+   * Called after a scan completes (success or failure).
+   */
+  private async cleanupTemplates(): Promise<void> {
+    try {
+      await dockerExecutor.exec(this.containerName,
+        ['rm', '-rf', this.templateDir],
+        {}
+      );
+      console.log('Nuclei templates cleaned up to save space');
+    } catch (err) {
+      console.warn('Failed to clean up Nuclei templates:', err);
+    }
+  }
+
   /**
    * Start a Nuclei scan and return the scanId immediately.
    * The scan runs asynchronously in the background.
@@ -108,25 +320,33 @@ export class NucleiExecutor {
     const stopKeepalive = await keepDatabaseAlive(7200000); // 2 hours
 
     try {
+      // Ensure templates are present (prefer category-level sparse download)
+      const requiredCategories = this.resolveRequiredCategories(options);
+      if (requiredCategories) {
+        await this.ensureTemplateCategories(requiredCategories);
+      } else {
+        await this.ensureTemplates();
+      }
+
       // Build Nuclei command arguments
       const args = this.buildArgs(targets, options);
 
-      console.log(`🔍 Starting Nuclei scan ${scanId} for targets:`, targets);
-      console.log(`📋 Nuclei args:`, args);
+      console.log(`Starting Nuclei scan ${scanId} for targets:`, targets);
+      console.log(`Nuclei args:`, args);
 
       // Warn about large template sets
       if (options.templates) {
         const hasCVEs = options.templates.some(t => t.includes('cves'));
         const hasVulns = options.templates.some(t => t.includes('vulnerabilities'));
         if (hasCVEs || hasVulns) {
-          console.log(`⚠️  Large template set detected (CVEs: ${hasCVEs ? '3600+' : '0'}, Vulns: ${hasVulns ? '900+' : '0'} templates)`);
-          console.log(`⏱️  Scan may take 30-60+ minutes depending on targets and network conditions`);
+          console.log(`Large template set detected (CVEs: ${hasCVEs ? '3600+' : '0'}, Vulns: ${hasVulns ? '900+' : '0'} templates)`);
+          console.log(`Scan may take 30-60+ minutes depending on targets and network conditions`);
         }
       }
 
-      // Execute Nuclei via Docker (rtpi-tools container) with automatic retry
+      // Execute Nuclei via Docker with automatic retry
       const result = await dockerExecutor.execWithRetry(
-        'rtpi-tools',
+        this.containerName,
         ['nuclei', ...args],
         {}
       );
@@ -166,6 +386,9 @@ export class NucleiExecutor {
       // Stop keepalive on success
       stopKeepalive();
 
+      // Clean up templates to save disk space
+      await this.cleanupTemplates();
+
       return {
         vulnerabilitiesCount,
         results: parsedResults,
@@ -174,11 +397,14 @@ export class NucleiExecutor {
       // Stop keepalive on error
       stopKeepalive();
 
+      // Clean up templates even on failure
+      await this.cleanupTemplates();
+
       // Check if scan was externally cancelled (don't overwrite 'cancelled' status)
       const [currentScan] = await db.select({ status: axScanResults.status })
         .from(axScanResults).where(eq(axScanResults.id, scanId)).limit(1);
       if (currentScan?.status === 'cancelled') {
-        console.log(`⛔ Nuclei scan ${scanId} was cancelled, skipping error status update`);
+        console.log(`Nuclei scan ${scanId} was cancelled, skipping error status update`);
         return { vulnerabilitiesCount: 0, results: { vulnerabilities: [], stats: { total: 0, critical: 0, high: 0, medium: 0, low: 0, info: 0 } } };
       }
 
@@ -241,25 +467,33 @@ export class NucleiExecutor {
     const stopKeepalive = await keepDatabaseAlive(7200000); // 2 hours
 
     try {
+      // Ensure templates are present (prefer category-level sparse download)
+      const requiredCategories = this.resolveRequiredCategories(options);
+      if (requiredCategories) {
+        await this.ensureTemplateCategories(requiredCategories);
+      } else {
+        await this.ensureTemplates();
+      }
+
       // Build Nuclei command arguments
       const args = this.buildArgs(targets, options);
 
-      console.log(`🔍 Starting Nuclei scan ${scanId} for targets:`, targets);
-      console.log(`📋 Nuclei args:`, args);
+      console.log(`Starting Nuclei scan ${scanId} for targets:`, targets);
+      console.log(`Nuclei args:`, args);
 
       // Warn about large template sets
       if (options.templates) {
         const hasCVEs = options.templates.some(t => t.includes('cves'));
         const hasVulns = options.templates.some(t => t.includes('vulnerabilities'));
         if (hasCVEs || hasVulns) {
-          console.log(`⚠️  Large template set detected (CVEs: ${hasCVEs ? '3600+' : '0'}, Vulns: ${hasVulns ? '900+' : '0'} templates)`);
-          console.log(`⏱️  Scan may take 30-60+ minutes depending on targets and network conditions`);
+          console.log(`Large template set detected (CVEs: ${hasCVEs ? '3600+' : '0'}, Vulns: ${hasVulns ? '900+' : '0'} templates)`);
+          console.log(`Scan may take 30-60+ minutes depending on targets and network conditions`);
         }
       }
 
-      // Execute Nuclei via Docker (rtpi-tools container) with automatic retry
+      // Execute Nuclei via Docker with automatic retry
       const result = await dockerExecutor.execWithRetry(
-        'rtpi-tools',
+        this.containerName,
         ['nuclei', ...args],
         {}
       );
@@ -296,10 +530,13 @@ export class NucleiExecutor {
         })
         .where(eq(axScanResults.id, scanId));
 
-      console.log(`✅ Nuclei scan ${scanId} completed: ${vulnerabilitiesCount} vulnerabilities found`);
+      console.log(`Nuclei scan ${scanId} completed: ${vulnerabilitiesCount} vulnerabilities found`);
 
       // Stop keepalive on success
       stopKeepalive();
+
+      // Clean up templates to save disk space
+      await this.cleanupTemplates();
 
       return {
         scanId,
@@ -309,11 +546,14 @@ export class NucleiExecutor {
       // Stop keepalive on error
       stopKeepalive();
 
+      // Clean up templates even on failure
+      await this.cleanupTemplates();
+
       // Check if scan was externally cancelled (don't overwrite 'cancelled' status)
       const [currentScan2] = await db.select({ status: axScanResults.status })
         .from(axScanResults).where(eq(axScanResults.id, scanId)).limit(1);
       if (currentScan2?.status === 'cancelled') {
-        console.log(`⛔ Nuclei scan ${scanId} was cancelled, skipping error status update`);
+        console.log(`Nuclei scan ${scanId} was cancelled, skipping error status update`);
         throw new Error('Scan was cancelled');
       }
 
@@ -342,7 +582,7 @@ export class NucleiExecutor {
         })
         .where(eq(axScanResults.id, scanId));
 
-      console.error(`❌ Nuclei scan ${scanId} failed:`, error);
+      console.error(`Nuclei scan ${scanId} failed:`, error);
       throw error;
     }
   }
@@ -385,21 +625,53 @@ export class NucleiExecutor {
     }
 
     // Add specific templates
+    // Templates live at /home/rtpi-tools/nuclei-templates/ inside the container.
+    // We must use absolute paths because the docker executor CWD is /tmp.
+    //
+    // Directory layout (nuclei-templates v10.x):
+    //   Top-level: cloud, code, dast, dns, file, headless, helpers, http,
+    //              javascript, network, profiles, ssl, workflows
+    //   Under http/: cnvd, credential-stuffing, cves, default-logins,
+    //                 exposed-panels, exposures, fuzzing, global-matchers,
+    //                 honeypot, iot, miscellaneous, misconfiguration, osint,
+    //                 takeovers, technologies, token-spray, vulnerabilities
+    //
+    // Resolution rules:
+    //   1. Absolute paths (/...) → pass through
+    //   2. Starts with a known top-level dir (e.g. "cloud/aws/") → TEMPLATE_ROOT/<path>
+    //   3. Starts with "http/<subdir>" explicitly → TEMPLATE_ROOT/<path>
+    //   4. Otherwise assume it's an http/ subdirectory → TEMPLATE_ROOT/http/<path>
     if (options.templates && options.templates.length > 0) {
+      const ROOT = this.templateDir;
+
+      // All 14 top-level directories in nuclei-templates
+      const TOP_LEVEL_DIRS = new Set([
+        'cloud', 'code', 'dast', 'dns', 'file', 'headless', 'helpers',
+        'http', 'javascript', 'network', 'profiles', 'ssl', 'workflows',
+      ]);
+
       options.templates.forEach(template => {
         if (template && template.trim()) {
-          // Prepend nuclei-templates path and http/ prefix if needed
-          let templatePath = template.trim();
-          if (!templatePath.startsWith('/') && !templatePath.startsWith('nuclei-templates/')) {
-            // If it's a relative path like "cves/" or "vulnerabilities/", add the proper prefix
-            if (templatePath === 'cves/' || templatePath === 'vulnerabilities/' ||
-                templatePath.startsWith('cves/') || templatePath.startsWith('vulnerabilities/')) {
-              templatePath = `nuclei-templates/http/${templatePath}`;
-            } else {
-              templatePath = `nuclei-templates/${templatePath}`;
-            }
+          let p = template.trim();
+
+          // Already absolute — use as-is
+          if (p.startsWith('/')) {
+            args.push('-t', p);
+            return;
           }
-          args.push('-t', templatePath);
+
+          // Strip legacy "nuclei-templates/" prefix if present
+          p = p.replace(/^nuclei-templates\//, '');
+
+          const firstSegment = p.split('/')[0].replace(/\/$/, '');
+
+          if (TOP_LEVEL_DIRS.has(firstSegment)) {
+            // Explicit top-level path (e.g. "network/cves/", "dast/vulnerabilities/", "http/cves/")
+            args.push('-t', `${ROOT}/${p}`);
+          } else {
+            // Short name → lives under http/ (e.g. "cves/", "vulnerabilities/", "technologies/")
+            args.push('-t', `${ROOT}/http/${p}`);
+          }
         }
       });
     }

@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Shield, Brain, Lock, FileCheck } from "lucide-react";
+import { Shield, Brain, Lock, FileCheck, ShieldCheck } from "lucide-react";
 
 export default function Frameworks() {
   return (
@@ -76,6 +76,22 @@ export default function Frameworks() {
             <p className="text-sm text-muted-foreground">
               NIST AI 100-1 Risk Management Framework for trustworthy AI systems.
               Govern, Map, Measure, and Manage AI risks.
+            </p>
+          </div>
+        </Link>
+        {/* CIS Controls */}
+        <Link href="/cis">
+          <div className="bg-card p-6 rounded-lg shadow-sm border border-border hover:border-primary cursor-pointer transition-colors">
+            <div className="flex items-center gap-3 mb-4">
+              <ShieldCheck className="h-8 w-8 text-emerald-600" />
+              <div>
+                <h2 className="text-xl font-bold">CIS Controls v8</h2>
+                <p className="text-sm text-muted-foreground">Critical Security Controls</p>
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              18 prioritized security controls with safeguards organized by Implementation Groups
+              for defending against common cyber attacks.
             </p>
           </div>
         </Link>

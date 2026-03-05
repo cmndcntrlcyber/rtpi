@@ -3,10 +3,23 @@ import { api } from '@/lib/api';
 import SeverityDistributionChart from './charts/SeverityDistributionChart';
 import StatusDistributionChart from './charts/StatusDistributionChart';
 import SummaryStatsCard from './SummaryStatsCard';
+import TopVulnerableAssetsTable from './TopVulnerableAssetsTable';
+import ActivityFeed from './ActivityFeed';
 import BurpSuiteUploadCard from './BurpSuiteUploadCard';
 
 interface OverviewTabProps {
   operationId: string;
+  onTabChange?: (tab: string) => void;
+}
+
+interface AssetBreakdown {
+  domains: number;
+  ips: number;
+  urls: number;
+  technologies: number;
+  asns: number;
+  emails: number;
+  storageBuckets: number;
 }
 
 interface OverviewData {
@@ -17,6 +30,7 @@ interface OverviewData {
     webVulnerabilities: number;
     lastScanTimestamp: string | null;
   };
+  assetBreakdown: AssetBreakdown;
   severityData: {
     critical: number;
     high: number;
@@ -35,7 +49,7 @@ interface OverviewData {
   recentActivity: any[];
 }
 
-export default function OverviewTab({ operationId }: OverviewTabProps) {
+export default function OverviewTab({ operationId, onTabChange }: OverviewTabProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<OverviewData | null>(null);
@@ -63,6 +77,15 @@ export default function OverviewTab({ operationId }: OverviewTabProps) {
           totalVulnerabilities: 0,
           webVulnerabilities: 0,
           lastScanTimestamp: null,
+        },
+        assetBreakdown: {
+          domains: 0,
+          ips: 0,
+          urls: 0,
+          technologies: 0,
+          asns: 0,
+          emails: 0,
+          storageBuckets: 0,
         },
         severityData: {
           critical: 0,
@@ -114,6 +137,16 @@ export default function OverviewTab({ operationId }: OverviewTabProps) {
     accepted_risk: 0
   };
 
+  const assetBreakdown = data?.assetBreakdown || {
+    domains: 0,
+    ips: 0,
+    urls: 0,
+    technologies: 0,
+    asns: 0,
+    emails: 0,
+    storageBuckets: 0,
+  };
+
   const topAssets = data?.topAssets || [];
   const recentActivity = data?.recentActivity || [];
 
@@ -158,9 +191,21 @@ export default function OverviewTab({ operationId }: OverviewTabProps) {
     <div className="space-y-6">
       {/* Top Row: Summary Stats and Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <SummaryStatsCard stats={stats} />
+        <SummaryStatsCard stats={stats} assetBreakdown={assetBreakdown} />
         <SeverityDistributionChart data={severityData} />
         <StatusDistributionChart data={statusData} />
+      </div>
+
+      {/* Second Row: Top Vulnerable Assets and Recent Activity */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <TopVulnerableAssetsTable
+          assets={topAssets}
+          onViewAll={onTabChange ? () => onTabChange('assets') : undefined}
+        />
+        <ActivityFeed
+          events={recentActivity}
+          onViewAll={onTabChange ? () => onTabChange('activity') : undefined}
+        />
       </div>
 
       {/* BurpSuite Pro Integration */}

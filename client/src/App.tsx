@@ -30,11 +30,11 @@ import Frameworks from "@/pages/Frameworks";
 import ATLASFramework from "@/pages/ATLASFramework";
 import OWASPLLMFramework from "@/pages/OWASPLLMFramework";
 import NISTAIFramework from "@/pages/NISTAIFramework";
+import CISFramework from "@/pages/CISFramework";
 import Empire from "@/pages/Empire";
 import Implants from "@/pages/Implants";
 import Ollama from "@/pages/Ollama";
 import OffSecTeam from "@/pages/OffSecTeam";
-import { OperationsManager } from "@/pages/OperationsManager";
 import Login from "@/pages/Login";
 
 const queryClient = new QueryClient();
@@ -62,6 +62,7 @@ function AuthenticatedApp() {
           <Route path="/atlas" component={ATLASFramework} />
           <Route path="/owasp-llm" component={OWASPLLMFramework} />
           <Route path="/nist-ai" component={NISTAIFramework} />
+          <Route path="/cis" component={CISFramework} />
           <Route path="/agents" component={Agents} />
           <Route path="/empire" component={Empire} />
           <Route path="/implants" component={Implants} />

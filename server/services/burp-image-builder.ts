@@ -69,6 +69,24 @@ class BurpImageBuilder {
       await fs.mkdir(this.uploadDir, { recursive: true });
       await fs.mkdir(this.imageDir, { recursive: true });
 
+      // Create staging directory and clean up orphaned temp files
+      const stagingDir = path.join(this.uploadDir, '_staging');
+      await fs.mkdir(stagingDir, { recursive: true });
+
+      try {
+        const files = await fs.readdir(stagingDir);
+        for (const file of files) {
+          const filePath = path.join(stagingDir, file);
+          const stat = await fs.stat(filePath);
+          if (Date.now() - stat.mtimeMs > 3600000) { // 1 hour
+            await fs.unlink(filePath).catch(() => {});
+            console.log(`[Burp Builder] Cleaned up orphaned staging file: ${file}`);
+          }
+        }
+      } catch {
+        // staging dir may be empty or inaccessible
+      }
+
       console.log('[Burp Builder] Initialized successfully');
     } catch (error) {
       console.error('[Burp Builder] Initialization error:', error);
@@ -81,6 +99,7 @@ class BurpImageBuilder {
 
   /**
    * Process uploaded Burp Suite JAR file
+   * With diskStorage, jarFile.path is the temp file on disk (no buffer in memory)
    */
   async processJARUpload(
     userId: string,
@@ -91,24 +110,34 @@ class BurpImageBuilder {
     try {
       // Validate JAR file
       if (!jarFile.originalname.endsWith('.jar')) {
+        await fs.unlink(jarFile.path).catch(() => {});
         throw new Error('File must be a JAR file');
       }
 
-      if (jarFile.size > 500 * 1024 * 1024) { // 500MB limit
-        throw new Error('JAR file too large (max 500MB)');
+      if (jarFile.size > 800 * 1024 * 1024) { // 800MB limit -- matches multer config
+        await fs.unlink(jarFile.path).catch(() => {});
+        throw new Error('JAR file too large (max 800MB)');
       }
 
       // Create user directory
       const userUploadDir = path.join(this.uploadDir, userId);
       await fs.mkdir(userUploadDir, { recursive: true });
 
-      // Save JAR file
+      // Move JAR file from staging to user directory
       const jarFileName = `burpsuite_pro.jar`;
       const jarFilePath = path.join(userUploadDir, jarFileName);
 
-      await fs.writeFile(jarFilePath, jarFile.buffer);
+      try {
+        // rename is atomic and O(1) on same filesystem
+        await fs.rename(jarFile.path, jarFilePath);
+      } catch (renameErr) {
+        // Cross-filesystem fallback: copy then delete
+        console.log('[Burp Builder] rename failed, falling back to copy...');
+        await fs.copyFile(jarFile.path, jarFilePath);
+        await fs.unlink(jarFile.path).catch(() => {});
+      }
 
-      console.log(`[Burp Builder] JAR saved: ${jarFilePath}`);
+      console.log(`[Burp Builder] JAR saved: ${jarFilePath} (${(jarFile.size / 1024 / 1024).toFixed(1)}MB)`);
 
       return {
         userId,
@@ -118,6 +147,10 @@ class BurpImageBuilder {
         uploadedAt: new Date(),
       };
     } catch (error) {
+      // Ensure temp file is cleaned up on any error
+      if (jarFile.path) {
+        await fs.unlink(jarFile.path).catch(() => {});
+      }
       console.error(`[Burp Builder] JAR upload failed:`, error);
       throw error;
     }
@@ -244,7 +277,7 @@ class BurpImageBuilder {
     return `# Kasm Burp Suite Workspace Image
 # Dynamically generated for user-uploaded JAR
 
-FROM kasmweb/core-ubuntu-focal:1.17.0
+FROM kasmweb/core-ubuntu-jammy:1.17.0
 USER root
 
 ENV HOME /home/kasm-default-profile

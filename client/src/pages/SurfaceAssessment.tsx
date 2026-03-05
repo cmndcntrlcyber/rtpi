@@ -116,7 +116,7 @@ export default function SurfaceAssessment() {
         </TabsList>
 
         <TabsContent value="overview" className="mt-0">
-          <OverviewTab operationId={selectedOperation} />
+          <OverviewTab operationId={selectedOperation} onTabChange={setActiveTab} />
         </TabsContent>
 
         <TabsContent value="vulnerabilities" className="mt-0">
@@ -132,7 +132,10 @@ export default function SurfaceAssessment() {
         </TabsContent>
 
         <TabsContent value="topology" className="mt-0">
-          <NetworkTopologyView operationId={selectedOperation} />
+          <NetworkTopologyView
+            operationId={selectedOperation}
+            operationName={operations.find(op => op.id === selectedOperation)?.name}
+          />
         </TabsContent>
 
         <TabsContent value="activity" className="mt-0">

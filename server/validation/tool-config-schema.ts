@@ -227,7 +227,7 @@ export const toolConfigurationSchema = Joi.object({
   // Metadata
   tags: Joi.array().items(Joi.string()).optional(),
   lastValidated: Joi.string().isoDate().optional(),
-  validationStatus: Joi.string().valid('validated', 'pending', 'failed').optional(),
+  validationStatus: Joi.string().valid('discovered', 'untested', 'tested', 'validated').optional(),
   notes: Joi.string().max(2000).optional(),
 });
 
@@ -283,7 +283,7 @@ export const updateToolRegistrySchema = Joi.object({
   binaryPath: Joi.string().optional(),
   config: Joi.object().optional(),
   installStatus: Joi.string().valid('pending', 'installing', 'installed', 'failed', 'updating').optional(),
-  validationStatus: Joi.string().valid('validated', 'pending', 'failed').optional(),
+  validationStatus: Joi.string().valid('discovered', 'untested', 'tested', 'validated').optional(),
   tags: Joi.array().items(Joi.string()).optional(),
   notes: Joi.string().max(2000).optional().allow(null),
 }).min(1); // At least one field must be provided

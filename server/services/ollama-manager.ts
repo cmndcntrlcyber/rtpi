@@ -216,6 +216,15 @@ export class OllamaManager {
     modelName: string,
     options: ModelPullOptions = {}
   ): Promise<{ success: boolean; error?: string }> {
+    // RKLLama mode: models are pre-converted .rkllm files, not pulled via API
+    if (process.env.RKLLM_MODE === "true") {
+      console.log(`[OllamaManager] RKLLama mode — pull not supported via API. Use 'rkllama_client pull ${modelName}' on the host.`);
+      return {
+        success: false,
+        error: "Model pulling not supported in RKLLama NPU mode. Models must be pre-converted to .rkllm format. Use 'rkllama_client pull' on the host.",
+      };
+    }
+
     try {
       console.log(`[OllamaManager] Pulling model: ${modelName}`);
 
@@ -291,6 +300,15 @@ export class OllamaManager {
    * Delete a model from Ollama
    */
   async deleteModel(modelName: string): Promise<{ success: boolean; error?: string }> {
+    // RKLLama mode: model deletion is managed on the host filesystem
+    if (process.env.RKLLM_MODE === "true") {
+      console.log(`[OllamaManager] RKLLama mode — delete not supported via API. Remove .rkllm files from the model directory on the host.`);
+      return {
+        success: false,
+        error: "Model deletion not supported in RKLLama NPU mode. Remove .rkllm files from the model directory on the host.",
+      };
+    }
+
     try {
       console.log(`[OllamaManager] Deleting model: ${modelName}`);
 
@@ -603,4 +621,4 @@ export const ollamaManager = new OllamaManager();
 // Start auto-unload job on service initialization
 ollamaManager.startAutoUnloadJob();
 
-console.log("[OllamaManager] Service initialized");
+console.log(`[OllamaManager] Service initialized${process.env.RKLLM_MODE === "true" ? " (RKLLama NPU mode — pull/delete disabled)" : ""}`);

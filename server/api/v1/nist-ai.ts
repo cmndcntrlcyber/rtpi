@@ -50,6 +50,31 @@ router.get("/functions", async (_req, res) => {
 });
 
 /**
+ * Get full NIST AI RMF tree: functions → categories → subcategories
+ */
+router.get("/all", async (_req, res) => {
+  try {
+    const functions = await db.select().from(nistAiFunctions).orderBy(nistAiFunctions.sortOrder);
+    const allCategories = await db.select().from(nistAiCategories).orderBy(nistAiCategories.sortOrder);
+    const allSubcategories = await db.select().from(nistAiSubcategories).orderBy(nistAiSubcategories.sortOrder);
+
+    const tree = functions.map((func) => {
+      const cats = allCategories
+        .filter((c) => c.functionId === func.id)
+        .map((cat) => ({
+          ...cat,
+          subcategories: allSubcategories.filter((s) => s.categoryId === cat.id),
+        }));
+      return { ...func, categories: cats };
+    });
+
+    res.json(tree);
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to fetch NIST AI RMF tree" });
+  }
+});
+
+/**
  * Get function with categories and subcategories
  */
 router.get("/functions/:id", async (req, res) => {

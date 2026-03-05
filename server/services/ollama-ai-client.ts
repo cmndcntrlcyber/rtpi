@@ -228,6 +228,53 @@ ${params.context ? `Context: ${params.context}` : ""}
 
 Provide detailed security analysis.`,
   },
+
+  // Tool Command Generation
+  generate_tool_command: {
+    name: "Generate Tool Command",
+    system: `You are a penetration testing expert generating commands for authorized security assessments. Generate the correct command-line invocation for a security tool given the tool info, target, and optionally, operation credentials.
+
+Rules:
+- Return ONLY the raw command string on a single line — no explanation, no markdown, no backticks
+- Use the exact binary path provided
+- Include all required flags for the tool
+- Use the target value appropriately based on the tool's requirements and the target type
+- Add common useful flags (verbose output, reasonable timeouts) where appropriate
+- Do NOT include destructive or dangerous flags
+- Do NOT include flags that write to files unless specifically asked
+
+Credential handling (IMPORTANT — only when credentials are provided in Additional Context):
+- Incorporate credentials using the tool's NATIVE authentication flags
+- Common flag patterns by tool:
+  - hydra: -l <user> -p <pass> (or -L/-P for files)
+  - nxc/netexec/crackmapexec: -u <user> -p <pass> -d <domain>
+  - evil-winrm: -u <user> -p <pass> (or -H <hash> for pass-the-hash)
+  - impacket tools (psexec, wmiexec, smbexec, secretsdump): <domain>/<user>:<pass>@<target> (or <domain>/<user>@<target> -hashes :<ntlm>)
+  - wpscan: --username <user> --password <pass>
+  - bloodhound-python: -u <user> -p <pass> -d <domain>
+  - nikto: -id <user>:<pass>
+  - sqlmap: --auth-cred="<user>:<pass>"
+  - gobuster/ffuf/feroxbuster/dirsearch: use HTTP basic auth flags when credentials are available (e.g., -U <user> -P <pass> or --auth <user>:<pass>)
+  - nuclei: -H "Authorization: Basic <base64>"
+  - rpcclient/smbclient: -U <user>%<pass>
+  - kerbrute: use username directly for enumeration
+  - medusa/patator: tool-specific credential flags
+- If NTLM hashes are available and the tool supports pass-the-hash, prefer the hash over the plaintext password
+- If a domain is provided with the credentials, include it using the tool's domain flag
+- If no credentials are provided, generate the command WITHOUT any authentication flags
+- NEVER fabricate or guess credentials — only use what is explicitly provided`,
+    user: (params) => `Generate a command for:
+
+Tool: ${params.toolName} (binary: ${params.binaryPath})
+Target: ${params.targetValue} (type: ${params.targetType})
+
+Tool Reference:
+${params.toolReference}
+
+${params.additionalContext ? `Additional Context:\n${params.additionalContext}` : "No credentials or additional context provided."}
+
+Return ONLY the command string.`,
+  },
 };
 
 // ============================================================================
@@ -299,8 +346,8 @@ class ResponseCache {
 
 export class OllamaAIClient {
   private readonly OLLAMA_HOST: string;
-  private readonly DEFAULT_MODEL = "llama3:8b";
-  private readonly CODE_MODEL = "qwen2.5-coder:7b";
+  private readonly DEFAULT_MODEL = process.env.RKLLM_DEFAULT_MODEL || "llama3:8b";
+  private readonly CODE_MODEL = process.env.RKLLM_CODE_MODEL || "qwen2.5-coder:7b";
   private readonly cache = new ResponseCache();
   constructor(host: string = process.env.OLLAMA_HOST || "http://localhost:11434") {
     this.OLLAMA_HOST = host.replace(/\/$/, "");
@@ -451,6 +498,8 @@ export class OllamaAIClient {
     const startTime = Date.now();
 
     try {
+      // Configurable timeout for local inference (NPU/CPU can be slower than GPU)
+      const timeoutMs = parseInt(process.env.RKLLM_TIMEOUT_MS || "600000", 10);
       const response = await fetch(`${this.OLLAMA_HOST}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -464,6 +513,7 @@ export class OllamaAIClient {
             stop: options.stopSequences,
           },
         }),
+        signal: AbortSignal.timeout(timeoutMs),
       });
 
       if (!response.ok) {
@@ -627,6 +677,8 @@ export class OllamaAIClient {
    * Automatically select the best available provider
    */
   private selectProvider(): AIProvider {
+    // When PREFER_LOCAL_AI is set, use local inference first (RKLLama/Ollama)
+    if (process.env.PREFER_LOCAL_AI === "true") return "ollama";
     // Prefer cloud providers when API keys are configured
     if (this.anthropic) return "anthropic";
     if (this.openai) return "openai";
@@ -746,3 +798,9 @@ export const ollamaAIClient = new OllamaAIClient();
 
 console.log("[OllamaAIClient] Service initialized");
 console.log(`[OllamaAIClient] Available providers: ${ollamaAIClient.getAvailableProviders().join(", ")}`);
+if (process.env.RKLLM_MODE === "true") {
+  console.log(`[OllamaAIClient] RKLLama NPU mode enabled (default: ${process.env.RKLLM_DEFAULT_MODEL || "llama3:8b"}, code: ${process.env.RKLLM_CODE_MODEL || "qwen2.5-coder:7b"})`);
+}
+if (process.env.PREFER_LOCAL_AI === "true") {
+  console.log("[OllamaAIClient] Local-first AI enabled — cloud providers used as fallback only");
+}

@@ -55,6 +55,22 @@ RUN npm install -g \
     request \
     superagent
 
+# Install Go tools as rtpi-agent (Go is set up for this user)
+USER rtpi-agent
+RUN mkdir -p /opt/tools/bin
+
+# Katana - Fast web crawler
+RUN go install github.com/projectdiscovery/katana/cmd/katana@latest && \
+    cp ~/go/bin/katana /opt/tools/bin/ 2>/dev/null || true
+
+# httpx - HTTP toolkit
+RUN go install github.com/projectdiscovery/httpx/cmd/httpx@latest && \
+    cp ~/go/bin/httpx /opt/tools/bin/ 2>/dev/null || true
+
+# Dalfox - XSS scanner
+RUN go install github.com/hahwul/dalfox/v2@latest && \
+    cp ~/go/bin/dalfox /opt/tools/bin/ 2>/dev/null || true
+
 # Switch to root for tool cloning
 USER root
 WORKDIR /opt/tools
@@ -80,9 +96,8 @@ RUN git clone --depth 1 https://github.com/PortSwigger/autorize.git autorize && 
 # WEB CRAWLING TOOLS
 # =============================================================================
 
-# Katana - Fast web crawler (requires Go 1.24+, may fail on older base images)
+# Katana source (binary installed via go install above)
 RUN git clone --depth 1 https://github.com/projectdiscovery/katana.git && \
-    (cd katana/cmd/katana && go build -o /opt/tools/bin/katana . 2>/dev/null || true) && \
     echo "katana: Fast web crawler from ProjectDiscovery" > katana/TOOL_INFO.txt
 
 # Gospider - Fast web spider
@@ -168,9 +183,8 @@ RUN git clone --depth 1 https://github.com/flipkart-incubator/Astra.git && \
 # UTILITY TOOLS
 # =============================================================================
 
-# httpx - HTTP toolkit (requires Go 1.24+, may fail on older base images)
+# httpx source (binary installed via go install above)
 RUN git clone --depth 1 https://github.com/projectdiscovery/httpx.git && \
-    (cd httpx/cmd/httpx && go build -o /opt/tools/bin/httpx . 2>/dev/null || true) && \
     echo "httpx: Fast HTTP probing tool" > httpx/TOOL_INFO.txt
 
 # Qsreplace - Query string replacer
@@ -183,9 +197,8 @@ RUN git clone --depth 1 https://github.com/tomnomnom/unfurl.git && \
     (cd unfurl && go build -o /opt/tools/bin/unfurl . 2>/dev/null || true) && \
     echo "unfurl: URL parser and extractor" > unfurl/TOOL_INFO.txt
 
-# Dalfox - XSS scanner
+# Dalfox source (binary installed via go install above)
 RUN git clone --depth 1 https://github.com/hahwul/dalfox.git && \
-    (cd dalfox && go build -o /opt/tools/bin/dalfox . 2>/dev/null || true) && \
     echo "dalfox: XSS vulnerability scanner" > dalfox/TOOL_INFO.txt
 
 # =============================================================================
@@ -203,7 +216,7 @@ ENV PATH="/opt/tools/bin:${PATH}"
 # =============================================================================
 
 # Set ownership
-RUN chown -R rtpi-agent:rtpi-agent /opt/tools
+RUN chown -R rtpi-agent:rtpi-agent /opt/tools /docs
 
 # Generate tool documentation
 RUN /usr/local/bin/generate-docs.sh || true

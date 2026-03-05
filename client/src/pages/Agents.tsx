@@ -10,8 +10,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Bot, Server, Activity, Clock, Plus, RotateCcw, Pause, Target, CheckCircle, AlertTriangle, Zap, GripVertical, ArrowRight, X, Import, Workflow, ChevronDown, ChevronRight, Pencil, Trash2 } from "lucide-react";
+import { Bot, Server, Activity, Clock, Plus, RotateCcw, Pause, Target, CheckCircle, AlertTriangle, Zap, GripVertical, ArrowRight, X, Import, Workflow, ChevronDown, ChevronRight, Pencil, Trash2, Search, MoveRight, Ban } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useAgents } from "@/hooks/useAgents";
 import { useMCPServers } from "@/hooks/useMCPServers";
 import { useTargets } from "@/hooks/useTargets";
@@ -312,6 +313,36 @@ export default function Agents() {
     args: [],
     autoRestart: true,
   });
+  const [agentMcpSearch, setAgentMcpSearch] = useState("");
+  const [toolSearch, setToolSearch] = useState("");
+  const [tactics, setTactics] = useState<{ id: string; attackId: string; name: string; shortName: string }[]>([]);
+
+  // Load ATT&CK tactics for agent-tactic assignment dropdowns
+  useEffect(() => {
+    api.get<{ tactics: any[] }>("/attack/tactics").then(res => {
+      setTactics(res.tactics || []);
+    }).catch(() => {});
+  }, []);
+
+  const handleAssignTactic = async (agentId: string, tacticId: string) => {
+    try {
+      await api.put(`/agents/${agentId}/tactic`, { tacticId });
+      toast.success("Agent assigned to tactic");
+      refetchAgents();
+    } catch {
+      toast.error("Failed to assign tactic");
+    }
+  };
+
+  const handleRemoveTactic = async (agentId: string) => {
+    try {
+      await api.delete(`/agents/${agentId}/tactic`);
+      toast.success("Agent removed from tactic");
+      refetchAgents();
+    } catch {
+      toast.error("Failed to remove tactic");
+    }
+  };
 
   // Load active loops
   useEffect(() => {
@@ -1047,10 +1078,21 @@ export default function Agents() {
           </CardHeader>
           {expandedGroups.agentsTabs && <CardContent>
         <Tabs defaultValue="ai" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="ai">AI Agents</TabsTrigger>
-            <TabsTrigger value="mcp">MCP Servers</TabsTrigger>
-          </TabsList>
+          <div className="flex items-center gap-3">
+            <TabsList>
+              <TabsTrigger value="ai">AI Agents</TabsTrigger>
+              <TabsTrigger value="mcp">MCP Servers</TabsTrigger>
+            </TabsList>
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Filter agents & servers..."
+                value={agentMcpSearch}
+                onChange={(e) => setAgentMcpSearch(e.target.value)}
+                className="pl-8 h-9"
+              />
+            </div>
+          </div>
 
           <TabsContent value="ai" className="space-y-4">
             <div className="flex justify-end gap-2 mb-4">
@@ -1085,7 +1127,17 @@ export default function Agents() {
             ) : (
               <>
                 <div className="grid grid-cols-1 gap-6">
-                  {agents.map((agent) => {
+                  {agents
+                    .filter((agent) => {
+                      if (!agentMcpSearch.trim()) return true;
+                      const q = agentMcpSearch.toLowerCase();
+                      return (
+                        agent.name.toLowerCase().includes(q) ||
+                        agent.type.toLowerCase().includes(q) ||
+                        (agent.status || "").toLowerCase().includes(q)
+                      );
+                    })
+                    .map((agent) => {
                     const config = agent.config as any;
                     const loopPartner = config?.loopEnabled
                       ? agents.find((a) => a.id === config.loopPartnerId)
@@ -1114,6 +1166,70 @@ export default function Agents() {
                             >
                               {agent.status}
                             </Badge>
+                          </div>
+
+                          {/* Tactic Assignment */}
+                          <div className="flex items-center gap-2 mb-4">
+                            {agent.tactic ? (
+                              <Badge variant="secondary" className="bg-amber-500/10 text-amber-600 text-xs">
+                                {agent.tactic.attackId} — {agent.tactic.name}
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground italic">No tactic assigned</span>
+                            )}
+
+                            <div className="ml-auto flex items-center gap-1">
+                              {/* Add to tactic (+) */}
+                              {!agent.tactic && (
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Assign to tactic">
+                                      <Plus className="h-4 w-4 text-green-600" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    {tactics.map(t => (
+                                      <DropdownMenuItem key={t.id} onClick={() => handleAssignTactic(agent.id, t.id)}>
+                                        {t.attackId} — {t.name}
+                                      </DropdownMenuItem>
+                                    ))}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              )}
+
+                              {/* Move to different tactic (arrow) */}
+                              {agent.tactic && (
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Move to different tactic">
+                                      <MoveRight className="h-4 w-4 text-blue-600" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    {tactics
+                                      .filter(t => t.id !== agent.tactic?.tacticId)
+                                      .map(t => (
+                                        <DropdownMenuItem key={t.id} onClick={() => handleAssignTactic(agent.id, t.id)}>
+                                          {t.attackId} — {t.name}
+                                        </DropdownMenuItem>
+                                      ))}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              )}
+
+                              {/* Remove from tactic (red circle-slash) */}
+                              {agent.tactic && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 w-7 p-0"
+                                  title="Remove from tactic"
+                                  onClick={() => handleRemoveTactic(agent.id)}
+                                >
+                                  <Ban className="h-4 w-4 text-red-500" />
+                                </Button>
+                              )}
+                            </div>
                           </div>
 
                           {/* Capabilities Section */}
@@ -1333,7 +1449,17 @@ export default function Agents() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {mcpServers.map((server) => (
+              {mcpServers
+                .filter((server) => {
+                  if (!agentMcpSearch.trim()) return true;
+                  const q = agentMcpSearch.toLowerCase();
+                  return (
+                    server.name.toLowerCase().includes(q) ||
+                    (server.command || "").toLowerCase().includes(q) ||
+                    (server.status || "").toLowerCase().includes(q)
+                  );
+                })
+                .map((server) => (
                 <Card key={server.id} className="bg-card">
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between mb-4">
@@ -1490,7 +1616,10 @@ export default function Agents() {
       {/* Import/Edit Agent Dialog */}
       <Dialog open={agentDialogOpen} onOpenChange={(open) => {
         setAgentDialogOpen(open);
-        if (!open) setEditingAgent(null);
+        if (!open) {
+          setEditingAgent(null);
+          setToolSearch("");
+        }
       }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -1589,13 +1718,31 @@ export default function Agents() {
                 <h3 className="text-lg font-semibold">Tools Enabled</h3>
               </div>
 
+              <div className="relative mb-2">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Filter tools..."
+                  value={toolSearch}
+                  onChange={(e) => setToolSearch(e.target.value)}
+                  className="pl-8 h-8 text-sm"
+                />
+              </div>
               <div className="space-y-2 max-h-48 overflow-y-auto border border-border rounded-lg p-3">
                 {tools.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-2">
                     No tools available. Please seed the tools database.
                   </p>
                 ) : (
-                  tools.map((tool) => (
+                  tools
+                    .filter((tool) => {
+                      if (!toolSearch.trim()) return true;
+                      const q = toolSearch.toLowerCase();
+                      return (
+                        tool.name.toLowerCase().includes(q) ||
+                        tool.category.toLowerCase().includes(q)
+                      );
+                    })
+                    .map((tool) => (
                     <div key={tool.id} className="flex items-center gap-2 hover:bg-secondary p-2 rounded">
                       <input
                         type="checkbox"

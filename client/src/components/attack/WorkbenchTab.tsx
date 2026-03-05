@@ -227,6 +227,8 @@ export default function WorkbenchTab() {
 
   return (
     <div className="space-y-6">
+      {/* Connection Status + Sync side by side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Connection Status */}
       <Card>
         <CardHeader>
@@ -352,6 +354,7 @@ export default function WorkbenchTab() {
           )}
         </CardContent>
       </Card>
+      </div>
 
       {/* Collections Management */}
       <Card>
@@ -465,6 +468,27 @@ export default function WorkbenchTab() {
           )}
         </CardContent>
       </Card>
+
+      {/* Embedded Workbench Frontend */}
+      {health?.status === "connected" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>ATT&CK Workbench Frontend</CardTitle>
+            <CardDescription>
+              Interactive ATT&CK Workbench editor embedded from local instance
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <iframe
+              src="http://localhost:3020"
+              className="w-full border-0 rounded-b-lg"
+              style={{ height: "70vh" }}
+              title="ATT&CK Workbench"
+              sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+            />
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

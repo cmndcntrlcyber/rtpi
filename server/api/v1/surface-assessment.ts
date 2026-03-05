@@ -4,7 +4,8 @@ import {
   discoveredAssets,
   discoveredServices,
   vulnerabilities,
-  axScanResults
+  axScanResults,
+  targets
 } from '@shared/schema';
 import { eq, and, sql, desc, inArray } from 'drizzle-orm';
 import { ensureRole, logAudit } from '../../auth/middleware';
@@ -102,6 +103,16 @@ router.get('/:operationId/overview', async (req, res) => {
       .orderBy(desc(sql`count(${vulnerabilities.id})`))
       .limit(10);
 
+    // Get asset type breakdown
+    const assetTypeBreakdown = await db
+      .select({
+        type: discoveredAssets.type,
+        count: sql<number>`count(*)`,
+      })
+      .from(discoveredAssets)
+      .where(eq(discoveredAssets.operationId, operationId))
+      .groupBy(discoveredAssets.type);
+
     // Get recent activity (scan results)
     const recentActivity = await db
       .select({
@@ -193,6 +204,32 @@ router.get('/:operationId/overview', async (req, res) => {
       };
     });
 
+    // Format asset type breakdown
+    const assetBreakdown: Record<string, number> = {
+      domains: 0,
+      ips: 0,
+      urls: 0,
+      technologies: 0,
+      asns: 0,
+      emails: 0,
+      storageBuckets: 0,
+    };
+    assetTypeBreakdown.forEach((row) => {
+      const typeMap: Record<string, string> = {
+        domain: 'domains',
+        ip: 'ips',
+        url: 'urls',
+        technology: 'technologies',
+        asn: 'asns',
+        email: 'emails',
+        storage_bucket: 'storageBuckets',
+        host: 'ips',
+        network: 'ips',
+      };
+      const key = typeMap[row.type] || 'ips';
+      assetBreakdown[key] = (assetBreakdown[key] || 0) + Number(row.count);
+    });
+
     // Build response
     const response = {
       stats: {
@@ -202,6 +239,7 @@ router.get('/:operationId/overview', async (req, res) => {
         webVulnerabilities: Number(webVulnsResult?.count || 0),
         lastScanTimestamp: lastScanResult?.lastScan?.toISOString() || null,
       },
+      assetBreakdown,
       severityData,
       statusData,
       topAssets: formattedAssets,
@@ -238,13 +276,25 @@ router.get('/:operationId/assets', async (req, res) => {
         discoveryMethod: discoveredAssets.discoveryMethod,
         operatingSystem: discoveredAssets.operatingSystem,
         tags: discoveredAssets.tags,
+        metadata: discoveredAssets.metadata,
         lastSeenAt: discoveredAssets.lastSeenAt,
+        targetId: discoveredAssets.targetId,
       })
       .from(discoveredAssets)
       .where(eq(discoveredAssets.operationId, operationId));
 
     // Execute query
     const assets = await query;
+
+    // Batch-fetch linked targets for tag data (avoids N+1)
+    const targetIds = assets.map(a => a.targetId).filter(Boolean) as string[];
+    const linkedTargets = targetIds.length > 0
+      ? await db
+          .select({ id: targets.id, name: targets.name, tags: targets.tags })
+          .from(targets)
+          .where(inArray(targets.id, targetIds))
+      : [];
+    const targetMap = new Map(linkedTargets.map(t => [t.id, t]));
 
     // Get services for each asset
     const assetsWithServices = await Promise.all(
@@ -274,10 +324,15 @@ router.get('/:operationId/assets', async (req, res) => {
             )
           );
 
+        // Attach linked target tags for topology grouping
+        const linkedTarget = asset.targetId ? targetMap.get(asset.targetId) : null;
+
         return {
           ...asset,
           services,
           vulnerabilityCount: Number(vulnCount?.count || 0),
+          targetTags: (linkedTarget?.tags as string[]) || [],
+          targetName: linkedTarget?.name || null,
         };
       })
     );

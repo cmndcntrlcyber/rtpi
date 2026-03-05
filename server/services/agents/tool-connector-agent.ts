@@ -13,7 +13,7 @@
 import { db } from '../../db';
 import { agents, toolRegistry, toolParameters } from '../../../shared/schema';
 import { DockerExecutor } from '../docker-executor';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { EventEmitter } from 'events';
 
 // ============================================================================
@@ -119,7 +119,9 @@ const TOOL_CONTAINERS: ToolContainer[] = [
     name: 'rtpi-research-agent',
     user: 'rtpi-agent',
     category: 'research',
-    enabledToolCategories: ['reconnaissance', 'vulnerability', 'exploitation', 'web', 'network'],
+    // Narrowed: this container only has searchsploit, bbot, dirsearch, nmap, masscan, httpx.
+    // Most tools were moved to fuzzing-agent, burp-agent, framework-agent, etc.
+    enabledToolCategories: ['exploitation', 'reconnaissance', 'network'],
   },
 ];
 
@@ -444,7 +446,7 @@ export class ToolConnectorAgent extends EventEmitter {
         await db
           .update(agents)
           .set({
-            tasksCompleted: discoveredTools.length,
+            tasksCompleted: sql`${agents.tasksCompleted} + 1`,
             lastActivity: new Date(),
           })
           .where(eq(agents.id, this.agentId));
@@ -492,6 +494,18 @@ export class ToolConnectorAgent extends EventEmitter {
       { timeout: 5000, user: container.user }
     );
     const toolPath = whichResult.stdout?.trim() || `/usr/bin/${toolName}`;
+
+    // Verify binary actually exists and is executable at the reported path
+    // (prevents stale symlinks or PATH entries from corrupting the registry)
+    const verifyResult = await this.dockerExecutor.exec(
+      container.name,
+      ['test', '-x', toolPath],
+      { timeout: 5000, user: container.user }
+    );
+    if (verifyResult.exitCode !== 0) {
+      console.debug(`Tool ${toolName} reported at ${toolPath} in ${container.name} but binary not executable, skipping`);
+      return null;
+    }
 
     // Parse version from output
     const version = this.parseVersion(output);
@@ -651,8 +665,15 @@ export class ToolConnectorAgent extends EventEmitter {
    * Sync discovered tools to registry
    */
   private async syncRegistry(tools: DiscoveredTool[]): Promise<void> {
+    // Reject error strings from version/description fields
+    const isErrorStr = (s?: string) =>
+      !!s && /OCI runtime|exec failed|not found|No such file|Permission denied|unable to start/i.test(s);
+
     for (const tool of tools) {
       try {
+        const cleanVersion = isErrorStr(tool.version) ? undefined : tool.version;
+        const cleanDescription = isErrorStr(tool.description) ? undefined : tool.description;
+
         // Check if tool exists by name
         const [existing] = await db
           .select()
@@ -660,17 +681,30 @@ export class ToolConnectorAgent extends EventEmitter {
           .where(eq(toolRegistry.toolId, tool.name));
 
         if (existing) {
-          // Update existing tool
+          // Don't overwrite container/path for tools that have been validated or tested
+          // unless the new discovery is from the same container (i.e. a legitimate re-scan).
+          // This prevents a stale discovery from re-corrupting a manually-fixed entry.
+          const existingStatus = (existing as any).validationStatus || '';
+          const isHighConfidence = ['validated', 'tested'].includes(existingStatus);
+          const isSameContainer = (existing as any).containerName === tool.containerName;
+
+          const updates: Record<string, any> = {
+            version: cleanVersion || existing.version,
+            description: cleanDescription || (existing as any).description,
+            updatedAt: new Date(),
+          };
+
+          // Only update container/path if the existing record isn't high-confidence
+          // or the new discovery comes from the same container
+          if (!isHighConfidence || isSameContainer) {
+            updates.binaryPath = tool.path;
+            updates.containerName = tool.containerName;
+            updates.containerUser = tool.containerUser;
+          }
+
           await db
             .update(toolRegistry)
-            .set({
-              version: tool.version,
-              description: tool.description || existing.description,
-              binaryPath: tool.path,
-              containerName: tool.containerName,
-              containerUser: tool.containerUser,
-              updatedAt: new Date(),
-            })
+            .set(updates)
             .where(eq(toolRegistry.id, existing.id));
 
           // Update parameters
@@ -684,13 +718,14 @@ export class ToolConnectorAgent extends EventEmitter {
               toolId: tool.name,
               name: this.formatDisplayName(tool.name),
               category: tool.category as any,
-              version: tool.version,
-              description: tool.description,
+              version: cleanVersion,
+              description: cleanDescription,
               binaryPath: tool.path,
               containerName: tool.containerName,
               containerUser: tool.containerUser,
               installMethod: 'manual',
               installStatus: 'installed',
+              validationStatus: 'discovered',
               config: {
                 helpText: tool.helpText,
               },

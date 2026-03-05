@@ -43,6 +43,47 @@ export interface MCPToolSchema {
   };
 }
 
+// Directories to skip during tool discovery
+const EXCLUDED_DIRS = new Set([
+  'node_modules', '.git', '__pycache__', 'venv', '.github',
+  'docs', 'doc', 'test', 'tests', 'spec', 'samples',
+  'target',     // Rust build output (contains build-script-build etc.)
+  'vendor',     // Go vendor directory
+  'gradle',     // Gradle wrapper internals
+  'snap',       // Snap packaging
+  '.hooks',     // Git hooks
+]);
+
+// Files to skip — these are not security tools
+const EXCLUDED_FILE_PATTERNS = [
+  /^build[-_]script/,           // Rust build scripts
+  /\.so(\.\d+)*$/,              // Shared libraries (.so, .so.1, etc.)
+  /\.go$/,                      // Go source files
+  /\.py$/,                      // Python source files (use installed CLI instead)
+  /\.pl$/,                      // Perl source files (handled via baseCommand)
+  /\.rb$/,                      // Ruby source files
+  /\.sh$/i,                     // Shell scripts in source dirs (real tools are in /opt/tools/bin/)
+  /^gradlew/,                   // Gradle wrapper (spawns JVM, uses excessive memory)
+  /^mvnw/,                      // Maven wrapper (same issue)
+  /TOOL_INFO\.txt$/,            // Metadata files
+  /README/i,                    // Documentation
+  /LICENSE/i,                   // License files
+  /Makefile/i,                  // Build files
+  /^setup\.py$/,                // Python setup
+  /^configure$/,                // Autotools configure
+  /^Dockerfile/i,               // Container build files
+  /^\.dockerignore$/,           // Docker ignore
+  /^\.gitignore$/,              // Git ignore
+  /\.bat$/,                     // Windows batch files
+];
+
+/**
+ * Check if a filename should be excluded from tool discovery
+ */
+function isExcludedFile(filename: string): boolean {
+  return EXCLUDED_FILE_PATTERNS.some(pattern => pattern.test(filename));
+}
+
 /**
  * Find all executable files in a directory recursively
  */
@@ -56,12 +97,12 @@ async function findExecutables(basePath: string): Promise<string[]> {
       const fullPath = path.join(basePath, entry.name);
 
       if (entry.isDirectory()) {
-        // Skip common non-tool directories
-        if (!['node_modules', '.git', '__pycache__', 'venv'].includes(entry.name)) {
+        if (!EXCLUDED_DIRS.has(entry.name)) {
           const subExecutables = await findExecutables(fullPath);
           executables.push(...subExecutables);
         }
       } else if (entry.isFile()) {
+        if (isExcludedFile(entry.name)) continue;
         try {
           await fs.access(fullPath, fs.constants.X_OK);
           executables.push(fullPath);

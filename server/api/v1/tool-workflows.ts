@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "../../db";
-import { toolWorkflows, securityTools } from "@shared/schema";
+import { toolWorkflows, securityTools, toolRegistry } from "@shared/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { z } from "zod";
 
@@ -338,10 +338,23 @@ router.post("/:id/execute", async (req, res) => {
  */
 router.get("/meta/available-tools", async (_req, res) => {
   try {
-    const tools = await db.query.securityTools.findMany({
-      where: eq(securityTools.status, "available"),
-      orderBy: [desc(securityTools.name)],
-    });
+    const regTools = await db.select().from(toolRegistry)
+      .where(eq(toolRegistry.installStatus, 'installed'));
+
+    const tools = regTools.map(rt => ({
+      id: rt.id,
+      name: rt.name,
+      category: rt.category,
+      description: rt.description,
+      status: 'available' as const,
+      command: rt.toolId,
+      dockerImage: rt.containerName || 'rtpi-tools',
+      version: rt.version,
+      configPath: rt.binaryPath,
+      usageCount: 0,
+      createdAt: rt.createdAt,
+      updatedAt: rt.updatedAt,
+    }));
 
     res.json({ tools });
   } catch (error: any) {

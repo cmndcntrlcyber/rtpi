@@ -8,6 +8,7 @@ import {
   json,
   pgEnum,
   real,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 // ============================================================================
@@ -22,7 +23,7 @@ export const severityEnum = pgEnum("severity", ["critical", "high", "medium", "l
 export const agentTypeEnum = pgEnum("agent_type", ["openai", "anthropic", "mcp_server", "custom"]);
 export const agentStatusEnum = pgEnum("agent_status", ["idle", "running", "error", "stopped"]);
 export const containerStatusEnum = pgEnum("container_status", ["running", "stopped", "paused", "restarting", "dead"]);
-export const assetTypeEnum = pgEnum("asset_type", ["host", "domain", "ip", "network", "url"]);
+export const assetTypeEnum = pgEnum("asset_type", ["host", "domain", "ip", "network", "url", "technology", "asn", "email", "storage_bucket"]);
 export const discoveryMethodEnum = pgEnum("discovery_method", ["bbot", "nuclei", "nmap", "manual"]);
 export const assetStatusEnum = pgEnum("asset_status", ["active", "down", "unreachable"]);
 export const scanStatusEnum = pgEnum("scan_status", ["pending", "running", "completed", "failed", "cancelled"]);
@@ -329,6 +330,16 @@ export const agents = pgTable("agents", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+// Agent-to-ATT&CK Tactic mapping (one tactic per agent)
+export const agentTactics = pgTable("agent_tactics", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  tacticId: uuid("tactic_id").notNull().references(() => attackTactics.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("agent_tactic_unique_idx").on(table.agentId, table.tacticId),
+]);
+
 export const files = pgTable("files", {
   id: uuid("id").primaryKey().defaultRandom(),
   filename: text("filename").notNull(),
@@ -472,7 +483,7 @@ export const reportTemplates = pgTable("report_templates", {
 export const toolStatusEnum = pgEnum("tool_status", ["available", "running", "stopped", "error"]);
 export const workflowStatusEnum = pgEnum("workflow_status", ["pending", "running", "completed", "failed", "cancelled"]);
 export const taskStatusEnum = pgEnum("task_status", ["pending", "in_progress", "completed", "failed", "skipped"]);
-export const taskTypeEnum = pgEnum("task_type", ["analyze", "exploit", "report", "custom"]);
+export const taskTypeEnum = pgEnum("task_type", ["analyze", "exploit", "report", "execute_tools", "custom"]);
 
 export const securityTools = pgTable("security_tools", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -813,8 +824,12 @@ export const toolRegistry = pgTable("tool_registry", {
   // Status
   installStatus: installStatusEnum("install_status").notNull().default("pending"),
   installLog: text("install_log"),
-  validationStatus: text("validation_status"), // 'validated', 'pending', 'failed'
+  validationStatus: text("validation_status"), // 'discovered', 'untested', 'tested', 'validated'
   lastValidated: timestamp("last_validated"),
+
+  // Usage statistics (denormalized from toolExecutions for fast reads)
+  usageCount: integer("usage_count").notNull().default(0),
+  lastUsed: timestamp("last_used"),
 
   // Metadata
   tags: json("tags").default([]),
@@ -827,6 +842,26 @@ export const toolRegistry = pgTable("tool_registry", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+// Tool-to-ATT&CK Tactic mapping (many-to-many join table)
+export const toolRegistryTactics = pgTable("tool_registry_tactics", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  toolId: uuid("tool_id").notNull().references(() => toolRegistry.id, { onDelete: "cascade" }),
+  tacticId: uuid("tactic_id").notNull().references(() => attackTactics.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("tool_tactic_unique_idx").on(table.toolId, table.tacticId),
+]);
+
+// Tool-to-ATT&CK Technique mapping (many-to-many join table, max 3 per tool)
+export const toolRegistryTechniques = pgTable("tool_registry_techniques", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  toolId: uuid("tool_id").notNull().references(() => toolRegistry.id, { onDelete: "cascade" }),
+  techniqueId: uuid("technique_id").notNull().references(() => attackTechniques.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("tool_technique_unique_idx").on(table.toolId, table.techniqueId),
+]);
 
 export const toolParameters = pgTable("tool_parameters", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -2840,6 +2875,35 @@ export const nistAiSubcategories = pgTable("nist_ai_subcategories", {
   implementationExamples: text("implementation_examples").array(),
   informativeReferences: text("informative_references").array(),
 
+  metadata: json("metadata"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// CIS Controls v8
+
+export const cisControls = pgTable("cis_controls", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  controlId: text("control_id").notNull().unique(), // CIS.1 - CIS.18
+  name: text("name").notNull(),
+  description: text("description"),
+  implementationGroup: integer("implementation_group"), // 1, 2, or 3
+  assetType: text("asset_type"), // e.g. "Devices", "Data", "Users", "Network"
+  securityFunction: text("security_function"), // e.g. "Identify", "Protect", "Detect", "Respond", "Recover"
+  sortOrder: integer("sort_order"),
+  metadata: json("metadata"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const cisSafeguards = pgTable("cis_safeguards", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  safeguardId: text("safeguard_id").notNull().unique(), // e.g. "1.1", "1.2"
+  controlId: uuid("control_id").notNull().references(() => cisControls.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  implementationGroup: integer("implementation_group"), // Minimum IG level: 1, 2, or 3
+  assetType: text("asset_type"),
+  securityFunction: text("security_function"),
+  sortOrder: integer("sort_order"),
   metadata: json("metadata"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

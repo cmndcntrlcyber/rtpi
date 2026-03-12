@@ -48,6 +48,7 @@ export default function AssetsTab({ operationId }: AssetsTabProps) {
   const [selectedAssets, setSelectedAssets] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [activeTypes, setActiveTypes] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (operationId) {
@@ -166,10 +167,25 @@ export default function AssetsTab({ operationId }: AssetsTabProps) {
     }
   };
 
-  const filteredAssets = assets.filter(asset =>
-    asset.value.toLowerCase().includes(search.toLowerCase()) ||
-    asset.hostname?.toLowerCase().includes(search.toLowerCase())
-  );
+  const availableTypes = [...new Set(assets.map(a => a.type))].sort();
+
+  const toggleType = (type: string) => {
+    setActiveTypes(prev => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
+      return next;
+    });
+  };
+
+  const filteredAssets = assets.filter(asset => {
+    if (activeTypes.size > 0 && !activeTypes.has(asset.type)) return false;
+    if (search) {
+      return asset.value.toLowerCase().includes(search.toLowerCase()) ||
+        asset.hostname?.toLowerCase().includes(search.toLowerCase());
+    }
+    return true;
+  });
 
   if (!operationId) {
     return (
@@ -210,6 +226,27 @@ export default function AssetsTab({ operationId }: AssetsTabProps) {
             />
           </div>
         </div>
+
+        {/* Type Filter Tags */}
+        {availableTypes.length > 1 && (
+          <div className="flex flex-wrap gap-2 mt-3">
+            {availableTypes.map(type => (
+              <button
+                key={type}
+                onClick={() => toggleType(type)}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  activeTypes.has(type)
+                    ? 'bg-blue-600 text-white'
+                    : activeTypes.size === 0
+                      ? 'bg-muted text-muted-foreground hover:bg-muted/80'
+                      : 'bg-muted/50 text-muted-foreground/50 hover:bg-muted/80'
+                }`}
+              >
+                {type.replace('_', ' ').toUpperCase()} ({assets.filter(a => a.type === type).length})
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Selection Controls */}
         <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">

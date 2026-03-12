@@ -1,7 +1,7 @@
 import { dockerExecutor } from './docker-executor';
 import { db } from '../db';
 import { discoveredAssets, discoveredServices, axScanResults, vulnerabilities } from '@shared/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 
 interface BBOTOptions {
   preset?: string;
@@ -493,7 +493,10 @@ export class BBOTExecutor {
             discoveryMethod: 'bbot',
             metadata: { bbotEvent: event },
           })
-          .onConflictDoNothing()
+          .onConflictDoUpdate({
+            target: [discoveredAssets.operationId, discoveredAssets.type, discoveredAssets.value],
+            set: { lastSeenAt: new Date() },
+          })
           .returning();
 
         if (asset) assetsCount++;
@@ -516,7 +519,10 @@ export class BBOTExecutor {
             discoveryMethod: 'bbot',
             metadata: { bbotEvent: event },
           })
-          .onConflictDoNothing()
+          .onConflictDoUpdate({
+            target: [discoveredAssets.operationId, discoveredAssets.type, discoveredAssets.value],
+            set: { lastSeenAt: new Date() },
+          })
           .returning();
 
         if (asset) assetsCount++;
@@ -538,7 +544,10 @@ export class BBOTExecutor {
             discoveryMethod: 'bbot',
             metadata: { bbotEvent: event },
           })
-          .onConflictDoNothing()
+          .onConflictDoUpdate({
+            target: [discoveredAssets.operationId, discoveredAssets.type, discoveredAssets.value],
+            set: { lastSeenAt: new Date() },
+          })
           .returning();
 
         if (asset) assetsCount++;
@@ -583,7 +592,13 @@ export class BBOTExecutor {
             discoveryMethod: 'bbot',
             metadata: { bbotEvent: event },
           })
-          .onConflictDoNothing()
+          .onConflictDoUpdate({
+            target: [discoveredServices.assetId, discoveredServices.port, discoveredServices.protocol],
+            set: {
+              state: sql`EXCLUDED.state`,
+              metadata: sql`EXCLUDED.metadata`,
+            },
+          })
           .returning();
 
         if (service) servicesCount++;
@@ -607,7 +622,10 @@ export class BBOTExecutor {
             discoveryMethod: 'bbot',
             metadata: { bbotEvent: event },
           })
-          .onConflictDoNothing()
+          .onConflictDoUpdate({
+            target: [discoveredAssets.operationId, discoveredAssets.type, discoveredAssets.value],
+            set: { lastSeenAt: new Date() },
+          })
           .returning();
 
         if (asset) assetsCount++;
@@ -630,7 +648,10 @@ export class BBOTExecutor {
             discoveryMethod: 'bbot',
             metadata: { bbotEvent: event },
           })
-          .onConflictDoNothing()
+          .onConflictDoUpdate({
+            target: [discoveredAssets.operationId, discoveredAssets.type, discoveredAssets.value],
+            set: { lastSeenAt: new Date() },
+          })
           .returning();
 
         if (asset) assetsCount++;
@@ -652,7 +673,10 @@ export class BBOTExecutor {
             discoveryMethod: 'bbot',
             metadata: { bbotEvent: event },
           })
-          .onConflictDoNothing()
+          .onConflictDoUpdate({
+            target: [discoveredAssets.operationId, discoveredAssets.type, discoveredAssets.value],
+            set: { lastSeenAt: new Date() },
+          })
           .returning();
 
         if (asset) assetsCount++;
@@ -674,7 +698,10 @@ export class BBOTExecutor {
             discoveryMethod: 'bbot',
             metadata: { bbotEvent: event },
           })
-          .onConflictDoNothing()
+          .onConflictDoUpdate({
+            target: [discoveredAssets.operationId, discoveredAssets.type, discoveredAssets.value],
+            set: { lastSeenAt: new Date() },
+          })
           .returning();
 
         if (asset) assetsCount++;
@@ -810,7 +837,10 @@ export class BBOTExecutor {
             status: 'open',
             discoveredAt: new Date(event.timestamp),
           })
-          .onConflictDoNothing()
+          .onConflictDoUpdate({
+            target: [vulnerabilities.operationId, vulnerabilities.title],
+            set: { updatedAt: new Date() },
+          })
           .returning();
 
         if (vuln) vulnerabilitiesCount++;
@@ -849,7 +879,10 @@ export class BBOTExecutor {
             status: 'open',
             discoveredAt: new Date(event.timestamp),
           })
-          .onConflictDoNothing()
+          .onConflictDoUpdate({
+            target: [vulnerabilities.operationId, vulnerabilities.title],
+            set: { updatedAt: new Date() },
+          })
           .returning();
 
         if (vuln) vulnerabilitiesCount++;

@@ -1092,4 +1092,78 @@ router.post('/:operationId/scans/:scanId/cancel', async (req, res) => {
   }
 });
 
+// ============================================================================
+// Deduplication endpoints
+// ============================================================================
+
+/**
+ * GET /:operationId/dedup/analyze
+ * Analyze duplicate records for an operation (read-only)
+ */
+router.get('/:operationId/dedup/analyze', async (req, res) => {
+  try {
+    const { operationId } = req.params;
+    const { dedupService } = await import('../../services/dedup-service');
+    const analysis = await dedupService.analyze(operationId);
+    res.json(analysis);
+  } catch (error: any) {
+    res.status(500).json({
+      error: 'Failed to analyze duplicates',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /:operationId/dedup/run
+ * Execute deduplication for an operation
+ */
+router.post('/:operationId/dedup/run', async (req, res) => {
+  try {
+    const { operationId } = req.params;
+    const { dedupService } = await import('../../services/dedup-service');
+    const result = await dedupService.deduplicate(operationId);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({
+      error: 'Failed to deduplicate',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /:operationId/report/generate
+ * Trigger surface assessment report generation using 3-agent workflow:
+ * Researcher Agent → Framework Security Agent → Technical Writer
+ */
+router.post('/:operationId/report/generate', async (req, res) => {
+  try {
+    const { operationId } = req.params;
+    const user = req.user as any;
+
+    if (!user?.id) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    const { agentWorkflowOrchestrator } = await import('../../services/agent-workflow-orchestrator');
+
+    const result = await agentWorkflowOrchestrator.startSurfaceAssessmentReportWorkflow(
+      operationId,
+      user.id
+    );
+
+    res.status(201).json({
+      success: true,
+      workflow: result.workflow,
+      tasks: result.tasks,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      error: 'Failed to start report generation',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
 export default router;

@@ -1,7 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useLocation } from "wouter";
 import { Plus, RotateCcw, CheckSquare } from "lucide-react";
 import { toast } from "sonner";
+import { arrayMove } from "@dnd-kit/sortable";
+import type { DragEndEvent } from "@dnd-kit/core";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -11,6 +13,25 @@ import EditTargetDialog from "@/components/targets/EditTargetDialog";
 import { BulkActionToolbar } from "@/components/shared/BulkActionToolbar";
 import { BulkConfirmDialog } from "@/components/shared/BulkConfirmDialog";
 import { api } from "@/lib/api";
+
+const TARGET_ORDER_KEY = "rtpi-target-order";
+const TARGET_GROUPS_KEY = "rtpi-target-groups-expanded";
+
+function loadTargetOrder(): Record<string, string[]> {
+  try {
+    const stored = localStorage.getItem(TARGET_ORDER_KEY);
+    if (stored) return JSON.parse(stored);
+  } catch { /* ignore */ }
+  return {};
+}
+
+function loadExpandedGroups(): Set<string> {
+  try {
+    const stored = localStorage.getItem(TARGET_GROUPS_KEY);
+    if (stored) return new Set(JSON.parse(stored));
+  } catch { /* ignore */ }
+  return new Set();
+}
 
 export default function Targets() {
   const [, navigate] = useLocation();
@@ -31,9 +52,23 @@ export default function Targets() {
   const [bulkAction, setBulkAction] = useState<"delete" | "archive">("delete");
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
 
+  // Group & ordering state
+  const [targetOrder, setTargetOrder] = useState<Record<string, string[]>>(loadTargetOrder);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(loadExpandedGroups);
+  const [initialGroupSet, setInitialGroupSet] = useState(false);
+
   useEffect(() => {
     loadData();
   }, []);
+
+  // Auto-expand first group on initial load if nothing is expanded
+  useEffect(() => {
+    if (!initialGroupSet && !loading && targets.length > 0 && expandedGroups.size === 0) {
+      const firstGroupKey = targets[0]?.operationId || "__unassigned__";
+      setExpandedGroups(new Set([firstGroupKey]));
+      setInitialGroupSet(true);
+    }
+  }, [loading, targets, expandedGroups.size, initialGroupSet]);
 
   const loadData = async () => {
     try {
@@ -51,6 +86,41 @@ export default function Targets() {
       setLoading(false);
     }
   };
+
+  const handleToggleGroup = useCallback((groupKey: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupKey)) {
+        next.delete(groupKey);
+      } else {
+        next.add(groupKey);
+      }
+      localStorage.setItem(TARGET_GROUPS_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  }, []);
+
+  const handleDragEnd = useCallback((groupKey: string, event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    setTargetOrder((prev) => {
+      // Get current order for this group, or build from targets
+      const groupTargetIds = prev[groupKey] ||
+        targets
+          .filter((t) => (t.operationId || "__unassigned__") === groupKey)
+          .map((t) => t.id);
+
+      const oldIndex = groupTargetIds.indexOf(active.id as string);
+      const newIndex = groupTargetIds.indexOf(over.id as string);
+      if (oldIndex === -1 || newIndex === -1) return prev;
+
+      const newOrder = arrayMove(groupTargetIds, oldIndex, newIndex);
+      const updated = { ...prev, [groupKey]: newOrder };
+      localStorage.setItem(TARGET_ORDER_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  }, [targets]);
 
   const handleRunAgentLoop = (target: any) => {
     setSelectedTarget(target);
@@ -96,11 +166,9 @@ export default function Targets() {
   const handleSaveTarget = async (target: any) => {
     try {
       if (target.id) {
-        // Update existing
         await api.put(`/targets/${target.id}`, target);
         toast.success("Target updated successfully");
       } else {
-        // Create new
         await api.post("/targets", target);
         toast.success("Target created successfully");
       }
@@ -128,13 +196,10 @@ export default function Targets() {
     }
 
     try {
-      // Show loading state
       toast.info(`Scanning ${target.name}... This may take up to 10 minutes for a full port scan.`);
 
-      // Call scan API
       const response = await api.post(`/targets/${target.id}/scan`);
 
-      // Show results
       const { openPorts, scanDuration } = response;
       const durationSeconds = (scanDuration / 1000).toFixed(2);
 
@@ -142,7 +207,6 @@ export default function Targets() {
         `Scan completed! Target: ${target.name} | Duration: ${durationSeconds}s | Open Ports: ${openPorts}`
       );
 
-      // Refresh targets to show updated data
       await loadData();
     } catch (error: any) {
       const errorMsg = error.response?.data?.details || error.message || "Unknown error";
@@ -151,18 +215,13 @@ export default function Targets() {
   };
 
   const handleViewVulnerabilities = (_targetId: string) => {
-    // Navigate to vulnerabilities page
-    // TODO: Add filtering support in vulnerabilities page
     setEditDialogOpen(false);
     navigate("/vulnerabilities");
   };
 
   const handleAddVulnerability = (_targetId: string) => {
-    // This would ideally open the vulnerability dialog with targetId pre-filled
-    // For now, navigate to vulnerabilities page
     setEditDialogOpen(false);
     navigate("/vulnerabilities");
-    // TODO: Pass targetId to vulnerabilities page to pre-fill in add dialog
   };
 
   // Bulk selection handlers
@@ -189,7 +248,6 @@ export default function Targets() {
     setBulkActionLoading(true);
     try {
       if (bulkAction === "delete") {
-        // Delete all selected targets
         await Promise.all(
           Array.from(selectedIds).map((id) => api.delete(`/targets/${id}`))
         );
@@ -208,7 +266,6 @@ export default function Targets() {
   const toggleBulkMode = () => {
     setBulkMode(!bulkMode);
     if (bulkMode) {
-      // Clear selection when exiting bulk mode
       handleClearSelection();
     }
   };
@@ -268,9 +325,10 @@ export default function Targets() {
         </div>
       </div>
 
-      {/* Targets List */}
+      {/* Targets List — grouped by operation */}
       <TargetList
         targets={targets}
+        operations={operations}
         loading={loading}
         onSelect={handleSelectTarget}
         onEdit={handleEditTarget}
@@ -279,6 +337,10 @@ export default function Targets() {
         selectable={bulkMode}
         selectedIds={selectedIds}
         onSelectionChange={handleSelectionChange}
+        expandedGroups={expandedGroups}
+        onToggleGroup={handleToggleGroup}
+        targetOrder={targetOrder}
+        onDragEnd={handleDragEnd}
       />
 
       {/* Edit Dialog */}
@@ -303,7 +365,7 @@ export default function Targets() {
               Run Agent Loop
             </DialogTitle>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             <div>
               <Label>Target</Label>
@@ -340,8 +402,8 @@ export default function Targets() {
             <Button variant="outline" onClick={() => setLoopDialogOpen(false)}>
               Cancel
             </Button>
-            <Button 
-              onClick={handleExecuteLoop} 
+            <Button
+              onClick={handleExecuteLoop}
               disabled={!selectedAgent || runningLoop}
             >
               {runningLoop ? "Starting..." : "Start Agent Loop"}

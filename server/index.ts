@@ -64,6 +64,7 @@ import nistAiRoutes from "./api/v1/nist-ai";
 import frameworkMappingsRoutes from "./api/v1/framework-mappings";
 import cisRoutes from "./api/v1/cis";
 import agentToolBuildsRoutes from "./api/v1/agent-tool-builds";
+import scanImportRoutes from "./api/v1/scan-import";
 import { initializeDefaultAdmin } from "./services/admin-initialization";
 import { opsManagerScheduler } from "./services/ops-manager-scheduler";
 import { scanScheduler } from "./services/scan-scheduler";
@@ -157,6 +158,7 @@ app.use("/api/v1/nist-ai", nistAiRoutes);
 app.use("/api/v1/framework-mappings", frameworkMappingsRoutes);
 app.use("/api/v1/cis", cisRoutes);
 app.use("/api/v1/agent-tool-builds", agentToolBuildsRoutes);
+app.use("/api/v1/scan-import", scanImportRoutes);
 
 // Root endpoint
 app.get("/api/v1", (_req, res) => {

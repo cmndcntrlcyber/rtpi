@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,16 +8,28 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileText, Download, Plus, Calendar, Trash2, Edit } from "lucide-react";
+import { FileText, Download, Plus, Calendar, Trash2, Edit, ChevronDown, ChevronRight, Folder } from "lucide-react";
 import { useReports, useReportTemplates, useCreateReport, useCreateTemplate, useDeleteReport } from "@/hooks/useReports";
+import { useOperations } from "@/hooks/useOperations";
 import { reportsService } from "@/services/reports";
 import GenerateReportDialog from "@/components/reports/GenerateReportDialog";
 import EditReportDialog from "@/components/reports/EditReportDialog";
+
+const REPORT_GROUPS_KEY = "rtpi-report-groups-expanded";
+
+function loadExpandedGroups(): Set<string> {
+  try {
+    const stored = localStorage.getItem(REPORT_GROUPS_KEY);
+    if (stored) return new Set(JSON.parse(stored));
+  } catch { /* ignore */ }
+  return new Set();
+}
 
 export default function Reports() {
   const { isAdmin } = useAuth();
   const { reports, loading: reportsLoading, refetch: refetchReports } = useReports();
   const { templates, loading: templatesLoading, refetch: refetchTemplates } = useReportTemplates();
+  const { operations } = useOperations();
   const { create: createReport, creating } = useCreateReport();
   const { create: createTemplate, creating: creatingTemplate } = useCreateTemplate();
   const { delete: deleteReport, deleting } = useDeleteReport();
@@ -39,6 +51,70 @@ export default function Reports() {
     structure: {},
   });
 
+  // Group state
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(loadExpandedGroups);
+  const [initialGroupSet, setInitialGroupSet] = useState(false);
+
+  // Build operation lookup
+  const operationMap = useMemo(() => {
+    const map = new Map<string, string>();
+    operations.forEach((op: any) => map.set(op.id, op.name));
+    return map;
+  }, [operations]);
+
+  // Group reports by operation
+  const reportGroups = useMemo(() => {
+    const groupMap = new Map<string, any[]>();
+
+    reports.forEach((report: any) => {
+      const key = report.operationId || "__unassigned__";
+      if (!groupMap.has(key)) groupMap.set(key, []);
+      groupMap.get(key)!.push(report);
+    });
+
+    const result: { key: string; label: string; reports: any[] }[] = [];
+    const namedGroups: { key: string; label: string; reports: any[] }[] = [];
+
+    groupMap.forEach((groupReports, key) => {
+      if (key === "__unassigned__") return;
+      namedGroups.push({
+        key,
+        label: operationMap.get(key) || "Unknown Operation",
+        reports: groupReports,
+      });
+    });
+    namedGroups.sort((a, b) => a.label.localeCompare(b.label));
+    result.push(...namedGroups);
+
+    const unassigned = groupMap.get("__unassigned__");
+    if (unassigned) {
+      result.push({ key: "__unassigned__", label: "Unassigned", reports: unassigned });
+    }
+
+    return result;
+  }, [reports, operationMap]);
+
+  // Auto-expand first group on initial load
+  useEffect(() => {
+    if (!initialGroupSet && !reportsLoading && reportGroups.length > 0 && expandedGroups.size === 0) {
+      setExpandedGroups(new Set([reportGroups[0].key]));
+      setInitialGroupSet(true);
+    }
+  }, [reportsLoading, reportGroups, expandedGroups.size, initialGroupSet]);
+
+  const handleToggleGroup = useCallback((groupKey: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupKey)) {
+        next.delete(groupKey);
+      } else {
+        next.add(groupKey);
+      }
+      localStorage.setItem(REPORT_GROUPS_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  }, []);
+
   const handleGenerateReport = async (reportData: any) => {
     try {
       await createReport(reportData);
@@ -52,7 +128,6 @@ export default function Reports() {
 
   const handleCreateTemplate = async () => {
     try {
-      // Default bug bounty template structure
       const bugBountyStructure = {
         sections: [
           { title: "Executive Summary", required: true },
@@ -103,7 +178,6 @@ export default function Reports() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (error) {
-      // Error handled via toast
       toast.error("Failed to download report");
     }
   };
@@ -141,12 +215,9 @@ export default function Reports() {
 
   const handleSaveReport = async (_reportId: string, _content: string) => {
     try {
-      // In a real implementation, you'd save to the API
-      // For now, just show success message
       toast.success("Report saved successfully!");
       await refetchReports();
     } catch (err) {
-      // Error handled via toast
       toast.error("Failed to save report");
     }
   };
@@ -202,11 +273,24 @@ export default function Reports() {
         </div>
       </div>
 
-      {/* Reports List */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold">Recent Reports</h2>
+      {/* Reports — grouped by operation */}
+      <div className="space-y-3">
         {reportsLoading ? (
-          <p className="text-muted-foreground">Loading reports...</p>
+          <div className="space-y-2">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-3 rounded-lg border border-border animate-pulse">
+                <div className="w-10 h-10 bg-muted rounded" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-muted rounded w-1/3" />
+                  <div className="h-3 bg-muted rounded w-1/2" />
+                </div>
+                <div className="flex gap-2">
+                  <div className="h-8 w-20 bg-muted rounded" />
+                  <div className="h-8 w-16 bg-muted rounded" />
+                </div>
+              </div>
+            ))}
+          </div>
         ) : reports.length === 0 ? (
           <div className="text-center py-12 bg-card rounded-lg border border-border">
             <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -218,80 +302,106 @@ export default function Reports() {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4">
-            {reports.map((report) => (
-              <Card key={report.id} className="bg-card">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center flex-1">
-                      <div className="w-10 h-10 rounded bg-blue-100 flex items-center justify-center mr-4">
-                        <FileText className="h-5 w-5 text-blue-600" />
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-foreground">{report.name}</h3>
-                        <div className="flex items-center gap-3 mt-1">
-                          <span className="text-sm text-muted-foreground">{report.type}</span>
-                          <span className="text-sm text-muted-foreground">•</span>
-                          <span className="text-sm text-muted-foreground">{report.format.toUpperCase()}</span>
-                          {report.fileSize && (
-                            <>
-                              <span className="text-sm text-muted-foreground">•</span>
-                              <span className="text-sm text-muted-foreground">
-                                {(report.fileSize / 1024 / 1024).toFixed(2)} MB
-                              </span>
-                            </>
-                          )}
-                          <span className="text-sm text-muted-foreground">•</span>
-                          <div className="flex items-center text-sm text-muted-foreground">
-                            <Calendar className="h-3 w-3 mr-1" />
-                            {new Date(report.generatedAt).toLocaleDateString()}
+          reportGroups.map((group) => (
+            <div key={group.key} className="border border-border rounded-lg overflow-hidden">
+              {/* Group header */}
+              <button
+                onClick={() => handleToggleGroup(group.key)}
+                className="w-full flex items-center gap-3 px-4 py-3 bg-muted/50 hover:bg-muted transition-colors text-left"
+              >
+                {expandedGroups.has(group.key) ? (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                ) : (
+                  <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                )}
+                <Folder className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                <span className="font-semibold text-sm text-foreground">{group.label}</span>
+                <Badge variant="secondary" className="text-xs ml-auto">
+                  {group.reports.length} report{group.reports.length !== 1 ? "s" : ""}
+                </Badge>
+              </button>
+
+              {/* Collapsible report rows */}
+              {expandedGroups.has(group.key) && (
+                <div className="max-h-[350px] overflow-y-auto border-t border-border">
+                  <div className="divide-y divide-border">
+                    {group.reports.map((report: any) => (
+                      <div key={report.id} className="flex items-center justify-between px-4 py-3 hover:bg-accent/50 transition-colors">
+                        <div className="flex items-center flex-1 min-w-0">
+                          <div className="w-10 h-10 rounded bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center mr-4 flex-shrink-0">
+                            <FileText className="h-5 w-5 text-blue-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold text-sm text-foreground truncate">{report.name}</h3>
+                            <div className="flex items-center gap-3 mt-0.5">
+                              <span className="text-xs text-muted-foreground">{report.type}</span>
+                              <span className="text-xs text-muted-foreground">&bull;</span>
+                              <span className="text-xs text-muted-foreground">{report.format.toUpperCase()}</span>
+                              {report.fileSize && (
+                                <>
+                                  <span className="text-xs text-muted-foreground">&bull;</span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {(report.fileSize / 1024 / 1024).toFixed(2)} MB
+                                  </span>
+                                </>
+                              )}
+                              <span className="text-xs text-muted-foreground">&bull;</span>
+                              <div className="flex items-center text-xs text-muted-foreground">
+                                <Calendar className="h-3 w-3 mr-1" />
+                                {new Date(report.generatedAt).toLocaleDateString()}
+                              </div>
+                            </div>
                           </div>
                         </div>
+                        <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                          <Badge
+                            variant="secondary"
+                            className={`text-xs ${
+                              report.status === "completed"
+                                ? "bg-green-500/10 text-green-600"
+                                : "bg-secondary/10 text-muted-foreground"
+                            }`}
+                          >
+                            {report.status}
+                          </Badge>
+                          {report.status === "draft" && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 px-2"
+                              onClick={() => handleEditReport(report)}
+                            >
+                              <Edit className="h-3 w-3 mr-1" />
+                              Edit
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2"
+                            onClick={() => handleDownload(report)}
+                          >
+                            <Download className="h-3 w-3 mr-1" />
+                            Download
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => handleDeleteReport(report.id)}
+                            disabled={deleting}
+                          >
+                            <Trash2 className="h-3 w-3 mr-1" />
+                            Delete
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Badge
-                        variant="secondary"
-                        className={`${
-                          report.status === "completed"
-                            ? "bg-green-500/10 text-green-600"
-                            : "bg-secondary0/10 text-muted-foreground"
-                        }`}
-                      >
-                        {report.status}
-                      </Badge>
-                      {report.status === "draft" && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleEditReport(report)}
-                        >
-                          <Edit className="h-4 w-4 mr-1" />
-                          Edit
-                        </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleDownload(report)}
-                      >
-                        <Download className="h-4 w-4 mr-1" />
-                        Download
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => handleDeleteReport(report.id)}
-                        disabled={deleting}
-                      >
-                        Delete
-                      </Button>
-                    </div>
+                    ))}
                   </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                </div>
+              )}
+            </div>
+          ))
         )}
       </div>
 

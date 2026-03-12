@@ -12,8 +12,12 @@ import {
   empireModules,
   vulnerabilities,
   toolRegistry,
+  discoveredAssets,
+  discoveredServices,
+  axScanResults,
+  operations,
 } from "@shared/schema";
-import { eq, asc, inArray } from "drizzle-orm";
+import { eq, asc, inArray, sql, desc } from "drizzle-orm";
 import { agentToolConnector } from "./agent-tool-connector";
 import { metasploitExecutor } from "./metasploit-executor";
 import { empireExecutor } from "./empire-executor";
@@ -451,6 +455,166 @@ export class AgentWorkflowOrchestrator {
   }
 
   /**
+   * Start a Surface Assessment Report workflow using 3 agents:
+   * Researcher Agent → Framework Security Agent → Technical Writer
+   */
+  async startSurfaceAssessmentReportWorkflow(
+    operationId: string,
+    userId: string
+  ): Promise<any> {
+    try {
+      // Verify operation exists
+      const operation = await db
+        .select()
+        .from(operations)
+        .where(eq(operations.id, operationId))
+        .limit(1)
+        .then((rows) => rows[0]);
+
+      if (!operation) {
+        throw new Error("Operation not found");
+      }
+
+      // Find or auto-create the three required agents
+      const ensureAgent = async (
+        name: string,
+        altName: string,
+        capabilities: string[],
+        systemPrompt: string
+      ) => {
+        const existing = await db
+          .select()
+          .from(agents)
+          .where(eq(agents.name, name))
+          .limit(1)
+          .then((rows) => rows[0]);
+        if (existing) return existing;
+
+        // Check alternate name
+        if (altName !== name) {
+          const alt = await db
+            .select()
+            .from(agents)
+            .where(eq(agents.name, altName))
+            .limit(1)
+            .then((rows) => rows[0]);
+          if (alt) return alt;
+        }
+
+        // Auto-seed agent record
+        const [created] = await db
+          .insert(agents)
+          .values({
+            name,
+            type: "custom",
+            status: "idle",
+            capabilities,
+            config: {
+              systemPrompt,
+              ai: { provider: "anthropic", model: "claude-sonnet-4-5" },
+            },
+          })
+          .returning();
+        console.log(`Auto-created agent: ${name} (${created.id})`);
+        return created;
+      };
+
+      const researcherAgent = await ensureAgent(
+        "Researcher Agent",
+        "rtpi-research-agent",
+        ["data_gathering", "analysis", "surface_assessment"],
+        "You are a security researcher specializing in attack surface reconnaissance. Analyze discovered assets, services, and vulnerabilities to produce structured intelligence for framework mapping and report generation."
+      );
+
+      const frameworkSecurityAgent = await ensureAgent(
+        "Framework Security Agent",
+        "rtpi-framework-agent",
+        ["framework_mapping", "risk_assessment", "compliance_analysis"],
+        "You are a senior security framework analyst. Map attack surface findings to NIST CSF 2.0, OWASP Top 10, and CIS Controls v8. Prioritize risks by business impact and provide actionable gap analysis."
+      );
+
+      const technicalWriter = await ensureAgent(
+        "Technical Writer",
+        "Technical Writer",
+        ["report_generation", "documentation", "finding_summarization"],
+        "You are a professional technical writer specializing in cybersecurity reports. Generate comprehensive, actionable reports suitable for both technical teams and executive stakeholders."
+      );
+
+      // Create workflow instance
+      const workflow = await db
+        .insert(agentWorkflows)
+        .values({
+          name: `Surface Assessment Report - ${operation.name}`,
+          workflowType: "surface_assessment_report",
+          operationId,
+          currentAgentId: researcherAgent.id,
+          status: "pending",
+          progress: 0,
+          metadata: {
+            operationName: operation.name,
+            reportType: "surface_assessment",
+          },
+          createdBy: userId,
+        })
+        .returning();
+
+      const workflowId = workflow[0].id;
+
+      // Create task queue: Researcher → Framework Security → Technical Writer
+      const taskValues = [
+        {
+          workflowId,
+          agentId: researcherAgent.id,
+          taskType: "custom" as const,
+          taskName: "Gather and structure surface assessment data",
+          sequenceOrder: 1,
+          inputData: { operationId },
+        },
+        {
+          workflowId,
+          agentId: frameworkSecurityAgent.id,
+          taskType: "custom" as const,
+          taskName: "Map findings to security frameworks and prioritize risks",
+          sequenceOrder: 2,
+          inputData: {},
+        },
+        {
+          workflowId,
+          agentId: technicalWriter.id,
+          taskType: "report" as const,
+          taskName: "Generate surface assessment report",
+          sequenceOrder: 3,
+          inputData: {},
+        },
+      ];
+
+      await db.insert(workflowTasks).values(taskValues);
+
+      await this.log(workflowId, null, "info", "Surface assessment report workflow started", {
+        operation: operation.name,
+        agents: [researcherAgent.name, frameworkSecurityAgent.name, technicalWriter.name],
+      });
+
+      // Start processing in background
+      this.processWorkflow(workflowId).catch((error) => {
+        console.error("Surface assessment report workflow error:", error);
+      });
+
+      return {
+        workflow: workflow[0],
+        tasks: await db
+          .select()
+          .from(workflowTasks)
+          .where(eq(workflowTasks.workflowId, workflowId))
+          .orderBy(asc(workflowTasks.sequenceOrder)),
+      };
+    } catch (error) {
+      console.error("Failed to start surface assessment report workflow:", error);
+      throw error;
+    }
+  }
+
+  /**
    * Process workflow - execute tasks in sequence
    */
   private async processWorkflow(workflowId: string): Promise<void> {
@@ -537,6 +701,14 @@ export class AgentWorkflowOrchestrator {
 
           let output: any;
 
+          // Fetch workflow type for dispatch routing
+          const currentWorkflow = await db
+            .select()
+            .from(agentWorkflows)
+            .where(eq(agentWorkflows.id, workflowId))
+            .limit(1)
+            .then((rows) => rows[0]);
+
           switch (task.taskType) {
             case "analyze":
               output = await this.executeOperationLead(agent, taskInput, workflowId, task.id);
@@ -545,10 +717,27 @@ export class AgentWorkflowOrchestrator {
               output = await this.executeSeniorCyberOperator(agent, taskInput, workflowId, task.id);
               break;
             case "report":
-              output = await this.executeTechnicalWriter(agent, { ...taskInput, workflowId }, workflowId, task.id);
+              if (currentWorkflow?.workflowType === "surface_assessment_report") {
+                output = await this.executeSurfaceAssessmentWriter(agent, { ...taskInput, workflowId }, workflowId, task.id);
+              } else {
+                output = await this.executeTechnicalWriter(agent, { ...taskInput, workflowId }, workflowId, task.id);
+              }
               break;
             case "execute_tools":
               output = await this.executeGenericToolWorkflow(agent, taskInput, workflowId, task.id);
+              break;
+            case "custom":
+              if (currentWorkflow?.workflowType === "surface_assessment_report") {
+                if (agent.name === "Researcher Agent" || agent.name === "rtpi-research-agent") {
+                  output = await this.executeResearcherAgent(agent, taskInput, workflowId, task.id);
+                } else if (agent.name === "Framework Security Agent" || agent.name === "rtpi-framework-agent") {
+                  output = await this.executeFrameworkSecurityAgent(agent, taskInput, workflowId, task.id);
+                } else {
+                  throw new Error(`Unknown custom agent for surface assessment report: ${agent.name}`);
+                }
+              } else {
+                throw new Error(`Unhandled custom task for workflow type: ${currentWorkflow?.workflowType}`);
+              }
               break;
             default:
               throw new Error(`Unknown task type: ${task.taskType}`);
@@ -2985,6 +3174,458 @@ Format in markdown.`;
       );
       return { available: false, servers: [], agents: [], modules: [] };
     }
+  }
+
+  // ============================================================================
+  // SURFACE ASSESSMENT REPORT — 3-Agent Workflow Executors
+  // ============================================================================
+
+  /**
+   * Researcher Agent: Gather and structure all surface assessment data
+   * No AI call — pure data gathering from DB
+   */
+  private async executeResearcherAgent(
+    agent: any,
+    input: any,
+    workflowId: string,
+    taskId: string
+  ): Promise<any> {
+    const operationId = input.operationId;
+
+    await this.log(workflowId, taskId, "info", "Gathering surface assessment data", {
+      operationId,
+    });
+
+    // Query discovered assets with their services
+    const assets = await db
+      .select()
+      .from(discoveredAssets)
+      .where(eq(discoveredAssets.operationId, operationId))
+      .orderBy(desc(discoveredAssets.lastSeenAt));
+
+    const services = await db
+      .select()
+      .from(discoveredServices)
+      .where(
+        inArray(
+          discoveredServices.assetId,
+          assets.map((a) => a.id)
+        )
+      );
+
+    // Build asset-service map
+    const servicesByAsset = new Map<string, typeof services>();
+    for (const svc of services) {
+      const list = servicesByAsset.get(svc.assetId) || [];
+      list.push(svc);
+      servicesByAsset.set(svc.assetId, list);
+    }
+
+    // Query vulnerabilities for this operation
+    const vulns = await db
+      .select()
+      .from(vulnerabilities)
+      .where(eq(vulnerabilities.operationId, operationId))
+      .orderBy(desc(vulnerabilities.severity));
+
+    // Query scan history
+    const scans = await db
+      .select()
+      .from(axScanResults)
+      .where(eq(axScanResults.operationId, operationId))
+      .orderBy(desc(axScanResults.completedAt));
+
+    // Compute summary stats
+    const severityCounts = { critical: 0, high: 0, medium: 0, low: 0, informational: 0 };
+    for (const v of vulns) {
+      const sev = (v.severity || "informational").toLowerCase() as keyof typeof severityCounts;
+      if (sev in severityCounts) severityCounts[sev]++;
+    }
+
+    const assetTypeCounts: Record<string, number> = {};
+    for (const a of assets) {
+      assetTypeCounts[a.type] = (assetTypeCounts[a.type] || 0) + 1;
+    }
+
+    // Count vulnerabilities per asset
+    const vulnCountByAsset = new Map<string, number>();
+    for (const v of vulns) {
+      const affected = (v.affectedServices as any[]) || [];
+      for (const svc of affected) {
+        const host = svc.host || "";
+        vulnCountByAsset.set(host, (vulnCountByAsset.get(host) || 0) + 1);
+      }
+    }
+
+    // Top 10 risk assets by vulnerability count
+    const topRiskAssets = assets
+      .map((a) => ({
+        value: a.value,
+        type: a.type,
+        hostname: a.hostname,
+        ipAddress: a.ipAddress,
+        vulnerabilityCount: vulnCountByAsset.get(a.value) || 0,
+        services: (servicesByAsset.get(a.id) || []).map((s) => ({
+          name: s.name,
+          port: s.port,
+          protocol: s.protocol,
+          version: s.version,
+          state: s.state,
+        })),
+      }))
+      .sort((a, b) => b.vulnerabilityCount - a.vulnerabilityCount)
+      .slice(0, 10);
+
+    // Cap output to avoid token overflow
+    const cappedAssets = assets.slice(0, 50).map((a) => ({
+      value: a.value,
+      type: a.type,
+      hostname: a.hostname,
+      ipAddress: a.ipAddress,
+      status: a.status,
+      discoveryMethod: a.discoveryMethod,
+      operatingSystem: a.operatingSystem,
+      services: (servicesByAsset.get(a.id) || []).map((s) => ({
+        name: s.name,
+        port: s.port,
+        protocol: s.protocol,
+        version: s.version,
+        state: s.state,
+      })),
+    }));
+
+    const cappedVulns = vulns.slice(0, 100).map((v) => ({
+      title: v.title,
+      severity: v.severity,
+      cvssScore: v.cvssScore,
+      cveId: v.cveId,
+      cweId: v.cweId,
+      description: v.description,
+      status: v.status,
+      affectedServices: v.affectedServices,
+      proofOfConcept: v.proofOfConcept,
+    }));
+
+    const scanHistory = scans.slice(0, 20).map((s) => ({
+      toolName: s.toolName,
+      status: s.status,
+      assetsFound: s.assetsFound,
+      servicesFound: s.servicesFound,
+      vulnerabilitiesFound: s.vulnerabilitiesFound,
+      duration: s.duration,
+      completedAt: s.completedAt?.toISOString(),
+    }));
+
+    await this.log(workflowId, taskId, "info", "Surface assessment data gathered", {
+      totalAssets: assets.length,
+      totalServices: services.length,
+      totalVulnerabilities: vulns.length,
+      totalScans: scans.length,
+    });
+
+    return {
+      type: "surface_assessment_research",
+      operationId,
+      summary: {
+        totalAssets: assets.length,
+        totalServices: services.length,
+        totalVulnerabilities: vulns.length,
+        totalScans: scans.length,
+        severityDistribution: severityCounts,
+        assetTypeBreakdown: assetTypeCounts,
+        truncated: {
+          assets: assets.length > 50,
+          vulnerabilities: vulns.length > 100,
+        },
+      },
+      assets: cappedAssets,
+      vulnerabilities: cappedVulns,
+      scanHistory,
+      topRiskAssets,
+    };
+  }
+
+  /**
+   * Framework Security Agent: Map findings to NIST CSF, OWASP Top 10, CIS Controls
+   */
+  private async executeFrameworkSecurityAgent(
+    agent: any,
+    input: any,
+    workflowId: string,
+    taskId: string
+  ): Promise<any> {
+    const researchData = input.previousOutput;
+
+    if (!researchData || researchData.type !== "surface_assessment_research") {
+      throw new Error("No research data received from Researcher Agent");
+    }
+
+    await this.log(workflowId, taskId, "info", "Starting framework security analysis", {
+      totalVulnerabilities: researchData.summary.totalVulnerabilities,
+      totalAssets: researchData.summary.totalAssets,
+    });
+
+    const aiConfig = this.getAgentAIConfig(agent);
+
+    const systemPrompt = `You are a senior security framework analyst specializing in mapping attack surface findings to industry security frameworks. Your expertise covers:
+- NIST Cybersecurity Framework (CSF) 2.0 — Functions: Govern, Identify, Protect, Detect, Respond, Recover
+- OWASP Top 10 (2021) — A01:Broken Access Control through A10:SSRF
+- CIS Controls v8 — 18 critical security controls
+
+Analyze the provided surface assessment data and produce a structured framework mapping with actionable risk prioritization.`;
+
+    const vulnSummary = researchData.vulnerabilities
+      .slice(0, 50)
+      .map((v: any) => `- [${v.severity?.toUpperCase()}] ${v.title}${v.cveId ? ` (${v.cveId})` : ""}${v.cweId ? ` [${v.cweId}]` : ""}`)
+      .join("\n");
+
+    const topAssets = researchData.topRiskAssets
+      .map((a: any) => `- ${a.value} (${a.type}) — ${a.vulnerabilityCount} vulns, services: ${a.services.map((s: any) => `${s.name}:${s.port}`).join(", ") || "none"}`)
+      .join("\n");
+
+    const userPrompt = `## Surface Assessment Data
+
+### Summary Statistics
+- Total Assets: ${researchData.summary.totalAssets}
+- Total Services: ${researchData.summary.totalServices}
+- Total Vulnerabilities: ${researchData.summary.totalVulnerabilities}
+- Severity Distribution: Critical=${researchData.summary.severityDistribution.critical}, High=${researchData.summary.severityDistribution.high}, Medium=${researchData.summary.severityDistribution.medium}, Low=${researchData.summary.severityDistribution.low}, Info=${researchData.summary.severityDistribution.informational}
+- Asset Types: ${Object.entries(researchData.summary.assetTypeBreakdown).map(([k, v]) => `${k}=${v}`).join(", ")}
+
+### Top Risk Assets
+${topAssets}
+
+### Vulnerabilities
+${vulnSummary}
+
+## Required Analysis
+
+Provide the following in structured markdown:
+
+### 1. NIST CSF 2.0 Mapping
+For each relevant NIST function (Identify, Protect, Detect, Respond, Recover), list:
+- Applicable categories and subcategories
+- Which findings map to each
+- Current maturity assessment (based on findings)
+- Gaps identified
+
+### 2. OWASP Top 10 Mapping
+For each applicable OWASP category:
+- Which vulnerabilities map to it
+- Severity and exploitability assessment
+- Specific remediation guidance
+
+### 3. CIS Controls v8 Mapping
+For each relevant CIS control:
+- Control number and name
+- Implementation status (based on findings)
+- Priority level for implementation
+
+### 4. Risk Prioritization Matrix
+Create a prioritized list of risks considering:
+- Severity and exploitability
+- Business impact potential
+- Ease of remediation
+- Framework compliance gaps
+
+### 5. Gap Analysis
+Identify security control gaps based on the framework mappings above.
+
+### 6. Remediation Priority Order
+Ordered list of remediation actions from highest to lowest priority.`;
+
+    const frameworkAnalysis = await this.callAgentAI(
+      agent,
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      { maxTokens: 16384 },
+      {
+        workflowId,
+        taskId,
+        phase: "Framework Security Agent: Framework Mapping & Risk Analysis",
+      }
+    );
+
+    await this.log(workflowId, taskId, "info", "Framework security analysis completed", {
+      analysisLength: frameworkAnalysis.length,
+    });
+
+    return {
+      type: "framework_security_analysis",
+      operationId: researchData.operationId,
+      researchData,
+      frameworkAnalysis,
+    };
+  }
+
+  /**
+   * Surface Assessment Writer: Generate the final actionable report
+   */
+  private async executeSurfaceAssessmentWriter(
+    agent: any,
+    input: any,
+    workflowId: string,
+    taskId: string
+  ): Promise<any> {
+    const frameworkOutput = input.previousOutput;
+
+    if (!frameworkOutput || frameworkOutput.type !== "framework_security_analysis") {
+      throw new Error("No framework analysis received from Framework Security Agent");
+    }
+
+    const { researchData, frameworkAnalysis } = frameworkOutput;
+
+    await this.log(workflowId, taskId, "info", "Generating surface assessment report", {
+      operationId: researchData.operationId,
+      hasFrameworkAnalysis: !!frameworkAnalysis,
+    });
+
+    const aiConfig = this.getAgentAIConfig(agent);
+
+    const systemPrompt = `You are a professional technical writer specializing in cybersecurity reports. Generate a comprehensive, actionable Surface Assessment Report in markdown format. The report should be suitable for both technical teams and executive stakeholders.`;
+
+    const assetInventory = researchData.assets
+      .slice(0, 30)
+      .map((a: any) => `| ${a.value} | ${a.type} | ${a.status} | ${a.discoveryMethod} | ${a.services?.length || 0} |`)
+      .join("\n");
+
+    const scanTimeline = researchData.scanHistory
+      .map((s: any) => `| ${s.toolName} | ${s.status} | ${s.assetsFound || 0} | ${s.servicesFound || 0} | ${s.vulnerabilitiesFound || 0} | ${s.completedAt || "N/A"} |`)
+      .join("\n");
+
+    const userPrompt = `Generate a complete Surface Assessment Report using the following data and analysis.
+
+## Research Data Summary
+- Total Assets Discovered: ${researchData.summary.totalAssets}
+- Total Services Identified: ${researchData.summary.totalServices}
+- Total Vulnerabilities Found: ${researchData.summary.totalVulnerabilities}
+- Severity Breakdown: Critical=${researchData.summary.severityDistribution.critical}, High=${researchData.summary.severityDistribution.high}, Medium=${researchData.summary.severityDistribution.medium}, Low=${researchData.summary.severityDistribution.low}, Info=${researchData.summary.severityDistribution.informational}
+- Asset Types: ${Object.entries(researchData.summary.assetTypeBreakdown).map(([k, v]) => `${k}(${v})`).join(", ")}
+
+## Top Risk Assets
+${researchData.topRiskAssets.map((a: any) => `- ${a.value} (${a.type}): ${a.vulnerabilityCount} vulnerabilities`).join("\n")}
+
+## Framework Security Analysis
+${frameworkAnalysis}
+
+## Asset Inventory Sample
+| Asset | Type | Status | Discovery | Services |
+|-------|------|--------|-----------|----------|
+${assetInventory}
+
+## Scan History
+| Tool | Status | Assets | Services | Vulns | Completed |
+|------|--------|--------|----------|-------|-----------|
+${scanTimeline}
+
+## Report Structure Required
+
+Generate the report with these sections:
+1. **Executive Summary** — High-level overview for leadership, overall risk posture, key metrics
+2. **Scope & Methodology** — What was assessed, tools used, approach taken
+3. **Attack Surface Overview** — Asset statistics, type breakdown, service landscape
+4. **Vulnerability Findings** — Grouped by severity with CVE/CWE references, descriptions, affected assets
+5. **Framework Compliance Mapping** — NIST CSF, OWASP Top 10, CIS Controls mappings from the analysis
+6. **Risk Prioritization Matrix** — Prioritized risk table with severity, impact, exploitability
+7. **Gap Analysis** — Security control gaps identified through framework analysis
+8. **Remediation Roadmap** — Short-term (0-30 days), Medium-term (30-90 days), Long-term (90+ days) actions
+9. **Appendix** — Asset inventory summary, scan timeline, methodology notes
+
+Use professional formatting with tables, headers, and clear actionable language.`;
+
+    const reportContent = await this.callAgentAI(
+      agent,
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      { maxTokens: 16384 },
+      {
+        workflowId,
+        taskId,
+        phase: "Technical Writer: Surface Assessment Report Generation",
+      }
+    );
+
+    await this.log(workflowId, taskId, "info", "Report generated successfully", {
+      reportLength: reportContent.length,
+    });
+
+    // Get workflow details for operationId and createdBy
+    const workflow = await db
+      .select()
+      .from(agentWorkflows)
+      .where(eq(agentWorkflows.id, workflowId))
+      .limit(1)
+      .then((rows) => rows[0]);
+
+    // Save report to file system and database
+    if (workflow && reportContent) {
+      try {
+        // Get operation name for report title
+        const operation = workflow.operationId
+          ? await db
+              .select()
+              .from(operations)
+              .where(eq(operations.id, workflow.operationId))
+              .limit(1)
+              .then((rows) => rows[0])
+          : null;
+
+        const reportName = `Surface Assessment Report - ${operation?.name || "Operation"}`;
+
+        const fileData = await generateMarkdownReport({
+          name: reportName,
+          type: "surface_assessment",
+          format: "markdown",
+          content: {
+            markdown: reportContent,
+            workflowId: workflow.id,
+            operationId: researchData.operationId,
+            summary: researchData.summary,
+          },
+        });
+
+        await db.insert(reports).values({
+          name: reportName,
+          type: "surface_assessment",
+          status: "completed",
+          format: "markdown",
+          operationId: workflow.operationId || null,
+          content: {
+            markdown: reportContent,
+            workflowId: workflow.id,
+            operationId: researchData.operationId,
+            summary: researchData.summary,
+          },
+          filePath: fileData.filePath,
+          fileSize: fileData.fileSize,
+          generatedBy: workflow.createdBy,
+        });
+
+        await this.log(workflowId, taskId, "info", "Report saved to database and file system", {
+          filePath: fileData.filePath,
+          fileSize: fileData.fileSize,
+          reportName,
+        });
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        await this.log(workflowId, taskId, "error", "Failed to save report to database", {
+          error: errorMsg,
+        });
+        console.error("Failed to save surface assessment report:", error);
+      }
+    }
+
+    return {
+      type: "surface_assessment_report",
+      report: reportContent,
+      format: "markdown",
+      operationId: researchData.operationId,
+      summary: researchData.summary,
+    };
   }
 
   /**

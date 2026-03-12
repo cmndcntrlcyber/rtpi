@@ -319,6 +319,16 @@ function NetworkTopologyViewInner({
 
   const reactFlowInstance = useReactFlow();
 
+  const exportFilter = (node: HTMLElement) => {
+    const cls = node.classList;
+    if (!cls) return true;
+    return (
+      !cls.contains("react-flow__controls") &&
+      !cls.contains("react-flow__minimap") &&
+      !cls.contains("react-flow__panel")
+    );
+  };
+
   const getExportFilename = (ext: string) => {
     const name = (operationName || "topology").toLowerCase().replace(/\s+/g, "-");
     const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
@@ -366,6 +376,7 @@ function NetworkTopologyViewInner({
         pixelRatio: 2,
         width: bounds.width,
         height: bounds.height,
+        filter: exportFilter,
       });
 
       // Restore original viewport
@@ -401,6 +412,7 @@ function NetworkTopologyViewInner({
         backgroundColor: "#ffffff",
         width: bounds.width,
         height: bounds.height,
+        filter: exportFilter,
       });
 
       reactFlowInstance.setViewport(savedViewport);

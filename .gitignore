@@ -56,3 +56,51 @@ uploads/
 # BurpSuite Pro Installation
 burpsuite_pro_v2025.12.5.jar
 Burp_Suite_Professional_license.txt
+
+# Sensitive key/certificate files (defense-in-depth)
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Redis
+dump.rdb
+
+# Database dumps
+*.dump
+# SQL dumps (but not migration files)
+/*.sql
+*.sql.gz
+!db/migrations/*.sql
+!migrations/*.sql
+
+# Additional environment patterns
+.env.production
+.env.staging
+.env.development
+.env.test
+
+# Backup files
+*.bak
+*.backup
+*.orig
+
+# Credentials
+credentials.json
+service-account*.json
+.credentials/
+
+# Infrastructure state
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# Runtime
+.cache/
+*.pid
+
+# External repos / local tools
+# Note: rkllama/ is tracked as a gitlink reference

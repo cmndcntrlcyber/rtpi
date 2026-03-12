@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git check-ignore rkllama/ test.pem secret.key dump.rdb backup.sql .env.production credentials.json test.tfstate .cache/)",
+      "Bash(while read f)",
+      "Bash(do git check-ignore \"$f\")",
+      "Bash(git check-ignore migrations/0001_add_vulnerability_templates.sql db/migrations/0012_add_attack_integration.sql)",
+      "Bash(git check-ignore database_backup.sql dump.sql)",
+      "Bash(sudo mount /dev/nvme0n1p1 /mnt/nvme)",
+      "Bash(mount)"
+    ],
+    "additionalDirectories": [
+      "/tmp"
+    ]
+  }
+}

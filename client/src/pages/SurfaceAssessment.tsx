@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { GitCompare } from "lucide-react";
+import { GitCompare, FileText } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { toast } from "sonner";
 import OverviewTab from "@/components/surface-assessment/OverviewTab";
 import VulnerabilitiesTab from "@/components/surface-assessment/VulnerabilitiesTab";
 import AssetsTab from "@/components/surface-assessment/AssetsTab";
@@ -12,6 +13,8 @@ import ActivityTab from "@/components/surface-assessment/ActivityTab";
 import ScanConfigTab from "@/components/surface-assessment/ScanConfigTab";
 import NetworkTopologyView from "@/components/surface-assessment/NetworkTopologyView";
 import ScanComparisonDialog from "@/components/surface-assessment/ScanComparisonDialog";
+import ScanImportCard from "@/components/surface-assessment/ScanImportCard";
+import DedupCard from "@/components/surface-assessment/DedupCard";
 
 export default function SurfaceAssessment() {
   const [operations, setOperations] = useState<any[]>([]);
@@ -19,6 +22,7 @@ export default function SurfaceAssessment() {
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
   const [comparisonDialogOpen, setComparisonDialogOpen] = useState(false);
+  const [reportGenerating, setReportGenerating] = useState(false);
 
   useEffect(() => {
     loadOperations();
@@ -35,6 +39,23 @@ export default function SurfaceAssessment() {
       // Error handled via toast
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGenerateReport = async () => {
+    if (!selectedOperation) return;
+    setReportGenerating(true);
+    try {
+      await api.post(`/surface-assessment/${selectedOperation}/report/generate`, {});
+      toast.success("Report generation started", {
+        description: "The 3-agent workflow is running. Check the Reports page when complete.",
+      });
+    } catch (error: any) {
+      toast.error("Failed to start report generation", {
+        description: error?.message || "Unknown error",
+      });
+    } finally {
+      setReportGenerating(false);
     }
   };
 
@@ -84,6 +105,14 @@ export default function SurfaceAssessment() {
         <div className="flex items-center gap-3">
           <Button
             variant="outline"
+            onClick={handleGenerateReport}
+            disabled={reportGenerating}
+          >
+            <FileText className="h-4 w-4 mr-2" />
+            {reportGenerating ? "Generating..." : "Generate Report"}
+          </Button>
+          <Button
+            variant="outline"
             onClick={() => setComparisonDialogOpen(true)}
           >
             <GitCompare className="h-4 w-4 mr-2" />
@@ -105,7 +134,7 @@ export default function SurfaceAssessment() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-7 mb-6">
+        <TabsList className="flex w-full mb-6">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="vulnerabilities">Vulnerabilities</TabsTrigger>
           <TabsTrigger value="assets">Assets</TabsTrigger>
@@ -113,6 +142,7 @@ export default function SurfaceAssessment() {
           <TabsTrigger value="topology">Topology</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
           <TabsTrigger value="config">Scan Config</TabsTrigger>
+          <TabsTrigger value="import">Import</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-0">
@@ -144,6 +174,13 @@ export default function SurfaceAssessment() {
 
         <TabsContent value="config" className="mt-0">
           <ScanConfigTab operationId={selectedOperation} />
+        </TabsContent>
+
+        <TabsContent value="import" className="mt-0">
+          <div className="space-y-6">
+            <ScanImportCard operationId={selectedOperation} />
+            <DedupCard operationId={selectedOperation} />
+          </div>
         </TabsContent>
       </Tabs>
 

@@ -24,7 +24,7 @@ export const agentTypeEnum = pgEnum("agent_type", ["openai", "anthropic", "mcp_s
 export const agentStatusEnum = pgEnum("agent_status", ["idle", "running", "error", "stopped"]);
 export const containerStatusEnum = pgEnum("container_status", ["running", "stopped", "paused", "restarting", "dead"]);
 export const assetTypeEnum = pgEnum("asset_type", ["host", "domain", "ip", "network", "url", "technology", "asn", "email", "storage_bucket"]);
-export const discoveryMethodEnum = pgEnum("discovery_method", ["bbot", "nuclei", "nmap", "manual"]);
+export const discoveryMethodEnum = pgEnum("discovery_method", ["bbot", "nuclei", "nmap", "manual", "import"]);
 export const assetStatusEnum = pgEnum("asset_status", ["active", "down", "unreachable"]);
 export const scanStatusEnum = pgEnum("scan_status", ["pending", "running", "completed", "failed", "cancelled"]);
 
@@ -283,7 +283,9 @@ export const vulnerabilities = pgTable("vulnerabilities", {
   remediatedAt: timestamp("remediated_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("vulnerabilities_op_title_idx").on(table.operationId, table.title),
+]);
 
 export const vulnerabilityTemplates = pgTable("vulnerability_templates", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -644,7 +646,9 @@ export const discoveredAssets = pgTable("discovered_assets", {
   discoveredAt: timestamp("discovered_at").notNull().defaultNow(),
   lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("discovered_assets_op_type_value_idx").on(table.operationId, table.type, table.value),
+]);
 
 export const discoveredServices = pgTable("discovered_services", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -659,7 +663,9 @@ export const discoveredServices = pgTable("discovered_services", {
   metadata: json("metadata").default({}),
   discoveredAt: timestamp("discovered_at").notNull().defaultNow(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("discovered_services_asset_port_proto_idx").on(table.assetId, table.port, table.protocol),
+]);
 
 export const axScanResults = pgTable("ax_scan_results", {
   id: uuid("id").primaryKey().defaultRandom(),

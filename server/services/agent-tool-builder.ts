@@ -448,6 +448,17 @@ class AgentToolBuilder {
   }
 
   // -------------------------------------------------------------------------
+  // Strip markdown code fences that LLMs sometimes wrap around Dockerfiles
+  // -------------------------------------------------------------------------
+
+  private static stripMarkdownFences(content: string): string {
+    let text = content.trim();
+    text = text.replace(/^```[\w-]*\n?/, "");
+    text = text.replace(/\n?```\s*$/, "");
+    return text.trim();
+  }
+
+  // -------------------------------------------------------------------------
   // Dockerfile generation via LLM with fallback
   // -------------------------------------------------------------------------
 
@@ -556,7 +567,7 @@ Generate ONLY the RUN instructions, no explanation or markdown fences.`;
 
         const textContent = response.content.find((block) => block.type === "text");
         if (textContent && textContent.type === "text") {
-          const text = textContent.text.trim();
+          const text = AgentToolBuilder.stripMarkdownFences(textContent.text);
           if (mode === "install") return text;
           return text;
         }
@@ -576,7 +587,7 @@ Generate ONLY the RUN instructions, no explanation or markdown fences.`;
         });
 
         const content = response.choices[0]?.message?.content;
-        if (content) return content.trim();
+        if (content) return AgentToolBuilder.stripMarkdownFences(content);
       } catch (error) {
         console.error("[AgentToolBuilder] OpenAI Dockerfile generation failed:", error);
       }
@@ -647,7 +658,7 @@ Generate ONLY the fixed Dockerfile content, no explanation or markdown fences.`;
         });
         const textContent = response.content.find((block) => block.type === "text");
         if (textContent && textContent.type === "text") {
-          return textContent.text.trim();
+          return AgentToolBuilder.stripMarkdownFences(textContent.text);
         }
       } catch (error) {
         console.error("[AgentToolBuilder] Anthropic repair failed:", error);
@@ -664,7 +675,7 @@ Generate ONLY the fixed Dockerfile content, no explanation or markdown fences.`;
           max_tokens: 4000,
         });
         const content = response.choices[0]?.message?.content;
-        if (content) return content.trim();
+        if (content) return AgentToolBuilder.stripMarkdownFences(content);
       } catch (error) {
         console.error("[AgentToolBuilder] OpenAI repair failed:", error);
       }

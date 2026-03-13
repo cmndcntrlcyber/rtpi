@@ -23,11 +23,45 @@ const toolLibrarySchema = z.object({
   researchNotes: z.string().optional(),
 });
 
+// Auto-sync: register any securityTools not yet in toolLibrary
+async function syncToolLibrary() {
+  try {
+    // Find security tool IDs already registered
+    const existing = await db
+      .select({ securityToolId: toolLibrary.securityToolId })
+      .from(toolLibrary);
+    const existingIds = new Set(existing.map((e) => e.securityToolId).filter(Boolean));
+
+    // Find all security tools not yet in toolLibrary
+    const allTools = await db.select({ id: securityTools.id }).from(securityTools);
+    const missing = allTools.filter((t) => !existingIds.has(t.id));
+
+    if (missing.length > 0) {
+      await db.insert(toolLibrary).values(
+        missing.map((t) => ({
+          securityToolId: t.id,
+          researchValue: "high",
+          testingStatus: "untested",
+          compatibleAgents: [],
+          requiredCapabilities: [],
+        }))
+      );
+      console.log(`[OffSec R&D] Auto-registered ${missing.length} tool(s) into Tool Library`);
+    }
+  } catch (error) {
+    // Non-fatal — log and continue
+    console.error("[OffSec R&D] Tool library sync failed:", error);
+  }
+}
+
 // GET /api/v1/offsec-rd/tools - List R&D tools
 router.get("/", async (req, res) => {
   const { researchValue, testingStatus, category } = req.query;
 
   try {
+    // Ensure all security tools are represented in the R&D library
+    await syncToolLibrary();
+
     let query = db
       .select({
         id: toolLibrary.id,

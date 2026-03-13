@@ -2493,8 +2493,37 @@ Select at most ${maxSelect} modules. Only include modules from the candidate lis
 
     if (candidatePool.length === 0) {
       await this.log(workflowId, taskId, "info",
-        `[Depth ${node.depth}] No new exploit modules found for discoveries — branch terminates`
+        `[Depth ${node.depth}] No new exploit modules found for discoveries — delegating to Research Agent`
       );
+
+      // Delegate to Research Agent for custom exploit development pipeline
+      try {
+        const { researchAgent } = await import("./agents/research-agent");
+        await researchAgent.initialize();
+
+        // Extract service/version from discovered info
+        const discoveredService = analysis.discoveredInfo[0] || '';
+        const versionMatch = discoveredService.match(/([\w.-]+)\s+([\d.]+)/);
+
+        await researchAgent.executeTask({
+          taskType: 'vulnerability_research',
+          taskName: `Research exploits for: ${discoveredService}`,
+          parameters: {
+            service: versionMatch?.[1] || discoveredService,
+            version: versionMatch?.[2],
+            targetValue,
+          },
+        });
+
+        await this.log(workflowId, taskId, "info",
+          `[Depth ${node.depth}] Research Agent dispatched for: ${discoveredService}`
+        );
+      } catch (researchError) {
+        await this.log(workflowId, taskId, "warning",
+          `[Depth ${node.depth}] Research Agent delegation failed: ${researchError instanceof Error ? researchError.message : String(researchError)}`
+        );
+      }
+
       return;
     }
 

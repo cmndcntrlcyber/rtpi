@@ -281,6 +281,16 @@ export const vulnerabilities = pgTable("vulnerabilities", {
   discoveredAt: timestamp("discovered_at").notNull().defaultNow(),
   verifiedAt: timestamp("verified_at"),
   remediatedAt: timestamp("remediated_at"),
+
+  // Investigation tracking (v2.3.6.1)
+  investigationStatus: text("investigation_status").default("pending"), // pending | investigating | validated | false_positive | inconclusive
+  investigationAssignedAt: timestamp("investigation_assigned_at"),
+  investigationCompletedAt: timestamp("investigation_completed_at"),
+  burpScanReference: text("burp_scan_reference"),
+  nucleiTemplateId: uuid("nuclei_template_id"),
+  validationEvidence: json("validation_evidence").default({}),
+  investigationAgentId: uuid("investigation_agent_id"),
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => [
@@ -2955,3 +2965,57 @@ export const operationFrameworkCoverage = pgTable("operation_framework_coverage"
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+// ============================================================================
+// BurpSuite Activation System (v2.3.6.0)
+// ============================================================================
+
+export const burpActivationStatusEnum = pgEnum("burp_activation_status", [
+  "dormant", "activating", "active", "error",
+]);
+
+export const burpSetup = pgTable("burp_setup", {
+  id: uuid("id").primaryKey().defaultRandom(),
+
+  // JAR file state
+  jarUploaded: boolean("jar_uploaded").notNull().default(false),
+  jarFilename: text("jar_filename"),
+  jarFileSize: integer("jar_file_size"),
+  jarFileHash: text("jar_file_hash"),
+  jarUploadedAt: timestamp("jar_uploaded_at"),
+  jarUploadedBy: uuid("jar_uploaded_by").references(() => users.id),
+
+  // License file state
+  licenseUploaded: boolean("license_uploaded").notNull().default(false),
+  licenseFilename: text("license_filename"),
+  licenseType: text("license_type"), // 'pro' | 'enterprise'
+  licenseExpiryDate: timestamp("license_expiry_date"),
+  licenseUploadedAt: timestamp("license_uploaded_at"),
+  licenseUploadedBy: uuid("license_uploaded_by").references(() => users.id),
+
+  // Activation state
+  activationStatus: burpActivationStatusEnum("activation_status").notNull().default("dormant"),
+  activatedAt: timestamp("activated_at"),
+  activatedBy: uuid("activated_by").references(() => users.id),
+  deactivatedAt: timestamp("deactivated_at"),
+
+  // MCP connection
+  mcpServerUrl: text("mcp_server_url"),
+  mcpHealthCheckPassed: boolean("mcp_health_check_passed").notNull().default(false),
+  lastHealthCheck: timestamp("last_health_check"),
+
+  // Error tracking
+  errorMessage: text("error_message"),
+  activationLog: json("activation_log").default([]),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================================================
+// Vulnerability Investigation System (v2.3.6.1)
+// ============================================================================
+
+export const investigationStatusEnum = pgEnum("investigation_status", [
+  "pending", "investigating", "validated", "false_positive", "inconclusive",
+]);

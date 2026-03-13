@@ -26,7 +26,7 @@ const defaultOptions: Required<RetryOptions> = {
   maxDelay: 10000,
   backoffMultiplier: 2,
   retryMethods: ["GET", "HEAD", "OPTIONS"],
-  retryStatusCodes: [408, 429, 500, 502, 503, 504],
+  retryStatusCodes: [408, 500, 502, 503, 504],
   onRetry: () => {},
 };
 

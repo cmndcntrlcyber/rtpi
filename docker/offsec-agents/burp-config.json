@@ -1,0 +1,94 @@
+{
+  "proxy": {
+    "request_listeners": [
+      {
+        "listen_mode": "all_interfaces",
+        "listen_specific_address": "0.0.0.0",
+        "listener_port": 8080,
+        "running": true,
+        "support_invisible_proxying": true
+      }
+    ],
+    "intercept_client_requests": {
+      "do_intercept": false,
+      "automatically_fix_missing_or_superfluous_content_length_headers": true,
+      "automatically_update_content_length_header_when_the_request_is_edited": true
+    },
+    "intercept_server_responses": {
+      "do_intercept": false
+    },
+    "miscellaneous": {
+      "use_http_1_0_in_requests_to_server": false,
+      "use_http_1_0_in_responses_to_client": false,
+      "set_connection_close_on_incoming_requests": false,
+      "set_connection_close_on_outgoing_requests": false
+    }
+  },
+  "spider": {
+    "application_login": {
+      "submit_form": false
+    },
+    "options": {
+      "check_for_new_content_on_pages_with_frequently_changing_dynamic_content": false,
+      "maximum_link_depth": 5,
+      "detect_custom_not_found_responses": true
+    },
+    "crawl_optimization": {
+      "skip_redundant_paths": true
+    }
+  },
+  "scanner": {
+    "active_scanning_engine": {
+      "throttle_between_requests_milliseconds": 100,
+      "add_random_variations_to_throttle": true,
+      "concurrent_scanning_threads": 10,
+      "maximum_transmission_size_bytes": 52428800
+    },
+    "active_scanning_optimization": {
+      "skip_tests_with_high_network_overhead": false,
+      "skip_tests_with_time_intensive_attacks": false
+    },
+    "active_scanning_areas": {
+      "scan_accuracy": "normal",
+      "scan_speed": "normal"
+    },
+    "passive_scanning_areas": {
+      "server_side_injection": true,
+      "cross_site_scripting_reflected": true,
+      "cross_site_scripting_stored": true,
+      "external_service_interaction_dns": true,
+      "external_service_interaction_http": true
+    }
+  },
+  "project_options": {
+    "misc": {
+      "automatic_project_backup": {
+        "enabled": false
+      }
+    },
+    "connections": {
+      "platform_authentication": {
+        "do_platform_authentication": false
+      },
+      "upstream_proxy_servers": {
+        "servers": []
+      }
+    }
+  },
+  "user_options": {
+    "misc": {
+      "hotkeys": {
+        "enabled": false
+      },
+      "automatic_updates": {
+        "enabled": false
+      }
+    },
+    "display": {
+      "user_interface": {
+        "font_size": 12,
+        "theme": "dark"
+      }
+    }
+  }
+}

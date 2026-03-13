@@ -78,7 +78,7 @@ export function KeyboardShortcutsProvider({ children, onSearchOpen }: KeyboardSh
       key: "e",
       ctrl: true,
       meta: true,
-      description: "Go to Empire C2",
+      description: "Go to C2 Warroom",
       action: () => navigate("/empire"),
     },
     {

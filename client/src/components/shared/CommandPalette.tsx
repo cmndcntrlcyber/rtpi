@@ -62,7 +62,7 @@ export default function CommandPalette({ open, onOpenChange }: CommandPalettePro
     { id: "nav-surface-assessment", label: "Surface Assessment", icon: BarChart3, action: () => navigate("/surface-assessment"), category: "Navigation" },
     { id: "nav-attack", label: "ATT&CK Framework", icon: Shield, action: () => navigate("/attack"), category: "Navigation", keywords: ["mitre", "attack"] },
     { id: "nav-agents", label: "Agents", icon: Bot, action: () => navigate("/agents"), category: "Navigation" },
-    { id: "nav-empire", label: "Empire C2", icon: Crown, action: () => navigate("/empire"), category: "Navigation", keywords: ["c2", "command", "control"] },
+    { id: "nav-empire", label: "C2 Warroom", icon: Crown, action: () => navigate("/empire"), category: "Navigation", keywords: ["c2", "command", "control", "warroom", "empire"] },
     { id: "nav-implants", label: "Agentic Implants", icon: Cpu, action: () => navigate("/implants"), category: "Navigation" },
     { id: "nav-infrastructure", label: "Infrastructure", icon: Server, action: () => navigate("/infrastructure"), category: "Navigation" },
     { id: "nav-ollama", label: "Ollama AI", icon: Brain, action: () => navigate("/ollama"), category: "Navigation", keywords: ["ai", "llm", "model"] },

@@ -31,9 +31,10 @@ export default function SurfaceAssessment() {
   const loadOperations = async () => {
     try {
       const res = await api.get<{ operations: any[] }>("/operations");
-      setOperations(res.operations);
-      if (res.operations.length > 0) {
-        setSelectedOperation(res.operations[0].id);
+      const activeOps = res.operations.filter((op: any) => op.status === "active");
+      setOperations(activeOps);
+      if (activeOps.length > 0) {
+        setSelectedOperation(activeOps[0].id);
       }
     } catch (error) {
       // Error handled via toast

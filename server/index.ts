@@ -40,6 +40,7 @@ import kasmWorkspacesRoutes from "./api/v1/kasm-workspaces";
 import kasmProxyRoutes from "./api/v1/kasm-proxy";
 import sslCertificatesRoutes from "./api/v1/ssl-certificates";
 import burpBuilderRoutes from "./api/v1/burp-builder";
+import burpActivationRoutes from "./api/v1/burp-activation";
 import rustNexusRoutes from "./api/v1/rust-nexus";
 import agentPublicRoutes from "./api/v1/agent-public";
 import ollamaRoutes from "./api/v1/ollama";
@@ -65,6 +66,8 @@ import frameworkMappingsRoutes from "./api/v1/framework-mappings";
 import cisRoutes from "./api/v1/cis";
 import agentToolBuildsRoutes from "./api/v1/agent-tool-builds";
 import scanImportRoutes from "./api/v1/scan-import";
+import vulnerabilityInvestigationRoutes from "./api/v1/vulnerability-investigation";
+import bugBountyImportRoutes from "./api/v1/bug-bounty-import";
 import { initializeDefaultAdmin } from "./services/admin-initialization";
 import { opsManagerScheduler } from "./services/ops-manager-scheduler";
 import { scanScheduler } from "./services/scan-scheduler";
@@ -72,6 +75,9 @@ import { initializeAgentSystem, shutdownAgentSystem } from "./services/workflow-
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
+
+// Trust proxy (Vite dev server, nginx reverse proxy)
+app.set("trust proxy", 1);
 
 // Middleware
 app.use(helmet());
@@ -134,6 +140,7 @@ app.use("/api/v1/kasm-workspaces", kasmWorkspacesRoutes);
 app.use("/api/v1/kasm-proxy", kasmProxyRoutes);
 app.use("/api/v1/ssl-certificates", sslCertificatesRoutes);
 app.use("/api/v1/burp-builder", burpBuilderRoutes);
+app.use("/api/v1/burp-activation", burpActivationRoutes);
 app.use("/api/v1/rust-nexus", rustNexusRoutes);
 app.use("/api/v1/public", agentPublicRoutes); // Public endpoints (no auth)
 app.use("/api/v1/ollama", ollamaRoutes);
@@ -159,6 +166,8 @@ app.use("/api/v1/framework-mappings", frameworkMappingsRoutes);
 app.use("/api/v1/cis", cisRoutes);
 app.use("/api/v1/agent-tool-builds", agentToolBuildsRoutes);
 app.use("/api/v1/scan-import", scanImportRoutes);
+app.use("/api/v1/vulnerability-investigation", vulnerabilityInvestigationRoutes);
+app.use("/api/v1/bug-bounty-import", bugBountyImportRoutes);
 
 // Root endpoint
 app.get("/api/v1", (_req, res) => {
@@ -189,6 +198,7 @@ app.get("/api/v1", (_req, res) => {
       kasmProxy: "/api/v1/kasm-proxy",
       sslCertificates: "/api/v1/ssl-certificates",
       burpBuilder: "/api/v1/burp-builder",
+      burpActivation: "/api/v1/burp-activation",
       rustNexus: "/api/v1/rust-nexus",
       ollama: "/api/v1/ollama",
       operationsManagement: "/api/v1/operations-management",

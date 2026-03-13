@@ -1,0 +1,89 @@
+# RTPI OffSec Agent: Web Injection Tools
+# Tools for web injection testing and automation
+#
+# Categories: Web Injection, Automation
+#
+# MITRE ATT&CK Tactics: Discovery (TA0007), Reconnaissance (TA0043)
+
+FROM rtpi/offsec-base:latest
+
+# Set agent type for MCP server
+ENV AGENT_TYPE=web-injection
+ENV TOOLS_PATH=/opt/tools
+
+# Switch to root for package installation
+USER root
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    curl wget \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create directories
+RUN mkdir -p /opt/tools/bin
+
+# =============================================================================
+# TOOL: catch (cmndcntrlcyber/catch)
+# Language: Rust
+# Description: For automating the boring stuff
+# =============================================================================
+
+USER rtpi-agent
+
+# Clone and build catch
+RUN cd /opt/tools && \
+    git clone --depth 1 https://github.com/cmndcntrlcyber/catch.git && \
+    cd catch && \
+    cargo build --release && \
+    cargo cache -a 2>/dev/null || true
+
+# Switch to root to copy binary
+USER root
+
+# Copy binary to /opt/tools/bin
+RUN if [ -f /opt/tools/catch/target/release/catch ]; then \
+        cp /opt/tools/catch/target/release/catch /opt/tools/bin/catch && \
+        chmod +x /opt/tools/bin/catch; \
+    fi
+
+# Create TOOL_INFO.txt
+RUN echo "catch - For automating the boring stuff" > /opt/tools/catch/TOOL_INFO.txt && \
+    echo "Repository: https://github.com/cmndcntrlcyber/catch" >> /opt/tools/catch/TOOL_INFO.txt && \
+    echo "Language: Rust" >> /opt/tools/catch/TOOL_INFO.txt
+
+# =============================================================================
+# CLEANUP AND PERMISSIONS
+# =============================================================================
+
+ENV PATH="/opt/tools/bin:${PATH}"
+
+# Clean build caches to reduce image size
+USER rtpi-agent
+RUN rm -rf ~/.cargo/registry ~/.cargo/git 2>/dev/null || true
+
+USER root
+
+# Remove Rust build artifacts to save space
+RUN rm -rf /opt/tools/catch/target 2>/dev/null || true
+
+# Set ownership
+RUN chown -R rtpi-agent:rtpi-agent /opt/tools
+
+# Switch to non-root user
+USER rtpi-agent
+WORKDIR /home/rtpi-agent
+
+# Build MCP server
+WORKDIR /mcp
+RUN npm run build
+
+# Expose MCP port
+EXPOSE 9000
+
+# Health check
+HEALTHCHECK --interval=60s --timeout=10s --retries=3 \
+    CMD pgrep -f "node.*mcp" || exit 1
+
+# Start MCP server
+ENTRYPOINT ["/usr/local/bin/mcp-entrypoint.sh"]

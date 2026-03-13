@@ -18,13 +18,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ListTodo, Trash2, Workflow } from "lucide-react";
+import { ListTodo, Trash2, Workflow, Download } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import MarkdownEditor from "@/components/markdown/MarkdownEditor";
 import DynamicFieldList from "@/components/shared/DynamicFieldList";
 import QuestionResponseTable, { QuestionResponseRow } from "@/components/shared/QuestionResponseTable";
 import LinkedTargets from "./LinkedTargets";
 import CompletedWorkflows from "./CompletedWorkflows";
+import BugBountyImportCard from "./BugBountyImportCard";
 import { useWorkflowTemplates } from "@/hooks/useWorkflowTemplates";
 
 interface OperationFormData {
@@ -487,23 +488,32 @@ export default function OperationForm({
 
           {/* Linked Targets & Workflows Section (only for existing operations) */}
           {isEditing && (initialData as any)?.id && (
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <LinkedTargets
+            <div className="mt-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <LinkedTargets
+                  operationId={(initialData as any).id}
+                  onViewAll={() => {
+                    if (onViewTargets && (initialData as any).id) {
+                      onViewTargets((initialData as any).id);
+                    }
+                  }}
+                  onAddNew={() => {
+                    if (onAddTarget && (initialData as any).id) {
+                      onAddTarget((initialData as any).id);
+                    }
+                  }}
+                />
+
+                <CompletedWorkflows
+                  operationId={(initialData as any).id}
+                />
+              </div>
+
+              <BugBountyImportCard
                 operationId={(initialData as any).id}
-                onViewAll={() => {
-                  if (onViewTargets && (initialData as any).id) {
-                    onViewTargets((initialData as any).id);
-                  }
+                onSuccess={() => {
+                  // Refresh linked targets after import
                 }}
-                onAddNew={() => {
-                  if (onAddTarget && (initialData as any).id) {
-                    onAddTarget((initialData as any).id);
-                  }
-                }}
-              />
-              
-              <CompletedWorkflows
-                operationId={(initialData as any).id}
               />
             </div>
           )}

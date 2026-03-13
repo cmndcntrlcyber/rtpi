@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useLocation, useSearchParams } from "wouter";
-import { Plus, CheckSquare } from "lucide-react";
+import { Plus, CheckSquare, Download } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import OperationList from "@/components/operations/OperationList";
@@ -8,6 +8,7 @@ import OperationForm from "@/components/operations/OperationForm";
 import OpsManagerFloatingChat from "@/components/operations/OpsManagerFloatingChat";
 import { BulkActionToolbar } from "@/components/shared/BulkActionToolbar";
 import { BulkConfirmDialog } from "@/components/shared/BulkConfirmDialog";
+import BugBountyImportCard from "@/components/operations/BugBountyImportCard";
 import { useOperations, useCreateOperation, useUpdateOperation, useDeleteOperation } from "@/hooks/useOperations";
 import { api } from "@/lib/api";
 
@@ -35,12 +36,16 @@ export default function Operations() {
     }
   }, [operations, selectedOperationId]);
 
+  // Status filter state
+  const [statusFilter, setStatusFilter] = useState<string | null>("active");
+
   // Bulk selection state
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [bulkAction, setBulkAction] = useState<"delete" | "status-change">("delete");
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
+  const [bugBountyImportOpen, setBugBountyImportOpen] = useState(false);
 
   const handleCreateOperation = async (data: any) => {
     try {
@@ -231,7 +236,20 @@ export default function Operations() {
     total: operations.length,
     active: operations.filter((op) => op.status === "active").length,
     planning: operations.filter((op) => op.status === "planning").length,
+    paused: operations.filter((op) => op.status === "paused").length,
     completed: operations.filter((op) => op.status === "completed").length,
+    cancelled: operations.filter((op) => op.status === "cancelled").length,
+  };
+
+  // Filter operations based on selected status card
+  const displayOperations = useMemo(() => {
+    const source = operationsWithWorkflows.length > 0 ? operationsWithWorkflows : operations;
+    if (!statusFilter) return source;
+    return source.filter((op: any) => op.status === statusFilter);
+  }, [operationsWithWorkflows, operations, statusFilter]);
+
+  const handleStatusFilterClick = (filter: string | null) => {
+    setStatusFilter((prev) => (prev === filter ? null : filter));
   };
 
   return (
@@ -251,6 +269,13 @@ export default function Operations() {
             <CheckSquare className="h-4 w-4 mr-2" />
             {bulkMode ? "Exit Bulk Mode" : "Bulk Select"}
           </Button>
+          <Button
+            variant="outline"
+            onClick={() => setBugBountyImportOpen(!bugBountyImportOpen)}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Import Bug Bounty
+          </Button>
           <Button onClick={() => setFormOpen(true)} disabled={creating}>
             <Plus className="h-4 w-4 mr-2" />
             New Operation
@@ -258,34 +283,48 @@ export default function Operations() {
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">
-            Total Operations
-          </h3>
-          <p className="text-3xl font-bold text-foreground">{stats.total}</p>
+      {/* Bug Bounty Import Card */}
+      {bugBountyImportOpen && (
+        <div className="mb-6">
+          <BugBountyImportCard
+            onClose={() => setBugBountyImportOpen(false)}
+            onSuccess={(operationId) => {
+              setBugBountyImportOpen(false);
+              refetch();
+              toast.success("Bug bounty program imported successfully");
+            }}
+          />
         </div>
+      )}
 
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">Active</h3>
-          <p className="text-3xl font-bold text-green-600">{stats.active}</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">Planning</h3>
-          <p className="text-3xl font-bold text-blue-600">{stats.planning}</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">Completed</h3>
-          <p className="text-3xl font-bold text-muted-foreground">{stats.completed}</p>
-        </div>
+      {/* Stats Cards — clickable filters */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+        {([
+          { key: null, label: "Total Operations", value: stats.total, color: "text-foreground" },
+          { key: "active", label: "Active", value: stats.active, color: "text-green-600" },
+          { key: "planning", label: "Planning", value: stats.planning, color: "text-blue-600" },
+          { key: "paused", label: "Paused", value: stats.paused, color: "text-yellow-600" },
+          { key: "completed", label: "Completed", value: stats.completed, color: "text-muted-foreground" },
+          { key: "cancelled", label: "Cancelled", value: stats.cancelled, color: "text-red-600" },
+        ] as const).map((card) => (
+          <div
+            key={card.label}
+            onClick={() => handleStatusFilterClick(card.key)}
+            className={`bg-card p-5 rounded-lg shadow-sm border cursor-pointer hover:shadow-md transition-all ${
+              statusFilter === card.key
+                ? "ring-2 ring-primary ring-offset-2 border-primary"
+                : "border-border"
+            }`}
+          >
+            <h3 className="text-sm font-medium text-muted-foreground mb-2">{card.label}</h3>
+            <p className={`text-3xl font-bold ${card.color}`}>{card.value}</p>
+          </div>
+        ))}
       </div>
 
       {/* Operations List */}
       <OperationList
-        operations={operationsWithWorkflows.length > 0 ? operationsWithWorkflows : operations}
+        operations={displayOperations}
         loading={loading}
         onSelect={handleSelectOperation}
         onEdit={handleEditOperation}

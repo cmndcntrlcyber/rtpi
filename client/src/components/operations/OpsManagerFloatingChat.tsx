@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from "react";
-import { Bot, X, Minus, Send, Play, Power, PowerOff, HelpCircle, Loader2, MessageSquare } from "lucide-react";
+import { Bot, X, Minus, Send, Play, Power, PowerOff, HelpCircle, Loader2, MessageSquare, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useReporterAgents } from "@/hooks/useReporterAgents";
 import { useAssetQuestions } from "@/hooks/useAssetQuestions";
 import { useOperationsManagement } from "@/hooks/useOperationsManagement";
 import { toast } from "sonner";
+import { api } from "@/lib/api";
 
 interface OpsManagerFloatingChatProps {
   operationId: string | null;
@@ -55,19 +57,30 @@ export default function OpsManagerFloatingChat({
   const [submitting, setSubmitting] = useState(false);
   const [triggering, setTriggering] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [viewMode, setViewMode] = useState<"chat" | "features">("features");
+  const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "assistant"; content: string; timestamp: string }>>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [sendingMessage, setSendingMessage] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
 
   const pendingCount = questions.length;
   const hourlyReportingEnabled = opsData?.operation?.hourlyReportingEnabled || false;
   const operationName = opsData?.operation?.name || "No operation";
   const activeReporters = opsData?.stats?.activeReporters || 0;
 
-  // Auto-scroll to bottom when new questions arrive
+  // Auto-scroll to bottom when new questions or chat messages arrive
   useEffect(() => {
-    if (scrollRef.current && isOpen) {
+    if (scrollRef.current && isOpen && viewMode === "features") {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [questions.length, isOpen]);
+  }, [questions.length, isOpen, viewMode]);
+
+  useEffect(() => {
+    if (chatScrollRef.current && isOpen && viewMode === "chat") {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [chatMessages.length, isOpen, viewMode]);
 
   const handleAnswerSubmit = async () => {
     if (!answeringId || !answerText.trim()) return;
@@ -111,6 +124,57 @@ export default function OpsManagerFloatingChat({
       toast.error(err.message || "Failed to toggle reporting");
     } finally {
       setToggling(false);
+    }
+  };
+
+  const handleSendChatMessage = async () => {
+    if (!chatInput.trim() || !operationId) return;
+
+    const userMessage = {
+      role: "user" as const,
+      content: chatInput.trim(),
+      timestamp: new Date().toISOString(),
+    };
+
+    setChatMessages((prev) => [...prev, userMessage]);
+    const currentInput = chatInput.trim();
+    setChatInput("");
+    setSendingMessage(true);
+
+    try {
+      // Send message with conversation history to Operations Manager agent
+      const response = await api.post("/operations-management/chat", {
+        operationId,
+        message: currentInput,
+        conversationHistory: chatMessages.map(m => ({
+          role: m.role,
+          content: m.content,
+        })),
+      });
+
+      const assistantMessage = {
+        role: "assistant" as const,
+        content: response.response || "I'm processing your request...",
+        timestamp: new Date().toISOString(),
+      };
+
+      setChatMessages((prev) => [...prev, assistantMessage]);
+      
+      // Show provider info in console for debugging
+      console.log(`[OpsManager Chat] Response from ${response.provider} (${response.model}), ${response.tokensUsed} tokens`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send message");
+      // Remove user message on error
+      setChatMessages((prev) => prev.slice(0, -1));
+    } finally {
+      setSendingMessage(false);
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendChatMessage();
     }
   };
 
@@ -170,12 +234,110 @@ export default function OpsManagerFloatingChat({
           </div>
         </div>
 
+        {/* Mode Toggle */}
+        {operationId && (
+          <div className="px-4 pt-3 pb-2">
+            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "chat" | "features")}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="chat" className="text-xs">
+                  <MessageSquare className="h-3 w-3 mr-1" />
+                  Chat
+                </TabsTrigger>
+                <TabsTrigger value="features" className="text-xs relative">
+                  <Zap className="h-3 w-3 mr-1" />
+                  Features
+                  {pendingCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                      {pendingCount}
+                    </span>
+                  )}
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+        )}
+
         {/* Content */}
         {!operationId ? (
           <div className="p-6 text-center text-muted-foreground">
             <MessageSquare className="h-10 w-10 mx-auto mb-3 opacity-50" />
             <p className="text-sm">Click on an operation to start</p>
           </div>
+        ) : viewMode === "chat" ? (
+          <>
+            {/* Chat Messages */}
+            <div ref={chatScrollRef} className="max-h-[300px] overflow-y-auto p-3 space-y-3">
+              {chatMessages.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground">
+                  <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-xs">Start a conversation with Operations Manager</p>
+                  <p className="text-[10px] mt-1">Ask about operations status, progress, or next steps</p>
+                </div>
+              ) : (
+                chatMessages.map((msg, idx) => (
+                  <div
+                    key={idx}
+                    className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    {msg.role === "assistant" && (
+                      <div className="flex-shrink-0">
+                        <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center">
+                          <Bot className="h-4 w-4 text-primary-foreground" />
+                        </div>
+                      </div>
+                    )}
+                    <div
+                      className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+                        msg.role === "user"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-secondary text-foreground"
+                      }`}
+                    >
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                      <p className="text-[9px] mt-1 opacity-70">
+                        {formatTimeAgo(msg.timestamp)}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
+              {sendingMessage && (
+                <div className="flex gap-2 justify-start">
+                  <div className="flex-shrink-0">
+                    <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center">
+                      <Bot className="h-4 w-4 text-primary-foreground" />
+                    </div>
+                  </div>
+                  <div className="bg-secondary rounded-lg px-3 py-2 text-sm">
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Chat Input */}
+            <div className="p-3 border-t border-border">
+              <div className="flex gap-2">
+                <textarea
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={handleKeyPress}
+                  placeholder="Ask Operations Manager anything..."
+                  className="flex-1 text-sm border border-border rounded-md p-2 bg-background text-foreground resize-none focus:outline-none focus:ring-1 focus:ring-primary min-h-[40px] max-h-[100px]"
+                  rows={1}
+                  disabled={sendingMessage}
+                />
+                <Button
+                  size="sm"
+                  onClick={handleSendChatMessage}
+                  disabled={!chatInput.trim() || sendingMessage}
+                  className="self-end"
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </>
         ) : (
           <>
             {/* Quick Actions */}

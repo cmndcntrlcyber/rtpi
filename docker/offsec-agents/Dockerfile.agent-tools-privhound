@@ -1,0 +1,32 @@
+FROM rtpi/offsec-base:latest
+
+# Create directories
+RUN mkdir -p /opt/tools/bin
+
+# PrivHound - BloodHound OpenGraph collector
+USER rtpi-agent
+RUN cd /opt/tools && \
+    git clone --depth 1 https://github.com/dazzyddos/PrivHound.git 2>/dev/null || true && \
+    cd PrivHound && \
+    cargo build --release 2>/dev/null || true && \
+    if [ -f target/release/privhound ]; then \
+      cp target/release/privhound /opt/tools/bin/ 2>/dev/null || true; \
+    fi
+
+USER root
+RUN if [ -f /opt/tools/bin/privhound ]; then \
+      chmod +x /opt/tools/bin/privhound && \
+      chown rtpi-agent:rtpi-agent /opt/tools/bin/privhound; \
+    fi
+
+RUN echo "PrivHound - BloodHound OpenGraph collector for Active Directory privilege escalation analysis" > /opt/tools/PrivHound/TOOL_INFO.txt 2>/dev/null || true
+
+# Cleanup Rust build artifacts
+USER rtpi-agent
+RUN rm -rf /opt/tools/PrivHound/target 2>/dev/null || true && \
+    cargo cache -a 2>/dev/null || true
+
+USER root
+
+# Set final ownership
+RUN chown -R rtpi-agent:rtpi-agent /opt/tools

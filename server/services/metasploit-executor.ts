@@ -461,6 +461,58 @@ class MetasploitExecutor {
       },
     };
   }
+
+  /**
+   * Load a custom Metasploit module (.rb) into the container's module directory.
+   * The module will be available for subsequent execution via msfconsole.
+   */
+  async loadCustomModule(
+    moduleContent: string,
+    modulePath: string,
+    moduleType: string = "exploit"
+  ): Promise<{ success: boolean; loadedPath: string; error?: string }> {
+    const containerModulePath = `/root/.msf4/modules/${moduleType}s/${modulePath}`;
+    const dirPath = containerModulePath.substring(0, containerModulePath.lastIndexOf('/'));
+
+    try {
+      // Create directory structure
+      await dockerExecutor.exec("rtpi-tools", ["mkdir", "-p", dirPath], {
+        timeout: 10000,
+      });
+
+      // Write module file via stdin
+      await dockerExecutor.exec(
+        "rtpi-tools",
+        ["bash", "-c", `cat > ${containerModulePath}`],
+        {
+          timeout: 10000,
+          stdin: moduleContent,
+        }
+      );
+
+      // Reload modules in msfconsole
+      await dockerExecutor.exec(
+        "rtpi-tools",
+        ["msfconsole", "-q", "-x", "reload_all; exit"],
+        { timeout: 30000 }
+      );
+
+      console.log(`[Metasploit] Custom module loaded: ${containerModulePath}`);
+
+      return {
+        success: true,
+        loadedPath: `${moduleType}/${modulePath.replace(/\.rb$/, '')}`,
+      };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[Metasploit] Failed to load custom module: ${errorMsg}`);
+      return {
+        success: false,
+        loadedPath: containerModulePath,
+        error: errorMsg,
+      };
+    }
+  }
 }
 
 export const metasploitExecutor = new MetasploitExecutor();

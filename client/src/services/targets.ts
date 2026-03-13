@@ -18,8 +18,10 @@ export interface Target {
 
 export const targetsService = {
   // List all targets
-  list: (options?: { signal?: AbortSignal }) =>
-    api.get<{ targets: Target[] }>("/targets", { signal: options?.signal }),
+  list: (options?: { signal?: AbortSignal; operationId?: string }) => {
+    const url = options?.operationId ? `/targets?operationId=${options.operationId}` : "/targets";
+    return api.get<{ targets: Target[] }>(url, { signal: options?.signal });
+  },
 
   // Get single target
   get: (id: string) => api.get<{ target: Target }>(`/targets/${id}`),

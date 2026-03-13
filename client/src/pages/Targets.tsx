@@ -44,13 +44,21 @@ export default function Targets() {
   const [loopDialogOpen, setLoopDialogOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState("");
   const [runningLoop, setRunningLoop] = useState(false);
+  const [selectedOperation, setSelectedOperation] = useState<string>("all");
 
   // Bulk selection state
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
-  const [bulkAction, setBulkAction] = useState<"delete" | "archive">("delete");
+  const [bulkAction, setBulkAction] = useState<"delete" | "archive" | "custom">("delete");
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
+
+  // Per-group Scan All / Delete All state
+  const [scanGroupDialogOpen, setScanGroupDialogOpen] = useState(false);
+  const [scanGroupLoading, setScanGroupLoading] = useState(false);
+  const [deleteGroupDialogOpen, setDeleteGroupDialogOpen] = useState(false);
+  const [deleteGroupLoading, setDeleteGroupLoading] = useState(false);
+  const [actionGroupKey, setActionGroupKey] = useState<string | null>(null);
 
   // Group & ordering state
   const [targetOrder, setTargetOrder] = useState<Record<string, string[]>>(loadTargetOrder);
@@ -270,12 +278,104 @@ export default function Targets() {
     }
   };
 
-  // Calculate stats
+  // Get targets for a specific group
+  const getGroupTargets = (groupKey: string) =>
+    targets.filter((t) => (t.operationId || "__unassigned__") === groupKey);
+
+  const getGroupLabel = (groupKey: string) => {
+    if (groupKey === "__unassigned__") return "Unassigned";
+    return operations.find((op) => op.id === groupKey)?.name || "Unknown Operation";
+  };
+
+  // Per-group Scan All
+  const handleScanGroup = async () => {
+    if (!actionGroupKey) return;
+    const groupTargets = getGroupTargets(actionGroupKey);
+    setScanGroupLoading(true);
+    try {
+      let completed = 0;
+      let failed = 0;
+      for (const target of groupTargets) {
+        try {
+          await api.post(`/targets/${target.id}/scan`);
+          completed++;
+        } catch {
+          failed++;
+        }
+      }
+      toast.success(
+        `Scan complete: ${completed} started${failed > 0 ? `, ${failed} failed` : ""}`
+      );
+      await loadData();
+    } catch (error: any) {
+      toast.error(`Scan failed: ${error.message || "Unknown error"}`);
+    } finally {
+      setScanGroupLoading(false);
+      setScanGroupDialogOpen(false);
+      setActionGroupKey(null);
+    }
+  };
+
+  // Per-group Delete All
+  const handleDeleteGroup = async () => {
+    if (!actionGroupKey) return;
+    const groupTargets = getGroupTargets(actionGroupKey);
+    setDeleteGroupLoading(true);
+    try {
+      await Promise.all(groupTargets.map((t) => api.delete(`/targets/${t.id}`)));
+      toast.success(`Deleted ${groupTargets.length} target(s)`);
+      await loadData();
+    } catch (error: any) {
+      toast.error(`Delete failed: ${error.message || "Unknown error"}`);
+    } finally {
+      setDeleteGroupLoading(false);
+      setDeleteGroupDialogOpen(false);
+      setActionGroupKey(null);
+    }
+  };
+
+  const handleOpenScanGroup = (groupKey: string) => {
+    setActionGroupKey(groupKey);
+    setScanGroupDialogOpen(true);
+  };
+
+  const handleOpenDeleteGroup = (groupKey: string) => {
+    setActionGroupKey(groupKey);
+    setDeleteGroupDialogOpen(true);
+  };
+
+  // Filter targets by selected operation AND exclude targets from completed/cancelled operations
+  const filteredTargets = useMemo(() => {
+    // Get IDs of active operations (exclude completed/cancelled)
+    const activeOperationIds = new Set(
+      operations
+        .filter((op) => op.status !== "completed" && op.status !== "cancelled")
+        .map((op) => op.id)
+    );
+
+    // Filter targets
+    let filtered = targets.filter((t) => {
+      // Exclude targets from completed/cancelled operations
+      if (t.operationId && !activeOperationIds.has(t.operationId)) {
+        return false;
+      }
+      return true;
+    });
+
+    // Further filter by selected operation if not "all"
+    if (selectedOperation !== "all") {
+      filtered = filtered.filter((t) => t.operationId === selectedOperation);
+    }
+
+    return filtered;
+  }, [targets, operations, selectedOperation]);
+
+  // Calculate stats from filtered targets
   const stats = {
-    total: targets.length,
-    active: targets.filter((t) => t.status === "active").length,
-    scanning: targets.filter((t) => t.status === "scanning").length,
-    vulnerable: targets.filter((t) => t.status === "vulnerable").length,
+    total: filteredTargets.length,
+    active: filteredTargets.filter((t) => t.status === "active").length,
+    scanning: filteredTargets.filter((t) => t.status === "scanning").length,
+    vulnerable: filteredTargets.filter((t) => t.status === "vulnerable").length,
   };
 
   return (
@@ -288,6 +388,21 @@ export default function Targets() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Select value={selectedOperation} onValueChange={setSelectedOperation}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Filter by operation" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Operations</SelectItem>
+              {operations
+                .filter((op) => op.status === "active")
+                .map((op) => (
+                  <SelectItem key={op.id} value={op.id}>
+                    {op.name}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
           <Button
             variant={bulkMode ? "secondary" : "outline"}
             onClick={toggleBulkMode}
@@ -327,13 +442,15 @@ export default function Targets() {
 
       {/* Targets List — grouped by operation */}
       <TargetList
-        targets={targets}
+        targets={filteredTargets}
         operations={operations}
         loading={loading}
         onSelect={handleSelectTarget}
         onEdit={handleEditTarget}
         onDelete={(t) => handleDeleteTarget(t.id)}
         onScan={handleScanTarget}
+        onScanGroup={handleOpenScanGroup}
+        onDeleteGroup={handleOpenDeleteGroup}
         selectable={bulkMode}
         selectedIds={selectedIds}
         onSelectionChange={handleSelectionChange}
@@ -430,6 +547,34 @@ export default function Targets() {
         itemType="target"
         onConfirm={handleConfirmBulkAction}
         loading={bulkActionLoading}
+      />
+
+      {/* Per-group Scan All Confirmation Dialog */}
+      <BulkConfirmDialog
+        open={scanGroupDialogOpen}
+        onOpenChange={(open) => { setScanGroupDialogOpen(open); if (!open) setActionGroupKey(null); }}
+        actionType="custom"
+        itemCount={actionGroupKey ? getGroupTargets(actionGroupKey).length : 0}
+        itemType="target"
+        title={`Scan All — ${actionGroupKey ? getGroupLabel(actionGroupKey) : ""}`}
+        description={`This will start nmap scans on all ${actionGroupKey ? getGroupTargets(actionGroupKey).length : 0} target(s) in this operation. Each scan covers all 65535 ports and may take several minutes per target.`}
+        confirmLabel="Scan All"
+        onConfirm={handleScanGroup}
+        loading={scanGroupLoading}
+      />
+
+      {/* Per-group Delete All Confirmation Dialog */}
+      <BulkConfirmDialog
+        open={deleteGroupDialogOpen}
+        onOpenChange={(open) => { setDeleteGroupDialogOpen(open); if (!open) setActionGroupKey(null); }}
+        actionType="delete"
+        itemCount={actionGroupKey ? getGroupTargets(actionGroupKey).length : 0}
+        itemType="target"
+        title={`Delete All — ${actionGroupKey ? getGroupLabel(actionGroupKey) : ""}`}
+        description={`Are you sure you want to delete all ${actionGroupKey ? getGroupTargets(actionGroupKey).length : 0} target(s) in this operation? This action cannot be undone.`}
+        confirmLabel="Delete All"
+        onConfirm={handleDeleteGroup}
+        loading={deleteGroupLoading}
       />
     </div>
   );

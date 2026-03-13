@@ -11,6 +11,7 @@ services:
       - "5434:5432"  # Changed from 5432 to avoid conflicts
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro  # Creates sysreptor DB on first init
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U rtpi"]
       interval: 10s
@@ -668,8 +669,16 @@ services:
       - AGENT_TYPE=burp-suite
       - TOOLS_PATH=/opt/tools
       - DOCS_PATH=/docs
+      - BURP_MCP_ENABLED=true
+      - MCP_PORT=9876
+      - ACTIVATION_MODE=dormant
+    ports:
+      - "9876:9876"   # Burp MCP Server
+      - "8082:8082"   # Burp Proxy (when active)
     volumes:
       - burp-tools:/opt/tools
+      - burp-setup:/opt/burp-setup
+      - burp-projects:/opt/burp-projects
       - shared-data:/shared
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
@@ -677,7 +686,7 @@ services:
     restart: unless-stopped
     init: true
     healthcheck:
-      test: ["CMD-SHELL", "true"]
+      test: ["CMD-SHELL", "pgrep -f burp-entrypoint || true"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -827,6 +836,195 @@ services:
 #    networks:
 #      - rtpi-network
 
+  # ===========================================================================
+  # SysReptor - Penetration Testing Documentation & Reporting
+  # Usage: docker compose --profile sysreptor up -d
+  # Access: http://localhost:7777 (via Caddy proxy)
+  # ===========================================================================
+
+  sysreptor-app:
+    image: syslifters/sysreptor:2025.37
+    container_name: rtpi-sysreptor-app
+    profiles:
+      - sysreptor
+    restart: unless-stopped
+    ports:
+      - "9000:8000"  # Direct SysReptor API/app access
+    volumes:
+      - sysreptor-app-data:/app/data
+      - ./configs/rtpi-sysreptor/app.env:/app/.env:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      sysreptor-redis:
+        condition: service_healthy
+    env_file:
+      - ./configs/rtpi-sysreptor/app.env
+    command: /bin/bash /app/api/start.sh
+    networks:
+      - rtpi-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  sysreptor-caddy:
+    image: caddy:2.8
+    container_name: rtpi-sysreptor-caddy
+    profiles:
+      - sysreptor
+    restart: unless-stopped
+    ports:
+      - "7777:7777"  # Primary SysReptor access via Caddy proxy
+    volumes:
+      - sysreptor-caddy-data:/data
+      - ./configs/rtpi-sysreptor/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - sysreptor-app
+    networks:
+      - rtpi-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  sysreptor-redis:
+    image: bitnami/redis:7.2
+    container_name: rtpi-sysreptor-redis
+    profiles:
+      - sysreptor
+    restart: unless-stopped
+    environment:
+      - REDIS_PASSWORD=sysreptorredispassword
+    networks:
+      - rtpi-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "sysreptorredispassword", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ===========================================================================
+  # Portainer - Container Management UI
+  # Usage: docker compose --profile management up -d
+  # Access: https://localhost:9443
+  # First login sets admin password
+  # ===========================================================================
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: rtpi-portainer
+    profiles:
+      - management
+    restart: unless-stopped
+    ports:
+      - "9443:9443"  # HTTPS UI
+      - "8000:8000"  # Edge agent tunnel (optional)
+    volumes:
+      - portainer-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - rtpi-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-k", "https://localhost:9443/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ===========================================================================
+  # Kasm Containerized Workspaces (optional — adds pre-built desktop images)
+  # Requires the kasm profile: docker compose --profile kasm up -d
+  # VS Code: http://localhost:6901
+  # Kali: http://localhost:6902
+  # Default VNC password: password  (change via VNC_PW env var)
+  # ===========================================================================
+
+  kasm-vscode:
+    image: kasmweb/vs-code:1.16.0
+    container_name: rtpi-kasm-vscode
+    profiles:
+      - kasm
+    platform: linux/amd64
+    restart: unless-stopped
+    ports:
+      - "6901:6901"  # VS Code web interface
+    volumes:
+      - kasm-vscode-data:/home/kasm-user
+    environment:
+      - VNC_PW=${KASM_VNC_PASSWORD:-password}
+      - KASM_SVC_AUDIO=0
+      - KASM_SVC_UPLOADS=1
+      - KASM_SVC_DOWNLOADS=1
+      - DISABLE_SSL=true
+      - KASM_SVC_FORCE_HTTPS=0
+    shm_size: "512m"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - rtpi-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6901/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  kasm-kali:
+    image: kasmweb/kali-rolling-desktop:1.16.0
+    container_name: rtpi-kasm-kali
+    profiles:
+      - kasm
+    platform: linux/amd64
+    restart: unless-stopped
+    ports:
+      - "6902:6901"  # Kali web interface (mapped to different host port)
+    volumes:
+      - kasm-kali-data:/home/kasm-user
+    environment:
+      - VNC_PW=${KASM_VNC_PASSWORD:-password}
+      - KASM_SVC_AUDIO=1
+      - KASM_SVC_UPLOADS=1
+      - KASM_SVC_DOWNLOADS=1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - rtpi-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6901/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 networks:
   rtpi-network:
     driver: bridge
@@ -860,9 +1058,19 @@ volumes:
   maldev-tools:
   azure-ad-tools:
   burp-tools:
+  burp-setup:
+  burp-projects:
   empire-tools:
   fuzzing-tools:
   fuzzing-wordlists:
   framework-tools:
   research-tools:
   research-notebooks:
+  # SysReptor volumes
+  sysreptor-app-data:
+  sysreptor-caddy-data:
+  # Portainer volume
+  portainer-data:
+  # Kasm containerized workspace volumes
+  kasm-vscode-data:
+  kasm-kali-data:

@@ -322,7 +322,7 @@ export default function OperationCard({
         </div>
 
         {/* Stats Row */}
-        <div className="flex items-center gap-4 pt-3 border-t border-gray-100">
+        <div className="flex items-center gap-4 pt-3 border-t border-border">
           {operation.type && (
             <Badge variant="outline" className="text-xs">
               {operation.type}
@@ -342,13 +342,13 @@ export default function OperationCard({
 
         {/* Latest Workflow if exists */}
         {operation.latestWorkflow && (
-          <div className="mt-3 p-3 bg-blue-50 rounded border border-blue-100">
-            <p className="text-xs text-blue-600 font-medium mb-2">Latest Workflow</p>
+          <div className="mt-3 p-3 bg-blue-500/10 rounded border border-blue-500/20">
+            <p className="text-xs text-blue-400 font-medium mb-2">Latest Workflow</p>
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-blue-900 font-medium truncate">{operation.latestWorkflow}</p>
+                <p className="text-sm text-foreground font-medium truncate">{operation.latestWorkflow}</p>
                 {operation.latestWorkflowDate && (
-                  <p className="text-xs text-blue-700/70 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     {new Date(operation.latestWorkflowDate).toLocaleString()}
                   </p>
                 )}
@@ -385,7 +385,7 @@ export default function OperationCard({
                     size="sm"
                     onClick={handleDeleteWorkflow}
                     disabled={deleting}
-                    className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-50 bg-card"
+                    className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-500/10 bg-card"
                     title="Delete Workflow"
                   >
                     <Trash2 className="h-3 w-3" />
@@ -405,7 +405,7 @@ export default function OperationCard({
 
         {/* Action Buttons */}
         {(onEdit || onDelete) && (
-          <div className="flex gap-2 mt-4 pt-3 border-t border-gray-100">
+          <div className="flex gap-2 mt-4 pt-3 border-t border-border">
             {onEdit && (
               <Button
                 variant="outline"
@@ -428,7 +428,7 @@ export default function OperationCard({
                   e.stopPropagation();
                   onDelete(operation);
                 }}
-                className="flex-1 text-red-600 hover:text-red-700 hover:bg-red-50"
+                className="flex-1 text-red-600 hover:text-red-700 hover:bg-red-500/10"
               >
                 <Trash2 className="h-3 w-3 mr-1" />
                 Delete

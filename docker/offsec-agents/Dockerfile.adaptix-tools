@@ -1,0 +1,75 @@
+# RTPI OffSec Agent: AdaptixC2
+# Modern C2 framework with web-based management
+#
+# Categories: C2 Frameworks, Post-Exploitation, Listener Management
+# Primary Focus: Adaptix C2 server and agent management
+# Source: https://github.com/Adaptix-Framework/AdaptixC2
+#
+# MITRE ATT&CK Tactics: Command and Control (TA0011), Execution (TA0002), Persistence (TA0003)
+
+FROM rtpi/offsec-base:latest
+
+# Set agent type for MCP server
+ENV AGENT_TYPE=adaptix-c2
+ENV TOOLS_PATH=/opt/tools
+ENV ADAPTIX_HOME=/opt/adaptix
+
+# Switch to root for package installation
+USER root
+
+# Install AdaptixC2 dependencies
+RUN apt-get update && apt-get install -y \
+    # Build tools
+    build-essential cmake \
+    # Network tools
+    nmap netcat-openbsd socat \
+    # SSL/crypto
+    openssl libssl-dev \
+    # Python
+    python3-dev python3-pip \
+    # Utilities
+    unzip jq git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Go (AdaptixC2 is Go-based)
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "aarch64" ]; then GO_ARCH="arm64"; else GO_ARCH="amd64"; fi && \
+    GO_VERSION=$(curl -s https://go.dev/VERSION?m=text | head -1) && \
+    curl -sL "https://go.dev/dl/${GO_VERSION}.linux-${GO_ARCH}.tar.gz" -o /tmp/go.tar.gz && \
+    tar -C /usr/local -xzf /tmp/go.tar.gz && \
+    rm /tmp/go.tar.gz
+ENV PATH="/usr/local/go/bin:${PATH}"
+ENV GOPATH="/opt/go"
+
+# Clone and build AdaptixC2
+RUN mkdir -p ${ADAPTIX_HOME} && \
+    git clone --depth 1 https://github.com/Adaptix-Framework/AdaptixC2.git ${ADAPTIX_HOME}/src || \
+    echo "AdaptixC2 clone deferred to activation"
+
+# Build AdaptixC2 server if source available
+RUN if [ -d "${ADAPTIX_HOME}/src" ]; then \
+        cd ${ADAPTIX_HOME}/src && \
+        (go build -o ${ADAPTIX_HOME}/adaptix-server ./... 2>/dev/null || echo "AdaptixC2 build deferred to activation"); \
+    fi
+
+# Install Python dependencies for management
+RUN pip3 install --no-cache-dir \
+    requests \
+    websockets \
+    2>/dev/null || true
+
+# Create activation directory
+RUN mkdir -p /opt/c2-setup
+
+# Copy dormant entrypoint
+COPY adaptix-entrypoint.sh /opt/adaptix-entrypoint.sh
+RUN chmod +x /opt/adaptix-entrypoint.sh
+
+# AdaptixC2 web UI + listener ports + MCP server
+EXPOSE 40443 443 80 9000
+
+# Switch back to agent user
+USER agent
+WORKDIR /home/agent
+
+ENTRYPOINT ["/opt/adaptix-entrypoint.sh"]

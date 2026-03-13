@@ -8,6 +8,7 @@
 
 import { db } from '../db';
 import { discoveredAssets, discoveredServices, vulnerabilities, axScanResults } from '@shared/schema';
+import { resolveTargetId } from './target-resolver';
 import { eq, and, sql } from 'drizzle-orm';
 
 // ============================================================================
@@ -678,10 +679,14 @@ class ScanImportService {
     // Store vulnerabilities
     for (const vuln of parsed.vulnerabilities) {
       try {
+        const hostVal = vuln.affectedServices?.[0]?.host;
+        const targetId = hostVal ? await resolveTargetId(operationId, hostVal) : null;
+
         const [upserted] = await db
           .insert(vulnerabilities)
           .values({
             operationId,
+            targetId,
             title: vuln.title,
             description: vuln.description,
             severity: vuln.severity,

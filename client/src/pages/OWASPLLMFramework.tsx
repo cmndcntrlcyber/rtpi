@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Lock, AlertTriangle, Shield } from "lucide-react";
+import { api } from "@/lib/api";
 import VulnerabilitiesTable from "@/components/owasp-llm/VulnerabilitiesTable";
 import AttackVectorsTable from "@/components/owasp-llm/AttackVectorsTable";
 import MitigationsTable from "@/components/owasp-llm/MitigationsTable";
@@ -9,10 +11,22 @@ import OWASPLLMAssessment from "@/components/owasp-llm/OWASPLLMAssessment";
 export default function OWASPLLMFramework() {
   const [stats, setStats] = useState({ vulnerabilities: 0, attackVectors: 0, mitigations: 0 });
   const [loading, setLoading] = useState(true);
+  const [operations, setOperations] = useState<any[]>([]);
+  const [selectedOperation, setSelectedOperation] = useState<string>("all");
 
   useEffect(() => {
     fetchStats();
+    loadOperations();
   }, []);
+
+  const loadOperations = async () => {
+    try {
+      const res = await api.get<{ operations: any[] }>("/operations");
+      setOperations(res.operations.filter((op: any) => op.status === "active"));
+    } catch {
+      // ignore
+    }
+  };
 
   const fetchStats = async () => {
     try {
@@ -56,6 +70,21 @@ export default function OWASPLLMFramework() {
               Top 10 Critical Vulnerabilities for LLM Applications
             </p>
           </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <Select value={selectedOperation} onValueChange={setSelectedOperation}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Filter by operation" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Operations</SelectItem>
+              {operations.map((op) => (
+                <SelectItem key={op.id} value={op.id}>
+                  {op.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         {stats.vulnerabilities === 0 && (
           <button

@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ import {
   Cpu,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Download,
   Brain,
   Microscope,
@@ -42,6 +44,7 @@ interface NavItem {
 interface NavGroup {
   label: string;
   items: NavItem[];
+  collapsible?: boolean;
 }
 
 const navGroups: NavGroup[] = [
@@ -53,6 +56,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: "Operations",
+    collapsible: true,
     items: [
       { path: "/operations", label: "Operations", icon: ListTodo },
       { path: "/targets", label: "Targets", icon: Target },
@@ -62,6 +66,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: "Intelligence",
+    collapsible: true,
     items: [
       { path: "/frameworks", label: "Frameworks", icon: Shield },
       { path: "/reports", label: "Reports", icon: FileText },
@@ -70,15 +75,17 @@ const navGroups: NavGroup[] = [
   },
   {
     label: "Automation",
+    collapsible: true,
     items: [
       { path: "/agents", label: "Agents", icon: Bot },
-      { path: "/empire", label: "Empire C2", icon: Crown },
+      { path: "/empire", label: "C2 Warroom", icon: Crown },
       { path: "/implants", label: "Agentic Implants", icon: Cpu },
       { path: "/ollama", label: "Ollama AI", icon: Brain },
     ],
   },
   {
     label: "Tools",
+    collapsible: true,
     items: [
       { path: "/tools", label: "Tools", icon: Wrench },
       { path: "/tool-registry", label: "Tool Registry", icon: Package },
@@ -87,12 +94,14 @@ const navGroups: NavGroup[] = [
   },
   {
     label: "Infrastructure",
+    collapsible: true,
     items: [
       { path: "/infrastructure", label: "Infrastructure", icon: Server },
     ],
   },
   {
     label: "Settings",
+    collapsible: true,
     items: [
       { path: "/settings", label: "Settings", icon: Settings },
       { path: "/profile", label: "Profile", icon: User },
@@ -104,9 +113,52 @@ const adminNavItems = [
   { path: "/users", label: "User Management", icon: Users },
 ];
 
+const COLLAPSED_GROUPS_KEY = "rtpi_sidebar_collapsed_groups";
+
+function loadCollapsedGroups(): Set<string> {
+  try {
+    const stored = localStorage.getItem(COLLAPSED_GROUPS_KEY);
+    if (stored) return new Set(JSON.parse(stored));
+  } catch {}
+  return new Set();
+}
+
+function saveCollapsedGroups(groups: Set<string>) {
+  try {
+    localStorage.setItem(COLLAPSED_GROUPS_KEY, JSON.stringify([...groups]));
+  } catch {}
+}
+
 export default function Sidebar({ isOpen, isCollapsed, onToggleCollapse, onClose }: SidebarProps) {
   const [location] = useLocation();
   const { isAdmin } = useAuth();
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(loadCollapsedGroups);
+
+  // Auto-expand group containing the active route
+  useEffect(() => {
+    for (const group of navGroups) {
+      if (group.label && group.items.some((item) => item.path === location)) {
+        if (collapsedGroups.has(group.label)) {
+          const next = new Set(collapsedGroups);
+          next.delete(group.label);
+          setCollapsedGroups(next);
+          saveCollapsedGroups(next);
+        }
+        break;
+      }
+    }
+  }, [location]);
+
+  const toggleGroup = (label: string) => {
+    const next = new Set(collapsedGroups);
+    if (next.has(label)) {
+      next.delete(label);
+    } else {
+      next.add(label);
+    }
+    setCollapsedGroups(next);
+    saveCollapsedGroups(next);
+  };
 
   return (
     <>
@@ -164,43 +216,62 @@ export default function Sidebar({ isOpen, isCollapsed, onToggleCollapse, onClose
 
       {/* Navigation */}
       <nav className="p-4 space-y-1">
-        {navGroups.map((group, groupIndex) => (
-          <div key={group.label || `group-${groupIndex}`}>
-            {group.label && !isCollapsed && (
-              <div className="pt-4 pb-2 px-4">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  {group.label}
-                </p>
-              </div>
-            )}
-            {isCollapsed && group.label && (
-              <div className="pt-2 pb-1 flex justify-center">
-                <div className="w-6 border-t border-border" />
-              </div>
-            )}
-            {group.items.map((item) => {
-              const Icon = item.icon;
-              const isActive = location === item.path;
+        {navGroups.map((group, groupIndex) => {
+          const isGroupCollapsed = group.collapsible && collapsedGroups.has(group.label);
+          const hasActiveItem = group.items.some((item) => item.path === location);
 
-              return (
-                <Link
-                  key={item.path}
-                  href={item.path}
-                  onClick={onClose}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                    isActive
-                      ? "bg-primary/10 text-primary font-medium"
-                      : "text-foreground hover:bg-secondary"
-                  } ${isCollapsed ? "justify-center" : ""}`}
-                  title={isCollapsed ? item.label : undefined}
+          return (
+            <div key={group.label || `group-${groupIndex}`}>
+              {group.label && !isCollapsed && (
+                <div
+                  className={`pt-4 pb-2 px-4 flex items-center justify-between ${
+                    group.collapsible ? "cursor-pointer hover:bg-secondary/50 rounded-md -mx-1 px-5" : ""
+                  }`}
+                  onClick={group.collapsible ? () => toggleGroup(group.label) : undefined}
                 >
-                  <Icon className="w-5 h-5 flex-shrink-0" />
-                  {!isCollapsed && <span>{item.label}</span>}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
+                  <p className={`text-xs font-semibold uppercase tracking-wider ${
+                    hasActiveItem ? "text-primary" : "text-muted-foreground"
+                  }`}>
+                    {group.label}
+                  </p>
+                  {group.collapsible && (
+                    <ChevronDown
+                      className={`h-3 w-3 text-muted-foreground transition-transform duration-200 ${
+                        isGroupCollapsed ? "-rotate-90" : ""
+                      }`}
+                    />
+                  )}
+                </div>
+              )}
+              {isCollapsed && group.label && (
+                <div className="pt-2 pb-1 flex justify-center">
+                  <div className="w-6 border-t border-border" />
+                </div>
+              )}
+              {(!isGroupCollapsed || isCollapsed) && group.items.map((item) => {
+                const Icon = item.icon;
+                const isActive = location === item.path;
+
+                return (
+                  <Link
+                    key={item.path}
+                    href={item.path}
+                    onClick={onClose}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                      isActive
+                        ? "bg-primary/10 text-primary font-medium"
+                        : "text-foreground hover:bg-secondary"
+                    } ${isCollapsed ? "justify-center" : ""}`}
+                    title={isCollapsed ? item.label : undefined}
+                  >
+                    <Icon className="w-5 h-5 flex-shrink-0" />
+                    {!isCollapsed && <span>{item.label}</span>}
+                  </Link>
+                );
+              })}
+            </div>
+          );
+        })}
 
         {isAdmin() && (
           <>

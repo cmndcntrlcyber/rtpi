@@ -1,0 +1,73 @@
+# RTPI OffSec Agent: Sliver C2
+# Cross-platform adversary emulation / red team framework
+#
+# Categories: C2 Frameworks, Implant Generation, Post-Exploitation
+# Primary Focus: Sliver C2 server and implant management
+# Source: https://github.com/BishopFox/sliver
+#
+# MITRE ATT&CK Tactics: Command and Control (TA0011), Execution (TA0002), Persistence (TA0003)
+
+FROM rtpi/offsec-base:latest
+
+# Set agent type for MCP server
+ENV AGENT_TYPE=sliver-c2
+ENV TOOLS_PATH=/opt/tools
+ENV SLIVER_HOME=/opt/sliver
+
+# Switch to root for package installation
+USER root
+
+# Install Sliver dependencies
+RUN apt-get update && apt-get install -y \
+    # Build tools
+    build-essential mingw-w64 \
+    # Network tools
+    nmap netcat-openbsd socat \
+    # SSL/crypto
+    openssl libssl-dev \
+    # Utilities
+    unzip jq \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Go (required for Sliver implant compilation)
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "aarch64" ]; then GO_ARCH="arm64"; else GO_ARCH="amd64"; fi && \
+    GO_VERSION=$(curl -s https://go.dev/VERSION?m=text | head -1) && \
+    curl -sL "https://go.dev/dl/${GO_VERSION}.linux-${GO_ARCH}.tar.gz" -o /tmp/go.tar.gz && \
+    tar -C /usr/local -xzf /tmp/go.tar.gz && \
+    rm /tmp/go.tar.gz
+ENV PATH="/usr/local/go/bin:${PATH}"
+ENV GOPATH="/opt/go"
+
+# Install Sliver server
+RUN mkdir -p ${SLIVER_HOME} && \
+    ARCH=$(uname -m) && \
+    if [ "$ARCH" = "aarch64" ]; then SLV_ARCH="arm64"; else SLV_ARCH="amd64"; fi && \
+    SLIVER_VERSION=$(curl -s https://api.github.com/repos/BishopFox/sliver/releases/latest | jq -r '.tag_name') && \
+    curl -sL "https://github.com/BishopFox/sliver/releases/download/${SLIVER_VERSION}/sliver-server_linux-${SLV_ARCH}" -o ${SLIVER_HOME}/sliver-server && \
+    chmod +x ${SLIVER_HOME}/sliver-server && \
+    ln -s ${SLIVER_HOME}/sliver-server /usr/local/bin/sliver-server
+
+# Install Sliver client
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "aarch64" ]; then SLV_ARCH="arm64"; else SLV_ARCH="amd64"; fi && \
+    SLIVER_VERSION=$(curl -s https://api.github.com/repos/BishopFox/sliver/releases/latest | jq -r '.tag_name') && \
+    curl -sL "https://github.com/BishopFox/sliver/releases/download/${SLIVER_VERSION}/sliver-client_linux-${SLV_ARCH}" -o ${SLIVER_HOME}/sliver-client && \
+    chmod +x ${SLIVER_HOME}/sliver-client && \
+    ln -s ${SLIVER_HOME}/sliver-client /usr/local/bin/sliver
+
+# Create activation directory
+RUN mkdir -p /opt/c2-setup
+
+# Copy dormant entrypoint
+COPY sliver-entrypoint.sh /opt/sliver-entrypoint.sh
+RUN chmod +x /opt/sliver-entrypoint.sh
+
+# Sliver ports: gRPC (31337), mTLS (8888), HTTP(S) (80,443), DNS (53)
+EXPOSE 31337 8888 80 443 53 9000
+
+# Switch back to agent user
+USER agent
+WORKDIR /home/agent
+
+ENTRYPOINT ["/opt/sliver-entrypoint.sh"]

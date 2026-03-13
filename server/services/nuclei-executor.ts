@@ -2,6 +2,8 @@ import { dockerExecutor } from './docker-executor';
 import { db } from '../db';
 import { discoveredAssets, vulnerabilities, axScanResults } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
+import { resolveTargetId } from './target-resolver';
+import { workflowEventHandlers } from './workflow-event-handlers';
 
 interface NucleiOptions {
   severity?: string;       // critical,high,medium,low,info
@@ -389,6 +391,13 @@ export class NucleiExecutor {
       // Clean up templates to save disk space
       await this.cleanupTemplates();
 
+      // Emit scan_completed event to trigger pipeline cascade (vulnerability reporting)
+      try {
+        await workflowEventHandlers.handleScanCompleted(scanId, 'nuclei', operationId, 'system');
+      } catch (eventError) {
+        console.error(`Nuclei scan ${scanId}: Failed to emit scan_completed event:`, eventError);
+      }
+
       return {
         vulnerabilitiesCount,
         results: parsedResults,
@@ -537,6 +546,13 @@ export class NucleiExecutor {
 
       // Clean up templates to save disk space
       await this.cleanupTemplates();
+
+      // Emit scan_completed event to trigger pipeline cascade (vulnerability reporting)
+      try {
+        await workflowEventHandlers.handleScanCompleted(scanId, 'nuclei', operationId, userId);
+      } catch (eventError) {
+        console.error(`Nuclei scan ${scanId}: Failed to emit scan_completed event:`, eventError);
+      }
 
       return {
         scanId,
@@ -786,11 +802,13 @@ export class NucleiExecutor {
         // Find the target/asset for this vulnerability
         // First try to find by host
         const host = this.extractHostFromUrl(vuln.host);
+        const targetId = await resolveTargetId(operationId, host);
 
         const [vulnerability] = await db
           .insert(vulnerabilities)
           .values({
             operationId,
+            targetId,
             title: vuln.info?.name || vuln['template-id'],
             description: vuln.info?.description || `Vulnerability detected by Nuclei template: ${vuln['template-id']}`,
             severity,

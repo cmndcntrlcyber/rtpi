@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Cpu, Monitor, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { api } from "@/lib/api";
 import ImplantsTab from "@/components/implants/ImplantsTab";
 import DeployAgentDialog from "@/components/implants/DeployAgentDialog";
 
@@ -8,6 +10,21 @@ export default function Implants() {
   const [deployDialogOpen, setDeployDialogOpen] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState<"windows" | "linux">("linux");
   const [bundlesRefreshTrigger, setBundlesRefreshTrigger] = useState(0);
+  const [operations, setOperations] = useState<any[]>([]);
+  const [selectedOperation, setSelectedOperation] = useState<string>("all");
+
+  useEffect(() => {
+    loadOperations();
+  }, []);
+
+  const loadOperations = async () => {
+    try {
+      const res = await api.get<{ operations: any[] }>("/operations");
+      setOperations(res.operations.filter((op: any) => op.status === "active"));
+    } catch {
+      // ignore
+    }
+  };
 
   const handleDeployWindows = () => {
     setSelectedPlatform("windows");
@@ -32,7 +49,22 @@ export default function Implants() {
           </div>
         </div>
 
-        {/* Deploy Agent Buttons */}
+        {/* Operation Filter + Deploy Agent Buttons */}
+        <div className="flex items-center gap-3">
+          <Select value={selectedOperation} onValueChange={setSelectedOperation}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Filter by operation" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Operations</SelectItem>
+              {operations.map((op) => (
+                <SelectItem key={op.id} value={op.id}>
+                  {op.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="flex items-center gap-3">
           <Button
             variant="default"
@@ -53,7 +85,7 @@ export default function Implants() {
         </div>
       </div>
 
-      <ImplantsTab bundlesRefreshTrigger={bundlesRefreshTrigger} />
+      <ImplantsTab bundlesRefreshTrigger={bundlesRefreshTrigger} operationId={selectedOperation === "all" ? undefined : selectedOperation} />
 
       {/* Deploy Agent Dialog */}
       <DeployAgentDialog

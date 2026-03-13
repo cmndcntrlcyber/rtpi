@@ -18,6 +18,17 @@ interface Agent {
   lastActivity: string | null;
 }
 
+// Known R&D agent names (must match names seeded in migration 0019)
+const RD_AGENT_NAMES = new Set([
+  "Burp Suite Orchestrator",
+  "Empire C2 Manager",
+  "Advanced Fuzzing Agent",
+  "Framework Security Agent",
+  "Maldev Agent",
+  "Azure-AD Agent",
+  "Research Agent",
+]);
+
 export default function RDAgentsTab() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,9 +42,10 @@ export default function RDAgentsTab() {
     try {
       setLoading(true);
       const response = await api.get<{ agents: Agent[] }>("/agents");
-      // Filter for R&D agents
+      // Filter for R&D agents by known name OR config.category
       const rdAgents = response.agents.filter(
-        (agent: Agent) => agent.config?.category === "R&D"
+        (agent: Agent) =>
+          RD_AGENT_NAMES.has(agent.name) || agent.config?.category === "R&D"
       );
       setAgents(rdAgents);
     } catch (error: any) {

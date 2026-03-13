@@ -1,0 +1,23 @@
+# RTPI SysReptor Caddy Configuration
+# Reverse proxy for containerized SysReptor on port 7777
+
+:7777 {
+    reverse_proxy sysreptor-app:8000
+
+    log {
+        output file /var/log/caddy/access.log
+        format json
+    }
+
+    handle_errors {
+        respond "{http.error.status_code} {http.error.status_text}"
+    }
+
+    header {
+        -Server
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+}

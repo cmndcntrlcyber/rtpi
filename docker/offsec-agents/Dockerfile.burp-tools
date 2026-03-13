@@ -15,7 +15,7 @@ ENV TOOLS_PATH=/opt/tools
 # Switch to root for package installation
 USER root
 
-# Install web security testing dependencies
+# Install web security testing dependencies + Java 21 for Burp Pro
 RUN apt-get update && apt-get install -y \
     # HTTP tools
     curl wget httpie \
@@ -27,7 +27,17 @@ RUN apt-get update && apt-get install -y \
     jq xmlstarlet \
     # Additional utilities
     socat netcat-openbsd \
+    # Java 21 runtime for BurpSuite Pro
+    openjdk-21-jre-headless \
     && rm -rf /var/lib/apt/lists/*
+
+# Create BurpSuite activation directories
+RUN mkdir -p /opt/burp-setup /opt/burp-projects && \
+    chown -R rtpi-agent:rtpi-agent /opt/burp-setup /opt/burp-projects
+
+# Copy dormant-mode entrypoint for BurpSuite activation workflow
+COPY burp-entrypoint.sh /usr/local/bin/burp-entrypoint.sh
+RUN chmod +x /usr/local/bin/burp-entrypoint.sh
 
 # Install Python packages for web testing
 RUN pip3 install --no-cache-dir \
@@ -232,12 +242,13 @@ WORKDIR /home/rtpi-agent
 WORKDIR /mcp
 RUN npm run build
 
-# Expose MCP port
-EXPOSE 9000
+# Expose MCP ports (9000 for tool MCP, 9876 for Burp MCP)
+EXPOSE 9000 9876
 
-# Health check
+# Health check - checks either MCP server or burp entrypoint
 HEALTHCHECK --interval=60s --timeout=10s --retries=3 \
-    CMD pgrep -f "node.*mcp" || exit 1
+    CMD pgrep -f "node.*mcp" || pgrep -f "burp-entrypoint" || exit 1
 
-# Start MCP server
-ENTRYPOINT ["/usr/local/bin/mcp-entrypoint.sh"]
+# Default: Start in dormant mode with Burp activation workflow
+# Override with /usr/local/bin/mcp-entrypoint.sh for tool-only mode
+ENTRYPOINT ["/usr/local/bin/burp-entrypoint.sh"]

@@ -1,0 +1,68 @@
+# RTPI OffSec Agent: Loki C2
+# Lightweight C-based implant framework
+#
+# Categories: C2 Frameworks, Implant Development, Post-Exploitation
+# Primary Focus: Loki implant generation and management
+# Source: https://github.com/boku7/Loki
+#
+# MITRE ATT&CK Tactics: Command and Control (TA0011), Execution (TA0002), Defense Evasion (TA0005)
+
+FROM rtpi/offsec-base:latest
+
+# Set agent type for MCP server
+ENV AGENT_TYPE=loki-c2
+ENV TOOLS_PATH=/opt/tools
+ENV LOKI_HOME=/opt/loki
+
+# Switch to root for package installation
+USER root
+
+# Install Loki dependencies
+RUN apt-get update && apt-get install -y \
+    # C build tools (Loki is C-based)
+    build-essential gcc \
+    # Windows cross-compilation
+    mingw-w64 \
+    # Network tools
+    nmap netcat-openbsd socat \
+    # SSL/crypto
+    openssl libssl-dev \
+    # Assembly tools
+    nasm \
+    # Python for helper scripts
+    python3-dev python3-pip \
+    # Utilities
+    unzip jq git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Clone Loki
+RUN mkdir -p ${LOKI_HOME} && \
+    git clone --depth 1 https://github.com/boku7/Loki.git ${LOKI_HOME}/src || \
+    echo "Loki clone deferred to activation"
+
+# Build Loki if source available
+RUN if [ -d "${LOKI_HOME}/src" ] && [ -f "${LOKI_HOME}/src/Makefile" ]; then \
+        cd ${LOKI_HOME}/src && make 2>/dev/null || echo "Loki build deferred to activation"; \
+    fi
+
+# Install Python dependencies
+RUN pip3 install --no-cache-dir \
+    requests \
+    pycryptodome \
+    2>/dev/null || true
+
+# Create activation directory
+RUN mkdir -p /opt/c2-setup
+
+# Copy dormant entrypoint
+COPY loki-entrypoint.sh /opt/loki-entrypoint.sh
+RUN chmod +x /opt/loki-entrypoint.sh
+
+# Loki listener ports + MCP server
+EXPOSE 4443 8443 9000
+
+# Switch back to agent user
+USER agent
+WORKDIR /home/agent
+
+ENTRYPOINT ["/opt/loki-entrypoint.sh"]

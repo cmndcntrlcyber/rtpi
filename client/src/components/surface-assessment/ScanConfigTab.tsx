@@ -91,13 +91,16 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
   }, [hasRunningScans, isPolling]);
 
   useEffect(() => {
-    loadTargets();
-  }, []);
+    if (operationId) {
+      loadTargets();
+    }
+  }, [operationId]);
 
   const loadTargets = async () => {
     try {
-      const response = await targetsService.list();
+      const response = await targetsService.list({ operationId });
       setAllTargets(response.targets || []);
+      setSelectedTargetId('');
     } catch (error) {
       console.error('Failed to load targets:', error);
     }

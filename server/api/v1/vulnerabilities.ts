@@ -4,16 +4,23 @@ import { vulnerabilities, targets, operations } from "@shared/schema";
 import { eq, inArray } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import { vulnerabilityAIEnrichment } from "../../services/vulnerability-ai-enrichment";
+import { resolveTargetId } from "../../services/target-resolver";
 
 const router = Router();
 
 // Apply authentication to all routes
 router.use(ensureAuthenticated);
 
-// GET /api/v1/vulnerabilities - List all vulnerabilities
-router.get("/", async (_req, res) => {
+// GET /api/v1/vulnerabilities - List vulnerabilities, optionally filtered by operationId
+router.get("/", async (req, res) => {
   try {
-    const allVulns = await db.select().from(vulnerabilities);
+    const { operationId } = req.query;
+
+    const query = operationId
+      ? db.select().from(vulnerabilities).where(eq(vulnerabilities.operationId, operationId as string))
+      : db.select().from(vulnerabilities);
+
+    const allVulns = await query;
     res.json({ vulnerabilities: allVulns });
   } catch (error: any) {
     // Error logged for debugging
@@ -48,6 +55,14 @@ router.post("/", ensureRole("admin", "operator"), async (req, res) => {
   const user = req.user as any;
 
   try {
+    // Auto-resolve targetId from affectedServices if not explicitly provided
+    if (!req.body.targetId && req.body.operationId && req.body.affectedServices?.length) {
+      const host = req.body.affectedServices[0]?.host;
+      if (host) {
+        req.body.targetId = await resolveTargetId(req.body.operationId, host);
+      }
+    }
+
     const vuln = await db
       .insert(vulnerabilities)
       .values(req.body)

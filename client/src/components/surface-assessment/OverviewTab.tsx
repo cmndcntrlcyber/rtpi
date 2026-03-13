@@ -5,7 +5,7 @@ import StatusDistributionChart from './charts/StatusDistributionChart';
 import SummaryStatsCard from './SummaryStatsCard';
 import TopVulnerableAssetsTable from './TopVulnerableAssetsTable';
 import ActivityFeed from './ActivityFeed';
-import BurpSuiteUploadCard from './BurpSuiteUploadCard';
+import BurpSuiteActivationPanel from './BurpSuiteActivationPanel';
 
 interface OverviewTabProps {
   operationId: string;
@@ -208,8 +208,8 @@ export default function OverviewTab({ operationId, onTabChange }: OverviewTabPro
         />
       </div>
 
-      {/* BurpSuite Pro Integration */}
-      <BurpSuiteUploadCard operationId={operationId} />
+      {/* BurpSuite Pro Activation */}
+      <BurpSuiteActivationPanel operationId={operationId} />
     </div>
   );
 }

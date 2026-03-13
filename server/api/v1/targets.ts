@@ -14,10 +14,14 @@ const router = Router();
 // Apply authentication to all routes
 router.use(ensureAuthenticated);
 
-// GET /api/v1/targets - List all targets
-router.get("/", async (_req, res) => {
+// GET /api/v1/targets - List all targets (optionally filtered by operationId)
+router.get("/", async (req, res) => {
   try {
-    const allTargets = await db.select().from(targets);
+    const { operationId } = req.query;
+    const query = operationId
+      ? db.select().from(targets).where(eq(targets.operationId, operationId as string))
+      : db.select().from(targets);
+    const allTargets = await query;
     res.json({ targets: allTargets });
   } catch (error: any) {
     // Error logged for debugging

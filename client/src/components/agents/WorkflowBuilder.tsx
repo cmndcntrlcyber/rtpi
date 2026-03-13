@@ -71,6 +71,7 @@ interface SelectedAgent {
   name: string;
   type: string;
   order: number;
+  mcpConnected?: boolean;
 }
 
 // Sortable agent item for workflow
@@ -116,8 +117,13 @@ function SortableWorkflowAgent({
         <Bot className="h-4 w-4 text-blue-500" />
         <span className="font-medium">{agent.name}</span>
         <Badge variant="outline" className="text-xs capitalize">
-          {agent.type}
+          {agent.type === "openai" ? "OpenAI" : agent.type === "anthropic" ? "Anthropic" : agent.type}
         </Badge>
+        {agent.mcpConnected && (
+          <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700">
+            + MCP
+          </Badge>
+        )}
       </div>
       <Button
         size="sm"
@@ -186,6 +192,7 @@ export default function WorkflowBuilder({
       name: agent.name,
       type: agent.type,
       order: selectedAgents.length,
+      mcpConnected: !!(agent.config?.mcpServerId),
     };
 
     setSelectedAgents([...selectedAgents, newAgent]);
@@ -281,7 +288,7 @@ export default function WorkflowBuilder({
     }
   };
 
-  const totalSteps = 5;
+  const totalSteps = 6;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -298,13 +305,14 @@ export default function WorkflowBuilder({
 
         <div className="space-y-6 py-4">
           {/* Step indicators */}
-          <div className="flex items-center justify-between mb-6 px-4">
+          <div className="flex items-center justify-between mb-6 px-2">
             {[
               { num: 1, label: "Name" },
               { num: 2, label: "Agents" },
               { num: 3, label: "MCPs" },
-              { num: 4, label: "Target" },
-              { num: 5, label: "Execute" },
+              { num: 4, label: "Operation" },
+              { num: 5, label: "Target" },
+              { num: 6, label: "Execute" },
             ].map((s, idx) => (
               <div key={s.num} className="flex items-center">
                 <div
@@ -322,8 +330,8 @@ export default function WorkflowBuilder({
                   </div>
                   <span className="text-xs mt-1">{s.label}</span>
                 </div>
-                {idx < 4 && (
-                  <ChevronRight className={`h-5 w-5 mx-2 ${step > s.num ? 'text-blue-500' : 'text-muted-foreground'}`} />
+                {idx < 5 && (
+                  <ChevronRight className={`h-4 w-4 mx-1 ${step > s.num ? 'text-blue-500' : 'text-muted-foreground'}`} />
                 )}
               </div>
             ))}
@@ -496,54 +504,54 @@ export default function WorkflowBuilder({
             </div>
           )}
 
-          {/* Step 4: Select Target/Operation */}
+          {/* Step 4: Select Operation */}
           {step === 4 && (
             <div className="space-y-4">
-              <h3 className="font-semibold">Step 4: Select Target</h3>
+              <h3 className="font-semibold">Step 4: Select Operation</h3>
+              <p className="text-sm text-muted-foreground">
+                Choose an operation to associate with this workflow (optional)
+              </p>
 
-              <div>
-                <Label htmlFor="target-select">Target *</Label>
-                <Select value={selectedTargetId} onValueChange={setSelectedTargetId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a target..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {targets.map((target) => (
-                      <SelectItem key={target.id} value={target.id}>
-                        <div className="flex items-center gap-2">
-                          <Target className="h-4 w-4" />
-                          {target.name}
-                          {target.value && (
-                            <span className="text-xs text-muted-foreground">
-                              ({target.value})
-                            </span>
-                          )}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {operations.length > 0 && (
+              {operations.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Workflow className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p>No operations available</p>
+                  <p className="text-xs">You can proceed without selecting an operation</p>
+                </div>
+              ) : (
                 <div>
-                  <Label htmlFor="operation-select">Operation (optional)</Label>
+                  <Label htmlFor="operation-select">Operation</Label>
                   <Select
                     value={selectedOperationId || "none"}
                     onValueChange={(val) => setSelectedOperationId(val === "none" ? "" : val)}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Link to an operation..." />
+                      <SelectValue placeholder="Select an operation..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">No operation</SelectItem>
+                      <SelectItem value="none">
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground italic">No operation</span>
+                        </div>
+                      </SelectItem>
                       {operations.map((op) => (
                         <SelectItem key={op.id} value={op.id}>
-                          {op.name}
+                          <div className="flex items-center gap-2">
+                            <Workflow className="h-4 w-4" />
+                            {op.name}
+                            <Badge variant="outline" className="text-xs capitalize ml-auto">
+                              {op.status}
+                            </Badge>
+                          </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {selectedOperationId && selectedOperationId !== "none" && (
+                    <p className="text-xs text-green-600 mt-2">
+                      ✓ Workflow will be linked to this operation
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -551,17 +559,73 @@ export default function WorkflowBuilder({
                 <Button variant="outline" onClick={() => setStep(3)}>
                   Back
                 </Button>
-                <Button onClick={() => setStep(5)} disabled={!selectedTargetId}>
+                <Button onClick={() => setStep(5)}>
+                  Next: Select Target
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 5: Select Target */}
+          {step === 5 && (
+            <div className="space-y-4">
+              <h3 className="font-semibold">Step 5: Select Target</h3>
+              <p className="text-sm text-muted-foreground">
+                Choose a target for this workflow to execute against
+              </p>
+
+              {targets.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Target className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p>No targets available</p>
+                  <p className="text-xs">Create a target first to proceed</p>
+                </div>
+              ) : (
+                <div>
+                  <Label htmlFor="target-select">Target *</Label>
+                  <Select value={selectedTargetId} onValueChange={setSelectedTargetId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a target..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {targets.map((target) => (
+                        <SelectItem key={target.id} value={target.id}>
+                          <div className="flex items-center gap-2">
+                            <Target className="h-4 w-4" />
+                            {target.name}
+                            {target.ipAddress && (
+                              <span className="text-xs text-muted-foreground">
+                                ({target.ipAddress})
+                              </span>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedTargetId && (
+                    <p className="text-xs text-green-600 mt-2">
+                      ✓ Target selected
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="flex justify-between">
+                <Button variant="outline" onClick={() => setStep(4)}>
+                  Back
+                </Button>
+                <Button onClick={() => setStep(6)} disabled={!selectedTargetId}>
                   Next: Review & Execute
                 </Button>
               </div>
             </div>
           )}
 
-          {/* Step 5: Review & Execute */}
-          {step === 5 && (
+          {/* Step 6: Review & Execute */}
+          {step === 6 && (
             <div className="space-y-4">
-              <h3 className="font-semibold">Step 5: Review & Execute</h3>
+              <h3 className="font-semibold">Step 6: Review & Execute</h3>
 
               {/* Summary */}
               <div className="bg-secondary rounded-lg p-4 space-y-3">
@@ -602,6 +666,12 @@ export default function WorkflowBuilder({
                       <span className="text-muted-foreground ml-1">None selected</span>
                     )}
                   </div>
+                  {selectedOperationId && selectedOperationId !== "none" && (
+                    <p>
+                      <span className="text-muted-foreground">Operation:</span>{" "}
+                      {operations.find(o => o.id === selectedOperationId)?.name || "None"}
+                    </p>
+                  )}
                   <p>
                     <span className="text-muted-foreground">Target:</span>{" "}
                     {targets.find(t => t.id === selectedTargetId)?.name || "Not selected"}
@@ -626,7 +696,7 @@ export default function WorkflowBuilder({
               </div>
 
               <div className="flex justify-between">
-                <Button variant="outline" onClick={() => setStep(4)}>
+                <Button variant="outline" onClick={() => setStep(5)}>
                   Back
                 </Button>
                 <div className="flex gap-2">

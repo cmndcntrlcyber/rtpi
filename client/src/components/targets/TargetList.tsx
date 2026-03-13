@@ -13,7 +13,8 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { ChevronDown, ChevronRight, Folder } from "lucide-react";
+import { ChevronDown, ChevronRight, Folder, Radar, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import TargetCard from "./TargetCard";
 
@@ -52,6 +53,8 @@ interface TargetListProps {
   onEdit?: (target: Target) => void;
   onDelete?: (target: Target) => void;
   onScan?: (target: Target) => void;
+  onScanGroup?: (groupKey: string) => void;
+  onDeleteGroup?: (groupKey: string) => void;
   selectable?: boolean;
   selectedIds?: Set<string>;
   onSelectionChange?: (id: string, selected: boolean) => void;
@@ -71,6 +74,8 @@ function TargetGroupSection({
   onEdit,
   onDelete,
   onScan,
+  onScanGroup,
+  onDeleteGroup,
   selectable,
   selectedIds,
   onSelectionChange,
@@ -84,6 +89,8 @@ function TargetGroupSection({
   onEdit?: (target: Target) => void;
   onDelete?: (target: Target) => void;
   onScan?: (target: Target) => void;
+  onScanGroup?: (groupKey: string) => void;
+  onDeleteGroup?: (groupKey: string) => void;
   selectable?: boolean;
   selectedIds?: Set<string>;
   onSelectionChange?: (id: string, selected: boolean) => void;
@@ -109,21 +116,47 @@ function TargetGroupSection({
   return (
     <div className="border border-border rounded-lg overflow-hidden">
       {/* Group header */}
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center gap-3 px-4 py-3 bg-muted/50 hover:bg-muted transition-colors text-left"
-      >
-        {expanded ? (
-          <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-        ) : (
-          <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-        )}
-        <Folder className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-        <span className="font-semibold text-sm text-foreground">{group.label}</span>
-        <Badge variant="secondary" className="text-xs ml-auto">
-          {group.targets.length} target{group.targets.length !== 1 ? "s" : ""}
-        </Badge>
-      </button>
+      <div className="flex items-center gap-3 px-4 py-3 bg-muted/50">
+        <button
+          onClick={onToggle}
+          className="flex items-center gap-3 flex-1 hover:opacity-80 transition-opacity text-left"
+        >
+          {expanded ? (
+            <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          )}
+          <Folder className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          <span className="font-semibold text-sm text-foreground">{group.label}</span>
+          <Badge variant="secondary" className="text-xs">
+            {group.targets.length} target{group.targets.length !== 1 ? "s" : ""}
+          </Badge>
+        </button>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {onScanGroup && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={(e) => { e.stopPropagation(); onScanGroup(group.key); }}
+            >
+              <Radar className="h-3.5 w-3.5 mr-1" />
+              Scan All
+            </Button>
+          )}
+          {onDeleteGroup && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+              onClick={(e) => { e.stopPropagation(); onDeleteGroup(group.key); }}
+            >
+              <Trash2 className="h-3.5 w-3.5 mr-1" />
+              Delete All
+            </Button>
+          )}
+        </div>
+      </div>
 
       {/* Collapsible target rows */}
       {expanded && (
@@ -170,6 +203,8 @@ export default function TargetList({
   onEdit,
   onDelete,
   onScan,
+  onScanGroup,
+  onDeleteGroup,
   selectable = false,
   selectedIds = new Set(),
   onSelectionChange,
@@ -302,6 +337,8 @@ export default function TargetList({
           onEdit={onEdit}
           onDelete={onDelete}
           onScan={onScan}
+          onScanGroup={onScanGroup}
+          onDeleteGroup={onDeleteGroup}
           selectable={selectable}
           selectedIds={selectedIds}
           onSelectionChange={onSelectionChange}

@@ -753,6 +753,41 @@ class WorkflowEventHandlers extends EventEmitter {
       console.error('Failed to initialize Vulnerability Reporter Agent:', error);
     }
 
+    // Initialize Research Agent (v2.4.1)
+    try {
+      const { researchAgent } = await import('./agents/research-agent');
+      await researchAgent.initialize();
+      console.log('Research Agent initialized');
+    } catch (error) {
+      console.error('Failed to initialize Research Agent:', error);
+    }
+
+    // Initialize Maldev Agent (v2.4.2)
+    try {
+      const { maldevAgent } = await import('./agents/maldev-agent');
+      await maldevAgent.initialize();
+      console.log('Maldev Agent initialized');
+    } catch (error) {
+      console.error('Failed to initialize Maldev Agent:', error);
+    }
+
+    // Register Vulnerability Investigation Workflow (v2.3.6)
+    try {
+      await import('./vulnerability-investigation-workflow');
+      console.log('Vulnerability Investigation Workflow registered');
+    } catch (error) {
+      console.error('Failed to register Vulnerability Investigation Workflow:', error);
+    }
+
+    // Initialize HTTP Service Detection Automation (v2.3.6.2)
+    try {
+      const { initializeHttpServiceDetectionAutomation } = await import('./http-service-detection-automation');
+      await initializeHttpServiceDetectionAutomation();
+      console.log('HTTP Service Detection Automation initialized');
+    } catch (error) {
+      console.error('Failed to initialize HTTP Service Detection Automation:', error);
+    }
+
     // Phase 3: Seed Operations Manager + Page Reporter agents
     try {
       const existingAgents = await db.select().from(agents);

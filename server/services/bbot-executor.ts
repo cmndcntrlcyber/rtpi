@@ -2,6 +2,7 @@ import { dockerExecutor } from './docker-executor';
 import { db } from '../db';
 import { discoveredAssets, discoveredServices, axScanResults, vulnerabilities } from '@shared/schema';
 import { eq, and, sql } from 'drizzle-orm';
+import { resolveTargetId } from './target-resolver';
 
 interface BBOTOptions {
   preset?: string;
@@ -796,7 +797,9 @@ export class BBOTExecutor {
   }
 
   /**
-   * Store BBOT vulnerabilities in the vulnerabilities table
+   * Store BBOT vulnerabilities in the vulnerabilities table.
+   * Only creates DB records for findings with severity >= medium.
+   * Lower-severity events are still counted in the parsed results but not persisted as vulnerability records.
    */
   private async storeVulnerabilities(
     results: BBOTResult,
@@ -815,14 +818,22 @@ export class BBOTExecutor {
           ) || 'info'
         );
 
+        // Only auto-create vulnerability records for severity >= medium
+        if (severity === 'low' || severity === 'informational') {
+          continue;
+        }
+
         const description = typeof data === 'object' && data.description
           ? data.description
           : event.discovery_context || 'Vulnerability detected by BBOT';
+
+        const targetId = await resolveTargetId(operationId, event.host || '');
 
         const [vuln] = await db
           .insert(vulnerabilities)
           .values({
             operationId,
+            targetId,
             title: this.buildVulnTitle(event),
             description,
             severity,
@@ -835,7 +846,15 @@ export class BBOTExecutor {
               scanId,
             }],
             status: 'open',
+            investigationStatus: 'pending',
             discoveredAt: new Date(event.timestamp),
+            validationEvidence: {
+              source: 'bbot',
+              scanId,
+              eventType: 'VULNERABILITY',
+              module: event.module || 'unknown',
+              originalTags: event.tags || [],
+            },
           })
           .onConflictDoUpdate({
             target: [vulnerabilities.operationId, vulnerabilities.title],
@@ -843,28 +862,41 @@ export class BBOTExecutor {
           })
           .returning();
 
-        if (vuln) vulnerabilitiesCount++;
+        if (vuln) {
+          vulnerabilitiesCount++;
+          console.log(`  [VULN] Created vulnerability record: "${vuln.title}" (${severity}) for scan ${scanId}`);
+        }
       } catch (err) {
         console.warn(`Failed to store BBOT vulnerability:`, err);
       }
     }
 
-    // Process FINDING events (often lower severity informational findings)
+    // Process FINDING events — only persist severity >= medium
     for (const event of results.findings) {
       try {
         const data = event.data as Record<string, any>;
         const severity = this.mapBBOTSeverity(
-          typeof data === 'object' ? data.severity : 'info'
+          typeof data === 'object' ? data.severity : event.tags?.find((t: string) =>
+            ['critical', 'high', 'medium', 'low', 'info'].includes(t.toLowerCase())
+          ) || 'info'
         );
+
+        // Only auto-create vulnerability records for severity >= medium
+        if (severity === 'low' || severity === 'informational') {
+          continue;
+        }
 
         const description = typeof data === 'object' && data.description
           ? data.description
           : event.discovery_context || 'Finding detected by BBOT';
 
+        const targetId = await resolveTargetId(operationId, event.host || '');
+
         const [vuln] = await db
           .insert(vulnerabilities)
           .values({
             operationId,
+            targetId,
             title: this.buildVulnTitle(event),
             description,
             severity,
@@ -877,7 +909,15 @@ export class BBOTExecutor {
               scanId,
             }],
             status: 'open',
+            investigationStatus: 'pending',
             discoveredAt: new Date(event.timestamp),
+            validationEvidence: {
+              source: 'bbot',
+              scanId,
+              eventType: 'FINDING',
+              module: event.module || 'unknown',
+              originalTags: event.tags || [],
+            },
           })
           .onConflictDoUpdate({
             target: [vulnerabilities.operationId, vulnerabilities.title],
@@ -885,13 +925,73 @@ export class BBOTExecutor {
           })
           .returning();
 
-        if (vuln) vulnerabilitiesCount++;
+        if (vuln) {
+          vulnerabilitiesCount++;
+          console.log(`  [FINDING] Created vulnerability record: "${vuln.title}" (${severity}) for scan ${scanId}`);
+        }
       } catch (err) {
         console.warn(`Failed to store BBOT finding:`, err);
       }
     }
 
+    if (vulnerabilitiesCount > 0) {
+      console.log(`📋 BBOT scan ${scanId}: auto-created ${vulnerabilitiesCount} vulnerability record(s) from findings/vulns (severity >= medium)`);
+    }
+
     return vulnerabilitiesCount;
+  }
+
+  /**
+   * Extract FINDING and VULNERABILITY events from raw BBOT NDJSON output
+   * and auto-create vulnerability records for events with severity >= medium.
+   *
+   * This is a standalone helper that can be called independently of the full
+   * scan pipeline — useful for re-processing previously captured output.
+   *
+   * @returns The number of vulnerability records created
+   */
+  async extractFindingsAndVulns(output: string, operationId: string, scanId: string): Promise<number> {
+    const lines = output.split('\n').filter(line => line.trim());
+    const findingEvents: BBOTEvent[] = [];
+    const vulnEvents: BBOTEvent[] = [];
+
+    for (const line of lines) {
+      try {
+        const event: BBOTEvent = JSON.parse(line);
+        if (event.type === 'FINDING') {
+          findingEvents.push(event);
+        } else if (event.type === 'VULNERABILITY') {
+          vulnEvents.push(event);
+        }
+      } catch {
+        // Skip non-JSON lines
+        continue;
+      }
+    }
+
+    if (findingEvents.length === 0 && vulnEvents.length === 0) {
+      console.log(`BBOT extractFindingsAndVulns: no FINDING/VULNERABILITY events found in output for scan ${scanId}`);
+      return 0;
+    }
+
+    console.log(`BBOT extractFindingsAndVulns: found ${vulnEvents.length} VULNERABILITY and ${findingEvents.length} FINDING events for scan ${scanId}`);
+
+    // Build a minimal BBOTResult to reuse the existing storeVulnerabilities logic
+    const partialResult: BBOTResult = {
+      domains: [],
+      ips: [],
+      urls: [],
+      ports: [],
+      technologies: [],
+      asns: [],
+      emails: [],
+      storageBuckets: [],
+      vulnerabilities: vulnEvents,
+      findings: findingEvents,
+      raw: [],
+    };
+
+    return this.storeVulnerabilities(partialResult, operationId, scanId);
   }
 
   /**

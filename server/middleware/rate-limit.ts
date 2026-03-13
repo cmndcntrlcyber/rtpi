@@ -3,7 +3,7 @@ import rateLimit from "express-rate-limit";
 // Rate limiter using Redis for distributed rate limiting
 export const apiLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 250, // 250 requests per minute per IP (increased for workflow polling)
+  max: 500, // 500 requests per minute per IP (increased for workflow polling + scan polling)
   message: "Too many requests from this IP, please try again later",
   standardHeaders: true,
   legacyHeaders: false,

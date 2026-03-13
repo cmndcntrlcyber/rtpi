@@ -123,7 +123,7 @@ sleep 5
 # 5. Start frontend
 echo "Starting frontend..."
 cd "$RTPI_DIR"
-nohup npm run dev:client > "$LOG_DIR/frontend.log" 2>&1 &
+nohup npm run dev:frontend > "$LOG_DIR/frontend.log" 2>&1 &
 FRONTEND_PID=$!
 echo "✓ Frontend started (PID: $FRONTEND_PID)"
 echo ""

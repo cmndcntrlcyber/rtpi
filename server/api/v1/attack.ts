@@ -16,10 +16,45 @@ import {
   getImportStatistics,
   type STIXBundle,
 } from "../../services/stix-parser";
+import { ollamaAIClient } from "../../services/ollama-ai-client";
+import { randomUUID } from "crypto";
 import multer from "multer";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
+
+// ============================================================================
+// Test Plan Job Store (async pattern to avoid Cloudflare 504 timeouts)
+// ============================================================================
+
+interface TestPlanJob {
+  id: string;
+  status: "generating" | "completed" | "failed";
+  markdown?: string;
+  metadata?: {
+    techniquesCount: number;
+    provider: string;
+    model: string;
+    tokensUsed: number;
+    durationMs: number;
+    truncated: boolean;
+  };
+  error?: string;
+  createdAt: number;
+}
+
+const testPlanJobs = new Map<string, TestPlanJob>();
+const JOB_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+// Sweep stale jobs every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, job] of testPlanJobs) {
+    if (now - job.createdAt > JOB_TTL_MS) {
+      testPlanJobs.delete(id);
+    }
+  }
+}, 5 * 60 * 1000);
 
 /**
  * Get ATT&CK statistics
@@ -453,6 +488,148 @@ router.delete("/operations/:operationId/techniques/:techniqueId", async (req, re
     // Error logged for debugging
     res.status(500).json({ error: "Failed to remove technique", details: error?.message || "Internal server error" });
   }
+});
+
+/**
+ * Generate a test plan for kill chain techniques using AI research (async job)
+ * Returns a jobId immediately; client polls GET /test-plan-status/:jobId
+ */
+router.post("/generate-test-plan", async (req, res) => {
+  try {
+    const { techniques, operationContext, targetPlatform, opsecConstraints } = req.body;
+
+    if (!techniques || !Array.isArray(techniques) || techniques.length === 0) {
+      return res.status(400).json({ error: "At least one technique is required" });
+    }
+
+    if (techniques.length > 20) {
+      return res.status(400).json({ error: "Maximum 20 techniques per test plan" });
+    }
+
+    // Enrich technique data from the database if only IDs are provided
+    const enrichedTechniques = [];
+    for (const tech of techniques) {
+      if (tech.attackId && tech.name) {
+        enrichedTechniques.push(tech);
+      } else if (tech.id) {
+        const dbTech = await db.query.attackTechniques.findFirst({
+          where: eq(attackTechniques.id, tech.id),
+        });
+        if (dbTech) {
+          enrichedTechniques.push(dbTech);
+        }
+      }
+    }
+
+    if (enrichedTechniques.length === 0) {
+      return res.status(400).json({ error: "No valid techniques found" });
+    }
+
+    // Create job and return immediately
+    const jobId = randomUUID();
+    const job: TestPlanJob = {
+      id: jobId,
+      status: "generating",
+      createdAt: Date.now(),
+    };
+    testPlanJobs.set(jobId, job);
+
+    // Kick off AI generation in the background
+    void (async () => {
+      try {
+        const messages = ollamaAIClient.applyTemplate("research_technique_threat_intel", {
+          techniques: enrichedTechniques,
+          operationContext: operationContext || null,
+          targetPlatform: targetPlatform || null,
+          opsecConstraints: opsecConstraints || null,
+        });
+
+        const response = await ollamaAIClient.complete(messages, {
+          provider: "anthropic",
+          model: "claude-sonnet-4-5",
+          maxTokens: 8192,
+          temperature: 0.6,
+          useCache: false,
+          enrichmentType: "test_plan_generation",
+        });
+
+        if (!response.success) {
+          job.status = "failed";
+          job.error = response.error || "AI generation failed";
+          return;
+        }
+
+        // Build a header with metadata
+        const techniqueList = enrichedTechniques
+          .map((t: any) => `| ${t.attackId} | ${t.name} | ${(t.killChainPhases || []).join(", ")} |`)
+          .join("\n");
+
+        const header = `# Red Team Test Plan
+> Generated: ${new Date().toISOString().split("T")[0]}
+> Techniques: ${enrichedTechniques.length}
+> AI Provider: ${response.provider} (${response.model})
+${operationContext ? `> Operation Context: ${operationContext}` : ""}
+${targetPlatform ? `> Target Platform: ${targetPlatform}` : ""}
+${Array.isArray(opsecConstraints) && opsecConstraints.length > 0 ? `> OPSEC Constraints: ${opsecConstraints.join(", ")}` : ""}
+
+## Kill Chain Summary
+
+| Technique ID | Name | Tactics |
+|---|---|---|
+${techniqueList}
+
+---
+
+**DISCLAIMER**: This test plan is for authorized security testing only. All procedures must be executed within the scope of an approved penetration test engagement.
+
+---
+
+`;
+
+        job.status = "completed";
+        job.markdown = header + response.content;
+        job.metadata = {
+          techniquesCount: enrichedTechniques.length,
+          provider: response.provider,
+          model: response.model,
+          tokensUsed: response.tokensUsed,
+          durationMs: response.durationMs,
+          truncated: response.truncated || false,
+        };
+      } catch (error: any) {
+        console.error("[Attack] Test plan generation failed:", error);
+        job.status = "failed";
+        job.error = error?.message || "Internal server error";
+      }
+    })();
+
+    // Return immediately with the job ID
+    res.status(202).json({ jobId });
+  } catch (error: any) {
+    console.error("[Attack] Failed to start test plan generation:", error);
+    res.status(500).json({
+      error: "Failed to start test plan generation",
+      details: error?.message || "Internal server error",
+    });
+  }
+});
+
+/**
+ * Poll test plan generation status
+ */
+router.get("/test-plan-status/:jobId", async (req, res) => {
+  const job = testPlanJobs.get(req.params.jobId);
+
+  if (!job) {
+    return res.status(404).json({ error: "Job not found or expired" });
+  }
+
+  res.json({
+    status: job.status,
+    markdown: job.markdown || null,
+    metadata: job.metadata || null,
+    error: job.error || null,
+  });
 });
 
 export default router;

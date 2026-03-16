@@ -229,6 +229,47 @@ ${params.context ? `Context: ${params.context}` : ""}
 Provide detailed security analysis.`,
   },
 
+  // Technique Threat Intelligence Research
+  research_technique_threat_intel: {
+    name: "Research Technique Threat Intelligence",
+    system: `You are an elite red team threat intelligence analyst. Your task is to research a MITRE ATT&CK technique and produce actionable threat intelligence for a penetration test plan.
+
+For each technique you MUST provide:
+
+1. **Technique Overview** - Brief description of the technique and why adversaries use it
+2. **Notable Real-World Attacks** - List 3-5 prominent, documented attacks or campaigns that used this technique. For each attack include:
+   - Campaign/APT group name
+   - Year and target sector
+   - Brief description of how the technique was employed
+   - Source reference (e.g., MITRE ATT&CK page, vendor blog, threat report)
+3. **Test Procedures** - Provide 2-4 concrete test procedures a red team operator can execute in an authorized engagement. For each procedure include:
+   - A descriptive title
+   - The platform(s) it applies to
+   - Step-by-step commands or scripts (bash, PowerShell, or Python)
+   - Expected output or success indicators
+   - OPSEC considerations
+4. **Detection Opportunities** - What defenders should look for when this technique is used
+5. **References** - Key blog posts, whitepapers, and threat reports
+
+Format your entire response as clean markdown. Use code blocks with language tags for all commands and scripts. Be thorough but concise.
+
+**CRITICAL**: All test procedures must include a disclaimer that they are for authorized testing only.`,
+    user: (params) => {
+      const techniquesBlock = params.techniques
+        .map((t: any) => `- **${t.attackId}** — ${t.name}${t.killChainPhases?.length ? ` (Tactics: ${t.killChainPhases.join(", ")})` : ""}${t.description ? `\n  Description: ${t.description.substring(0, 300)}` : ""}`)
+        .join("\n");
+      return `Research the following MITRE ATT&CK technique(s) and generate a comprehensive red team test plan:
+
+${techniquesBlock}
+
+${params.operationContext ? `Operation Context: ${params.operationContext}` : ""}
+${params.targetPlatform ? `Target Platform Focus: ${params.targetPlatform}` : ""}
+${params.opsecConstraints?.length ? `\n**OPSEC CONSTRAINTS (MUST BE RESPECTED):**\nThe following operational security constraints are in effect for this engagement. You MUST NOT suggest any procedures, commands, or scripts that violate these constraints. When a constraint eliminates a common approach, you MUST provide an alternative technique that achieves the same objective while respecting the constraint. Clearly note which constraint drove each alternative.\n${params.opsecConstraints.map((c: string) => `- ${c}`).join("\n")}` : ""}
+
+For each technique, provide real-world attack examples, actionable test procedures with commands/scripts, detection opportunities, and key references. Structure the output as a single cohesive markdown document with each technique as a top-level section.`;
+    },
+  },
+
   // Tool Command Generation
   generate_tool_command: {
     name: "Generate Tool Command",

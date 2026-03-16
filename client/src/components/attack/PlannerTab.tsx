@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Progress } from "@/components/ui/progress";
 import {
   Search,
   Plus,
@@ -13,6 +14,11 @@ import {
   FolderPlus,
   GripVertical,
   X,
+  FlaskConical,
+  Download,
+  Copy,
+  Loader2,
+  ShieldAlert,
 } from "lucide-react";
 import type { Technique } from "@shared/types/attack";
 import {
@@ -63,6 +69,26 @@ export default function PlannerTab() {
   const [collectionDialogOpen, setCollectionDialogOpen] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState("");
   const [newCollectionDescription, setNewCollectionDescription] = useState("");
+
+  // Test plan state
+  const [testPlanDialogOpen, setTestPlanDialogOpen] = useState(false);
+  const [testPlanMarkdown, setTestPlanMarkdown] = useState("");
+  const [testPlanGenerating, setTestPlanGenerating] = useState(false);
+  const [testPlanError, setTestPlanError] = useState<string | null>(null);
+  const [testPlanMetadata, setTestPlanMetadata] = useState<{
+    provider?: string;
+    model?: string;
+    tokensUsed?: number;
+    durationMs?: number;
+    truncated?: boolean;
+  } | null>(null);
+  const [testPlanContext, setTestPlanContext] = useState("");
+  const [testPlanPlatform, setTestPlanPlatform] = useState("all");
+
+  // OPSEC constraints state
+  const [opsecDialogOpen, setOpsecDialogOpen] = useState(false);
+  const [opsecConstraints, setOpsecConstraints] = useState<string[]>([]);
+  const [newConstraint, setNewConstraint] = useState("");
 
   // Drag state
   const [draggedTechnique, setDraggedTechnique] = useState<Technique | null>(null);
@@ -302,6 +328,158 @@ export default function PlannerTab() {
     }
   };
 
+  // Polling interval ref for cleanup
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+  }, []);
+
+  // Clean up polling on unmount
+  useEffect(() => {
+    return () => stopPolling();
+  }, [stopPolling]);
+
+  // Stop polling when dialog closes
+  useEffect(() => {
+    if (!testPlanDialogOpen && testPlanGenerating) {
+      stopPolling();
+      setTestPlanGenerating(false);
+    }
+  }, [testPlanDialogOpen, testPlanGenerating, stopPolling]);
+
+  // Generate test plan (async job + polling)
+  const generateTestPlan = async () => {
+    if (selectedTechniques.length === 0) return;
+
+    stopPolling();
+    setTestPlanGenerating(true);
+    setTestPlanError(null);
+    setTestPlanMarkdown("");
+    setTestPlanMetadata(null);
+    setTestPlanDialogOpen(true);
+
+    try {
+      // Submit the job — returns immediately with a jobId
+      const response = await fetch("/api/v1/attack/generate-test-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          techniques: selectedTechniques.map((t) => ({
+            id: t.id,
+            attackId: t.attackId,
+            name: t.name,
+            description: t.description,
+            killChainPhases: t.killChainPhases,
+            platforms: t.platforms,
+          })),
+          operationContext: testPlanContext || undefined,
+          targetPlatform: testPlanPlatform !== "all" ? testPlanPlatform : undefined,
+          opsecConstraints: opsecConstraints.length > 0 ? opsecConstraints : undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: "Generation failed" }));
+        throw new Error(err.error || err.details || `HTTP ${response.status}`);
+      }
+
+      const { jobId } = await response.json();
+
+      // Poll for status every 3 seconds
+      pollIntervalRef.current = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`/api/v1/attack/test-plan-status/${jobId}`, {
+            credentials: "include",
+          });
+
+          if (!statusRes.ok) {
+            stopPolling();
+            setTestPlanError("Failed to check generation status");
+            setTestPlanGenerating(false);
+            return;
+          }
+
+          const data = await statusRes.json();
+
+          if (data.status === "completed") {
+            stopPolling();
+            setTestPlanMarkdown(data.markdown);
+            setTestPlanMetadata(data.metadata);
+            setTestPlanGenerating(false);
+            toast.success("Test plan generated successfully!");
+          } else if (data.status === "failed") {
+            stopPolling();
+            setTestPlanError(data.error || "AI generation failed");
+            setTestPlanGenerating(false);
+            toast.error(data.error || "Test plan generation failed");
+          }
+          // status === "generating" — keep polling
+        } catch {
+          stopPolling();
+          setTestPlanError("Lost connection while generating test plan");
+          setTestPlanGenerating(false);
+        }
+      }, 3000);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to start test plan generation";
+      setTestPlanError(message);
+      setTestPlanGenerating(false);
+      toast.error(message);
+    }
+  };
+
+  const copyTestPlan = async () => {
+    try {
+      await navigator.clipboard.writeText(testPlanMarkdown);
+      toast.success("Test plan copied to clipboard");
+    } catch {
+      toast.error("Failed to copy to clipboard");
+    }
+  };
+
+  const downloadTestPlan = () => {
+    const blob = new Blob([testPlanMarkdown], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const dateStr = new Date().toISOString().split("T")[0];
+    a.download = `test-plan-${dateStr}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success("Test plan downloaded");
+  };
+
+  // OPSEC constraint helpers
+  const OPSEC_PRESETS = [
+    "No PowerShell",
+    "No touching disk",
+    "Avoid LSASS",
+    "No network scanning",
+    "Living off the land only",
+    "No admin tools (PsExec, WMI)",
+    "Avoid EDR-hooked APIs",
+    "No C2 beaconing",
+  ];
+
+  const addConstraint = (constraint: string) => {
+    const trimmed = constraint.trim();
+    if (trimmed && !opsecConstraints.includes(trimmed)) {
+      setOpsecConstraints([...opsecConstraints, trimmed]);
+    }
+    setNewConstraint("");
+  };
+
+  const removeConstraint = (constraint: string) => {
+    setOpsecConstraints(opsecConstraints.filter((c) => c !== constraint));
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Left Panel - Technique Catalog */}
@@ -461,7 +639,7 @@ export default function PlannerTab() {
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Actions */}
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               onClick={() => setSaveDialogOpen(true)}
               disabled={selectedTechniques.length === 0}
@@ -479,6 +657,27 @@ export default function PlannerTab() {
               Save as Collection
             </Button>
           </div>
+          <Button
+            variant="outline"
+            onClick={() => setOpsecDialogOpen(true)}
+            className="w-full"
+          >
+            <ShieldAlert className="h-4 w-4 mr-2" />
+            OPSEC Constraints{opsecConstraints.length > 0 ? ` (${opsecConstraints.length})` : ""}
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={generateTestPlan}
+            disabled={selectedTechniques.length === 0 || testPlanGenerating}
+            className="w-full"
+          >
+            {testPlanGenerating ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <FlaskConical className="h-4 w-4 mr-2" />
+            )}
+            {testPlanGenerating ? "Generating Test Plan..." : "Generate Test Plan"}
+          </Button>
 
           {/* Drop Zone */}
           <div
@@ -624,6 +823,201 @@ export default function PlannerTab() {
             <Button onClick={createCollection} disabled={!newCollectionName}>
               Create Collection
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* OPSEC Constraints Dialog */}
+      <Dialog open={opsecDialogOpen} onOpenChange={setOpsecDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5" />
+              OPSEC Constraints
+            </DialogTitle>
+            <DialogDescription>
+              Define operational security constraints. The AI will avoid restricted tools and suggest alternatives.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {/* Add custom constraint */}
+            <div className="flex gap-2">
+              <Input
+                placeholder="e.g., No PowerShell due to script block logging"
+                value={newConstraint}
+                onChange={(e) => setNewConstraint(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newConstraint.trim()) {
+                    addConstraint(newConstraint);
+                  }
+                }}
+                className="flex-1"
+              />
+              <Button
+                size="sm"
+                onClick={() => addConstraint(newConstraint)}
+                disabled={!newConstraint.trim()}
+              >
+                Add
+              </Button>
+            </div>
+
+            {/* Quick-add presets */}
+            <div>
+              <Label className="text-xs text-muted-foreground mb-2 block">Quick add</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {OPSEC_PRESETS.filter((p) => !opsecConstraints.includes(p)).map((preset) => (
+                  <Badge
+                    key={preset}
+                    variant="outline"
+                    className="cursor-pointer hover:bg-secondary transition-colors text-xs"
+                    onClick={() => addConstraint(preset)}
+                  >
+                    + {preset}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+
+            {/* Active constraints */}
+            {opsecConstraints.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="text-xs text-muted-foreground">Active constraints</Label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs text-muted-foreground"
+                    onClick={() => setOpsecConstraints([])}
+                  >
+                    Clear all
+                  </Button>
+                </div>
+                <div className="space-y-1.5">
+                  {opsecConstraints.map((constraint) => (
+                    <div
+                      key={constraint}
+                      className="flex items-center justify-between bg-destructive/10 border border-destructive/20 rounded-md px-3 py-1.5"
+                    >
+                      <span className="text-sm">{constraint}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        onClick={() => removeConstraint(constraint)}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {opsecConstraints.length === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-2">
+                No constraints set. The test plan will include all available techniques.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setOpsecDialogOpen(false)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Generate Test Plan Dialog */}
+      <Dialog open={testPlanDialogOpen} onOpenChange={setTestPlanDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FlaskConical className="h-5 w-5" />
+              Red Team Test Plan
+            </DialogTitle>
+            <DialogDescription>
+              AI-generated threat intelligence and test procedures for your kill chain
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Generation in progress */}
+          {testPlanGenerating && (
+            <div className="space-y-4 py-8">
+              <div className="flex items-center justify-center gap-3">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                <span className="text-sm font-medium">
+                  Researching {selectedTechniques.length} technique{selectedTechniques.length !== 1 ? "s" : ""}...
+                </span>
+              </div>
+              <Progress value={undefined} className="w-full" />
+              <p className="text-xs text-center text-muted-foreground">
+                The AI agent is investigating threat intelligence, real-world attacks, and generating test procedures. This may take a minute.
+              </p>
+            </div>
+          )}
+
+          {/* Error state */}
+          {testPlanError && !testPlanGenerating && (
+            <div className="py-4">
+              <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
+                <p className="text-sm font-medium text-destructive">Generation Failed</p>
+                <p className="text-sm text-muted-foreground mt-1">{testPlanError}</p>
+              </div>
+              <div className="flex gap-2 mt-4">
+                <Button variant="outline" size="sm" onClick={generateTestPlan}>
+                  Retry
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Result */}
+          {testPlanMarkdown && !testPlanGenerating && (
+            <>
+              <div className="flex items-center justify-between gap-2 pb-2 border-b">
+                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                  {testPlanMetadata && (
+                    <>
+                      <span>Provider: {testPlanMetadata.provider}</span>
+                      <span>Model: {testPlanMetadata.model}</span>
+                      <span>Tokens: {testPlanMetadata.tokensUsed?.toLocaleString()}</span>
+                      <span>Time: {((testPlanMetadata.durationMs || 0) / 1000).toFixed(1)}s</span>
+                      {testPlanMetadata.truncated && (
+                        <Badge variant="destructive" className="text-xs">Truncated</Badge>
+                      )}
+                    </>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={copyTestPlan}>
+                    <Copy className="h-3 w-3 mr-1" />
+                    Copy
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={downloadTestPlan}>
+                    <Download className="h-3 w-3 mr-1" />
+                    Download
+                  </Button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto min-h-0">
+                <div className="prose prose-sm prose-invert max-w-none p-4 bg-secondary/30 rounded-lg">
+                  <pre className="whitespace-pre-wrap text-sm font-mono leading-relaxed">
+                    {testPlanMarkdown}
+                  </pre>
+                </div>
+              </div>
+            </>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTestPlanDialogOpen(false)}>
+              Close
+            </Button>
+            {testPlanMarkdown && !testPlanGenerating && (
+              <Button onClick={generateTestPlan}>
+                <FlaskConical className="h-4 w-4 mr-2" />
+                Regenerate
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

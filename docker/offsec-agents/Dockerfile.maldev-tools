@@ -28,8 +28,10 @@ RUN apt-get update && apt-get install -y \
     pev upx-ucl \
     # Development libraries (libcapstone available, keystone/unicorn via pip)
     libcapstone-dev \
-    # Cross-compilation support
+    # Cross-compilation support (ARM64 and x86_64)
     gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+    binutils-x86-64-linux-gnu \
+    binutils-i686-linux-gnu \
     # Additional utilities
     xxd hexedit jq \
     && rm -rf /var/lib/apt/lists/*

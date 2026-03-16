@@ -7,7 +7,8 @@
       "Bash(git check-ignore migrations/0001_add_vulnerability_templates.sql db/migrations/0012_add_attack_integration.sql)",
       "Bash(git check-ignore database_backup.sql dump.sql)",
       "Bash(sudo mount /dev/nvme0n1p1 /mnt/nvme)",
-      "Bash(mount)"
+      "Bash(mount)",
+      "Bash(git reset:*)"
     ],
     "additionalDirectories": [
       "/tmp"

@@ -245,7 +245,8 @@ export class AgentWorkflowOrchestrator {
   async startPenetrationTestWorkflow(
     targetId: string,
     userId: string,
-    operationId?: string
+    operationId?: string,
+    templateAgents?: Array<{ agentId: string; order: number }>
   ): Promise<any> {
     try {
       // Get target details
@@ -260,21 +261,46 @@ export class AgentWorkflowOrchestrator {
         throw new Error("Target not found");
       }
 
-      // Get all three agents
       const allAgents = await db.select().from(agents);
-      const operationLead = allAgents.find((a) => a.name === "Operation Lead");
-      const seniorCyberOperator = allAgents.find(
-        (a) => a.name === "Senior Cyber Operator"
-      );
-      const technicalWriter = allAgents.find(
-        (a) => a.name === "Technical Writer"
-      );
 
-      if (!operationLead || !seniorCyberOperator || !technicalWriter) {
-        throw new Error(
-          "Required agents not found. Ensure Operation Lead, Senior Cyber Operator, and Technical Writer agents exist."
+      // Resolve the agent list: use template agents if provided, otherwise fall back to defaults
+      let resolvedAgents: Array<{ agent: typeof allAgents[0]; order: number }>;
+
+      if (templateAgents?.length) {
+        // Use the workflow template's configured agents in their specified order
+        resolvedAgents = templateAgents
+          .sort((a, b) => a.order - b.order)
+          .map((ta) => {
+            const agent = allAgents.find((a) => a.id === ta.agentId);
+            if (!agent) {
+              throw new Error(`Agent ${ta.agentId} not found`);
+            }
+            return { agent, order: ta.order };
+          });
+      } else {
+        // Legacy fallback: hardcoded 3-agent workflow
+        const operationLead = allAgents.find((a) => a.name === "Operation Lead");
+        const seniorCyberOperator = allAgents.find(
+          (a) => a.name === "Senior Cyber Operator"
         );
+        const technicalWriter = allAgents.find(
+          (a) => a.name === "Technical Writer"
+        );
+
+        if (!operationLead || !seniorCyberOperator || !technicalWriter) {
+          throw new Error(
+            "Required agents not found. Ensure Operation Lead, Senior Cyber Operator, and Technical Writer agents exist."
+          );
+        }
+
+        resolvedAgents = [
+          { agent: operationLead, order: 0 },
+          { agent: seniorCyberOperator, order: 1 },
+          { agent: technicalWriter, order: 2 },
+        ];
       }
+
+      const firstAgent = resolvedAgents[0].agent;
 
       // Create workflow instance
       const workflow = await db
@@ -284,7 +310,7 @@ export class AgentWorkflowOrchestrator {
           workflowType: "penetration_test",
           targetId: target.id,
           operationId: operationId || target.operationId,
-          currentAgentId: operationLead.id,
+          currentAgentId: firstAgent.id,
           status: "pending",
           progress: 0,
           metadata: {
@@ -297,45 +323,30 @@ export class AgentWorkflowOrchestrator {
 
       const workflowId = workflow[0].id;
 
-      // Create task queue: Operation Lead → Senior Cyber Operator → Technical Writer
-      const tasks = [
-        {
-          workflowId,
-          agentId: operationLead.id,
-          taskType: "analyze" as const,
-          taskName: "Analyze target and create execution plan",
-          sequenceOrder: 1,
-          inputData: {
-            targetId: target.id,
-            targetValue: target.value,
-            discoveredServices: target.discoveredServices,
-            metadata: target.metadata,
-          },
+      // Create task queue from the resolved agent list
+      // All template-based tasks use execute_tools type with templateDriven flag
+      // so processWorkflow routes them through the generic AI execution path
+      const tasks = resolvedAgents.map((ra, index) => ({
+        workflowId,
+        agentId: ra.agent.id,
+        taskType: "execute_tools" as const,
+        taskName: `${ra.agent.name} — Step ${index + 1}`,
+        sequenceOrder: index + 1,
+        inputData: {
+          targetId: target.id,
+          targetValue: target.value,
+          discoveredServices: target.discoveredServices,
+          metadata: target.metadata,
+          templateDriven: true,
         },
-        {
-          workflowId,
-          agentId: seniorCyberOperator.id,
-          taskType: "exploit" as const,
-          taskName: "Execute exploitation attempts",
-          sequenceOrder: 2,
-          inputData: {}, // Will be populated by Operation Lead's output
-        },
-        {
-          workflowId,
-          agentId: technicalWriter.id,
-          taskType: "report" as const,
-          taskName: "Generate penetration test report",
-          sequenceOrder: 3,
-          inputData: {}, // Will be populated by Senior Cyber Operator's output
-        },
-      ];
+      }));
 
       await db.insert(workflowTasks).values(tasks);
 
       // Log workflow start
       await this.log(workflowId, null, "info", "Workflow started", {
         target: target.name,
-        agents: [operationLead.name, seniorCyberOperator.name, technicalWriter.name],
+        agents: resolvedAgents.map((ra) => ra.agent.name),
       });
 
       // Start processing in background
@@ -724,7 +735,11 @@ export class AgentWorkflowOrchestrator {
               }
               break;
             case "execute_tools":
-              output = await this.executeGenericToolWorkflow(agent, taskInput, workflowId, task.id);
+              if ((task.inputData as any)?.templateDriven) {
+                output = await this.executeTemplateDrivenAgent(agent, taskInput, workflowId, task.id);
+              } else {
+                output = await this.executeGenericToolWorkflow(agent, taskInput, workflowId, task.id);
+              }
               break;
             case "custom":
               if (currentWorkflow?.workflowType === "surface_assessment_report") {
@@ -1355,6 +1370,90 @@ export class AgentWorkflowOrchestrator {
   // ============================================================================
 
   /**
+   * Execute a template-driven agent step.
+   * Uses the agent's system prompt + AI to process the target and previous output.
+   * Also runs the agent's enabled tools if any are configured.
+   */
+  private async executeTemplateDrivenAgent(
+    agent: any,
+    input: any,
+    workflowId: string,
+    taskId: string,
+  ): Promise<any> {
+    const config = agent.config as AgentConfig;
+    const systemPrompt = config?.systemPrompt || agent.systemPrompt ||
+      `You are ${agent.name}. Complete your assigned task thoroughly.`;
+
+    await this.log(workflowId, taskId, "info",
+      `Starting template-driven execution for "${agent.name}"`,
+      { agentId: agent.id, hasEnabledTools: (config?.enabledTools?.length || 0) > 0 }
+    );
+
+    // Run enabled tools first if any are configured
+    let toolOutput: any = null;
+    if (config?.enabledTools?.length) {
+      try {
+        toolOutput = await this.executeGenericToolWorkflow(agent, input, workflowId, taskId);
+      } catch (err) {
+        await this.log(workflowId, taskId, "warn",
+          `Tool execution failed for "${agent.name}", continuing with AI-only`,
+          { error: err instanceof Error ? err.message : String(err) }
+        );
+      }
+    }
+
+    // Build context from previous output and tool results
+    const previousSummary = input.previousOutput
+      ? `\n\n## Previous Step Output\n${JSON.stringify(input.previousOutput.summary || input.previousOutput.aiSummary || input.previousOutput, null, 2).slice(0, 4000)}`
+      : "";
+
+    const toolSummary = toolOutput?.aiSummary
+      ? `\n\n## Tool Execution Results\n${toolOutput.aiSummary}`
+      : toolOutput?.toolResults?.length
+        ? `\n\n## Tool Execution Results\n${toolOutput.toolResults.map((r: any) => `- ${r.toolId}: ${r.status}`).join("\n")}`
+        : "";
+
+    const userPrompt = `# Target: ${input.targetValue || "unknown"}
+
+## Your Role
+${systemPrompt}
+
+## Task
+Analyze the target and any available context below. Produce a structured assessment relevant to your expertise.
+${previousSummary}${toolSummary}
+
+## Instructions
+1. Consider the target and all available context
+2. Apply your specialized expertise
+3. Provide actionable findings, recommendations, or analysis
+4. Format your response clearly with sections
+
+Respond with your analysis.`;
+
+    const response = await this.callAgentAI(agent, [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ], undefined, {
+      workflowId,
+      taskId,
+      phase: `${agent.name}: Template-Driven Execution`,
+    });
+
+    return {
+      type: "template_agent_output",
+      agentId: agent.id,
+      agentName: agent.name,
+      aiResponse: response,
+      aiSummary: response.slice(0, 2000),
+      toolOutput,
+      metadata: {
+        targetId: input.targetId,
+        targetValue: input.targetValue,
+      },
+    };
+  }
+
+  /**
    * Execute all enabled tools for an agent sequentially against a target.
    * Inventories the agent's enabledTools, checks container availability,
    * executes each tool, documents output, and optionally generates AI summary.
@@ -1394,6 +1493,10 @@ export class AgentWorkflowOrchestrator {
       `Target resolved: ${target.value} (${target.type})`,
       { targetId: target.id, targetValue: target.value }
     );
+
+    // Resolve the user who created this workflow for tool execution requests
+    const [wf] = await db.select().from(agentWorkflows).where(eq(agentWorkflows.id, workflowId)).limit(1);
+    const executionUserId = wf?.createdBy || randomUUID();
 
     // No enabled tools — nothing to do
     if (enabledToolIds.length === 0) {
@@ -1511,7 +1614,7 @@ export class AgentWorkflowOrchestrator {
           parameters: { target: target.value },
           targetId: target.id,
           agentId: agent.id,
-          userId: "system",
+          userId: executionUserId,
           parseOutput: true,
         });
 

@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { db } from "../../db";
-import { rdExperiments, researchProjects, agents, agentWorkflows } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { rdExperiments, rdArtifacts, researchProjects, agents, agentWorkflows, agentMessages } from "@shared/schema";
+import { eq, and, desc, gte, lte, or } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import { z } from "zod";
+import { rdExperimentOrchestrator } from "../../services/rd-experiment-orchestrator";
+import { rdToolPromotion } from "../../services/rd-tool-promotion";
 
 const router = Router();
 
@@ -258,40 +260,37 @@ router.put("/:id", ensureRole("admin", "operator"), async (req, res) => {
   }
 });
 
-// POST /api/v1/offsec-rd/experiments/:id/execute - Execute experiment via workflow
+// POST /api/v1/offsec-rd/experiments/:id/execute - Execute experiment via orchestrator
 router.post("/:id/execute", ensureRole("admin", "operator"), async (req, res) => {
   const { id } = req.params;
   const user = req.user as any;
 
   try {
-    // Get experiment
-    const experiment = await db
+    // Get experiment with project context
+    const [experiment] = await db
       .select()
       .from(rdExperiments)
       .where(eq(rdExperiments.id, id))
       .limit(1);
 
-    if (!experiment || experiment.length === 0) {
+    if (!experiment) {
       return res.status(404).json({ error: "Experiment not found" });
     }
 
-    // Check if already running
-    if (experiment[0].status === "running") {
+    if (experiment.status === "running") {
       return res.status(400).json({ error: "Experiment is already running" });
     }
 
-    // TODO: Create and start workflow via agent-workflow-orchestrator
-    // This will be implemented in Phase 6 with the experiment executor service
-    // For now, just update status to running
+    // Get project for vulnerability context
+    const [project] = await db
+      .select()
+      .from(researchProjects)
+      .where(eq(researchProjects.id, experiment.projectId))
+      .limit(1);
 
-    const [updatedExperiment] = await db
-      .update(rdExperiments)
-      .set({
-        status: "running",
-        startedAt: new Date(),
-      })
-      .where(eq(rdExperiments.id, id))
-      .returning();
+    if (!project) {
+      return res.status(404).json({ error: "Associated research project not found" });
+    }
 
     // Audit log
     await logAudit(
@@ -303,14 +302,29 @@ router.post("/:id/execute", ensureRole("admin", "operator"), async (req, res) =>
       req
     );
 
+    // Execute asynchronously via orchestrator
+    const context = {
+      experimentId: id,
+      projectId: experiment.projectId,
+      vulnerabilityId: project.sourceVulnerabilityId || "",
+      operationId: req.body.operationId || "",
+      targetInfo: req.body.targetInfo,
+    };
+
+    // Start execution in background, return immediately
+    rdExperimentOrchestrator.executeExperiment(id, context).catch((err) => {
+      console.error(`[RD Orchestrator] Background experiment ${id} failed:`, err);
+    });
+
     res.json({
-      experiment: updatedExperiment,
-      message: "Experiment execution started (workflow integration pending)"
+      message: "Experiment execution started",
+      experimentId: id,
+      status: "running",
     });
   } catch (error: any) {
     res.status(500).json({
       error: "Failed to execute experiment",
-      details: error.message
+      details: error.message,
     });
   }
 });
@@ -321,33 +335,31 @@ router.post("/:id/cancel", ensureRole("admin", "operator"), async (req, res) => 
   const user = req.user as any;
 
   try {
-    const experiment = await db
+    const [experiment] = await db
       .select()
       .from(rdExperiments)
       .where(eq(rdExperiments.id, id))
       .limit(1);
 
-    if (!experiment || experiment.length === 0) {
+    if (!experiment) {
       return res.status(404).json({ error: "Experiment not found" });
     }
 
-    if (experiment[0].status !== "running") {
+    if (experiment.status !== "running") {
       return res.status(400).json({ error: "Experiment is not running" });
     }
 
-    // TODO: Cancel associated workflow if exists
-    // This will be implemented in Phase 6
+    // Cancel via orchestrator (handles abort + DB update)
+    const cancelled = await rdExperimentOrchestrator.cancelExperiment(id);
 
-    const [updatedExperiment] = await db
-      .update(rdExperiments)
-      .set({
-        status: "cancelled",
-        completedAt: new Date(),
-      })
-      .where(eq(rdExperiments.id, id))
-      .returning();
+    if (!cancelled) {
+      // Orchestrator didn't have it active, update DB directly
+      await db
+        .update(rdExperiments)
+        .set({ status: "cancelled", completedAt: new Date() })
+        .where(eq(rdExperiments.id, id));
+    }
 
-    // Audit log
     await logAudit(
       user.id,
       "offsec_rd_experiment_cancel",
@@ -357,11 +369,201 @@ router.post("/:id/cancel", ensureRole("admin", "operator"), async (req, res) => 
       req
     );
 
-    res.json({ experiment: updatedExperiment });
+    res.json({ message: "Experiment cancelled", experimentId: id });
   } catch (error: any) {
     res.status(500).json({
       error: "Failed to cancel experiment",
-      details: error.message
+      details: error.message,
+    });
+  }
+});
+
+// POST /api/v1/offsec-rd/projects/:projectId/execute - Execute all planned experiments in a project
+router.post("/projects/:projectId/execute", ensureRole("admin", "operator"), async (req, res) => {
+  const { projectId } = req.params;
+  const user = req.user as any;
+
+  try {
+    const [project] = await db
+      .select()
+      .from(researchProjects)
+      .where(eq(researchProjects.id, projectId))
+      .limit(1);
+
+    if (!project) {
+      return res.status(404).json({ error: "Research project not found" });
+    }
+
+    await logAudit(
+      user.id,
+      "offsec_rd_project_execute",
+      `/offsec-rd/projects/${projectId}/execute`,
+      projectId,
+      true,
+      req
+    );
+
+    // Execute all planned experiments in background
+    rdExperimentOrchestrator.executeProject(projectId).catch((err) => {
+      console.error(`[RD Orchestrator] Background project ${projectId} execution failed:`, err);
+    });
+
+    res.json({
+      message: "Project execution started",
+      projectId,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      error: "Failed to execute project",
+      details: error.message,
+    });
+  }
+});
+
+// GET /api/v1/offsec-rd/experiments/:experimentId/artifacts - List artifacts for an experiment
+router.get("/:experimentId/artifacts", async (req, res) => {
+  const { experimentId } = req.params;
+
+  try {
+    const artifacts = await db
+      .select()
+      .from(rdArtifacts)
+      .where(eq(rdArtifacts.experimentId, experimentId))
+      .orderBy(desc(rdArtifacts.createdAt));
+
+    res.json({ artifacts });
+  } catch (error: any) {
+    res.status(500).json({
+      error: "Failed to retrieve artifacts",
+      details: error.message,
+    });
+  }
+});
+
+// POST /api/v1/offsec-rd/artifacts/:artifactId/promote - Promote artifact to Tool Registry
+router.post("/artifacts/:artifactId/promote", ensureRole("admin", "operator"), async (req, res) => {
+  const { artifactId } = req.params;
+  const { toolName, category } = req.body;
+  const user = req.user as any;
+
+  try {
+    const result = await rdToolPromotion.promoteToToolRegistry(artifactId, toolName, category);
+
+    await logAudit(
+      user.id,
+      "offsec_rd_artifact_promote",
+      `/offsec-rd/artifacts/${artifactId}/promote`,
+      artifactId,
+      result.success,
+      req
+    );
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error, metadata: result.metadata });
+    }
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({
+      error: "Failed to promote artifact",
+      details: error.message,
+    });
+  }
+});
+
+// GET /api/v1/offsec-rd/experiments/:id/agent-log - Get agent communications during experiment execution
+router.get("/:id/agent-log", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Get experiment to determine time window
+    const [experiment] = await db
+      .select()
+      .from(rdExperiments)
+      .where(eq(rdExperiments.id, id))
+      .limit(1);
+
+    if (!experiment) {
+      return res.status(404).json({ error: "Experiment not found" });
+    }
+
+    // Build time-range filter for agent messages during execution
+    const startTime = experiment.startedAt || experiment.createdAt;
+    const endTime = experiment.completedAt || new Date();
+
+    // Fetch agent messages in the execution window
+    // Include messages from R&D-related agents (research, maldev, poc, nuclei, rd-team)
+    const messages = await db
+      .select({
+        id: agentMessages.id,
+        messageType: agentMessages.messageType,
+        fromAgentId: agentMessages.fromAgentId,
+        fromAgentRole: agentMessages.fromAgentRole,
+        toAgentRole: agentMessages.toAgentRole,
+        subject: agentMessages.subject,
+        contentSummary: agentMessages.contentSummary,
+        contentData: agentMessages.contentData,
+        priority: agentMessages.priority,
+        status: agentMessages.status,
+        createdAt: agentMessages.createdAt,
+      })
+      .from(agentMessages)
+      .where(
+        and(
+          gte(agentMessages.createdAt, startTime),
+          lte(agentMessages.createdAt, endTime),
+          or(
+            eq(agentMessages.fromAgentRole, "research_agent"),
+            eq(agentMessages.fromAgentRole, "maldev_agent"),
+            eq(agentMessages.fromAgentRole, "poc_developer"),
+            eq(agentMessages.fromAgentRole, "nuclei_template_developer"),
+            eq(agentMessages.fromAgentRole, "rd_team"),
+            eq(agentMessages.fromAgentRole, "operations_manager"),
+          )
+        )
+      )
+      .orderBy(agentMessages.createdAt)
+      .limit(200);
+
+    // Also include execution log entries parsed from the experiment results
+    const executionLog: Array<{
+      id: string;
+      level: string;
+      message: string;
+      timestamp: string;
+      context?: any;
+    }> = [];
+
+    // Parse execution log from results
+    const results = experiment.results as any;
+    if (results?.executionLog && Array.isArray(results.executionLog)) {
+      results.executionLog.forEach((entry: string, i: number) => {
+        const isError = entry.includes("[ERROR]");
+        const timestamp = entry.match(/\[([\d-T:.Z]+)\]/)?.[1];
+        executionLog.push({
+          id: `log-${i}`,
+          level: isError ? "error" : "info",
+          message: entry.replace(/\[[\d-T:.Z]+\]\s*/, ""),
+          timestamp: timestamp || (experiment.startedAt || experiment.createdAt).toISOString(),
+        });
+      });
+    }
+
+    res.json({
+      experiment: {
+        id: experiment.id,
+        name: experiment.name,
+        status: experiment.status,
+        startedAt: experiment.startedAt,
+        completedAt: experiment.completedAt,
+      },
+      agentMessages: messages,
+      executionLog,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      error: "Failed to retrieve agent log",
+      details: error.message,
     });
   }
 });

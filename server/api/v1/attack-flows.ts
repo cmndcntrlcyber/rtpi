@@ -3,6 +3,7 @@ import { db } from "../../db";
 import { attackFlows } from "@shared/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { z } from "zod";
+import { attackWorkflowBuilder } from "../../services/attack-workflow-builder";
 
 const router = Router();
 
@@ -275,6 +276,53 @@ router.post("/:id/duplicate", async (req, res) => {
     res.status(500).json({
       error: "Failed to duplicate attack flow",
       details: error?.message || "Internal server error"
+    });
+  }
+});
+
+// POST /api/v1/attack-flows/build-workflow - Build executable workflow from ATT&CK techniques
+router.post("/build-workflow", async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+
+  const schema = z.object({
+    operationId: z.string().uuid(),
+    targetId: z.string().uuid(),
+    techniqueIds: z.array(z.string()).min(1, "At least one technique ID required"),
+    name: z.string().optional(),
+  });
+
+  try {
+    const data = schema.parse(req.body);
+
+    const result = await attackWorkflowBuilder.buildWorkflowFromTechniques({
+      ...data,
+      userId,
+    });
+
+    res.status(201).json(result);
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: "Validation failed", details: error.errors });
+    }
+    res.status(500).json({
+      error: "Failed to build workflow",
+      details: error?.message || "Internal server error",
+    });
+  }
+});
+
+// GET /api/v1/attack-flows/tools-for-technique/:attackId - Get tools mapped to a technique
+router.get("/tools-for-technique/:attackId", async (req, res) => {
+  try {
+    const tools = await attackWorkflowBuilder.getToolsForTechnique(req.params.attackId);
+    res.json({ tools });
+  } catch (error: any) {
+    res.status(500).json({
+      error: "Failed to get tools",
+      details: error?.message || "Internal server error",
     });
   }
 });

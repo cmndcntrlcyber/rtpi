@@ -1,0 +1,113 @@
+# BurpSuite Professional Workspace for RTPI
+# Base: kasmweb/core-ubuntu-jammy:1.17.0
+# Uses the official .sh installer for proper JRE bundling and native GUI support
+# ARM64 compatible (tested on Rockchip RK3588)
+
+FROM kasmweb/core-ubuntu-jammy:1.17.0
+
+LABEL maintainer="RTPI Platform Team"
+LABEL description="BurpSuite Professional workspace with browser-based GUI access"
+LABEL version="1.0.0"
+
+USER root
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV HOME=/home/kasm-default-profile
+ENV STARTUPDIR=/dockerstartup
+WORKDIR $HOME
+
+######### Dependencies ###########
+
+# Install dependencies for BurpSuite GUI rendering and web testing
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgtk-3-0 \
+    libxrender1 \
+    libxtst6 \
+    libxi6 \
+    libxrandr2 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxfixes3 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libgbm1 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libasound2 \
+    libnspr4 \
+    libnss3 \
+    fonts-liberation \
+    xdg-utils \
+    curl \
+    wget \
+    git \
+    python3 \
+    python3-pip \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install supplementary web testing tools
+RUN pip3 install --no-cache-dir \
+    requests \
+    beautifulsoup4 \
+    pyjwt \
+    mitmproxy
+
+######### BurpSuite Installation ###########
+
+# The .sh installer is copied from the build context
+# It bundles the correct JRE for the target architecture
+COPY burpsuite_pro_installer.sh /tmp/burpsuite_installer.sh
+RUN chmod +x /tmp/burpsuite_installer.sh
+
+# Run installer in unattended mode
+# -q: quiet mode, -dir: install directory
+RUN /tmp/burpsuite_installer.sh -q -dir /opt/BurpSuitePro \
+    && rm /tmp/burpsuite_installer.sh
+
+# Create workspace directories
+RUN mkdir -p /home/kasm-user/{workspace,burp-projects,extensions,burp-config} \
+    && chown -R 1000:1000 /home/kasm-user
+
+######### Desktop Integration ###########
+
+# Desktop shortcut
+RUN mkdir -p $HOME/Desktop \
+    && cat > $HOME/Desktop/burpsuite.desktop << 'DESKTOP' \
+[Desktop Entry]
+Type=Application
+Name=BurpSuite Pro
+Comment=BurpSuite Professional - Web Security Testing
+Exec=/opt/BurpSuitePro/BurpSuitePro --project-dir=/home/kasm-user/burp-projects
+Icon=/opt/BurpSuitePro/icon.png
+Terminal=false
+Categories=Security;Network;
+StartupWMClass=burp-StartBurp
+DESKTOP
+RUN chmod +x $HOME/Desktop/burpsuite.desktop
+
+# Fallback icon if installer doesn't provide one
+RUN if [ ! -f /opt/BurpSuitePro/icon.png ]; then \
+      wget -q -O /opt/BurpSuitePro/icon.png \
+        "https://portswigger.net/content/images/logos/burpsuite-logo.png" 2>/dev/null \
+      || echo "No icon available" > /dev/null; \
+    fi
+
+######### Startup Script ###########
+
+COPY burp-startup.sh $STARTUPDIR/custom_startup.sh
+RUN chmod +x $STARTUPDIR/custom_startup.sh
+
+######### Permissions ###########
+
+RUN chown 1000:0 $HOME
+RUN $STARTUPDIR/set_user_permission.sh $HOME
+
+ENV HOME=/home/kasm-user
+WORKDIR $HOME
+RUN mkdir -p $HOME && chown -R 1000:0 $HOME
+
+USER 1000

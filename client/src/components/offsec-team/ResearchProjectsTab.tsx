@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, FolderOpen, Activity, Calendar } from "lucide-react";
+import { Plus, FolderOpen, Activity, Calendar, PlayCircle, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 
 interface ResearchProject {
@@ -35,6 +35,7 @@ export default function ResearchProjectsTab() {
     type: "tool_testing",
     objectives: "",
   });
+  const [executingProjects, setExecutingProjects] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchProjects();
@@ -68,6 +69,23 @@ export default function ResearchProjectsTab() {
     } catch (error: any) {
       toast.error("Failed to create project");
       console.error(error);
+    }
+  };
+
+  const handleExecuteAll = async (projectId: string, projectName: string) => {
+    try {
+      setExecutingProjects((prev) => new Set(prev).add(projectId));
+      await api.post(`/offsec-rd/experiments/projects/${projectId}/execute`);
+      toast.success(`All planned experiments in "${projectName}" are now executing`);
+      setTimeout(fetchProjects, 2000);
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to execute experiments");
+    } finally {
+      setExecutingProjects((prev) => {
+        const next = new Set(prev);
+        next.delete(projectId);
+        return next;
+      });
     }
   };
 
@@ -223,6 +241,26 @@ export default function ResearchProjectsTab() {
                       </Badge>
                     )}
                   </div>
+                  {project.status === "active" && (
+                    <Button
+                      size="sm"
+                      className="w-full mt-3"
+                      onClick={() => handleExecuteAll(project.id, project.name)}
+                      disabled={executingProjects.has(project.id)}
+                    >
+                      {executingProjects.has(project.id) ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Executing...
+                        </>
+                      ) : (
+                        <>
+                          <PlayCircle className="h-4 w-4 mr-2" />
+                          Execute All Experiments
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardContent>

@@ -61,10 +61,10 @@ const upload = multer({
     fileSize: 800 * 1024 * 1024, // 800MB -- headroom for future JAR versions
   },
   fileFilter: (_req, file, cb) => {
-    if (file.originalname.endsWith('.jar')) {
+    if (file.originalname.endsWith('.jar') || file.originalname.endsWith('.sh')) {
       cb(null, true);
     } else {
-      cb(new Error('Only JAR files are allowed'));
+      cb(new Error('Only JAR and .sh installer files are allowed'));
     }
   },
 });
@@ -182,8 +182,8 @@ router.post('/upload/chunked/init', (req, res) => {
       return res.status(400).json({ error: 'fileName, totalChunks, and totalSize are required' });
     }
 
-    if (!fileName.endsWith('.jar')) {
-      return res.status(400).json({ error: 'Only JAR files are allowed' });
+    if (!fileName.endsWith('.jar') && !fileName.endsWith('.sh')) {
+      return res.status(400).json({ error: 'Only JAR and .sh installer files are allowed' });
     }
 
     if (totalSize > 800 * 1024 * 1024) {

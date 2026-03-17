@@ -648,16 +648,36 @@ export class RDTeamAgent extends BaseTaskAgent {
 Generate a valid Nuclei YAML template based on the provided vulnerability research.
 
 Rules:
-- Output ONLY valid YAML — no markdown fences, no explanations
-- Use Nuclei v3.x template syntax
+- Output ONLY valid YAML — no markdown fences, no explanations, no filename
+- Do NOT include a filename on the first line — start directly with "id:"
+- Use Nuclei v3.x template syntax EXACTLY
+- The top-level keys MUST be: id, info, and then one protocol block (http, dns, network, tcp, or headless)
+- Do NOT use "detection:" as a key — it is NOT valid Nuclei syntax
+- Use "http:" for HTTP-based checks with proper requests/matchers structure
 - Include proper id, info (name, author, severity, description, tags), and detection logic
 - Use appropriate matchers (status, word, regex, dsl) based on the vulnerability type
 - Include references from the research data
-- For HTTP-based checks, use the http protocol with appropriate requests
-- For network-based checks, use the network protocol
 - Set the template id to: ${templateId}
 - Set severity to: ${severity}
-- The template should detect the vulnerability, NOT exploit it`;
+- The template should detect the vulnerability, NOT exploit it
+
+Example of correct Nuclei v3 HTTP template structure:
+id: example-template
+info:
+  name: Example Detection
+  author: rtpi
+  severity: medium
+  description: Detects example vulnerability
+  tags: cve,example
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}"
+    matchers:
+      - type: word
+        words:
+          - "vulnerable-string"
+        condition: and`;
 
     const userPrompt = `Generate a Nuclei vulnerability detection template for the following:
 

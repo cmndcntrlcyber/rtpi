@@ -853,6 +853,9 @@ export const toolRegistry = pgTable("tool_registry", {
   homepage: text("homepage"),
   documentation: text("documentation"),
 
+  // R&D artifact link (when tool was promoted from R&D)
+  rdArtifactId: uuid("rd_artifact_id"),
+
   // Timestamps
   installedAt: timestamp("installed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -2020,6 +2023,20 @@ export const rdExperiments = pgTable("rd_experiments", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
+});
+
+// R&D artifacts table - Stores generated research docs, POC code, and Nuclei templates
+export const rdArtifacts = pgTable("rd_artifacts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  experimentId: uuid("experiment_id").notNull().references(() => rdExperiments.id, { onDelete: "cascade" }),
+  projectId: uuid("project_id").notNull().references(() => researchProjects.id, { onDelete: "cascade" }),
+  artifactType: text("artifact_type").notNull(), // 'research_document', 'poc_code', 'nuclei_template'
+  content: text("content"),
+  filePath: text("file_path"),
+  filename: text("filename"),
+  language: text("language"), // 'python', 'ruby', 'bash', 'powershell', 'javascript', 'yaml'
+  metadata: json("metadata").default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 // Tool library table - R&D tool metadata and testing status

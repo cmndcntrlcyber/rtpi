@@ -22,6 +22,8 @@ import {
   Play,
   Trash2,
   Copy,
+  Workflow,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -120,6 +122,13 @@ export default function AttackFlowBuilder({ operationId }: AttackFlowBuilderProp
   const [nodeDescription, setNodeDescription] = useState("");
   const [nodeTechniqueId, setNodeTechniqueId] = useState("");
   const [nodeAssetType, setNodeAssetType] = useState("");
+
+  // Build workflow from techniques
+  const [buildDialogOpen, setBuildDialogOpen] = useState(false);
+  const [buildTechniqueIds, setBuildTechniqueIds] = useState("");
+  const [buildWorkflowName, setBuildWorkflowName] = useState("");
+  const [buildTargetId, setBuildTargetId] = useState("");
+  const [building, setBuilding] = useState(false);
 
   const nodeIdCounter = useRef(0);
 
@@ -266,6 +275,59 @@ export default function AttackFlowBuilder({ operationId }: AttackFlowBuilderProp
     }
   };
 
+  const handleBuildWorkflow = async () => {
+    const techniqueIds = buildTechniqueIds
+      .split(/[,\s]+/)
+      .map((id) => id.trim().toUpperCase())
+      .filter((id) => /^T\d{4}/.test(id));
+
+    if (techniqueIds.length === 0) {
+      toast.error("Enter at least one valid technique ID (e.g., T1190, T1059)");
+      return;
+    }
+
+    if (!operationId || operationId === "all") {
+      toast.error("Select an operation from the dropdown above first");
+      return;
+    }
+
+    try {
+      setBuilding(true);
+      const response = await api.post<{
+        workflowId: string;
+        attackFlowId: string;
+        taskCount: number;
+        techniques: Array<{ attackId: string; name: string; tacticName: string; toolCount: number }>;
+      }>("/attack-flows/build-workflow", {
+        operationId,
+        targetId: buildTargetId || operationId, // Fallback to operationId
+        techniqueIds,
+        name: buildWorkflowName || undefined,
+      });
+
+      toast.success(
+        `Workflow created with ${response.taskCount} tasks from ${techniqueIds.length} techniques`
+      );
+
+      // Load the generated flow
+      await loadFlows();
+      const generatedFlow = (await api.get<{ flow: any }>(`/attack-flows/${response.attackFlowId}`))?.flow;
+      if (generatedFlow) {
+        handleLoadFlow(generatedFlow);
+      }
+
+      setBuildDialogOpen(false);
+      setBuildTechniqueIds("");
+      setBuildWorkflowName("");
+      setBuildTargetId("");
+    } catch (error: any) {
+      console.error("Failed to build workflow:", error);
+      toast.error(error?.message || "Failed to build workflow from techniques");
+    } finally {
+      setBuilding(false);
+    }
+  };
+
   const handleExportFlow = () => {
     const data = {
       name: flowName || "Unnamed Flow",
@@ -318,6 +380,10 @@ export default function AttackFlowBuilder({ operationId }: AttackFlowBuilderProp
           <Button size="sm" variant="outline" onClick={handleExportFlow}>
             <Download className="h-4 w-4 mr-2" />
             Export
+          </Button>
+          <Button size="sm" variant="default" onClick={() => setBuildDialogOpen(true)}>
+            <Workflow className="h-4 w-4 mr-2" />
+            Build from Techniques
           </Button>
         </Panel>
 
@@ -433,6 +499,66 @@ export default function AttackFlowBuilder({ operationId }: AttackFlowBuilderProp
           <DialogFooter>
             <Button variant="outline" onClick={() => setLoadDialogOpen(false)}>
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Build Workflow Dialog */}
+      <Dialog open={buildDialogOpen} onOpenChange={setBuildDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Build Workflow from ATT&CK Techniques</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            <div>
+              <Label htmlFor="build-techniques">Technique IDs *</Label>
+              <Textarea
+                id="build-techniques"
+                value={buildTechniqueIds}
+                onChange={(e) => setBuildTechniqueIds(e.target.value)}
+                placeholder="Enter technique IDs separated by commas or newlines, e.g.:&#10;T1190, T1059, T1078&#10;T1046, T1110"
+                rows={4}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Techniques will be ordered by kill chain phase automatically
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="build-name">Workflow Name</Label>
+              <Input
+                id="build-name"
+                value={buildWorkflowName}
+                onChange={(e) => setBuildWorkflowName(e.target.value)}
+                placeholder="e.g., Initial Access + Execution Chain"
+              />
+            </div>
+            <div>
+              <Label htmlFor="build-target">Target ID</Label>
+              <Input
+                id="build-target"
+                value={buildTargetId}
+                onChange={(e) => setBuildTargetId(e.target.value)}
+                placeholder="Target UUID (optional, uses operation target)"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBuildDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleBuildWorkflow} disabled={building}>
+              {building ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Building...
+                </>
+              ) : (
+                <>
+                  <Workflow className="h-4 w-4 mr-2" />
+                  Build Workflow
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { toast } from "sonner";
-import { Plus, CheckSquare, Search } from "lucide-react";
+import { Plus, CheckSquare, Search, Crosshair, Loader2, FileCode, Copy, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { DragEndEvent } from "@dnd-kit/core";
@@ -45,6 +47,15 @@ export default function Vulnerabilities() {
   const [rdVulnerability, setRdVulnerability] = useState<any>(null);
   const [, setLocation] = useLocation();
 
+  // Execute exploit state
+  const [rdExploitVulnIds, setRdExploitVulnIds] = useState<Set<string>>(new Set());
+  const [exploitDialogOpen, setExploitDialogOpen] = useState(false);
+  const [exploitVuln, setExploitVuln] = useState<any>(null);
+  const [exploitArtifacts, setExploitArtifacts] = useState<any[]>([]);
+  const [exploitLoading, setExploitLoading] = useState(false);
+  const [executing, setExecuting] = useState(false);
+  const [executionResult, setExecutionResult] = useState<any>(null);
+
   // Bulk selection state
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -83,11 +94,36 @@ export default function Vulnerabilities() {
       setVulnerabilities(vulnsRes.vulnerabilities);
       setTargets(targetsRes.targets);
       setOperations(opsRes.operations);
+
+      // Check which vulnerabilities have R&D exploits available
+      checkRdExploits(vulnsRes.vulnerabilities);
     } catch (error) {
       toast.error("Failed to load data");
     } finally {
       setLoading(false);
     }
+  };
+
+  const checkRdExploits = async (vulns: any[]) => {
+    const idsWithExploits = new Set<string>();
+    // Check in parallel (limit to 10 concurrent)
+    const batch = vulns.filter(
+      (v) => v.investigationStatus && v.investigationStatus !== "pending"
+    );
+    const results = await Promise.allSettled(
+      batch.map((v) =>
+        api.get<{ artifacts: any[] }>(`/vulnerability-rd/${v.id}/artifacts`).then((res) => ({
+          vulnId: v.id,
+          hasArtifacts: (res.artifacts?.length || 0) > 0,
+        }))
+      )
+    );
+    for (const r of results) {
+      if (r.status === "fulfilled" && r.value.hasArtifacts) {
+        idsWithExploits.add(r.value.vulnId);
+      }
+    }
+    setRdExploitVulnIds(idsWithExploits);
   };
 
   const handleToggleGroup = useCallback((groupKey: string) => {
@@ -202,6 +238,45 @@ export default function Vulnerabilities() {
       await loadData();
     } catch (error) {
       toast.error("Failed to trigger investigation");
+    }
+  };
+
+  // Execute exploit handlers
+  const handleExecuteExploit = async (vulnerability: any) => {
+    setExploitVuln(vulnerability);
+    setExploitDialogOpen(true);
+    setExecutionResult(null);
+    setExploitLoading(true);
+    try {
+      const res = await api.get<{ artifacts: any[] }>(`/vulnerability-rd/${vulnerability.id}/artifacts`);
+      setExploitArtifacts(res.artifacts || []);
+    } catch {
+      setExploitArtifacts([]);
+      toast.error("Failed to load R&D artifacts");
+    } finally {
+      setExploitLoading(false);
+    }
+  };
+
+  const handleRunExploit = async (artifactId: string) => {
+    if (!exploitVuln) return;
+    try {
+      setExecuting(true);
+      setExecutionResult(null);
+      const result = await api.post<any>(`/vulnerability-rd/${exploitVuln.id}/execute-exploit`, {
+        artifactId,
+      });
+      setExecutionResult(result);
+      if (result.success) {
+        toast.success("Exploit executed successfully");
+      } else {
+        toast.warning("Exploit completed with non-zero exit code");
+      }
+    } catch (error: any) {
+      toast.error(error?.message || "Exploit execution failed");
+      setExecutionResult({ success: false, output: error?.message || "Execution failed", exitCode: -1 });
+    } finally {
+      setExecuting(false);
     }
   };
 
@@ -384,6 +459,8 @@ export default function Vulnerabilities() {
         onDelete={(v) => handleDeleteVulnerability(v.id)}
         onSendToRD={handleSendToRD}
         onInvestigate={handleInvestigate}
+        onExecuteExploit={handleExecuteExploit}
+        rdExploitVulnIds={rdExploitVulnIds}
         selectable={bulkMode}
         selectedIds={selectedIds}
         onSelectionChange={handleSelectionChange}
@@ -431,6 +508,130 @@ export default function Vulnerabilities() {
         onClose={() => setRdDialogOpen(false)}
         onSuccess={handleRDSuccess}
       />
+
+      {/* Execute Exploit Dialog */}
+      <Dialog open={exploitDialogOpen} onOpenChange={setExploitDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Crosshair className="h-5 w-5 text-green-600" />
+              Execute R&D Exploit
+            </DialogTitle>
+            {exploitVuln && (
+              <p className="text-sm text-muted-foreground">
+                {exploitVuln.title} {exploitVuln.cve && `(${exploitVuln.cve})`}
+              </p>
+            )}
+          </DialogHeader>
+
+          {exploitLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-green-600 mr-2" />
+              <span className="text-muted-foreground">Loading R&D artifacts...</span>
+            </div>
+          ) : exploitArtifacts.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <FileCode className="h-10 w-10 mx-auto mb-2 opacity-50" />
+              <p>No exploitable artifacts found for this vulnerability</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Select an R&D-generated exploit to execute against the target:
+              </p>
+              {exploitArtifacts.map((artifact: any) => (
+                <div
+                  key={artifact.id}
+                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <Badge
+                      className={
+                        artifact.artifactType === "poc_code"
+                          ? "bg-purple-100 text-purple-800"
+                          : "bg-orange-100 text-orange-800"
+                      }
+                    >
+                      {artifact.artifactType === "poc_code" ? "POC Code" : "Nuclei Template"}
+                    </Badge>
+                    <span className="text-sm font-medium truncate">
+                      {artifact.filename || artifact.id.substring(0, 8)}
+                    </span>
+                    {artifact.language && (
+                      <Badge variant="outline" className="text-xs">
+                        {artifact.language}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex gap-2 ml-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        navigator.clipboard.writeText(artifact.content || "");
+                        toast.success("Copied to clipboard");
+                      }}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => handleRunExploit(artifact.id)}
+                      disabled={executing}
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      {executing ? (
+                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      ) : (
+                        <Crosshair className="h-4 w-4 mr-1" />
+                      )}
+                      Execute
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Execution Result */}
+          {executionResult && (
+            <div className="mt-4 border-t pt-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Terminal className="h-4 w-4" />
+                <span className="font-medium text-sm">Execution Result</span>
+                <Badge
+                  className={
+                    executionResult.success
+                      ? "bg-green-100 text-green-800"
+                      : "bg-red-100 text-red-800"
+                  }
+                >
+                  {executionResult.success ? "Success" : `Exit ${executionResult.exitCode}`}
+                </Badge>
+                {executionResult.duration && (
+                  <span className="text-xs text-muted-foreground">
+                    {(executionResult.duration / 1000).toFixed(1)}s
+                  </span>
+                )}
+              </div>
+              {executionResult.targetUrl && (
+                <p className="text-xs text-muted-foreground mb-2">
+                  Target: {executionResult.targetUrl}
+                </p>
+              )}
+              <pre className="p-3 bg-muted rounded-lg text-xs font-mono whitespace-pre-wrap max-h-64 overflow-y-auto">
+                {executionResult.output || "No output"}
+              </pre>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExploitDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

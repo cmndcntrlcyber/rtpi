@@ -39,17 +39,21 @@ export default function BurpSuiteJarUploadCard({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  const MAX_JAR_SIZE = 800 * 1024 * 1024; // 800MB
-  const MIN_JAR_SIZE = 100 * 1024 * 1024; // 100MB (Burp is large)
+  const MAX_FILE_SIZE = 800 * 1024 * 1024; // 800MB
+  const MIN_JAR_SIZE = 100 * 1024 * 1024; // 100MB (Burp JAR is large)
+  const MIN_INSTALLER_SIZE = 50 * 1024 * 1024; // 50MB (.sh installer is smaller)
 
   const handleFileSelect = (selectedFile: File) => {
-    if (!selectedFile.name.endsWith(".jar")) {
-      setErrorMessage("Only JAR files are allowed");
+    const isJar = selectedFile.name.endsWith(".jar");
+    const isInstaller = selectedFile.name.endsWith(".sh");
+
+    if (!isJar && !isInstaller) {
+      setErrorMessage("Only .jar and .sh installer files are allowed");
       setState("error");
       return;
     }
 
-    if (selectedFile.size > MAX_JAR_SIZE) {
+    if (selectedFile.size > MAX_FILE_SIZE) {
       setErrorMessage(
         `File too large (${(selectedFile.size / 1024 / 1024).toFixed(0)}MB). Maximum is 800MB.`
       );
@@ -57,9 +61,10 @@ export default function BurpSuiteJarUploadCard({
       return;
     }
 
-    if (selectedFile.size < MIN_JAR_SIZE) {
+    const minSize = isInstaller ? MIN_INSTALLER_SIZE : MIN_JAR_SIZE;
+    if (selectedFile.size < minSize) {
       setErrorMessage(
-        `File too small (${(selectedFile.size / 1024 / 1024).toFixed(0)}MB). BurpSuite Pro is typically >100MB.`
+        `File too small (${(selectedFile.size / 1024 / 1024).toFixed(0)}MB). BurpSuite Pro ${isInstaller ? 'installer' : 'JAR'} is typically >${(minSize / 1024 / 1024).toFixed(0)}MB.`
       );
       setState("error");
       return;
@@ -197,9 +202,9 @@ export default function BurpSuiteJarUploadCard({
     <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-lg font-semibold text-foreground">BurpSuite Pro JAR</h3>
+          <h3 className="text-lg font-semibold text-foreground">BurpSuite Pro</h3>
           <p className="text-sm text-muted-foreground">
-            Upload burpsuite_pro_*.jar file
+            Upload .jar or .sh installer file
           </p>
         </div>
         {state === "success" && (
@@ -224,12 +229,12 @@ export default function BurpSuiteJarUploadCard({
             Click to upload or drag and drop
           </p>
           <p className="text-xs text-muted-foreground mt-2">
-            JAR files only, 100-800MB (BurpSuite Pro)
+            .jar or .sh installer (BurpSuite Pro)
           </p>
           <input
             ref={fileInputRef}
             type="file"
-            accept=".jar"
+            accept=".jar,.sh"
             onChange={handleInputChange}
             className="hidden"
           />
@@ -262,7 +267,7 @@ export default function BurpSuiteJarUploadCard({
         <div className="space-y-4">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4" />
-            <p className="text-sm font-medium">Uploading BurpSuite Pro JAR...</p>
+            <p className="text-sm font-medium">Uploading BurpSuite Pro...</p>
             <p className="text-xs text-muted-foreground mt-1">
               This may take several minutes
             </p>

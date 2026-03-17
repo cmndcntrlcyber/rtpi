@@ -674,10 +674,10 @@ services:
       - ACTIVATION_MODE=dormant
     ports:
       - "9876:9876"   # Burp MCP Server
-      - "8082:8082"   # Burp Proxy (when active)
+      - "8182:8082"   # Burp Proxy (when active) — 8082 conflicts with empire range
     volumes:
       - burp-tools:/opt/tools
-      - burp-setup:/opt/burp-setup
+      - /tmp/burp-setup:/opt/burp-setup
       - burp-projects:/opt/burp-projects
       - shared-data:/shared
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -717,6 +717,86 @@ services:
       interval: 60s
       timeout: 10s
       retries: 3
+
+  # C3 C2 Framework - ReversecLabs
+  offsec-c3:
+    build:
+      context: ./docker/offsec-agents
+      dockerfile: Dockerfile.c3-tools
+    image: rtpi/c3-tools:latest
+    container_name: rtpi-c3-agent
+    stdin_open: true
+    environment:
+      - AGENT_TYPE=c3-c2
+      - TOOLS_PATH=/opt/tools
+    volumes:
+      - c3-tools:/opt/tools
+      - c2-setup:/opt/c2-setup
+      - shared-data:/shared
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+    init: true
+
+  # Sliver C2 Framework - BishopFox
+  offsec-sliver:
+    build:
+      context: ./docker/offsec-agents
+      dockerfile: Dockerfile.sliver-tools
+    image: rtpi/sliver-tools:latest
+    container_name: rtpi-sliver-agent
+    stdin_open: true
+    environment:
+      - AGENT_TYPE=sliver-c2
+      - TOOLS_PATH=/opt/tools
+    volumes:
+      - sliver-tools:/opt/tools
+      - c2-setup:/opt/c2-setup
+      - shared-data:/shared
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+    init: true
+
+  # Loki C2 Framework - boku7
+  offsec-loki:
+    build:
+      context: ./docker/offsec-agents
+      dockerfile: Dockerfile.loki-tools
+    image: rtpi/loki-tools:latest
+    container_name: rtpi-loki-agent
+    stdin_open: true
+    environment:
+      - AGENT_TYPE=loki-c2
+      - TOOLS_PATH=/opt/tools
+    volumes:
+      - loki-tools:/opt/tools
+      - c2-setup:/opt/c2-setup
+      - shared-data:/shared
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+    init: true
+
+  # AdaptixC2 Framework - Adaptix-Framework
+  offsec-adaptix:
+    build:
+      context: ./docker/offsec-agents
+      dockerfile: Dockerfile.adaptix-tools
+    image: rtpi/adaptix-tools:latest
+    container_name: rtpi-adaptix-agent
+    stdin_open: true
+    environment:
+      - AGENT_TYPE=adaptix-c2
+      - TOOLS_PATH=/opt/tools
+    volumes:
+      - adaptix-tools:/opt/tools
+      - c2-setup:/opt/c2-setup
+      - shared-data:/shared
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+    init: true
 
   # Fuzzing Agent - Web Fuzzing, Directory Discovery
   # MITRE Tactics: Discovery, Reconnaissance
@@ -849,7 +929,7 @@ services:
       - sysreptor
     restart: unless-stopped
     ports:
-      - "9000:8000"  # Direct SysReptor API/app access
+      - "0.0.0.0:9000:8000"  # SysReptor API/app (localhost only — accessed via Caddy on :7777)
     volumes:
       - sysreptor-app-data:/app/data
       - ./configs/rtpi-sysreptor/app.env:/app/.env:ro
@@ -858,8 +938,6 @@ services:
         condition: service_healthy
       sysreptor-redis:
         condition: service_healthy
-    env_file:
-      - ./configs/rtpi-sysreptor/app.env
     command: /bin/bash /app/api/start.sh
     networks:
       - rtpi-network
@@ -897,7 +975,7 @@ services:
         max-file: "3"
 
   sysreptor-redis:
-    image: bitnami/redis:7.2
+    image: bitnami/redis:latest
     container_name: rtpi-sysreptor-redis
     profiles:
       - sysreptor
@@ -1061,6 +1139,11 @@ volumes:
   burp-setup:
   burp-projects:
   empire-tools:
+  c3-tools:
+  sliver-tools:
+  loki-tools:
+  adaptix-tools:
+  c2-setup:
   fuzzing-tools:
   fuzzing-wordlists:
   framework-tools:

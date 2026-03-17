@@ -19,12 +19,15 @@ const execAsync = promisify(exec);
 // Type Definitions
 // ============================================================================
 
+export type BurpUploadType = 'jar' | 'installer';
+
 export interface BurpJARUpload {
   userId: string;
   jarFileName: string;
   jarFilePath: string;
   jarFileSize: number;
   uploadedAt: Date;
+  uploadType: BurpUploadType;
 }
 
 export interface BurpImageBuildResult {
@@ -98,81 +101,110 @@ class BurpImageBuilder {
   // ============================================================================
 
   /**
-   * Process uploaded Burp Suite JAR file
-   * With diskStorage, jarFile.path is the temp file on disk (no buffer in memory)
+   * Process uploaded Burp Suite file (JAR or .sh installer)
+   * With diskStorage, file.path is the temp file on disk (no buffer in memory)
    */
   async processJARUpload(
     userId: string,
     jarFile: Express.Multer.File
   ): Promise<BurpJARUpload> {
-    console.log(`[Burp Builder] Processing JAR upload for user ${userId}...`);
+    const isInstaller = jarFile.originalname.endsWith('.sh');
+    const isJar = jarFile.originalname.endsWith('.jar');
+    const uploadType: BurpUploadType = isInstaller ? 'installer' : 'jar';
+
+    console.log(`[Burp Builder] Processing ${uploadType} upload for user ${userId}...`);
 
     try {
-      // Validate JAR file
-      if (!jarFile.originalname.endsWith('.jar')) {
+      // Validate file type
+      if (!isJar && !isInstaller) {
         await fs.unlink(jarFile.path).catch(() => {});
-        throw new Error('File must be a JAR file');
+        throw new Error('File must be a .jar or .sh installer file');
       }
 
-      if (jarFile.size > 800 * 1024 * 1024) { // 800MB limit -- matches multer config
+      if (jarFile.size > 800 * 1024 * 1024) {
         await fs.unlink(jarFile.path).catch(() => {});
-        throw new Error('JAR file too large (max 800MB)');
+        throw new Error('File too large (max 800MB)');
       }
 
       // Create user directory
       const userUploadDir = path.join(this.uploadDir, userId);
       await fs.mkdir(userUploadDir, { recursive: true });
 
-      // Move JAR file from staging to user directory
-      const jarFileName = `burpsuite_pro.jar`;
-      const jarFilePath = path.join(userUploadDir, jarFileName);
+      // Determine target filename
+      const targetFileName = isInstaller
+        ? 'burpsuite_pro_installer.sh'
+        : 'burpsuite_pro.jar';
+      const targetFilePath = path.join(userUploadDir, targetFileName);
+
+      // Store upload type marker so buildBurpImage knows which Dockerfile to use
+      await fs.writeFile(
+        path.join(userUploadDir, '.upload-type'),
+        uploadType
+      );
 
       try {
-        // rename is atomic and O(1) on same filesystem
-        await fs.rename(jarFile.path, jarFilePath);
-      } catch (renameErr) {
-        // Cross-filesystem fallback: copy then delete
+        await fs.rename(jarFile.path, targetFilePath);
+      } catch {
         console.log('[Burp Builder] rename failed, falling back to copy...');
-        await fs.copyFile(jarFile.path, jarFilePath);
+        await fs.copyFile(jarFile.path, targetFilePath);
         await fs.unlink(jarFile.path).catch(() => {});
       }
 
-      console.log(`[Burp Builder] JAR saved: ${jarFilePath} (${(jarFile.size / 1024 / 1024).toFixed(1)}MB)`);
+      // Make installer executable
+      if (isInstaller) {
+        await fs.chmod(targetFilePath, 0o755);
+      }
+
+      console.log(`[Burp Builder] ${uploadType} saved: ${targetFilePath} (${(jarFile.size / 1024 / 1024).toFixed(1)}MB)`);
 
       return {
         userId,
-        jarFileName,
-        jarFilePath,
+        jarFileName: targetFileName,
+        jarFilePath: targetFilePath,
         jarFileSize: jarFile.size,
         uploadedAt: new Date(),
+        uploadType,
       };
     } catch (error) {
-      // Ensure temp file is cleaned up on any error
       if (jarFile.path) {
         await fs.unlink(jarFile.path).catch(() => {});
       }
-      console.error(`[Burp Builder] JAR upload failed:`, error);
+      console.error(`[Burp Builder] Upload failed:`, error);
       throw error;
     }
   }
 
   /**
-   * Get uploaded JAR info for user
+   * Get uploaded file info for user (JAR or installer)
    */
   async getUploadedJAR(userId: string): Promise<BurpJARUpload | null> {
+    const userDir = path.join(this.uploadDir, userId);
+
+    // Detect upload type from marker file
+    let uploadType: BurpUploadType = 'jar';
     try {
-      const jarFilePath = path.join(this.uploadDir, userId, 'burpsuite_pro.jar');
+      const typeMarker = await fs.readFile(path.join(userDir, '.upload-type'), 'utf-8');
+      if (typeMarker.trim() === 'installer') uploadType = 'installer';
+    } catch {
+      // Default to jar
+    }
 
-      const stats = await fs.stat(jarFilePath);
+    const fileName = uploadType === 'installer'
+      ? 'burpsuite_pro_installer.sh'
+      : 'burpsuite_pro.jar';
+    const filePath = path.join(userDir, fileName);
 
+    try {
+      const stats = await fs.stat(filePath);
       return {
         userId,
-        jarFileName: 'burpsuite_pro.jar',
-        jarFilePath,
+        jarFileName: fileName,
+        jarFilePath: filePath,
         jarFileSize: stats.size,
         uploadedAt: stats.mtime,
+        uploadType,
       };
-    } catch (error) {
+    } catch {
       return null;
     }
   }
@@ -207,10 +239,10 @@ class BurpImageBuilder {
     const startTime = Date.now();
 
     try {
-      // Check if JAR exists
+      // Check if file exists
       const jarInfo = await this.getUploadedJAR(userId);
       if (!jarInfo) {
-        throw new Error('No Burp Suite JAR uploaded for this user');
+        throw new Error('No Burp Suite file uploaded for this user');
       }
 
       // Generate image name and tag
@@ -221,23 +253,31 @@ class BurpImageBuilder {
       const buildDir = path.join(this.imageDir, userId, imageTag);
       await fs.mkdir(buildDir, { recursive: true });
 
-      // Generate Dockerfile
-      const dockerfile = this.generateBurpDockerfile();
+      // Generate Dockerfile based on upload type
+      const isInstaller = jarInfo.uploadType === 'installer';
+      const dockerfile = isInstaller
+        ? this.generateInstallerDockerfile()
+        : this.generateBurpDockerfile();
       await fs.writeFile(path.join(buildDir, 'Dockerfile'), dockerfile);
 
-      // Copy JAR to build directory
-      await fs.copyFile(
-        jarInfo.jarFilePath,
-        path.join(buildDir, 'burpsuite_pro.jar')
-      );
+      // Copy uploaded file to build directory
+      const buildFileName = isInstaller
+        ? 'burpsuite_pro_installer.sh'
+        : 'burpsuite_pro.jar';
+      await fs.copyFile(jarInfo.jarFilePath, path.join(buildDir, buildFileName));
+      if (isInstaller) {
+        await fs.chmod(path.join(buildDir, buildFileName), 0o755);
+      }
 
       // Copy startup script
-      const startupScript = this.generateBurpStartupScript();
+      const startupScript = isInstaller
+        ? this.generateInstallerStartupScript()
+        : this.generateBurpStartupScript();
       await fs.writeFile(path.join(buildDir, 'custom_startup.sh'), startupScript);
       await fs.chmod(path.join(buildDir, 'custom_startup.sh'), 0o755);
 
       // Build Docker image
-      console.log(`[Burp Builder] Building image ${fullImageName}...`);
+      console.log(`[Burp Builder] Building image ${fullImageName} (${isInstaller ? 'installer' : 'JAR'} mode)...`);
       const buildCmd = `docker build -t ${fullImageName} ${buildDir}`;
 
       const { stdout, stderr } = await execAsync(buildCmd, {
@@ -371,6 +411,119 @@ echo "" >> /home/kasm-user/WELCOME.txt
 cat /home/kasm-user/WELCOME.txt
 
 echo "Burp Suite workspace ready!"
+`;
+  }
+
+  /**
+   * Generate Dockerfile using the .sh installer (bundles correct JRE for arch)
+   */
+  private generateInstallerDockerfile(): string {
+    return `# Kasm Burp Suite Pro Workspace — .sh Installer
+# Dynamically generated — uses official installer for proper JRE + native GUI
+
+FROM kasmweb/core-ubuntu-jammy:1.17.0
+USER root
+
+ENV HOME /home/kasm-default-profile
+ENV STARTUPDIR /dockerstartup
+ENV DEBIAN_FRONTEND noninteractive
+WORKDIR $HOME
+
+######### Dependencies ###########
+
+RUN apt-get update && apt-get install -y --no-install-recommends \\
+    libgtk-3-0 \\
+    libxrender1 \\
+    libxtst6 \\
+    libxi6 \\
+    libxrandr2 \\
+    libxcomposite1 \\
+    libxcursor1 \\
+    libxdamage1 \\
+    libxfixes3 \\
+    libatk1.0-0 \\
+    libatk-bridge2.0-0 \\
+    libcups2 \\
+    libdrm2 \\
+    libgbm1 \\
+    libpango-1.0-0 \\
+    libcairo2 \\
+    libasound2 \\
+    libnspr4 \\
+    libnss3 \\
+    fonts-liberation \\
+    xdg-utils \\
+    curl \\
+    wget \\
+    git \\
+    python3 \\
+    python3-pip \\
+    && apt-get clean \\
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip3 install --no-cache-dir \\
+    requests \\
+    beautifulsoup4 \\
+    pyjwt
+
+######### BurpSuite Installation ###########
+
+COPY burpsuite_pro_installer.sh /tmp/burpsuite_installer.sh
+RUN chmod +x /tmp/burpsuite_installer.sh \\
+    && /tmp/burpsuite_installer.sh -q -dir /opt/BurpSuitePro \\
+    && rm /tmp/burpsuite_installer.sh
+
+# Create workspace directories
+RUN mkdir -p /home/kasm-user/{workspace,burp-projects,extensions,burp-config} \\
+    && chown -R 1000:1000 /home/kasm-user
+
+######### Desktop Integration ###########
+
+RUN mkdir -p $HOME/Desktop \\
+    && printf '[Desktop Entry]\\nType=Application\\nName=BurpSuite Pro\\nComment=Web Security Testing\\nExec=/opt/BurpSuitePro/BurpSuitePro --project-dir=/home/kasm-user/burp-projects\\nTerminal=false\\nCategories=Security;Network;\\n' > $HOME/Desktop/burpsuite.desktop \\
+    && chmod +x $HOME/Desktop/burpsuite.desktop
+
+COPY custom_startup.sh $STARTUPDIR/custom_startup.sh
+RUN chmod +x $STARTUPDIR/custom_startup.sh
+
+######### Permissions ###########
+
+RUN chown 1000:0 $HOME
+RUN $STARTUPDIR/set_user_permission.sh $HOME
+
+ENV HOME /home/kasm-user
+WORKDIR $HOME
+RUN mkdir -p $HOME && chown -R 1000:0 $HOME
+
+USER 1000
+`;
+  }
+
+  /**
+   * Generate startup script for installer-based workspace
+   */
+  private generateInstallerStartupScript(): string {
+    return `#!/bin/bash
+set -e
+
+echo "[BurpSuite Workspace] Starting..."
+sleep 2
+
+# Install license if mounted
+if [ -f /opt/burp-setup/burpsuite.license ]; then
+    mkdir -p /home/kasm-user/.BurpSuite
+    cp /opt/burp-setup/burpsuite.license /home/kasm-user/.BurpSuite/burpsuite.license
+    echo "[BurpSuite Workspace] License file installed"
+fi
+
+# Auto-launch if requested
+if [ "\${BURP_AUTOSTART:-false}" = "true" ]; then
+    /opt/BurpSuitePro/BurpSuitePro --project-dir=/home/kasm-user/burp-projects &
+fi
+
+echo "[BurpSuite Workspace] Ready"
+echo "  Launch: Double-click 'BurpSuite Pro' on desktop"
+echo "  Projects: /home/kasm-user/burp-projects"
 `;
   }
 

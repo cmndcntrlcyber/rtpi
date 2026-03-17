@@ -36,11 +36,27 @@ router.post("/start", ensureRole("admin", "operator"), async (req, res) => {
 
     // Support both penetration_test and custom workflow types
     if (!workflowType || workflowType === "penetration_test") {
-      // Existing behavior for penetration test workflows
+      // Look up template agents if a templateId was provided
+      let templateAgents: Array<{ agentId: string; order: number }> | undefined;
+      if (templateId) {
+        const [template] = await db
+          .select()
+          .from(workflowTemplates)
+          .where(eq(workflowTemplates.id, templateId))
+          .limit(1);
+        const config = template?.configuration as any;
+        if (config?.agents?.length) {
+          templateAgents = config.agents;
+        }
+      } else if (agentsList?.length) {
+        templateAgents = agentsList;
+      }
+
       workflow = await agentWorkflowOrchestrator.startPenetrationTestWorkflow(
         targetId,
         user.id,
-        operationId
+        operationId,
+        templateAgents
       );
 
       await logAudit(

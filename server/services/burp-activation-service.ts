@@ -7,11 +7,16 @@
  */
 
 import { db } from '../db';
-import { burpSetup } from '@shared/schema';
+import { burpSetup, mcpServers } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import crypto from 'crypto';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
+
+const execFileAsync = promisify(execFile);
 
 // ============================================================================
 // Types
@@ -34,7 +39,7 @@ export interface BurpSetupStatus {
     expiryDate?: Date;
     uploadedAt: Date;
   };
-  mcpHealthy?: boolean;
+  mcpHealthCheckPassed?: boolean;
   errorMessage?: string;
 }
 
@@ -57,8 +62,8 @@ export interface ActivationResult {
 // Constants
 // ============================================================================
 
-const BURP_SETUP_DIR = process.env.BURP_SETUP_DIR || '/opt/burp-setup';
-const BURP_MCP_URL = process.env.BURP_MCP_URL || 'http://rtpi-burp-agent:9876';
+const BURP_SETUP_DIR = process.env.BURP_SETUP_DIR || '/tmp/burp-setup';
+const BURP_MCP_URL = process.env.BURP_MCP_URL || 'http://localhost:9876';
 
 // ============================================================================
 // BurpSuite Activation Service
@@ -111,7 +116,17 @@ class BurpActivationService {
     }
 
     if (setup.activationStatus === 'active') {
-      status.mcpHealthy = setup.mcpHealthCheckPassed;
+      status.mcpHealthCheckPassed = setup.mcpHealthCheckPassed;
+
+      // Ensure MCP server record exists (handles server restarts)
+      const [mcpRecord] = await db
+        .select()
+        .from(mcpServers)
+        .where(eq(mcpServers.name, BurpActivationService.MCP_SERVER_NAME))
+        .limit(1);
+      if (!mcpRecord || mcpRecord.status !== 'running') {
+        await this.registerMCPServer();
+      }
     }
 
     if (setup.errorMessage) {
@@ -122,39 +137,59 @@ class BurpActivationService {
   }
 
   /**
-   * Upload BurpSuite Pro JAR file
+   * Upload BurpSuite Pro JAR file (streaming — no RAM buffering)
    */
   async uploadJar(
-    fileBuffer: Buffer,
+    filePath: string,
     filename: string,
+    fileSize: number,
     userId: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      // Validate file
+      // Validate file extension
       if (!filename.toLowerCase().endsWith('.jar')) {
+        await fs.unlink(filePath).catch(() => {});
         return { success: false, error: 'File must be a .jar file' };
       }
 
-      // Check magic bytes (ZIP/JAR signature)
-      const magicBytes = fileBuffer.slice(0, 4).toString('hex');
-      if (magicBytes !== '504b0304') { // PK\x03\x04
-        return { success: false, error: 'Invalid JAR file: incorrect magic bytes' };
-      }
-
       // Check minimum size (Burp is large, > 100MB)
-      if (fileBuffer.length < 100 * 1024 * 1024) {
+      if (fileSize < 100 * 1024 * 1024) {
+        await fs.unlink(filePath).catch(() => {});
         return { success: false, error: 'File too small to be BurpSuite Pro (minimum 100MB)' };
       }
 
-      // Calculate SHA256 hash
-      const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+      // Check magic bytes by reading only first 4 bytes (no full-file load)
+      const fd = await fs.open(filePath, 'r');
+      const magicBuf = Buffer.alloc(4);
+      await fd.read(magicBuf, 0, 4, 0);
+      await fd.close();
+      const magicBytes = magicBuf.toString('hex');
+      if (magicBytes !== '504b0304') { // PK\x03\x04
+        await fs.unlink(filePath).catch(() => {});
+        return { success: false, error: 'Invalid JAR file: incorrect magic bytes' };
+      }
+
+      // Calculate SHA256 hash using streaming (no full-file buffer)
+      const hash = await new Promise<string>((resolve, reject) => {
+        const hashStream = crypto.createHash('sha256');
+        const readStream = fsSync.createReadStream(filePath);
+        readStream.on('data', (chunk) => hashStream.update(chunk));
+        readStream.on('end', () => resolve(hashStream.digest('hex')));
+        readStream.on('error', reject);
+      });
 
       // Ensure setup directory exists
       await fs.mkdir(BURP_SETUP_DIR, { recursive: true });
 
-      // Write JAR file
+      // Move JAR from staging to final location
       const jarPath = path.join(BURP_SETUP_DIR, 'burpsuite_pro.jar');
-      await fs.writeFile(jarPath, fileBuffer);
+      try {
+        await fs.rename(filePath, jarPath);
+      } catch {
+        // Cross-filesystem fallback: copy then delete
+        await fs.copyFile(filePath, jarPath);
+        await fs.unlink(filePath).catch(() => {});
+      }
 
       // Update database
       const [setup] = await db
@@ -168,7 +203,7 @@ class BurpActivationService {
           .set({
             jarUploaded: true,
             jarFilename: filename,
-            jarFileSize: fileBuffer.length,
+            jarFileSize: fileSize,
             jarFileHash: hash,
             jarUploadedAt: new Date(),
             jarUploadedBy: userId,
@@ -179,16 +214,18 @@ class BurpActivationService {
         await db.insert(burpSetup).values({
           jarUploaded: true,
           jarFilename: filename,
-          jarFileSize: fileBuffer.length,
+          jarFileSize: fileSize,
           jarFileHash: hash,
           jarUploadedAt: new Date(),
           jarUploadedBy: userId,
         });
       }
 
-      console.log(`[BurpActivation] JAR uploaded: ${filename} (${(fileBuffer.length / 1024 / 1024).toFixed(2)}MB)`);
+      console.log(`[BurpActivation] JAR uploaded: ${filename} (${(fileSize / 1024 / 1024).toFixed(2)}MB)`);
       return { success: true };
     } catch (error) {
+      // Clean up staging file on error
+      await fs.unlink(filePath).catch(() => {});
       console.error('[BurpActivation] JAR upload failed:', error);
       return {
         success: false,
@@ -201,21 +238,23 @@ class BurpActivationService {
    * Upload BurpSuite license file
    */
   async uploadLicense(
-    fileBuffer: Buffer,
+    filePath: string,
     filename: string,
     userId: string
   ): Promise<{ success: boolean; validation?: LicenseValidationResult; error?: string }> {
     try {
       // Validate file
       if (!filename.toLowerCase().endsWith('.txt')) {
+        await fs.unlink(filePath).catch(() => {});
         return { success: false, error: 'License file must be a .txt file' };
       }
 
-      // Parse and validate license
-      const licenseContent = fileBuffer.toString('utf-8');
+      // Read license content (small file, safe to read fully)
+      const licenseContent = await fs.readFile(filePath, 'utf-8');
       const validation = this.validateLicense(licenseContent);
 
       if (!validation.valid) {
+        await fs.unlink(filePath).catch(() => {});
         return {
           success: false,
           validation,
@@ -226,9 +265,14 @@ class BurpActivationService {
       // Ensure setup directory exists
       await fs.mkdir(BURP_SETUP_DIR, { recursive: true });
 
-      // Write license file
+      // Move license file to final location
       const licensePath = path.join(BURP_SETUP_DIR, 'burpsuite.license');
-      await fs.writeFile(licensePath, fileBuffer);
+      try {
+        await fs.rename(filePath, licensePath);
+      } catch {
+        await fs.copyFile(filePath, licensePath);
+        await fs.unlink(filePath).catch(() => {});
+      }
 
       // Update database
       const [setup] = await db
@@ -263,6 +307,7 @@ class BurpActivationService {
       console.log(`[BurpActivation] License uploaded: ${filename} (${validation.type})`);
       return { success: true, validation };
     } catch (error) {
+      await fs.unlink(filePath).catch(() => {});
       console.error('[BurpActivation] License upload failed:', error);
       return {
         success: false,
@@ -275,14 +320,12 @@ class BurpActivationService {
    * Validate BurpSuite license content
    */
   private validateLicense(content: string): LicenseValidationResult {
-    // Basic validation: check for license markers
-    const hasLicenseMarker = content.includes('license') || content.includes('License') || content.includes('LICENSE');
-    const hasPortSwiggerMarker = content.includes('PortSwigger') || content.includes('Burp Suite') || content.includes('burp');
-
-    if (!hasLicenseMarker && !hasPortSwiggerMarker) {
+    // Basic validation: ensure file has content (BurpSuite validates the actual license at activation)
+    const trimmed = content.trim();
+    if (!trimmed || trimmed.length < 10) {
       return {
         valid: false,
-        error: 'File does not appear to be a valid BurpSuite license',
+        error: 'License file appears to be empty or too short',
       };
     }
 
@@ -357,62 +400,18 @@ class BurpActivationService {
       const flagPath = path.join(BURP_SETUP_DIR, '.activate');
       await fs.writeFile(flagPath, new Date().toISOString());
 
-      // Wait for container to restart and MCP server to start (polling)
-      const maxWaitTime = 120000; // 2 minutes
-      const pollInterval = 5000; // 5 seconds
-      const startTime = Date.now();
-
-      console.log('[BurpActivation] Waiting for MCP server to become healthy...');
-
-      while (Date.now() - startTime < maxWaitTime) {
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-
-        // Check MCP server health
-        const healthy = await this.checkMCPHealth();
-        if (healthy) {
-          // Activation successful!
-          await db
-            .update(burpSetup)
-            .set({
-              activationStatus: 'active',
-              activatedAt: new Date(),
-              mcpServerUrl: BURP_MCP_URL,
-              mcpHealthCheckPassed: true,
-              lastHealthCheck: new Date(),
-              errorMessage: null,
-              updatedAt: new Date(),
-            })
-            .where(eq(burpSetup.id, setup!.id));
-
-          console.log('[BurpActivation] Activation successful!');
-
-          return {
-            success: true,
-            status: 'active',
-            message: 'BurpSuite activated successfully',
-            mcpUrl: BURP_MCP_URL,
-          };
-        }
+      // Run health polling in background — don't block the HTTP response
+      // (frontend polls /status every 3s while activationStatus === "activating")
+      if (setup) {
+        this.pollForActivation(setup.id).catch(err => {
+          console.error('[BurpActivation] Background activation polling failed:', err);
+        });
       }
 
-      // Timeout
-      const errorMsg = 'Activation timeout: MCP server did not become healthy';
-      await db
-        .update(burpSetup)
-        .set({
-          activationStatus: 'error',
-          errorMessage: errorMsg,
-          updatedAt: new Date(),
-        })
-        .where(eq(burpSetup.id, setup!.id));
-
-      console.error(`[BurpActivation] ${errorMsg}`);
-
       return {
-        success: false,
-        status: 'error',
-        message: errorMsg,
-        error: 'Container did not start within 2 minutes. Check activation logs.',
+        success: true,
+        status: 'active',
+        message: 'BurpSuite activation started',
       };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Activation failed';
@@ -438,6 +437,56 @@ class BurpActivationService {
         error: errorMsg,
       };
     }
+  }
+
+  /**
+   * Background polling for MCP server health after activation
+   */
+  private async pollForActivation(setupId: number): Promise<void> {
+    const maxWaitTime = 120000; // 2 minutes
+    const pollInterval = 5000; // 5 seconds
+    const startTime = Date.now();
+
+    console.log('[BurpActivation] Waiting for MCP server to become healthy...');
+
+    while (Date.now() - startTime < maxWaitTime) {
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+      const healthy = await this.checkMCPHealth();
+      if (healthy) {
+        await db
+          .update(burpSetup)
+          .set({
+            activationStatus: 'active',
+            activatedAt: new Date(),
+            mcpServerUrl: BURP_MCP_URL,
+            mcpHealthCheckPassed: true,
+            lastHealthCheck: new Date(),
+            errorMessage: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(burpSetup.id, setupId));
+
+        console.log('[BurpActivation] Activation successful!');
+
+        // Auto-register BurpSuite MCP server so it appears in agent config dropdown
+        await this.registerMCPServer();
+        return;
+      }
+    }
+
+    // Timeout
+    const errorMsg = 'Activation timeout: MCP server did not become healthy';
+    await db
+      .update(burpSetup)
+      .set({
+        activationStatus: 'error',
+        errorMessage: errorMsg,
+        updatedAt: new Date(),
+      })
+      .where(eq(burpSetup.id, setupId));
+
+    console.error(`[BurpActivation] ${errorMsg}`);
   }
 
   /**
@@ -469,6 +518,9 @@ class BurpActivationService {
           .where(eq(burpSetup.id, setup.id));
       }
 
+      // Mark MCP server as stopped so it disappears from agent config dropdown
+      await this.unregisterMCPServer();
+
       console.log('[BurpActivation] Deactivation complete');
       return { success: true };
     } catch (error) {
@@ -481,16 +533,90 @@ class BurpActivationService {
   }
 
   /**
+   * Register BurpSuite MCP server in mcpServers table (idempotent)
+   */
+  private static readonly MCP_SERVER_NAME = 'BurpSuite Pro MCP';
+
+  private async registerMCPServer(): Promise<void> {
+    try {
+      const [existing] = await db
+        .select()
+        .from(mcpServers)
+        .where(eq(mcpServers.name, BurpActivationService.MCP_SERVER_NAME))
+        .limit(1);
+
+      if (existing) {
+        await db
+          .update(mcpServers)
+          .set({
+            status: 'running',
+            restartCount: 0,
+            uptime: new Date(),
+            lastError: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(mcpServers.id, existing.id));
+        console.log(`[BurpActivation] MCP server record updated to running: ${existing.id}`);
+      } else {
+        const [server] = await db
+          .insert(mcpServers)
+          .values({
+            name: BurpActivationService.MCP_SERVER_NAME,
+            command: 'docker',
+            args: ['exec', '-i', 'rtpi-burp-agent', 'node', '/mcp/dist/index.js'],
+            env: { AGENT_TYPE: 'burp-suite', CONTAINER_NAME: 'rtpi-burp-agent' },
+            status: 'running',
+            autoRestart: false,
+            maxRestarts: 0,
+            restartCount: 0,
+            uptime: new Date(),
+          })
+          .returning();
+        console.log(`[BurpActivation] MCP server registered: ${server.id}`);
+      }
+    } catch (error) {
+      console.error('[BurpActivation] MCP server registration failed:', error);
+    }
+  }
+
+  /**
+   * Mark BurpSuite MCP server as stopped on deactivation
+   */
+  private async unregisterMCPServer(): Promise<void> {
+    try {
+      await db
+        .update(mcpServers)
+        .set({
+          status: 'stopped',
+          uptime: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(mcpServers.name, BurpActivationService.MCP_SERVER_NAME));
+      console.log('[BurpActivation] MCP server marked as stopped');
+    } catch (error) {
+      console.error('[BurpActivation] MCP server unregistration failed:', error);
+    }
+  }
+
+  /**
    * Check MCP server health
    */
   async checkMCPHealth(): Promise<boolean> {
     try {
-      const response = await fetch(`${BURP_MCP_URL}/health`, {
-        method: 'GET',
-        signal: AbortSignal.timeout(5000),
-      });
+      // MCP server uses stdio transport (not HTTP), so check container health via Docker
+      const { stdout } = await execFileAsync('docker', [
+        'inspect', '--format', '{{.State.Running}}', 'rtpi-burp-agent'
+      ], { timeout: 5000 });
 
-      const healthy = response.ok;
+      const running = stdout.trim() === 'true';
+      if (!running) return false;
+
+      // Verify the MCP node process is alive inside the container
+      const { stdout: pgrep } = await execFileAsync('docker', [
+        'exec', 'rtpi-burp-agent', 'pgrep', '-f', 'node dist/index.js'
+      ], { timeout: 5000 });
+
+      const healthy = pgrep.trim().length > 0;
 
       // Update database
       const [setup] = await db.select().from(burpSetup).limit(1);

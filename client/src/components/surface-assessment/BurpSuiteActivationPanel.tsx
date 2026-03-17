@@ -46,8 +46,9 @@ const DEFAULT_STATUS: ActivationStatus = {
   errorMessage: null,
 };
 
-const MAX_JAR_SIZE = 750 * 1024 * 1024; // 750MB
+const MAX_JAR_SIZE = 800 * 1024 * 1024; // 800MB
 const MAX_LICENSE_SIZE = 10 * 1024; // 10KB
+const CHUNK_SIZE = 50 * 1024 * 1024; // 50MB per chunk (within Cloudflare's 100MB limit)
 
 export default function BurpSuiteActivationPanel({
   operationId: _operationId,
@@ -61,6 +62,7 @@ export default function BurpSuiteActivationPanel({
   const [confirmDeactivate, setConfirmDeactivate] = useState(false);
   const [jarDragging, setJarDragging] = useState(false);
   const [licenseDragging, setLicenseDragging] = useState(false);
+  const [jarProgress, setJarProgress] = useState(0);
 
   const jarInputRef = useRef<HTMLInputElement>(null);
   const licenseInputRef = useRef<HTMLInputElement>(null);
@@ -102,34 +104,80 @@ export default function BurpSuiteActivationPanel({
   // --- JAR Upload ---
 
   const handleJarSelect = async (file: File) => {
-    if (!file.name.endsWith(".jar")) {
-      toast.error("Only .jar files are allowed");
+    const isJar = file.name.endsWith(".jar");
+    const isInstaller = file.name.endsWith(".sh");
+    if (!isJar && !isInstaller) {
+      toast.error("Only .jar and .sh installer files are allowed");
       return;
     }
     if (file.size > MAX_JAR_SIZE) {
-      toast.error(`File too large (${formatFileSize(file.size)}). Maximum is 750MB.`);
+      toast.error(`File too large (${formatFileSize(file.size)}). Maximum is 800MB.`);
       return;
     }
 
     setJarUploading(true);
+    setJarProgress(0);
+
     try {
-      const formData = new FormData();
-      formData.append("jar", file);
-      const res = await fetch("/api/v1/burp-activation/upload-jar", {
+      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+
+      // Step 1: Initialize chunked upload session
+      const initRes = await fetch("/api/v1/burp-activation/upload-jar/chunked/init", {
         method: "POST",
         credentials: "include",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: file.name,
+          totalChunks,
+          totalSize: file.size,
+        }),
       });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || data.error || "Upload failed");
+      if (!initRes.ok) {
+        const data = await initRes.json();
+        throw new Error(data.error || "Failed to initialize upload");
       }
-      toast.success("JAR file uploaded successfully");
+      const { uploadId } = await initRes.json();
+
+      // Step 2: Upload chunks sequentially
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, file.size);
+        const chunk = file.slice(start, end);
+
+        const chunkForm = new FormData();
+        chunkForm.append("chunk", chunk, `chunk-${i}`);
+
+        const chunkRes = await fetch(
+          `/api/v1/burp-activation/upload-jar/chunked/${uploadId}/${i}`,
+          { method: "POST", credentials: "include", body: chunkForm }
+        );
+        if (!chunkRes.ok) {
+          const data = await chunkRes.json();
+          throw new Error(data.error || `Chunk ${i + 1}/${totalChunks} failed`);
+        }
+
+        setJarProgress(Math.round(((i + 1) / totalChunks) * 90)); // 0-90% for chunks
+      }
+
+      // Step 3: Complete — reassemble and process
+      setJarProgress(95);
+      const completeRes = await fetch(
+        `/api/v1/burp-activation/upload-jar/chunked/${uploadId}/complete`,
+        { method: "POST", credentials: "include" }
+      );
+      if (!completeRes.ok) {
+        const data = await completeRes.json();
+        throw new Error(data.error || "Failed to finalize upload");
+      }
+
+      setJarProgress(100);
+      toast.success("File uploaded successfully");
       await fetchStatus();
     } catch (err: any) {
-      toast.error(err.message || "Failed to upload JAR file");
+      toast.error(err.message || "Failed to upload file");
     } finally {
       setJarUploading(false);
+      setJarProgress(0);
       if (jarInputRef.current) jarInputRef.current.value = "";
     }
   };
@@ -383,18 +431,31 @@ export default function BurpSuiteActivationPanel({
               onClick={() => !jarUploading && jarInputRef.current?.click()}
             >
               {jarUploading ? (
-                <Loader2 className="h-8 w-8 text-muted-foreground mx-auto mb-2 animate-spin" />
+                <>
+                  <Loader2 className="h-8 w-8 text-muted-foreground mx-auto mb-2 animate-spin" />
+                  <p className="text-sm font-medium text-foreground">
+                    Uploading... {jarProgress}%
+                  </p>
+                  <div className="w-full bg-secondary rounded-full h-1.5 mt-2">
+                    <div
+                      className="bg-primary h-1.5 rounded-full transition-all duration-300"
+                      style={{ width: `${jarProgress}%` }}
+                    />
+                  </div>
+                </>
               ) : (
-                <Upload className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                <>
+                  <Upload className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-sm font-medium text-foreground">
+                    Drop BurpSuite file here
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">.jar or .sh installer, up to 800MB</p>
+                </>
               )}
-              <p className="text-sm font-medium text-foreground">
-                {jarUploading ? "Uploading..." : "Drop JAR file here"}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">.jar files, up to 750MB</p>
               <input
                 ref={jarInputRef}
                 type="file"
-                accept=".jar"
+                accept=".jar,.sh"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
                   if (f) handleJarSelect(f);

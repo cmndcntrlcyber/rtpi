@@ -13,6 +13,7 @@ import { eq, desc, and, sql } from "drizzle-orm";
 import { opsManagerScheduler } from "../../services/ops-manager-scheduler";
 import { operationsManagerAgent } from "../../services/operations-manager-agent";
 import { memoryService } from "../../services/memory-service";
+import { autonomousOperationOrchestrator } from "../../services/autonomous-operation-orchestrator";
 import { ollamaAIClient } from "../../services/ollama-ai-client";
 
 const router = express.Router();
@@ -902,6 +903,59 @@ RESPONSE GUIDELINES:
       details: error instanceof Error ? error.message : "Unknown error",
     });
   }
+});
+
+// POST /api/v1/operations-management/autonomous/:operationId - Execute operation autonomously
+router.post("/autonomous/:operationId", async (req, res) => {
+  const { operationId } = req.params;
+
+  try {
+    if (autonomousOperationOrchestrator.isExecuting(operationId)) {
+      return res.status(400).json({ error: "Operation is already executing autonomously" });
+    }
+
+    // Start execution in background
+    autonomousOperationOrchestrator.executeOperation(operationId).catch((err) => {
+      console.error(`[Autonomous] Background operation ${operationId} failed:`, err);
+    });
+
+    res.json({
+      message: "Autonomous operation started",
+      operationId,
+      status: "running",
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      error: "Failed to start autonomous operation",
+      details: error?.message,
+    });
+  }
+});
+
+// POST /api/v1/operations-management/autonomous/:operationId/cancel - Cancel autonomous operation
+router.post("/autonomous/:operationId/cancel", async (req, res) => {
+  const { operationId } = req.params;
+
+  try {
+    const cancelled = await autonomousOperationOrchestrator.cancelOperation(operationId);
+    if (!cancelled) {
+      return res.status(404).json({ error: "No active autonomous execution found for this operation" });
+    }
+
+    res.json({ message: "Autonomous operation cancelled", operationId });
+  } catch (error: any) {
+    res.status(500).json({
+      error: "Failed to cancel autonomous operation",
+      details: error?.message,
+    });
+  }
+});
+
+// GET /api/v1/operations-management/autonomous/status - Get active autonomous operations
+router.get("/autonomous/status", async (_req, res) => {
+  res.json({
+    activeOperations: autonomousOperationOrchestrator.activeOperationCount,
+  });
 });
 
 export default router;

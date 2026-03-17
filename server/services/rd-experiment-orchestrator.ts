@@ -12,11 +12,11 @@
 
 import { EventEmitter } from 'events';
 import { db } from '../db';
-import { rdExperiments, researchProjects, vulnerabilities } from '@shared/schema';
+import { rdExperiments, rdArtifacts, researchProjects, vulnerabilities } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { researchAgent } from './agents/research-agent';
-import { maldevAgent } from './agents/maldev-agent';
-import { rdTeamAgent } from './agents/rd-team-agent';
+import { pocDevelopmentAgent } from './agents/poc-development-agent';
+import { nucleiTemplateAgent } from './agents/nuclei-template-agent';
 
 // ============================================================================
 // Types & Interfaces
@@ -177,6 +177,10 @@ class RDExperimentOrchestrator extends EventEmitter {
       if (artifact) {
         artifacts.push(artifact);
         executionLog.push(`Generated artifact: ${artifact.type}`);
+
+        // Persist artifact to rd_artifacts table
+        await this.persistArtifact(artifact, experimentId, context.projectId);
+        executionLog.push(`Persisted artifact to database`);
       }
 
       // Update experiment with results
@@ -315,13 +319,13 @@ class RDExperimentOrchestrator extends EventEmitter {
     context: ExperimentExecutionContext,
     log: string[]
   ): Promise<POCArtifact> {
-    log.push('Delegating to Maldev Agent for POC development...');
+    log.push('Delegating to POC Development Agent...');
 
-    if (!maldevAgent.isInitialized) {
-      await maldevAgent.initialize();
+    if (!pocDevelopmentAgent.isInitialized) {
+      await pocDevelopmentAgent.initialize();
     }
 
-    // Fetch vulnerability and any research artifacts
+    // Fetch vulnerability for research context
     const [vuln] = await db
       .select()
       .from(vulnerabilities)
@@ -351,15 +355,17 @@ class RDExperimentOrchestrator extends EventEmitter {
       totalSources: 0,
     };
 
-    // Execute exploit development
-    const result = await maldevAgent.executeTask({
-      taskType: 'module_crafting',
+    // Execute POC development via dedicated agent
+    const result = await pocDevelopmentAgent.executeTask({
+      taskType: 'poc_generation',
       taskName: experiment.name,
       description: experiment.description,
       operationId: context.operationId,
       parameters: {
         researchPackage,
-        useToolIntegration: true,  // Enable tool-assisted development
+        vulnerabilityId: context.vulnerabilityId,
+        projectId: context.projectId,
+        experimentId: context.experimentId,
       },
     });
 
@@ -369,15 +375,16 @@ class RDExperimentOrchestrator extends EventEmitter {
 
     log.push('POC development completed successfully');
 
-    const artifact: POCArtifact = {
+    // Use artifact from agent if available, otherwise build from result
+    const agentArtifact = result.data?.artifact;
+    const artifact: POCArtifact = agentArtifact || {
       type: 'poc_code',
-      language: 'ruby',  // MSF modules are Ruby
+      language: 'ruby',
       sourceCode: result.data?.artifact?.content || '',
       filename: result.data?.artifact?.modulePath || 'exploit.rb',
       dependencies: ['metasploit-framework'],
       usage: `msfconsole -q -x "use ${result.data?.artifact?.modulePath}; set RHOSTS <target>; exploit"`,
       reliability: 'medium',
-      evasionTechniques: [],
       metadata: {
         targetPlatform: ['linux', 'windows'],
       },
@@ -394,10 +401,10 @@ class RDExperimentOrchestrator extends EventEmitter {
     context: ExperimentExecutionContext,
     log: string[]
   ): Promise<NucleiTemplateArtifact> {
-    log.push('Delegating to R&D Team Agent for Nuclei template generation...');
+    log.push('Delegating to Nuclei Template Agent...');
 
-    if (!rdTeamAgent.isInitialized) {
-      await rdTeamAgent.initialize();
+    if (!nucleiTemplateAgent.isInitialized) {
+      await nucleiTemplateAgent.initialize();
     }
 
     // Fetch vulnerability
@@ -410,9 +417,9 @@ class RDExperimentOrchestrator extends EventEmitter {
       throw new Error(`Vulnerability ${context.vulnerabilityId} not found`);
     }
 
-    // Execute template generation
-    const result = await rdTeamAgent.executeTask({
-      taskType: 'nuclei_template_generation',
+    // Execute template generation via dedicated agent
+    const result = await nucleiTemplateAgent.executeTask({
+      taskType: 'template_generation',
       taskName: experiment.name,
       description: experiment.description,
       operationId: context.operationId,
@@ -422,6 +429,9 @@ class RDExperimentOrchestrator extends EventEmitter {
         title: vuln.title,
         description: vuln.description,
         severity: vuln.severity,
+        service: vuln.title.split(' ')[0],
+        projectId: context.projectId,
+        experimentId: context.experimentId,
       },
     });
 
@@ -431,7 +441,9 @@ class RDExperimentOrchestrator extends EventEmitter {
 
     log.push('Nuclei template generated successfully');
 
-    const artifact: NucleiTemplateArtifact = {
+    // Use artifact from agent if available
+    const agentArtifact = result.data?.artifact;
+    const artifact: NucleiTemplateArtifact = agentArtifact || {
       type: 'nuclei_template',
       templateId: result.data?.templateId || `custom-${context.vulnerabilityId.substring(0, 8)}`,
       yamlContent: result.data?.template || result.data?.yamlContent || '',
@@ -445,6 +457,45 @@ class RDExperimentOrchestrator extends EventEmitter {
     };
 
     return artifact;
+  }
+
+  /**
+   * Persist an artifact to the rd_artifacts table
+   */
+  private async persistArtifact(
+    artifact: Artifact,
+    experimentId: string,
+    projectId: string
+  ): Promise<string> {
+    let content: string;
+    let filename: string | undefined;
+    let language: string | undefined;
+
+    if (artifact.type === 'research_document') {
+      content = artifact.content;
+      filename = `research-${experimentId.substring(0, 8)}.json`;
+      language = undefined;
+    } else if (artifact.type === 'poc_code') {
+      content = artifact.sourceCode;
+      filename = artifact.filename;
+      language = artifact.language;
+    } else {
+      content = artifact.yamlContent;
+      filename = `${artifact.templateId}.yaml`;
+      language = 'yaml';
+    }
+
+    const [inserted] = await db.insert(rdArtifacts).values({
+      experimentId,
+      projectId,
+      artifactType: artifact.type,
+      content,
+      filename,
+      language,
+      metadata: artifact.metadata,
+    }).returning();
+
+    return inserted.id;
   }
 
   /**

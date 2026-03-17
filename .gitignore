@@ -54,8 +54,9 @@ ca/
 uploads/
 
 # BurpSuite Pro Installation
-burpsuite_pro_v2025.12.5.jar
+burpsuite_pro_v2026.2.3.jar
 Burp_Suite_Professional_license.txt
+burpsuite_pro_linux_arm64_v2026_2_3.sh
 
 # Sensitive key/certificate files (defense-in-depth)
 *.pem
@@ -82,6 +83,9 @@ dump.rdb
 .env.staging
 .env.development
 .env.test
+
+# SysReptor secrets (use app.env.example as template)
+configs/rtpi-sysreptor/app.env
 
 # Backup files
 *.bak

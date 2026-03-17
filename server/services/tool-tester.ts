@@ -4,12 +4,16 @@
  * Tests run INSIDE Docker containers via dockerExecutor (not local spawn)
  */
 
+import { EventEmitter } from 'events';
 import { dockerExecutor } from './docker-executor';
 import { db } from '../db';
 import { toolRegistry, toolTestResults } from '../../shared/schema';
 import { eq } from 'drizzle-orm';
 import { getToolById, updateValidationStatus, addToolTestResult } from './tool-registry-manager';
 import type { ToolConfiguration, ToolTestConfig } from '../../shared/types/tool-config';
+
+/** Event emitter for tool test results — used by R&D feedback loop */
+export const toolTestEvents = new EventEmitter();
 
 /**
  * Test types
@@ -200,6 +204,9 @@ export async function runAllTests(
   console.log(
     `All tests completed for ${tool.name}: ${allPassed ? 'PASSED' : 'FAILED'}`
   );
+
+  // Emit test results for R&D feedback loop
+  toolTestEvents.emit('test_complete', { toolId, allPassed, results });
 
   return results;
 }

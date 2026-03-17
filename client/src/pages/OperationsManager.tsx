@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Loader2, Bot, HelpCircle, Activity, Play, Power, PowerOff, Plus, AlertCircle } from "lucide-react";
+import { Loader2, Bot, HelpCircle, Activity, Play, Power, PowerOff, Plus, AlertCircle, Zap } from "lucide-react";
 import { useReporterAgents } from "../hooks/useReporterAgents";
 import { useAssetQuestions } from "../hooks/useAssetQuestions";
 import { useOperations } from "../hooks/useOperations";
@@ -38,6 +38,7 @@ export function OperationsManager() {
 
   const [triggering, setTriggering] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [autonomous, setAutonomous] = useState(false);
 
   // Auto-select the first operation when operations are loaded
   useEffect(() => {
@@ -56,6 +57,26 @@ export function OperationsManager() {
       alert("Failed to trigger workflow");
     } finally {
       setTriggering(false);
+    }
+  };
+
+  const handleAutonomousExecution = async () => {
+    if (!selectedOperation) return;
+    if (!confirm("This will execute the entire operation autonomously through all phases (Recon → Scan → Exploit → Review → Report). Continue?")) {
+      return;
+    }
+    try {
+      setAutonomous(true);
+      await fetch(`/api/v1/operations-management/autonomous/${selectedOperation}`, {
+        method: "POST",
+        credentials: "include",
+      });
+      alert("Autonomous operation started! The system will execute through all phases automatically.");
+    } catch (error) {
+      console.error("Failed to start autonomous operation:", error);
+      alert("Failed to start autonomous operation");
+    } finally {
+      setAutonomous(false);
     }
   };
 
@@ -183,6 +204,20 @@ export function OperationsManager() {
               <>
                 <Power className="h-4 w-4 mr-2" />
                 Enable Hourly Reporting
+              </>
+            )}
+          </Button>
+
+          <Button onClick={handleAutonomousExecution} disabled={autonomous || !selectedOperation} variant="default">
+            {autonomous ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Starting...
+              </>
+            ) : (
+              <>
+                <Zap className="h-4 w-4 mr-2" />
+                Run Autonomous
               </>
             )}
           </Button>

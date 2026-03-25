@@ -36,6 +36,7 @@ import Implants from "@/pages/Implants";
 import Ollama from "@/pages/Ollama";
 import OffSecTeam from "@/pages/OffSecTeam";
 import Login from "@/pages/Login";
+import AdminReporters from "@/pages/AdminReporters";
 
 const queryClient = new QueryClient();
 
@@ -76,6 +77,7 @@ function AuthenticatedApp() {
           <Route path="/settings" component={Settings} />
           <Route path="/profile" component={Profile} />
           <Route path="/users" component={Users} />
+          <Route path="/reporters" component={AdminReporters} />
           <Route>
             <div className="p-8">
               <h1 className="text-3xl font-bold mb-4">404 - Page Not Found</h1>

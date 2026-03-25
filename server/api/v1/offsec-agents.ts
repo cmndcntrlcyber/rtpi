@@ -15,6 +15,8 @@ import { githubRepoDiscovery } from "../../services/github-repo-discovery";
 import { spawn, exec } from "child_process";
 import { promisify } from "util";
 import * as path from "path";
+import multer from "multer";
+import * as fs from "fs";
 
 const execAsync = promisify(exec);
 
@@ -445,5 +447,104 @@ async function executeMCPTool(
     return { stdout, stderr };
   }
 }
+
+// ============================================================================
+// POST /api/v1/offsec-agents/maldev/upload-binary
+// Upload a binary file for maldev agent analysis (radare2, ROPgadget, etc.)
+// ============================================================================
+
+const binaryStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    const uploadDir = path.join("/tmp", "maldev-binaries");
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (_req, file, cb) => {
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
+    cb(null, `${Date.now()}-${safeName}`);
+  },
+});
+
+const binaryUpload = multer({
+  storage: binaryStorage,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
+});
+
+router.post(
+  "/maldev/upload-binary",
+  ensureRole("admin", "operator"),
+  binaryUpload.single("binary"),
+  async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "No binary file uploaded" });
+    }
+
+    try {
+      const localPath = req.file.path;
+      const containerPath = `/tmp/analysis/${req.file.filename}`;
+
+      // Create directory in container and copy file via docker cp
+      await execAsync(`docker exec rtpi-maldev-agent mkdir -p /tmp/analysis`);
+      await execAsync(`docker cp "${localPath}" rtpi-maldev-agent:${containerPath}`);
+      await execAsync(`docker exec rtpi-maldev-agent chown rtpi-agent:rtpi-agent "${containerPath}"`);
+
+      // Clean up local temp file
+      fs.unlinkSync(localPath);
+
+      res.json({
+        success: true,
+        containerPath,
+        filename: req.file.filename,
+        originalName: req.file.originalname,
+        size: req.file.size,
+        message: `Binary uploaded to maldev container at ${containerPath}`,
+      });
+    } catch (error) {
+      if (req.file && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+      res.status(500).json({
+        error: "Failed to upload binary to maldev container",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+);
+
+// ============================================================================
+// POST /api/v1/offsec-agents/maldev/analyze
+// Run binary analysis on a file already in the maldev container
+// ============================================================================
+
+router.post(
+  "/maldev/analyze",
+  ensureRole("admin", "operator"),
+  async (req, res) => {
+    const { containerPath } = req.body;
+
+    if (!containerPath) {
+      return res.status(400).json({ error: "containerPath is required" });
+    }
+
+    try {
+      const { maldevToolExecutor } = await import("../../services/agents/maldev-tool-executor");
+
+      const analysis = await maldevToolExecutor.analyzeWithRadare2(containerPath);
+
+      res.json({
+        success: true,
+        analysis,
+        message: `Analysis complete for ${containerPath}`,
+      });
+    } catch (error) {
+      res.status(500).json({
+        error: "Binary analysis failed",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+);
 
 export default router;

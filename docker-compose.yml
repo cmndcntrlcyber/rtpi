@@ -677,7 +677,7 @@ services:
       - "8182:8082"   # Burp Proxy (when active) — 8082 conflicts with empire range
     volumes:
       - burp-tools:/opt/tools
-      - /tmp/burp-setup:/opt/burp-setup
+      - /mnt/nvme/tmp/burp-setup:/opt/burp-setup
       - burp-projects:/opt/burp-projects
       - shared-data:/shared
       - /var/run/docker.sock:/var/run/docker.sock:ro

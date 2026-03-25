@@ -1,7 +1,7 @@
 # Container Rebuild Required for v2.4.4
 
-**Date:** 2026-03-15  
-**Reason:** Added x86_64 cross-compilation binutils for pwntools
+**Date:** 2026-03-19 (updated)
+**Reason:** Running container missing tools defined in Dockerfile (Ghidra, TamperETW, SHAPESHIFTER, C_To_Shellcode_NG). Also: x86_64 cross-compilation binutils for pwntools.
 
 ---
 
@@ -52,9 +52,24 @@ Expected result: "✅ Shellcode generated successfully"
 
 ## Impact
 
-**Before:** pwntools could only generate templates, not assemble them  
-**After:** Full shellcode generation + assembly on ARM64 hosts  
+**Before:** pwntools could only generate templates, not assemble them
+**After:** Full shellcode generation + assembly on ARM64 hosts
 **Benefit:** Complete tool-assisted exploit development pipeline
+
+## Additional: Missing Tools in Running Container
+
+The Dockerfile defines 44 tools, but the running container was built from an older version. After rebuild, these tools will become available:
+
+- **Ghidra MCP** — Advanced binary analysis (needs headless Java + Python MCP bridge)
+- **TamperETW** — ETW bypass for Windows evasion
+- **SHAPESHIFTER** — .NET assembly morphing
+- **C_To_Shellcode_NG** — C code to shellcode converter
+- **jmespath** — pip dependency for SysWhispers (currently installed manually)
+
+**Verify after rebuild:**
+```bash
+docker exec rtpi-maldev-agent ls /opt/tools/GhidraMCP/ /opt/tools/TamperETW/ /opt/tools/SHAPESHIFTER/
+```
 
 ---
 

@@ -71,13 +71,17 @@ export class QAAgent extends BaseTaskAgent {
       memoryType: "event",
     });
 
+    const passRate = vulns.length > 0 ? ((vulns.length - issues.length) / vulns.length) * 100 : 100;
+    const quality = passRate < 50 ? 'poor' : passRate < 80 ? 'fair' : issues.length === 0 ? 'good' : 'acceptable';
+
     return {
       success: true,
       data: {
         totalFindings: vulns.length,
         issueCount: issues.length,
         issues: issues.slice(0, 20),
-        passRate: vulns.length > 0 ? ((vulns.length - issues.length) / vulns.length) * 100 : 100,
+        passRate,
+        quality,
       },
     };
   }
@@ -103,12 +107,17 @@ export class QAAgent extends BaseTaskAgent {
       }
     }
 
+    // Determine quality level based on issues found
+    const issueRatio = reports.length > 0 ? issues.length / reports.length : 0;
+    const quality = issueRatio > 0.5 ? 'poor' : issueRatio > 0.2 ? 'fair' : issues.length === 0 ? 'good' : 'acceptable';
+
     return {
       success: true,
       data: {
         totalReports: reports.length,
         issueCount: issues.length,
         issues: issues.slice(0, 20),
+        quality,
       },
     };
   }

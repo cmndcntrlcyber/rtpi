@@ -60,7 +60,8 @@ RUN pip3 install --no-cache-dir \
     angr \
     pefile \
     lief \
-    yara-python
+    yara-python \
+    jmespath
 
 # Add Rust targets for cross-compilation
 USER rtpi-agent
@@ -83,8 +84,8 @@ WORKDIR /opt/tools
 # REVERSE ENGINEERING TOOLS (17 repos)
 # =============================================================================
 
-# Ghidra MCP Integration
-RUN git clone --depth 1 https://github.com/AhmedMaher309/GhidraMCP.git 2>/dev/null && \
+# Ghidra MCP Integration (LaurieWired - main project, 7900+ stars)
+RUN git clone --depth 1 https://github.com/LaurieWired/GhidraMCP.git 2>/dev/null && \
     echo "GhidraMCP: Ghidra integration for MCP servers" > GhidraMCP/TOOL_INFO.txt || true
 
 # Binary Analysis MCPs
@@ -228,13 +229,13 @@ RUN git clone --depth 1 https://github.com/Jeromeyoung/hypervinject-poc.git hype
 # RUST-BASED DEVELOPMENT TOOLS (11 repos)
 # =============================================================================
 
-# TamperETW - ETW bypass in Rust
-RUN git clone --depth 1 https://github.com/daem0nc0re/TamperETW.git 2>/dev/null && \
+# TamperETW - ETW bypass (outflanknl - C# implementation)
+RUN git clone --depth 1 https://github.com/outflanknl/TamperETW.git 2>/dev/null && \
     echo "TamperETW: ETW bypass implementation" > TamperETW/TOOL_INFO.txt || true
 
-# SHAPESHIFTER - Process morphing
-RUN git clone --depth 1 https://github.com/Octoberfest7/SHAPESHIFTER.git 2>/dev/null && \
-    echo "SHAPESHIFTER: Process morphing technique" > SHAPESHIFTER/TOOL_INFO.txt || true
+# SHAPESHIFTER - Process morphing (original repo removed; placeholder)
+# RUN git clone --depth 1 https://github.com/Octoberfest7/SHAPESHIFTER.git 2>/dev/null && \
+#     echo "SHAPESHIFTER: Process morphing technique" > SHAPESHIFTER/TOOL_INFO.txt || true
 
 # SharpCall - Direct syscalls
 RUN git clone --depth 1 https://github.com/jhalon/SharpCall.git 2>/dev/null && \
@@ -264,9 +265,9 @@ RUN git clone --depth 1 https://github.com/NSecSoft/NSecSoftBYOVD.git NSecSoftBY
 RUN git clone --depth 1 https://github.com/oldboy21/ARM64-ReflectiveDLLInjection.git ARM64-ReflectiveDLLInjection 2>/dev/null && \
     echo "ARM64-ReflectiveDLLInjection: ARM64 reflective injection" > ARM64-ReflectiveDLLInjection/TOOL_INFO.txt || true
 
-# C to Shellcode NG
-RUN git clone --depth 1 https://github.com/winterknife/C_To_Shellcode_NG.git C_To_Shellcode_NG 2>/dev/null && \
-    echo "C_To_Shellcode_NG: C to shellcode converter" > C_To_Shellcode_NG/TOOL_INFO.txt || true
+# C to Shellcode NG (original repo removed; placeholder)
+# RUN git clone --depth 1 https://github.com/winterknife/C_To_Shellcode_NG.git C_To_Shellcode_NG 2>/dev/null && \
+#     echo "C_To_Shellcode_NG: C to shellcode converter" > C_To_Shellcode_NG/TOOL_INFO.txt || true
 
 # SharpBypassUAC
 RUN git clone --depth 1 https://github.com/icyguider/SharpBypassUAC.git 2>/dev/null && \

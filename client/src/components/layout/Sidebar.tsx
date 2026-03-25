@@ -26,6 +26,7 @@ import {
   Download,
   Brain,
   Microscope,
+  Radio,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -111,6 +112,7 @@ const navGroups: NavGroup[] = [
 
 const adminNavItems = [
   { path: "/users", label: "User Management", icon: Users },
+  { path: "/reporters", label: "Reporter Agents", icon: Radio },
 ];
 
 const COLLAPSED_GROUPS_KEY = "rtpi_sidebar_collapsed_groups";

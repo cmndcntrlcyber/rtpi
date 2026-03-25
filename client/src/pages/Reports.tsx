@@ -8,12 +8,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileText, Download, Plus, Calendar, Trash2, Edit, ChevronDown, ChevronRight, Folder } from "lucide-react";
+import { FileText, Download, Plus, Calendar, Trash2, Edit, ChevronDown, ChevronRight, Folder, Upload } from "lucide-react";
 import { useReports, useReportTemplates, useCreateReport, useCreateTemplate, useDeleteReport } from "@/hooks/useReports";
 import { useOperations } from "@/hooks/useOperations";
 import { reportsService } from "@/services/reports";
 import GenerateReportDialog from "@/components/reports/GenerateReportDialog";
 import EditReportDialog from "@/components/reports/EditReportDialog";
+import SysReptorExportDialog from "@/components/reports/SysReptorExportDialog";
+import SysReptorProjectsList from "@/components/reports/SysReptorProjectsList";
 
 const REPORT_GROUPS_KEY = "rtpi-report-groups-expanded";
 
@@ -38,6 +40,11 @@ export default function Reports() {
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingReport, setEditingReport] = useState<any>(null);
+  const [sysReptorExportOpen, setSysReptorExportOpen] = useState(false);
+  const [sysReptorExportTarget, setSysReptorExportTarget] = useState<{
+    operationId: string;
+    operationName?: string;
+  } | null>(null);
   const [newReport, setNewReport] = useState({
     name: "",
     type: "operation_summary",
@@ -213,6 +220,12 @@ export default function Reports() {
     setEditDialogOpen(true);
   };
 
+  const handleExportToSysReptor = (operationId: string) => {
+    const opName = operationMap.get(operationId);
+    setSysReptorExportTarget({ operationId, operationName: opName });
+    setSysReptorExportOpen(true);
+  };
+
   const handleSaveReport = async (_reportId: string, _content: string) => {
     try {
       toast.success("Report saved successfully!");
@@ -316,9 +329,23 @@ export default function Reports() {
                 )}
                 <Folder className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                 <span className="font-semibold text-sm text-foreground">{group.label}</span>
-                <Badge variant="secondary" className="text-xs ml-auto">
+                <Badge variant="secondary" className="text-xs ml-auto mr-2">
                   {group.reports.length} report{group.reports.length !== 1 ? "s" : ""}
                 </Badge>
+                {group.key !== "__unassigned__" && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-xs"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleExportToSysReptor(group.key);
+                    }}
+                  >
+                    <Upload className="h-3 w-3 mr-1" />
+                    SysReptor
+                  </Button>
+                )}
               </button>
 
               {/* Collapsible report rows */}
@@ -449,6 +476,24 @@ export default function Reports() {
           </div>
         )}
       </div>
+
+      {/* SysReptor Projects */}
+      <div className="mt-8">
+        <SysReptorProjectsList />
+      </div>
+
+      {/* SysReptor Export Dialog */}
+      {sysReptorExportTarget && (
+        <SysReptorExportDialog
+          open={sysReptorExportOpen}
+          onClose={() => {
+            setSysReptorExportOpen(false);
+            setSysReptorExportTarget(null);
+          }}
+          operationId={sysReptorExportTarget.operationId}
+          operationName={sysReptorExportTarget.operationName}
+        />
+      )}
 
       {/* Generate Report Dialog */}
       <GenerateReportDialog

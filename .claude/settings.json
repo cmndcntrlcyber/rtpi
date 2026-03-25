@@ -9,10 +9,16 @@
       "Bash(sudo mount /dev/nvme0n1p1 /mnt/nvme)",
       "Bash(mount)",
       "Bash(git reset:*)",
-      "Bash(docker volume:*)"
+      "Bash(docker volume:*)",
+      "Read(//home/cmndcntrl/Desktop/**)",
+      "Bash(docker system:*)",
+      "Bash(docker images:*)",
+      "Bash(docker buildx:*)",
+      "Bash(docker events:*)"
     ],
     "additionalDirectories": [
-      "/tmp"
+      "/tmp",
+      "/home/cmndcntrl/Desktop"
     ]
   }
 }

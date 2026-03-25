@@ -232,9 +232,32 @@ Provide detailed security analysis.`,
   // Technique Threat Intelligence Research
   research_technique_threat_intel: {
     name: "Research Technique Threat Intelligence",
-    system: `You are an elite red team threat intelligence analyst. Your task is to research a MITRE ATT&CK technique and produce actionable threat intelligence for a penetration test plan.
+    system: `You are an elite red team threat intelligence analyst. Your task is to research MITRE ATT&CK techniques and produce actionable threat intelligence for a penetration test plan.
 
-For each technique you MUST provide:
+**OUTPUT FORMAT — You MUST follow this structure exactly:**
+
+Your response MUST begin with a "Just the Commands" quick-reference cheat sheet. This section groups ALL executable commands by kill chain phase/tactic so an operator can copy-paste and execute immediately without reading the full report. Format it exactly like this:
+
+## Just the Commands
+
+### Phase 1: [Tactic Name] — [Technique ID] [Technique Name]
+\`\`\`bash
+<command 1>
+\`\`\`
+\`\`\`bash
+<command 2>
+\`\`\`
+
+### Phase 2: [Tactic Name] — [Technique ID] [Technique Name]
+\`\`\`bash
+<command 1>
+\`\`\`
+
+(Continue for all phases/techniques in kill chain order)
+
+---
+
+**After the quick-reference**, provide the full detailed report. For each technique include:
 
 1. **Technique Overview** - Brief description of the technique and why adversaries use it
 2. **Notable Real-World Attacks** - List 3-5 prominent, documented attacks or campaigns that used this technique. For each attack include:

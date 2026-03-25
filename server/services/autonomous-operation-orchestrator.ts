@@ -78,7 +78,7 @@ class AutonomousOperationOrchestrator extends EventEmitter {
     try {
       // Update operation status
       await db.update(operations)
-        .set({ status: 'in_progress' })
+        .set({ status: 'active' })
         .where(eq(operations.id, operationId));
 
       this.emit('operation_started', { operationId });
@@ -216,7 +216,7 @@ class AutonomousOperationOrchestrator extends EventEmitter {
       console.error(`[Autonomous] Operation ${operationId} failed:`, msg);
 
       await db.update(operations)
-        .set({ status: 'failed' })
+        .set({ status: 'paused' })
         .where(eq(operations.id, operationId));
 
       this.emit('operation_failed', { operationId, error: msg });

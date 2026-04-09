@@ -1,0 +1,168 @@
+%% RTPI Plugin-to-Agent Mapping
+%% Shows which ClaudeAdvancedPlugins system prompts drive which LangGraph agents
+%% File: docs/diagrams/plugin-agent-mapping.mermaid
+
+graph LR
+    subgraph "ClaudeAdvancedPlugins"
+        direction TB
+        RTO["/red-team-ops"]
+        RTP["/red-team-payload"]
+        PTK["/pentest-toolkit"]
+        PTW["/pentest-web"]
+        PTN["/pentest-network"]
+        PTM["/pentest-mobile"]
+        PTC["/pentest-cloud"]
+        PTWL["/pentest-wireless"]
+        PTA["/pentest-ad"]
+        PTS["/pentest-social"]
+        PTR["/pentest-report"]
+        EXD["/exploit-dev"]
+        API["/api-security"]
+        RB["/reverse-binary"]
+        RM["/reverse-malware"]
+        RP["/reverse-protocol"]
+        RF["/reverse-firmware"]
+        RO["/reverse-obfuscation"]
+        SCR["/secure-code-review"]
+        TM["/threat-modeler"]
+        CA["/crypto-analysis"]
+        VR["/vuln-research"]
+        SCS["/supply-chain-sec"]
+        CS["/cloud-security"]
+        DSO["/devsecops"]
+        OSI["/os-internals"]
+        MV["/memory-vault"]
+        CK["/context-keeper"]
+        CM["/context-manager"]
+        HG["/hallucination-guard"]
+        TT["/token-tracker"]
+        BA["/backend-architect"]
+        FF["/frontend-forge"]
+        F3D["/frontend-3d"]
+    end
+
+    subgraph "LangGraph Domain Agents"
+        direction TB
+        RECON["Recon Agent"]
+        WEBVULN["Web Vuln Agent"]
+        INFRAVULN["Infra Vuln Agent"]
+        ADVULN["AD Vuln Agent"]
+        CLOUDVULN["Cloud Vuln Agent"]
+        EXPLOIT["Exploit Agent"]
+        POSTEX["Post-Exploit Agent"]
+        SOCIAL["Social Eng Agent"]
+        REVENG["Rev Eng Agent"]
+        CODEREVIEW["Code Review Agent"]
+        THREATMOD["Threat Model Agent"]
+        VULNRES["Vuln Research Agent"]
+        SECARCH["Security Arch Agent"]
+        REPORT["Reporting Agent"]
+        PLATFORM["Platform Dev Agent"]
+    end
+
+    subgraph "mem0 Memory Scopes"
+        direction TB
+        ENG["Engagement Memory"]
+        AGENT["Agent Memory"]
+        SESSION["Session Memory"]
+        GRAPH["Graph Memory"]
+        CONF["Confidence Metadata"]
+    end
+
+    %% Recon Agent
+    PTN --> RECON
+    PTC --> RECON
+    PTWL --> RECON
+    PTS --> RECON
+
+    %% Web Vuln Agent
+    PTW --> WEBVULN
+    API --> WEBVULN
+    PTK --> WEBVULN
+
+    %% Infra Vuln Agent
+    PTN --> INFRAVULN
+    CA --> INFRAVULN
+
+    %% AD Vuln Agent
+    PTA --> ADVULN
+
+    %% Cloud Vuln Agent
+    PTC --> CLOUDVULN
+    CS --> CLOUDVULN
+
+    %% Exploit Agent
+    EXD --> EXPLOIT
+    RTO --> EXPLOIT
+    RTP --> EXPLOIT
+    OSI --> EXPLOIT
+
+    %% Post-Exploit Agent
+    RTO --> POSTEX
+
+    %% Social Eng Agent
+    PTS --> SOCIAL
+
+    %% Rev Eng Agent
+    RB --> REVENG
+    RM --> REVENG
+    RP --> REVENG
+    RF --> REVENG
+    RO --> REVENG
+
+    %% Code Review Agent
+    SCR --> CODEREVIEW
+    SCS --> CODEREVIEW
+    DSO --> CODEREVIEW
+
+    %% Threat Model Agent
+    TM --> THREATMOD
+
+    %% Vuln Research Agent
+    VR --> VULNRES
+
+    %% Security Architecture Agent
+    CS --> SECARCH
+    DSO --> SECARCH
+    SCS --> SECARCH
+
+    %% Reporting Agent
+    PTR --> REPORT
+
+    %% Platform Development Agent
+    BA --> PLATFORM
+    FF --> PLATFORM
+    F3D --> PLATFORM
+
+    %% Memory connections (all agents write to mem0)
+    RECON --> ENG
+    WEBVULN --> ENG
+    INFRAVULN --> ENG
+    ADVULN --> GRAPH
+    EXPLOIT --> GRAPH
+    POSTEX --> GRAPH
+    REVENG --> AGENT
+    REPORT --> SESSION
+
+    %% Context plugins feed mem0 directly
+    MV --> ENG
+    CK --> ENG
+    CM --> AGENT
+    HG --> CONF
+    TT --> SESSION
+
+    style RECON fill:#E1F5EE,stroke:#0F6E56
+    style WEBVULN fill:#FAECE7,stroke:#993C1D
+    style INFRAVULN fill:#FAECE7,stroke:#993C1D
+    style ADVULN fill:#FAECE7,stroke:#993C1D
+    style CLOUDVULN fill:#FAECE7,stroke:#993C1D
+    style EXPLOIT fill:#FBEAF0,stroke:#993556
+    style POSTEX fill:#FBEAF0,stroke:#993556
+    style SOCIAL fill:#FBEAF0,stroke:#993556
+    style REVENG fill:#EEEDFE,stroke:#534AB7
+    style CODEREVIEW fill:#E6F1FB,stroke:#185FA5
+    style THREATMOD fill:#E6F1FB,stroke:#185FA5
+    style VULNRES fill:#E6F1FB,stroke:#185FA5
+    style SECARCH fill:#E6F1FB,stroke:#185FA5
+    style REPORT fill:#F1EFE8,stroke:#5F5E5A
+    style PLATFORM fill:#F1EFE8,stroke:#5F5E5A

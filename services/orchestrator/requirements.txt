@@ -1,0 +1,35 @@
+# RTPI LangGraph Orchestrator Dependencies
+# Phase A Foundation — v2.5
+
+# Core
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+
+# LangGraph + LangChain
+langgraph==0.2.62
+langchain==0.3.14
+langchain-community==0.3.14
+langchain-ollama==0.2.3
+
+# Optional external LLM providers
+langchain-openai==0.2.14
+langchain-anthropic==0.3.5
+
+# mem0 client
+httpx==0.28.1
+
+# Tool execution
+docker==7.1.0
+
+# Observability
+structlog==24.4.0
+prometheus-fastapi-instrumentator==7.0.2
+
+# Skill discovery
+pyyaml==6.0.2
+python-frontmatter==1.1.0
+
+# Redis for state checkpointing
+redis==5.2.1

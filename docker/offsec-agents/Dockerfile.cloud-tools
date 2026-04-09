@@ -1,0 +1,167 @@
+##############################################################################
+# RTPI Cloud Security Tools — v2.5
+# Fills the AWS/GCP gap (Azure covered by azure-ad-tools)
+#
+# MITRE Tactics: Reconnaissance (TA0043), Credential Access (TA0006),
+#                Persistence (TA0003), Discovery (TA0007)
+#
+# Tools:
+#   AWS:  ScoutSuite, Prowler, Pacu, CloudFox, enumerate-iam, aws-cli
+#   GCP:  ScoutSuite (multi-cloud), gcloud CLI
+#   Multi: cloudsplaining, cartography, steampipe, parliament
+##############################################################################
+
+FROM rtpi/offsec-base:latest
+
+LABEL maintainer="cmndcntrlcyber"
+LABEL description="RTPI Cloud Security Assessment Tools (AWS/GCP)"
+LABEL version="2.5"
+
+USER root
+
+# ============================================================================
+# System Dependencies
+# ============================================================================
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-dev \
+    python3-pip \
+    python3-venv \
+    curl \
+    wget \
+    unzip \
+    jq \
+    git \
+    groff \
+    less \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================================================
+# AWS CLI v2
+# ============================================================================
+
+RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip \
+    && unzip /tmp/awscliv2.zip -d /tmp \
+    && /tmp/aws/install \
+    && rm -rf /tmp/aws /tmp/awscliv2.zip
+
+# ============================================================================
+# GCP CLI (gcloud)
+# ============================================================================
+
+RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.asc] https://packages.cloud.google.com/apt cloud-sdk main" \
+    > /etc/apt/sources.list.d/google-cloud-sdk.list \
+    && curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+    | tee /usr/share/keyrings/cloud.google.asc > /dev/null \
+    && apt-get update && apt-get install -y --no-install-recommends google-cloud-cli \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================================================
+# Python Virtual Environment for tools
+# ============================================================================
+
+RUN python3 -m venv /opt/tools/venv
+ENV PATH="/opt/tools/venv/bin:${PATH}"
+
+# ============================================================================
+# ScoutSuite — Multi-cloud security auditing (AWS, GCP, Azure)
+# ============================================================================
+
+RUN pip install --no-cache-dir scoutsuite
+
+# ============================================================================
+# Prowler — AWS/GCP/Azure security best practices & compliance
+# CIS, NIST 800-53, PCI-DSS, HIPAA, SOC2, GDPR
+# ============================================================================
+
+RUN pip install --no-cache-dir prowler
+
+# ============================================================================
+# Pacu — AWS exploitation framework (IAM privesc, persistence, exfil)
+# ============================================================================
+
+RUN cd /opt/tools \
+    && git clone --depth 1 https://github.com/RhinoSecurityLabs/pacu.git \
+    && cd pacu \
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir -e .
+
+# ============================================================================
+# CloudFox — AWS attack surface enumeration
+# Discovers IAM permissions, S3, Lambda, EC2 metadata, secrets
+# ============================================================================
+
+RUN CLOUDFOX_VERSION=$(curl -s https://api.github.com/repos/BishopFox/cloudfox/releases/latest | jq -r .tag_name) \
+    && curl -fsSL "https://github.com/BishopFox/cloudfox/releases/download/${CLOUDFOX_VERSION}/cloudfox-linux-amd64.zip" \
+    -o /tmp/cloudfox.zip \
+    && unzip /tmp/cloudfox.zip -d /usr/local/bin/ \
+    && chmod +x /usr/local/bin/cloudfox \
+    && rm /tmp/cloudfox.zip
+
+# ============================================================================
+# enumerate-iam — Brute-force IAM permissions
+# ============================================================================
+
+RUN cd /opt/tools \
+    && git clone --depth 1 https://github.com/andresriancho/enumerate-iam.git \
+    && cd enumerate-iam \
+    && pip install --no-cache-dir -r requirements.txt
+
+# ============================================================================
+# cloudsplaining — IAM policy analysis (over-permissioned roles)
+# ============================================================================
+
+RUN pip install --no-cache-dir cloudsplaining
+
+# ============================================================================
+# parliament — AWS IAM policy linting
+# ============================================================================
+
+RUN pip install --no-cache-dir parliament
+
+# ============================================================================
+# Steampipe — SQL-based cloud resource querying
+# ============================================================================
+
+RUN curl -fsSL https://raw.githubusercontent.com/turbot/steampipe/main/install.sh | sh \
+    && steampipe plugin install aws gcp azure
+
+# ============================================================================
+# cartography — Infrastructure graph mapping (Neo4j integration)
+# ============================================================================
+
+RUN pip install --no-cache-dir cartography
+
+# ============================================================================
+# pmapper — AWS IAM privilege escalation path analysis
+# ============================================================================
+
+RUN pip install --no-cache-dir principalmapper
+
+# ============================================================================
+# Additional tools
+# ============================================================================
+
+RUN pip install --no-cache-dir \
+    boto3 \
+    google-cloud-storage \
+    google-cloud-iam \
+    s3scanner \
+    trufflehog
+
+# ============================================================================
+# Findings output directory
+# ============================================================================
+
+RUN mkdir -p /findings /opt/tools/config \
+    && chown -R 1000:1000 /findings /opt/tools
+
+WORKDIR /opt/tools
+
+# Documentation marker
+RUN echo "Cloud Security Tools Container (v2.5)" > /opt/tools/README.txt \
+    && echo "AWS: aws-cli, scoutsuite, prowler, pacu, cloudfox, enumerate-iam, cloudsplaining, parliament, pmapper, steampipe, cartography, s3scanner, trufflehog" >> /opt/tools/README.txt \
+    && echo "GCP: gcloud, scoutsuite, prowler, steampipe, cartography" >> /opt/tools/README.txt \
+    && echo "Multi: steampipe, cartography, trufflehog" >> /opt/tools/README.txt
+
+ENTRYPOINT ["/bin/bash"]

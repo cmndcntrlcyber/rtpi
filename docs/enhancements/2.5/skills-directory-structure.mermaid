@@ -1,0 +1,92 @@
+%% RTPI Skills Directory Structure
+%% Use: Reference for organizing the unified /skills/ volume
+%% File: docs/diagrams/skills-directory.mermaid
+
+graph TD
+    ROOT["/skills/"] --> ANTHRO["anthropic-cybersecurity-skills/"]
+    ROOT --> PAT["payloadsallthethings/"]
+    ROOT --> PLUGINS["claude-advanced-plugins/"]
+    ROOT --> CUSTOM["rtpi-custom/"]
+
+    ANTHRO --> A1["web-application-security/"]
+    ANTHRO --> A2["penetration-testing/"]
+    ANTHRO --> A3["red-teaming/"]
+    ANTHRO --> A4["network-security/"]
+    ANTHRO --> A5["cloud-security/"]
+    ANTHRO --> A6["container-security/"]
+    ANTHRO --> A7["identity-management/"]
+    ANTHRO --> A8["detection-engineering/"]
+    ANTHRO --> A9["security-operations/"]
+    ANTHRO --> A10["digital-forensics/"]
+    ANTHRO --> A11["incident-response/"]
+    ANTHRO --> A12["malware-analysis/"]
+    ANTHRO --> A13["threat-intelligence/"]
+    ANTHRO --> A14["compliance/"]
+    ANTHRO --> A15["... 26 domains total"]
+
+    PAT --> P1["sql-injection/"]
+    PAT --> P2["xss/"]
+    PAT --> P3["ssrf/"]
+    PAT --> P4["ssti/"]
+    PAT --> P5["command-injection/"]
+    PAT --> P6["deserialization/"]
+    PAT --> P7["jwt-attacks/"]
+    PAT --> P8["oauth-misconfig/"]
+    PAT --> P9["request-smuggling/"]
+    PAT --> P10["... 60+ categories"]
+
+    PLUGINS --> PL1["red-team/"]
+    PLUGINS --> PL2["pentest/"]
+    PLUGINS --> PL3["reverse-engineering/"]
+    PLUGINS --> PL4["security-architecture/"]
+    PLUGINS --> PL5["context-memory/"]
+    PLUGINS --> PL6["frontend/"]
+    PLUGINS --> PL7["backend/"]
+    PLUGINS --> PL8["systems/"]
+
+    PL1 --> PL1a["red-team-ops.md"]
+    PL1 --> PL1b["red-team-payload.md"]
+
+    PL2 --> PL2a["pentest-toolkit.md"]
+    PL2 --> PL2b["pentest-web.md"]
+    PL2 --> PL2c["pentest-network.md"]
+    PL2 --> PL2d["pentest-mobile.md"]
+    PL2 --> PL2e["pentest-cloud.md"]
+    PL2 --> PL2f["pentest-wireless.md"]
+    PL2 --> PL2g["pentest-ad.md"]
+    PL2 --> PL2h["pentest-social.md"]
+    PL2 --> PL2i["pentest-report.md"]
+    PL2 --> PL2j["exploit-dev.md"]
+    PL2 --> PL2k["exploit-ctf.md"]
+    PL2 --> PL2l["api-security.md"]
+
+    PL3 --> PL3a["reverse-binary.md"]
+    PL3 --> PL3b["reverse-malware.md"]
+    PL3 --> PL3c["reverse-protocol.md"]
+    PL3 --> PL3d["reverse-firmware.md"]
+    PL3 --> PL3e["reverse-obfuscation.md"]
+
+    PL4 --> PL4a["secure-code-review.md"]
+    PL4 --> PL4b["threat-modeler.md"]
+    PL4 --> PL4c["crypto-analysis.md"]
+    PL4 --> PL4d["vuln-research.md"]
+    PL4 --> PL4e["supply-chain-sec.md"]
+    PL4 --> PL4f["cloud-security.md"]
+    PL4 --> PL4g["devsecops.md"]
+
+    PL5 --> PL5a["memory-vault.md"]
+    PL5 --> PL5b["context-keeper.md"]
+    PL5 --> PL5c["context-manager.md"]
+    PL5 --> PL5d["hallucination-guard.md"]
+    PL5 --> PL5e["token-tracker.md"]
+
+    CUSTOM --> C1["skill-discovery-service.md"]
+    CUSTOM --> C2["mem0-engagement-manager.md"]
+    CUSTOM --> C3["report-generator.md"]
+    CUSTOM --> C4["attack-path-visualizer.md"]
+
+    style ROOT fill:#FAEEDA,stroke:#854F0B
+    style ANTHRO fill:#E1F5EE,stroke:#0F6E56
+    style PAT fill:#FAECE7,stroke:#993C1D
+    style PLUGINS fill:#EEEDFE,stroke:#534AB7
+    style CUSTOM fill:#E6F1FB,stroke:#185FA5

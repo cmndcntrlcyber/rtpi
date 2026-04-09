@@ -1,0 +1,49 @@
+%% RTPI Implementation Timeline
+%% File: docs/diagrams/implementation-gantt.mermaid
+
+gantt
+    title RTPI Platform Implementation Roadmap
+    dateFormat  YYYY-MM-DD
+    axisFormat  %b %d
+
+    section Phase A: Foundation
+    Deploy mem0 stack (pg+neo4j)           :a1, 2026-04-14, 7d
+    Configure fact extraction prompts       :a2, after a1, 3d
+    Import Anthropic-Skills to /skills/     :a3, 2026-04-14, 3d
+    Install ClaudeAdvancedPlugins           :a4, after a3, 2d
+    Build skill discovery service           :a5, after a3, 7d
+    Upgrade to LangGraph StateGraph         :a6, after a2, 10d
+    Wire existing tools to mem0             :a7, after a6, 5d
+
+    section Phase B: Offensive Skills
+    Transform PayloadsATT top 50            :b1, after a7, 10d
+    Add Nuclei + Subfinder containers       :b2, after a7, 5d
+    Add BloodHound + Frida containers       :b3, after b2, 5d
+    Build recon LangGraph agent             :b4, after a6, 7d
+    Build web vuln agent                    :b5, after b1, 7d
+    Build AD assessment agent               :b6, after b3, 7d
+    Build social eng agent                  :b7, after b4, 5d
+    Implement human-in-the-loop gates       :b8, after b5, 5d
+    Configure graph memory extraction       :b9, after b8, 5d
+
+    section Phase C: RE & Architecture
+    Add Ghidra + QEMU containers            :c1, after b9, 7d
+    Add AFL++ + angr containers             :c2, after c1, 5d
+    Build RE pipeline agents                :c3, after c1, 10d
+    Build code review agent                 :c4, after b9, 7d
+    Build threat modeling agent             :c5, after c4, 5d
+    Build vuln research agent               :c6, after c2, 7d
+    Build DevSecOps agent                   :c7, after c5, 5d
+    Auto-report from mem0 graph             :c8, after c3, 7d
+
+    section Phase D: Platform & Dashboard
+    React dashboard scaffolding             :d1, after c8, 7d
+    3D network topology (Three.js)          :d2, after d1, 10d
+    Attack path graph visualization         :d3, after d2, 7d
+    REST API for SIEM/SOAR integration      :d4, after c8, 7d
+    pgvector query optimization             :d5, after d4, 5d
+    Redis caching layer                     :d6, after d5, 3d
+    Autonomous workflow with gates          :d7, after d3, 7d
+    Threat intel correlation via graph      :d8, after d7, 5d
+    Token tracking + cost optimization      :d9, after d6, 3d
+    Hallucination Guard integration         :d10, after d9, 3d

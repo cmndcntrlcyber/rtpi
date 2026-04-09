@@ -1,0 +1,234 @@
+# RTPI Docker Compose Reference
+# This is a structural reference for implementation — not a runnable file.
+# Adapt paths, credentials, and resource limits to your environment.
+
+version: '3.8'
+
+networks:
+  rtpi-network:
+    driver: bridge
+
+volumes:
+  pg_data:
+  neo4j_data:
+  neo4j_logs:
+  ollama_data:
+  skills_data:
+  findings_data:
+  samples_data:
+  redis_data:
+
+services:
+
+  # ============================================================
+  # EXISTING RTPI CONTAINERS (preserve current configuration)
+  # ============================================================
+
+  caldera-rtpi:
+    image: cmndcntrlcyber/caldera-rtpi:latest
+    ports: ["8888:8888"]
+    networks: [rtpi-network]
+    volumes:
+      - findings_data:/opt/caldera/findings
+
+  evilgophish-rtpi:
+    image: cmndcntrlcyber/evilgophish-rtpi:latest
+    ports: ["443:443", "80:80"]
+    networks: [rtpi-network]
+
+  attackbox:
+    image: cmndcntrlcyber/attackbox:latest
+    networks: [rtpi-network]
+    volumes:
+      - findings_data:/findings
+      - samples_data:/samples
+    cap_add: [NET_ADMIN, NET_RAW]
+
+  targetbox:
+    image: cmndcntrlcyber/targetbox-win7:latest
+    networks: [rtpi-network]
+
+  ollama:
+    image: ollama/ollama:latest
+    ports: ["11434:11434"]
+    networks: [rtpi-network]
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    ports: ["3000:8080"]
+    networks: [rtpi-network]
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+    depends_on: [ollama]
+
+  # ============================================================
+  # NEW: MEM0 INFRASTRUCTURE (Phase A, Weeks 1-4)
+  # ============================================================
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    ports: ["5432:5432"]
+    networks: [rtpi-network]
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: rtpi_memory
+      POSTGRES_USER: rtpi
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rtpi -d rtpi_memory"]
+      interval: 10s
+      retries: 5
+
+  neo4j:
+    image: neo4j:5-community
+    ports: ["7474:7474", "7687:7687"]
+    networks: [rtpi-network]
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    environment:
+      NEO4J_AUTH: "neo4j/${NEO4J_PASSWORD}"
+      NEO4J_PLUGINS: '["apoc"]'
+    healthcheck:
+      test: ["CMD", "neo4j", "status"]
+      interval: 10s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    networks: [rtpi-network]
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+  mem0-api:
+    build:
+      context: ./services/mem0
+      dockerfile: Dockerfile
+    ports: ["8000:8000"]
+    networks: [rtpi-network]
+    environment:
+      MEM0_LLM_PROVIDER: ollama
+      MEM0_LLM_MODEL: qwen2.5-coder:7b
+      MEM0_LLM_BASE_URL: http://ollama:11434
+      MEM0_EMBEDDER_PROVIDER: ollama
+      MEM0_EMBEDDER_MODEL: nomic-embed-text
+      MEM0_EMBEDDER_BASE_URL: http://ollama:11434
+      MEM0_VECTOR_PROVIDER: pgvector
+      MEM0_VECTOR_HOST: postgres
+      MEM0_VECTOR_PORT: 5432
+      MEM0_VECTOR_DBNAME: rtpi_memory
+      MEM0_VECTOR_USER: rtpi
+      MEM0_VECTOR_PASSWORD: "${POSTGRES_PASSWORD}"
+      MEM0_GRAPH_PROVIDER: neo4j
+      MEM0_GRAPH_URL: bolt://neo4j:7687
+      MEM0_GRAPH_USER: neo4j
+      MEM0_GRAPH_PASSWORD: "${NEO4J_PASSWORD}"
+    depends_on:
+      postgres: { condition: service_healthy }
+      neo4j: { condition: service_healthy }
+      ollama: { condition: service_started }
+
+  # ============================================================
+  # NEW: ORCHESTRATOR (Phase A, Weeks 1-4)
+  # ============================================================
+
+  rtpi-orchestrator:
+    build:
+      context: ./services/orchestrator
+      dockerfile: Dockerfile
+    ports: ["8080:8080"]
+    networks: [rtpi-network]
+    volumes:
+      - skills_data:/app/skills:ro
+      - findings_data:/app/findings
+      - samples_data:/app/samples
+    environment:
+      MEM0_API_URL: http://mem0-api:8000
+      OLLAMA_BASE_URL: http://ollama:11434
+      CALDERA_URL: http://caldera-rtpi:8888
+      CALDERA_API_KEY: "${CALDERA_API_KEY}"
+      METASPLOIT_HOST: attackbox
+      REDIS_URL: redis://redis:6379
+      # Optional external model APIs
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+    depends_on:
+      - mem0-api
+      - redis
+      - ollama
+
+  # ============================================================
+  # NEW: TOOL CONTAINERS (Phase B, Weeks 5-8)
+  # ============================================================
+
+  nuclei:
+    image: projectdiscovery/nuclei:latest
+    networks: [rtpi-network]
+    volumes:
+      - findings_data:/findings
+    entrypoint: ["tail", "-f", "/dev/null"]  # Keep alive for exec
+
+  subfinder:
+    image: projectdiscovery/subfinder:latest
+    networks: [rtpi-network]
+    volumes:
+      - findings_data:/findings
+    entrypoint: ["tail", "-f", "/dev/null"]
+
+  bloodhound:
+    image: specterops/bloodhound:latest
+    networks: [rtpi-network]
+    ports: ["8443:8443"]
+    depends_on: [neo4j]
+
+  # ============================================================
+  # NEW: RE TOOL CONTAINERS (Phase C, Weeks 9-12)
+  # ============================================================
+
+  ghidra-headless:
+    build:
+      context: ./services/ghidra
+      dockerfile: Dockerfile
+    networks: [rtpi-network]
+    volumes:
+      - samples_data:/samples
+      - findings_data:/findings
+    entrypoint: ["tail", "-f", "/dev/null"]
+
+  frida-server:
+    build:
+      context: ./services/frida
+      dockerfile: Dockerfile
+    networks: [rtpi-network]
+    volumes:
+      - samples_data:/samples
+    cap_add: [SYS_PTRACE]
+
+  aflplusplus:
+    image: aflplusplus/aflplusplus:latest
+    networks: [rtpi-network]
+    volumes:
+      - samples_data:/samples
+      - findings_data:/findings
+    entrypoint: ["tail", "-f", "/dev/null"]
+
+  qemu-user:
+    build:
+      context: ./services/qemu
+      dockerfile: Dockerfile
+    networks: [rtpi-network]
+    volumes:
+      - samples_data:/samples
+    privileged: true

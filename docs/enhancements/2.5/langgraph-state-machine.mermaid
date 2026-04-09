@@ -1,0 +1,102 @@
+%% RTPI LangGraph Orchestrator State Machine
+%% Use: Reference for implementing StateGraph nodes and edges
+%% File: docs/diagrams/langgraph-state-machine.mermaid
+
+stateDiagram-v2
+    [*] --> OperatorInput
+    OperatorInput --> PlanningAgent: Parse scope & objectives
+    
+    PlanningAgent --> ReconAgent: mem0.search() for prior context
+    
+    state ReconFork <<fork>>
+    ReconAgent --> ReconFork: Parallel fan-out
+    
+    ReconFork --> WebDiscovery: Subfinder, Gobuster
+    ReconFork --> NetworkScan: Nmap, Masscan
+    ReconFork --> OSINTGather: theHarvester, social
+    ReconFork --> CloudEnum: ScoutSuite, Prowler
+    
+    state ReconJoin <<join>>
+    WebDiscovery --> ReconJoin
+    NetworkScan --> ReconJoin
+    OSINTGather --> ReconJoin
+    CloudEnum --> ReconJoin
+    
+    ReconJoin --> mem0Store1: mem0.add(findings, user_id=engagement)
+    mem0Store1 --> SkillDiscovery: Query relevant vuln skills
+    
+    state VulnFork <<fork>>
+    SkillDiscovery --> VulnFork: Parallel assessment
+    
+    VulnFork --> WebVulnAgent: PayloadsATT + API Security plugin
+    VulnFork --> InfraVulnAgent: Nuclei + network skills
+    VulnFork --> ADVulnAgent: pentest-ad plugin + BloodHound
+    VulnFork --> CloudVulnAgent: pentest-cloud plugin
+    VulnFork --> CodeReviewAgent: secure-code-review plugin
+    
+    state VulnJoin <<join>>
+    WebVulnAgent --> VulnJoin
+    InfraVulnAgent --> VulnJoin
+    ADVulnAgent --> VulnJoin
+    CloudVulnAgent --> VulnJoin
+    CodeReviewAgent --> VulnJoin
+    
+    VulnJoin --> mem0Store2: mem0.add(vulns, severity metadata)
+    mem0Store2 --> SeverityCheck
+    
+    state SeverityCheck <<choice>>
+    SeverityCheck --> HumanApproval: Critical/High vulns found
+    SeverityCheck --> ThreatModel: Only Medium/Low/Info
+    
+    ThreatModel --> ReportingAgent: threat-modeler plugin
+    
+    HumanApproval --> ExploitAgent: Operator approves
+    HumanApproval --> ReportingAgent: Operator declines
+    
+    ExploitAgent --> BinaryCheck
+    
+    state BinaryCheck <<choice>>
+    BinaryCheck --> RevEngAgent: Custom binary/protocol found
+    BinaryCheck --> PostExploitAgent: Standard exploitation
+    
+    RevEngAgent --> PostExploitAgent: RE findings inform exploit
+    
+    state PostExFork <<fork>>
+    PostExploitAgent --> PostExFork
+    
+    PostExFork --> PersistenceAgent: Caldera persistence
+    PostExFork --> PrivEscAgent: Escalation paths
+    PostExFork --> LateralMovAgent: Network pivoting
+    PostExFork --> DataCollectAgent: Targeted collection
+    
+    state PostExJoin <<join>>
+    PersistenceAgent --> PostExJoin
+    PrivEscAgent --> PostExJoin
+    LateralMovAgent --> PostExJoin
+    DataCollectAgent --> PostExJoin
+    
+    PostExJoin --> mem0Store3: mem0.add(post-ex, graph relationships)
+    mem0Store3 --> ReportingAgent
+    
+    ReportingAgent --> [*]: pentest-report plugin + mem0 graph
+    
+    note right of HumanApproval
+        CRITICAL: Never auto-exploit
+        Operator must confirm scope
+        and rules of engagement
+    end note
+    
+    note right of mem0Store2
+        Metadata filters:
+        severity, domain, technique,
+        confidence, status
+    end note
+    
+    note right of RevEngAgent
+        Plugins used:
+        reverse-binary
+        reverse-malware
+        reverse-protocol
+        reverse-firmware
+        reverse-obfuscation
+    end note

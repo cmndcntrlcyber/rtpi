@@ -1,0 +1,30 @@
+# RTPI mem0 Service Dependencies
+# Phase A Foundation — v2.5
+
+# Core
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+
+# mem0 SDK
+mem0ai==0.1.42
+
+# Vector store
+pgvector==0.3.6
+psycopg2-binary==2.9.10
+sqlalchemy==2.0.36
+
+# Graph store
+neo4j==5.27.0
+
+# Embeddings (Ollama provider)
+httpx==0.28.1
+ollama==0.4.7
+
+# Observability
+structlog==24.4.0
+prometheus-fastapi-instrumentator==7.0.2
+
+# Health checks
+tenacity==9.0.0

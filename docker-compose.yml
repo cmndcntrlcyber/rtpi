@@ -1103,6 +1103,240 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # ============================================================================
+  # v2.5 — mem0 Memory Infrastructure
+  # ============================================================================
+
+  # pgvector for mem0 vector store (separate from main postgres)
+  mem0-postgres:
+    image: pgvector/pgvector:pg16
+    container_name: rtpi-mem0-postgres
+    environment:
+      POSTGRES_DB: rtpi_memory
+      POSTGRES_USER: rtpi
+      POSTGRES_PASSWORD: "${MEM0_POSTGRES_PASSWORD:-rtpi_mem0}"
+    ports:
+      - "5435:5432"
+    volumes:
+      - mem0-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rtpi -d rtpi_memory"]
+      interval: 10s
+      retries: 5
+    networks:
+      - rtpi-network
+
+  # Neo4j for mem0 graph store
+  neo4j:
+    image: neo4j:5-community
+    container_name: rtpi-neo4j
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: "neo4j/${NEO4J_PASSWORD:-rtpi_neo4j}"
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+    healthcheck:
+      test: ["CMD", "neo4j", "status"]
+      interval: 10s
+      retries: 5
+    networks:
+      - rtpi-network
+
+  # mem0 API Service
+  mem0-api:
+    build:
+      context: ./services/mem0
+      dockerfile: Dockerfile
+    container_name: rtpi-mem0-api
+    ports:
+      - "8000:8000"
+    environment:
+      MEM0_LLM_PROVIDER: ollama
+      MEM0_LLM_MODEL: qwen2.5-coder:7b
+      MEM0_LLM_BASE_URL: http://ollama:11434
+      MEM0_EMBEDDER_PROVIDER: ollama
+      MEM0_EMBEDDER_MODEL: nomic-embed-text
+      MEM0_EMBEDDER_BASE_URL: http://ollama:11434
+      MEM0_VECTOR_HOST: mem0-postgres
+      MEM0_VECTOR_PORT: 5432
+      MEM0_VECTOR_DBNAME: rtpi_memory
+      MEM0_VECTOR_USER: rtpi
+      MEM0_VECTOR_PASSWORD: "${MEM0_POSTGRES_PASSWORD:-rtpi_mem0}"
+      MEM0_GRAPH_URL: bolt://neo4j:7687
+      MEM0_GRAPH_USER: neo4j
+      MEM0_GRAPH_PASSWORD: "${NEO4J_PASSWORD:-rtpi_neo4j}"
+    depends_on:
+      mem0-postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    networks:
+      - rtpi-network
+
+  # ============================================================================
+  # v2.5 — LangGraph Orchestrator
+  # ============================================================================
+
+  rtpi-orchestrator:
+    build:
+      context: ./services/orchestrator
+      dockerfile: Dockerfile
+    container_name: rtpi-orchestrator
+    ports:
+      - "8085:8080"
+    volumes:
+      - ./skills:/app/skills:ro
+      - tool-results:/app/findings
+      - shared-data:/app/samples
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Docker exec into tool containers
+    environment:
+      MEM0_API_URL: http://mem0-api:8000
+      OLLAMA_BASE_URL: http://ollama:11434
+      CALDERA_URL: http://caldera-rtpi:8888
+      CALDERA_API_KEY: "${CALDERA_API_KEY:-}"
+      METASPLOIT_HOST: attackbox
+      REDIS_URL: redis://redis:6379
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      # Container names for tool execution (agent-to-container mapping)
+      CONTAINER_RECON_PRIMARY: rtpi-fuzzing-agent
+      CONTAINER_RECON_FINGERPRINT: rtpi-framework-agent
+      CONTAINER_RECON_NETWORK: rtpi-tools
+      CONTAINER_WEB_VULN: rtpi-burp-agent
+      CONTAINER_AD_VULN: rtpi-azure-ad-agent
+      CONTAINER_CLOUD_VULN: rtpi-cloud-agent
+      CONTAINER_EXPLOIT_CORE: rtpi-tools
+      CONTAINER_EXPLOIT_BINARY: rtpi-maldev-agent
+      CONTAINER_EXPLOIT_PAYLOAD: rtpi-empire-agent
+      CONTAINER_POSTEX_PRIMARY: rtpi-empire-agent
+      CONTAINER_POSTEX_SLIVER: rtpi-sliver-agent
+      CONTAINER_POSTEX_C3: rtpi-c3-agent
+      CONTAINER_POSTEX_LOKI: rtpi-loki-agent
+      CONTAINER_POSTEX_ADAPTIX: rtpi-adaptix-agent
+      CONTAINER_RE_PRIMARY: rtpi-maldev-agent
+      CONTAINER_RE_GHIDRA: rtpi-ghidra
+      CONTAINER_RE_FUZZING: rtpi-aflplusplus
+      CONTAINER_CODEREVIEW: rtpi-framework-agent
+      CONTAINER_VULNRESEARCH: rtpi-research-agent
+      CONTAINER_LLM_SECURITY: rtpi-llm-sec-agent
+    depends_on:
+      - mem0-api
+      - redis
+      - ollama
+    networks:
+      - rtpi-network
+
+  # ============================================================================
+  # v2.5 — Cloud Security Tools (NEW — fills AWS/GCP gap)
+  # ============================================================================
+
+  offsec-cloud:
+    build:
+      context: ./docker/offsec-agents
+      dockerfile: Dockerfile.cloud-tools
+    image: rtpi/cloud-tools:latest
+    container_name: rtpi-cloud-agent
+    stdin_open: true
+    environment:
+      - AGENT_TYPE=cloud-security
+      - TOOLS_PATH=/opt/tools
+      - DOCS_PATH=/docs
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+    volumes:
+      - cloud-tools:/opt/tools
+      - shared-data:/shared
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+    init: true
+    healthcheck:
+      test: ["CMD-SHELL", "true"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  # ============================================================================
+  # v2.5 — LLM Security Tools (activated from unmapped Dockerfile)
+  # ============================================================================
+
+  offsec-llm-sec:
+    build:
+      context: ./docker/offsec-agents
+      dockerfile: Dockerfile.agent-tools-llm-sec-tools
+    image: rtpi/llm-sec-tools:latest
+    container_name: rtpi-llm-sec-agent
+    stdin_open: true
+    environment:
+      - AGENT_TYPE=llm-security
+      - TOOLS_PATH=/opt/tools
+    volumes:
+      - shared-data:/shared
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+    init: true
+    healthcheck:
+      test: ["CMD-SHELL", "true"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+  # ============================================================================
+  # v2.5 — Web Injection Tools (activated, merged into web vuln pipeline)
+  # ============================================================================
+
+  offsec-web-injection:
+    build:
+      context: ./docker/offsec-agents
+      dockerfile: Dockerfile.agent-tools-web-injection
+    image: rtpi/web-injection-tools:latest
+    container_name: rtpi-web-injection-agent
+    stdin_open: true
+    environment:
+      - AGENT_TYPE=web-injection
+      - TOOLS_PATH=/opt/tools
+    volumes:
+      - shared-data:/shared
+    networks:
+      - rtpi-network
+    restart: unless-stopped
+    init: true
+
+  # ============================================================================
+  # v2.5 — RE Tool Containers (Phase C)
+  # Ghidra & AFL++ are NOT redundant — maldev has radare2/angr/pwntools
+  # but lacks headless Ghidra decompilation and coverage-guided fuzzing
+  # ============================================================================
+
+  ghidra-headless:
+    build:
+      context: ./services/ghidra
+      dockerfile: Dockerfile
+    container_name: rtpi-ghidra
+    networks:
+      - rtpi-network
+    volumes:
+      - shared-data:/samples
+      - tool-results:/findings
+    entrypoint: ["tail", "-f", "/dev/null"]
+
+  aflplusplus:
+    image: aflplusplus/aflplusplus:latest
+    container_name: rtpi-aflplusplus
+    networks:
+      - rtpi-network
+    volumes:
+      - shared-data:/samples
+      - tool-results:/findings
+    entrypoint: ["tail", "-f", "/dev/null"]
+
 networks:
   rtpi-network:
     driver: bridge
@@ -1157,3 +1391,9 @@ volumes:
   # Kasm containerized workspace volumes
   kasm-vscode-data:
   kasm-kali-data:
+  # v2.5 — mem0 & orchestrator volumes
+  mem0-pg-data:
+  neo4j-data:
+  neo4j-logs:
+  skills-data:
+  cloud-tools:

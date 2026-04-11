@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { memoryService, SearchResult, AddMemoryParams } from "../memory-service";
 import { agentMessageBus, AgentMessage } from "../agent-message-bus";
 import { agentConfig } from "../../config/agent-config";
+import { ToolExecutionLoop, LoopConstraints, LoopResult, ApprovalCallback } from "./tool-execution-loop";
 
 // ============================================================================
 // Types
@@ -183,6 +184,73 @@ export abstract class BaseTaskAgent extends EventEmitter {
       agentId: this.agentId,
       agentName: this.agentName,
     });
+  }
+
+  // ============================================================================
+  // Autonomous Tool Execution
+  // ============================================================================
+
+  async runToolLoop(
+    objective: string,
+    operationId: string,
+    targetId: string,
+    constraints: Partial<LoopConstraints> = {},
+    approvalCallback?: ApprovalCallback,
+  ): Promise<LoopResult> {
+    if (!this.agentId) {
+      await this.initialize();
+    }
+
+    await this.updateStatus("running");
+
+    const loop = new ToolExecutionLoop(
+      this.agentId!,
+      this.agentName,
+      operationId,
+      targetId,
+      objective,
+      constraints,
+    );
+
+    if (approvalCallback) {
+      loop.setApprovalCallback(approvalCallback);
+    }
+
+    loop.on("tool_start", (data) => this.emit("tool_start", data));
+    loop.on("tool_complete", (data) => this.emit("tool_complete", data));
+    loop.on("iteration_complete", (data) => this.emit("iteration_complete", data));
+
+    try {
+      const result = await loop.run();
+
+      if (result.summary && operationId) {
+        await this.storeTaskMemory({
+          task: {
+            taskType: "tool_loop",
+            taskName: `${this.agentName}: ${objective.slice(0, 100)}`,
+            operationId,
+            targetId,
+            parameters: { objective, toolsUsed: result.toolsUsed },
+          },
+          result: {
+            success: result.status === "completed",
+            data: {
+              iterations: result.iterations.length,
+              toolsUsed: result.toolsUsed,
+              status: result.status,
+            },
+            error: result.error,
+          },
+          memoryType: "insight",
+        });
+      }
+
+      await this.updateStatus("idle");
+      return result;
+    } catch (error) {
+      await this.updateStatus("error");
+      throw error;
+    }
   }
 
   // ============================================================================

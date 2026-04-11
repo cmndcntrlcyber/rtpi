@@ -22,6 +22,7 @@ import containersRoutes from "./api/v1/containers";
 import healthChecksRoutes from "./api/v1/health-checks";
 import reportsRoutes from "./api/v1/reports";
 import toolsRoutes from "./api/v1/tools";
+import skillImportRoutes from "./api/v1/skill-import";
 import settingsRoutes from "./api/v1/settings";
 import agentLoopsRoutes from "./api/v1/agent-loops";
 import agentMcpRoutes from "./api/v1/agent-mcp";
@@ -68,6 +69,7 @@ import agentToolBuildsRoutes from "./api/v1/agent-tool-builds";
 import scanImportRoutes from "./api/v1/scan-import";
 import vulnerabilityInvestigationRoutes from "./api/v1/vulnerability-investigation";
 import bugBountyImportRoutes from "./api/v1/bug-bounty-import";
+import agentChatRoutes from "./api/v1/agent-chat";
 import c2WarroomRoutes from "./api/v1/c2-warroom";
 import sysreptorRoutes from "./api/v1/sysreptor";
 import "./services/rd-feedback-loop"; // Activate R&D tool testing feedback loop
@@ -125,6 +127,7 @@ app.use("/api/v1/containers", containersRoutes);
 app.use("/api/v1/health-checks", healthChecksRoutes);
 app.use("/api/v1/reports", reportsRoutes);
 app.use("/api/v1/tools", toolsRoutes);
+app.use("/api/v1/skills", skillImportRoutes);
 app.use("/api/v1/settings", settingsRoutes);
 app.use("/api/v1/agent-loops", agentLoopsRoutes);
 app.use("/api/v1/agents", agentMcpRoutes);
@@ -173,6 +176,7 @@ app.use("/api/v1/agent-tool-builds", agentToolBuildsRoutes);
 app.use("/api/v1/scan-import", scanImportRoutes);
 app.use("/api/v1/vulnerability-investigation", vulnerabilityInvestigationRoutes);
 app.use("/api/v1/bug-bounty-import", bugBountyImportRoutes);
+app.use("/api/v1/agent-chat", agentChatRoutes);
 
 // Root endpoint
 app.get("/api/v1", (_req, res) => {
@@ -257,10 +261,10 @@ async function initializeServer() {
     server.keepAliveTimeout = 65000; // Keep connections alive
     console.log(`⏱️  Server timeouts configured for long-running scans (2 hour limit)`);
 
-    // FIX BUG #4: Initialize WebSocket manager for real-time scan progress
-    const { initializeScanWebSocketManager } = await import("./services/scan-websocket-manager");
-    initializeScanWebSocketManager(server);
-    console.log(`🔌 WebSocket server ready for scan streaming`);
+    // Initialize unified Agent WebSocket manager (handles agent events + scan streaming + approval gates)
+    const { initializeAgentWebSocketManager } = await import("./services/agent-websocket-manager");
+    initializeAgentWebSocketManager(server);
+    console.log(`🔌 Agent WebSocket server ready (agent events + scan streaming + approval gates)`);
 
     // Start Operations Manager Scheduler
     opsManagerScheduler.start();

@@ -21,7 +21,7 @@ interface Agent {
 // Known R&D agent names (must match names seeded in migration 0019)
 const RD_AGENT_NAMES = new Set([
   "Burp Suite Orchestrator",
-  "Empire C2 Manager",
+  "C2 Warroom Manager",
   "Advanced Fuzzing Agent",
   "Framework Security Agent",
   "Maldev Agent",

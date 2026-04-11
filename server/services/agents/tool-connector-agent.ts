@@ -182,6 +182,10 @@ export class ToolConnectorAgent extends EventEmitter {
       'which objdump && objdump --version 2>&1 | head -1',
       'which strings && strings --version 2>&1 | head -1',
       'which nm && nm --version 2>&1 | head -1',
+      'which frida && frida --version 2>&1 | head -1',
+      'which frida-trace && frida-trace --version 2>&1 | head -1',
+      'which qemu-x86_64 && qemu-x86_64 --version 2>&1 | head -1',
+      'which qemu-aarch64 && qemu-aarch64 --version 2>&1 | head -1',
     ],
     'binary-analysis': [
       'which checksec && checksec --version 2>&1 | head -1',

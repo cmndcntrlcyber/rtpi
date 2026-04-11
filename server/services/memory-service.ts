@@ -169,19 +169,26 @@ export class MemoryService {
   async addMemory(params: AddMemoryParams) {
     const embedding = await this.generateEmbedding(params.memoryText);
 
+    const values: Record<string, unknown> = {
+      contextId: params.contextId,
+      memoryText: params.memoryText,
+      memoryType: params.memoryType as any,
+      embedding: embedding,
+      sourceAgentId: params.sourceAgentId || null,
+      sourceReportId: params.sourceReportId || null,
+      tags: params.tags || [],
+      metadata: params.metadata || {},
+      validUntil: params.validUntil || null,
+    };
+
+    // Write to pgvector column when available
+    if (embedding && mem0Config.search.vectorSearchEnabled) {
+      values.embeddingVec = embedding;
+    }
+
     const result = await db
       .insert(memoryEntries)
-      .values({
-        contextId: params.contextId,
-        memoryText: params.memoryText,
-        memoryType: params.memoryType as any,
-        embedding: embedding,
-        sourceAgentId: params.sourceAgentId || null,
-        sourceReportId: params.sourceReportId || null,
-        tags: params.tags || [],
-        metadata: params.metadata || {},
-        validUntil: params.validUntil || null,
-      })
+      .values(values as any)
       .returning();
 
     const memory = result[0];
@@ -227,10 +234,11 @@ export class MemoryService {
 
     if (updates.memoryText !== undefined) {
       updateValues.memoryText = updates.memoryText;
-      // Regenerate embedding when text changes
-      updateValues.embedding = await this.generateEmbedding(
-        updates.memoryText,
-      );
+      const embedding = await this.generateEmbedding(updates.memoryText);
+      updateValues.embedding = embedding;
+      if (embedding && mem0Config.search.vectorSearchEnabled) {
+        updateValues.embeddingVec = embedding;
+      }
     }
     if (updates.memoryType !== undefined)
       updateValues.memoryType = updates.memoryType;
@@ -351,12 +359,30 @@ export class MemoryService {
       .orderBy(desc(memoryEntries.relevanceScore))
       .limit(limit * 2); // Fetch extra for merging with vector results
 
-    // Vector search if embeddings are enabled
+    // Vector search via pgvector or JS fallback
     const queryEmbedding = await this.generateEmbedding(params.query);
     let vectorResults: typeof textResults = [];
 
-    if (queryEmbedding) {
-      // Fetch candidates with embeddings for similarity comparison
+    if (queryEmbedding && mem0Config.search.vectorSearchEnabled) {
+      // pgvector native similarity search — indexed, O(log n)
+      const embeddingStr = `[${queryEmbedding.join(",")}]`;
+      const vectorCondition = where
+        ? and(where, sql`${memoryEntries.embeddingVec} IS NOT NULL`)
+        : sql`${memoryEntries.embeddingVec} IS NOT NULL`;
+
+      vectorResults = await db
+        .select()
+        .from(memoryEntries)
+        .where(
+          and(
+            vectorCondition,
+            sql`1 - (${memoryEntries.embeddingVec} <=> ${embeddingStr}::vector) >= ${minSimilarity}`,
+          ),
+        )
+        .orderBy(sql`${memoryEntries.embeddingVec} <=> ${embeddingStr}::vector`)
+        .limit(limit);
+    } else if (queryEmbedding) {
+      // JS fallback when pgvector is not enabled
       const candidates = await db
         .select()
         .from(memoryEntries)
@@ -365,7 +391,7 @@ export class MemoryService {
             ? and(where, sql`${memoryEntries.embedding} IS NOT NULL`)
             : sql`${memoryEntries.embedding} IS NOT NULL`,
         )
-        .limit(limit * 10); // Broader pool for vector search
+        .limit(limit * 10);
 
       vectorResults = candidates
         .map((entry) => ({
@@ -385,14 +411,16 @@ export class MemoryService {
     const merged: SearchResult[] = [];
 
     // Vector results first (higher quality)
-    for (const entry of vectorResults) {
+    const vectorCount = vectorResults.length;
+    for (let i = 0; i < vectorCount; i++) {
+      const entry = vectorResults[i];
       if (!seenIds.has(entry.id)) {
         seenIds.add(entry.id);
         merged.push({
           id: entry.id,
           memoryText: entry.memoryText,
           memoryType: entry.memoryType,
-          score: (entry as any)._similarity || 0,
+          score: (entry as any)._similarity || (1.0 - i * 0.01),
           contextId: entry.contextId,
           metadata: entry.metadata,
           tags: entry.tags,

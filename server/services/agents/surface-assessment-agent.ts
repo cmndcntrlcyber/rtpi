@@ -24,6 +24,7 @@ import {
 import { BBOTExecutor } from '../bbot-executor';
 import { eq, and } from 'drizzle-orm';
 import { EventEmitter } from 'events';
+import { ToolExecutionLoop, LoopResult } from './tool-execution-loop';
 
 // ============================================================================
 // Types
@@ -584,6 +585,42 @@ export class SurfaceAssessmentAgent extends EventEmitter {
       activeScans: this.activeScans.size,
       maxConcurrentScans: this.config.maxConcurrentScans,
     };
+  }
+
+  /**
+   * Run autonomous reconnaissance loop.
+   * The AI agent selects and executes recon tools iteratively to map
+   * the target's attack surface.
+   */
+  async runAutonomousRecon(
+    operationId: string,
+    targetId: string,
+    objective?: string,
+  ): Promise<LoopResult> {
+    if (!this.agentId) {
+      await this.initialize();
+    }
+
+    const defaultObjective = `Perform comprehensive attack surface reconnaissance. Discover subdomains, enumerate services, identify technologies, and map exposed endpoints. Use tools like nmap, bbot, subfinder, httpx, and katana.`;
+
+    const loop = new ToolExecutionLoop(
+      this.agentId!,
+      "Surface Assessment Agent",
+      operationId,
+      targetId,
+      objective || defaultObjective,
+      {
+        maxIterations: 10,
+        requireApprovalForCategories: ["exploitation", "post-exploitation"],
+        autonomyLevel: 7,
+      },
+    );
+
+    loop.on("tool_start", (data) => this.emit("tool_start", data));
+    loop.on("tool_complete", (data) => this.emit("tool_complete", data));
+    loop.on("iteration_complete", (data) => this.emit("iteration_complete", data));
+
+    return loop.run();
   }
 }
 

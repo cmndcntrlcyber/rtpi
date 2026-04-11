@@ -19,8 +19,6 @@ class OrchestratorSettings(BaseSettings):
     anthropic_api_key: Optional[str] = None
 
     # Tool container endpoints
-    caldera_url: str = "http://caldera-rtpi:8888"
-    caldera_api_key: Optional[str] = None
     metasploit_host: str = "attackbox"
     metasploit_port: int = 55553
 

@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from "react";
-import { Bot, X, Minus, Send, Play, Power, PowerOff, HelpCircle, Loader2, MessageSquare, Zap } from "lucide-react";
+import { Bot, X, Minus, Send, Play, Power, PowerOff, HelpCircle, Loader2, MessageSquare, Zap, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useReporterAgents } from "@/hooks/useReporterAgents";
 import { useAssetQuestions } from "@/hooks/useAssetQuestions";
 import { useOperationsManagement } from "@/hooks/useOperationsManagement";
+import { useAgentChat } from "@/hooks/useAgentChat";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
 
 interface OpsManagerFloatingChatProps {
   operationId: string | null;
@@ -52,15 +52,22 @@ export default function OpsManagerFloatingChat({
     triggerNow,
   } = useOperationsManagement(operationId || "");
 
+  const {
+    messages: chatMessages,
+    loading: chatLoading,
+    sending: sendingMessage,
+    error: chatError,
+    sendMessage,
+    clearConversation,
+  } = useAgentChat("operations_manager", operationId);
+
   const [answeringId, setAnsweringId] = useState<string | null>(null);
   const [answerText, setAnswerText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [triggering, setTriggering] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [viewMode, setViewMode] = useState<"chat" | "features">("features");
-  const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "assistant"; content: string; timestamp: string }>>([]);
   const [chatInput, setChatInput] = useState("");
-  const [sendingMessage, setSendingMessage] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
@@ -129,47 +136,17 @@ export default function OpsManagerFloatingChat({
 
   const handleSendChatMessage = async () => {
     if (!chatInput.trim() || !operationId) return;
-
-    const userMessage = {
-      role: "user" as const,
-      content: chatInput.trim(),
-      timestamp: new Date().toISOString(),
-    };
-
-    setChatMessages((prev) => [...prev, userMessage]);
     const currentInput = chatInput.trim();
     setChatInput("");
-    setSendingMessage(true);
-
-    try {
-      // Send message with conversation history to Operations Manager agent
-      const response = await api.post("/operations-management/chat", {
-        operationId,
-        message: currentInput,
-        conversationHistory: chatMessages.map(m => ({
-          role: m.role,
-          content: m.content,
-        })),
-      });
-
-      const assistantMessage = {
-        role: "assistant" as const,
-        content: response.response || "I'm processing your request...",
-        timestamp: new Date().toISOString(),
-      };
-
-      setChatMessages((prev) => [...prev, assistantMessage]);
-      
-      // Show provider info in console for debugging
-      console.log(`[OpsManager Chat] Response from ${response.provider} (${response.model}), ${response.tokensUsed} tokens`);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to send message");
-      // Remove user message on error
-      setChatMessages((prev) => prev.slice(0, -1));
-    } finally {
-      setSendingMessage(false);
-    }
+    await sendMessage(currentInput);
   };
+
+  // Show chat errors as toasts
+  useEffect(() => {
+    if (chatError) {
+      toast.error(chatError);
+    }
+  }, [chatError]);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -267,7 +244,12 @@ export default function OpsManagerFloatingChat({
           <>
             {/* Chat Messages */}
             <div ref={chatScrollRef} className="max-h-[300px] overflow-y-auto p-3 space-y-3">
-              {chatMessages.length === 0 ? (
+              {chatLoading ? (
+                <div className="flex items-center justify-center py-6">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  <span className="ml-2 text-xs text-muted-foreground">Loading conversation...</span>
+                </div>
+              ) : chatMessages.length === 0 ? (
                 <div className="text-center py-6 text-muted-foreground">
                   <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
                   <p className="text-xs">Start a conversation with Operations Manager</p>
@@ -276,7 +258,7 @@ export default function OpsManagerFloatingChat({
               ) : (
                 chatMessages.map((msg, idx) => (
                   <div
-                    key={idx}
+                    key={msg.id || idx}
                     className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                   >
                     {msg.role === "assistant" && (
@@ -294,9 +276,16 @@ export default function OpsManagerFloatingChat({
                       }`}
                     >
                       <p className="whitespace-pre-wrap">{msg.content}</p>
-                      <p className="text-[9px] mt-1 opacity-70">
-                        {formatTimeAgo(msg.timestamp)}
-                      </p>
+                      <div className="flex items-center gap-1 mt-1">
+                        <span className="text-[9px] opacity-70">
+                          {formatTimeAgo(msg.createdAt)}
+                        </span>
+                        {msg.provider && (
+                          <span className="text-[8px] opacity-50">
+                            via {msg.provider}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))
@@ -327,14 +316,26 @@ export default function OpsManagerFloatingChat({
                   rows={1}
                   disabled={sendingMessage}
                 />
-                <Button
-                  size="sm"
-                  onClick={handleSendChatMessage}
-                  disabled={!chatInput.trim() || sendingMessage}
-                  className="self-end"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
+                <div className="flex flex-col gap-1 self-end">
+                  <Button
+                    size="sm"
+                    onClick={handleSendChatMessage}
+                    disabled={!chatInput.trim() || sendingMessage}
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                  {chatMessages.length > 0 && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={clearConversation}
+                      title="New conversation"
+                      className="h-6 w-6 p-0"
+                    >
+                      <Trash2 className="h-3 w-3 text-muted-foreground" />
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
           </>

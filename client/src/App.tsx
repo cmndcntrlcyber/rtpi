@@ -32,6 +32,7 @@ import OWASPLLMFramework from "@/pages/OWASPLLMFramework";
 import NISTAIFramework from "@/pages/NISTAIFramework";
 import CISFramework from "@/pages/CISFramework";
 import Empire from "@/pages/Empire";
+import EngagementDashboard from "@/pages/EngagementDashboard";
 import Implants from "@/pages/Implants";
 import Ollama from "@/pages/Ollama";
 import OffSecTeam from "@/pages/OffSecTeam";
@@ -64,6 +65,7 @@ function AuthenticatedApp() {
           <Route path="/owasp-llm" component={OWASPLLMFramework} />
           <Route path="/nist-ai" component={NISTAIFramework} />
           <Route path="/cis" component={CISFramework} />
+          <Route path="/engagement" component={EngagementDashboard} />
           <Route path="/agents" component={Agents} />
           <Route path="/empire" component={Empire} />
           <Route path="/implants" component={Implants} />

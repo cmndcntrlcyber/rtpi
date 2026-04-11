@@ -27,6 +27,7 @@ import {
   Brain,
   Microscope,
   Radio,
+  Gauge,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -53,6 +54,7 @@ const navGroups: NavGroup[] = [
     label: "",
     items: [
       { path: "/", label: "Dashboard", icon: LayoutDashboard },
+      { path: "/engagement", label: "Engagement", icon: Gauge },
     ],
   },
   {

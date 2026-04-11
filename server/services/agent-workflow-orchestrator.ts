@@ -28,6 +28,8 @@ import { mergeAgentAIConfig } from "../../shared/types/agent-config";
 import { getAnthropicClient } from "./ai-clients";
 import { executeTool as executeRegisteredTool } from "./tool-executor";
 import { multiContainerExecutor } from "./agents/multi-container-executor";
+import { ToolExecutionLoop, LoopConstraints } from "./agents/tool-execution-loop";
+import { agentWebSocketManager } from "./agent-websocket-manager";
 import { randomUUID } from "crypto";
 
 // ============================================================================
@@ -741,6 +743,9 @@ export class AgentWorkflowOrchestrator {
                 output = await this.executeGenericToolWorkflow(agent, taskInput, workflowId, task.id);
               }
               break;
+            case "autonomous_tools":
+              output = await this.executeAutonomousToolLoop(agent, taskInput, workflowId, task.id);
+              break;
             case "custom":
               if (currentWorkflow?.workflowType === "surface_assessment_report") {
                 if (agent.name === "Researcher Agent" || agent.name === "rtpi-research-agent") {
@@ -814,6 +819,21 @@ export class AgentWorkflowOrchestrator {
         .where(eq(agentWorkflows.id, workflowId));
 
       await this.log(workflowId, null, "info", "Workflow completed successfully");
+
+      // Trigger automated report generation if the workflow has an operation
+      const completedWorkflow = await db.select().from(agentWorkflows)
+        .where(eq(agentWorkflows.id, workflowId)).limit(1).then((r) => r[0]);
+      if (completedWorkflow?.operationId) {
+        try {
+          const { technicalWriterAgent } = await import("./agents/technical-writer-agent");
+          technicalWriterAgent.generateAutomatedReport(completedWorkflow.operationId).catch((err: any) => {
+            console.error(`[WorkflowOrchestrator] Auto-report generation failed:`, err);
+          });
+          await this.log(workflowId, null, "info", "Automated report generation triggered");
+        } catch (err) {
+          console.warn(`[WorkflowOrchestrator] Could not trigger auto-report:`, err);
+        }
+      }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       
@@ -1710,6 +1730,98 @@ Respond with your analysis.`;
       toolResults,
       summary: { totalTools: enabledToolIds.length, completed, failed, skipped, totalDuration, wallClockDuration },
       aiSummary,
+    };
+  }
+
+  /**
+   * Execute an autonomous tool loop where the AI agent reasons about
+   * which tools to use, executes them, and iterates until objective is met.
+   */
+  private async executeAutonomousToolLoop(
+    agent: any,
+    taskInput: any,
+    workflowId: string,
+    taskId: string,
+  ): Promise<any> {
+    const objective = taskInput.objective || taskInput.description || "Perform security assessment";
+    const targetId = taskInput.targetId;
+
+    const target = targetId
+      ? await db.select().from(targets).where(eq(targets.id, targetId)).limit(1).then((r) => r[0])
+      : null;
+
+    await this.log(workflowId, taskId, "info",
+      `Starting autonomous tool loop: "${objective}" (target: ${target?.value || "none"})`,
+    );
+
+    const aiConfig = this.getAgentAIConfig(agent);
+
+    const constraints: Partial<LoopConstraints> = {
+      maxIterations: taskInput.maxIterations || 10,
+      maxDurationMs: taskInput.maxDurationMs || 30 * 60 * 1000,
+      autonomyLevel: taskInput.autonomyLevel || 5,
+      aiProvider: aiConfig.provider as any || "anthropic",
+      aiModel: aiConfig.model,
+    };
+
+    const loop = new ToolExecutionLoop(
+      agent.id,
+      agent.name,
+      workflowId,
+      targetId || workflowId,
+      objective,
+      constraints,
+    );
+
+    if (agentWebSocketManager) {
+      loop.setApprovalCallback((request) => agentWebSocketManager!.requestApproval(request));
+    }
+
+    loop.on("tool_start", async (data: any) => {
+      await this.log(workflowId, taskId, "info",
+        `[Iter ${data.iteration}] Executing ${data.tool} ${(data.args || []).join(" ")}`,
+      );
+      agentWebSocketManager?.emitToolExecution({
+        agentId: agent.id,
+        agentName: agent.name,
+        operationId: workflowId,
+        tool: data.tool,
+        args: data.args || [],
+        iteration: data.iteration,
+      });
+    });
+
+    loop.on("tool_complete", async (data: any) => {
+      await this.log(workflowId, taskId, data.exitCode === 0 ? "info" : "warn",
+        `[Iter ${data.iteration}] ${data.tool} exit=${data.exitCode} (${data.outputLength} bytes)`,
+      );
+      agentWebSocketManager?.emitToolExecution({
+        agentId: agent.id,
+        agentName: agent.name,
+        operationId: workflowId,
+        tool: data.tool,
+        args: [],
+        iteration: data.iteration,
+        exitCode: data.exitCode,
+        outputLength: data.outputLength,
+      });
+    });
+
+    const result = await loop.run();
+
+    await this.log(workflowId, taskId, "info",
+      `Autonomous loop ${result.status}: ${result.iterations.length} iterations, tools: ${result.toolsUsed.join(", ")}`,
+      { status: result.status, toolsUsed: result.toolsUsed, totalDurationMs: result.totalDurationMs },
+    );
+
+    return {
+      type: "autonomous_tool_loop",
+      agentId: agent.id,
+      agentName: agent.name,
+      targetId: target?.id,
+      targetValue: target?.value,
+      objective,
+      loopResult: result,
     };
   }
 

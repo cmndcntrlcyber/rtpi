@@ -82,6 +82,9 @@ export class MaldevAgent extends BaseTaskAgent {
         case 'nuclei_template_crafting':
           result = await this.handleNucleiTemplateCrafting(task);
           break;
+        case 'autonomous_re':
+          result = await this.handleAutonomousRE(task);
+          break;
         default:
           result = { success: false, error: `Unknown task type: ${task.taskType}` };
       }
@@ -680,6 +683,45 @@ ${pkg.version ? `          - "${pkg.version}"` : ''}
           EnableStageEncoding: 'true',
         },
       },
+    };
+  }
+
+  /**
+   * Autonomous reverse engineering using the tool execution loop.
+   * The AI selects RE tools (radare2, Ghidra, Frida, QEMU) iteratively
+   * to analyze a binary and extract actionable intelligence.
+   */
+  private async handleAutonomousRE(task: TaskDefinition): Promise<TaskResult> {
+    if (!task.operationId) {
+      return { success: false, error: 'operationId required for autonomous RE' };
+    }
+
+    const binaryPath = task.parameters.binaryPath;
+    const objective = task.parameters.objective ||
+      `Perform reverse engineering analysis on the target binary. Use radare2 for static analysis, Ghidra for decompilation, Frida for dynamic tracing, and QEMU for cross-architecture emulation as needed. Identify functions, strings, imports, vulnerabilities, and potential exploit vectors.`;
+
+    const result = await this.runToolLoop(
+      binaryPath ? `${objective}\nTarget binary: ${binaryPath}` : objective,
+      task.operationId,
+      task.targetId || task.operationId,
+      {
+        maxIterations: task.parameters.maxIterations || 10,
+        requireApprovalForCategories: ['exploitation', 'c2'],
+        autonomyLevel: task.parameters.autonomyLevel || 6,
+      },
+    );
+
+    return {
+      success: result.status === 'completed',
+      data: {
+        loopStatus: result.status,
+        iterations: result.iterations.length,
+        toolsUsed: result.toolsUsed,
+        summary: result.summary,
+        totalDurationMs: result.totalDurationMs,
+      },
+      memoryIds: result.memoryIds,
+      error: result.error,
     };
   }
 }

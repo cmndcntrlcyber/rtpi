@@ -1149,6 +1149,179 @@ sys.stdout.write(asm_code.hex())
     console.warn('[Maldev Tools] Advanced polymorphic tools not available');
     return code;
   }
+
+  // ==========================================================================
+  // Frida — Dynamic Instrumentation
+  // ==========================================================================
+
+  /**
+   * Trace function calls in a running process or binary using Frida.
+   * Returns intercepted calls with arguments and return values.
+   */
+  async traceWithFrida(
+    binaryPath: string,
+    functions: string[],
+    options: { timeout?: number; args?: string[] } = {},
+  ): Promise<{
+    available: boolean;
+    traces: Array<{ function: string; args: string[]; returnValue?: string; timestamp: number }>;
+    errors: string[];
+  }> {
+    console.log(`[Maldev Tools] Tracing with Frida: ${binaryPath}, functions: ${functions.join(', ')}`);
+
+    // Check Frida availability
+    const check = await this.dockerExecutor.exec(
+      this.containerName,
+      ['which', 'frida'],
+      { timeout: 5000, user: this.containerUser },
+    );
+
+    if (check.exitCode !== 0) {
+      return { available: false, traces: [], errors: ['Frida not installed in container'] };
+    }
+
+    // Build Frida script to hook specified functions
+    const hookScript = functions.map((fn) =>
+      `Interceptor.attach(Module.findExportByName(null, "${fn}"), {
+  onEnter(args) { send({type:"call", fn:"${fn}", args: [args[0]?.toString(), args[1]?.toString()], ts: Date.now()}); },
+  onLeave(retval) { send({type:"ret", fn:"${fn}", val: retval?.toString(), ts: Date.now()}); }
+});`
+    ).join('\n');
+
+    const scriptPath = `/tmp/frida_hook_${Date.now()}.js`;
+    await this.dockerExecutor.exec(
+      this.containerName,
+      ['bash', '-c', `cat > ${scriptPath} << 'FRIDAEOF'\n${hookScript}\nFRIDAEOF`],
+      { timeout: 5000, user: this.containerUser },
+    );
+
+    // Run with frida-trace or spawn+inject
+    const timeout = options.timeout || 30000;
+    const binaryArgs = options.args?.join(' ') || '';
+    const result = await this.dockerExecutor.exec(
+      this.containerName,
+      ['bash', '-c', `timeout ${Math.floor(timeout / 1000)} frida -f ${binaryPath} ${binaryArgs} -l ${scriptPath} --no-pause 2>&1 || true`],
+      { timeout: timeout + 5000, user: this.containerUser },
+    );
+
+    // Parse Frida output
+    const traces: Array<{ function: string; args: string[]; returnValue?: string; timestamp: number }> = [];
+    const errors: string[] = [];
+
+    for (const line of (result.stdout || '').split('\n')) {
+      try {
+        if (line.includes('"type":"call"') || line.includes('"type":"ret"')) {
+          const data = JSON.parse(line.match(/\{.*\}/)?.[0] || '{}');
+          if (data.type === 'call') {
+            traces.push({ function: data.fn, args: data.args || [], timestamp: data.ts });
+          } else if (data.type === 'ret') {
+            const last = traces.findLast((t) => t.function === data.fn);
+            if (last) last.returnValue = data.val;
+          }
+        }
+      } catch {
+        // Non-JSON output line
+      }
+    }
+
+    if (result.stderr) {
+      errors.push(result.stderr.slice(0, 500));
+    }
+
+    // Cleanup
+    await this.dockerExecutor.exec(
+      this.containerName,
+      ['rm', '-f', scriptPath],
+      { timeout: 3000, user: this.containerUser },
+    );
+
+    return { available: true, traces, errors };
+  }
+
+  // ==========================================================================
+  // QEMU — Cross-architecture Binary Emulation
+  // ==========================================================================
+
+  /**
+   * Emulate a binary under QEMU user-mode for cross-architecture analysis.
+   * Supports x86_64, ARM, AArch64, MIPS, etc.
+   */
+  async emulateWithQemu(
+    binaryPath: string,
+    options: {
+      arch?: string;
+      args?: string[];
+      strace?: boolean;
+      timeout?: number;
+    } = {},
+  ): Promise<{
+    available: boolean;
+    stdout: string;
+    stderr: string;
+    exitCode: number;
+    arch: string;
+    syscalls?: string[];
+  }> {
+    // Detect architecture from ELF header
+    const fileResult = await this.dockerExecutor.exec(
+      this.containerName,
+      ['file', binaryPath],
+      { timeout: 5000, user: this.containerUser },
+    );
+
+    const fileOutput = fileResult.stdout || '';
+    let arch = options.arch || 'x86_64';
+
+    if (fileOutput.includes('ARM aarch64')) arch = 'aarch64';
+    else if (fileOutput.includes('ARM,')) arch = 'arm';
+    else if (fileOutput.includes('MIPS')) arch = 'mips';
+    else if (fileOutput.includes('x86-64')) arch = 'x86_64';
+    else if (fileOutput.includes('Intel 80386')) arch = 'i386';
+
+    const qemuBin = `qemu-${arch}`;
+
+    // Check QEMU availability
+    const check = await this.dockerExecutor.exec(
+      this.containerName,
+      ['which', qemuBin],
+      { timeout: 5000, user: this.containerUser },
+    );
+
+    if (check.exitCode !== 0) {
+      return { available: false, stdout: '', stderr: `${qemuBin} not installed`, exitCode: -1, arch };
+    }
+
+    const timeout = options.timeout || 30000;
+    const binaryArgs = options.args || [];
+    const cmd = options.strace
+      ? [qemuBin, '-strace', binaryPath, ...binaryArgs]
+      : [qemuBin, binaryPath, ...binaryArgs];
+
+    const result = await this.dockerExecutor.exec(
+      this.containerName,
+      cmd,
+      { timeout, user: this.containerUser },
+    );
+
+    // Parse strace output for syscalls if enabled
+    let syscalls: string[] | undefined;
+    if (options.strace && result.stderr) {
+      syscalls = result.stderr
+        .split('\n')
+        .filter((line) => /^\d+\s+\w+/.test(line))
+        .map((line) => line.trim())
+        .slice(0, 200);
+    }
+
+    return {
+      available: true,
+      stdout: result.stdout || '',
+      stderr: result.stderr || '',
+      exitCode: result.exitCode,
+      arch,
+      syscalls,
+    };
+  }
 }
 
 // Singleton export

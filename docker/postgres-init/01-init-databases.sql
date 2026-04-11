@@ -13,5 +13,6 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 \c rtpi_main;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "vector";
 
 \echo 'Database initialization completed successfully';

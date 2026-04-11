@@ -24,13 +24,6 @@ services:
   # EXISTING RTPI CONTAINERS (preserve current configuration)
   # ============================================================
 
-  caldera-rtpi:
-    image: cmndcntrlcyber/caldera-rtpi:latest
-    ports: ["8888:8888"]
-    networks: [rtpi-network]
-    volumes:
-      - findings_data:/opt/caldera/findings
-
   evilgophish-rtpi:
     image: cmndcntrlcyber/evilgophish-rtpi:latest
     ports: ["443:443", "80:80"]
@@ -157,8 +150,6 @@ services:
     environment:
       MEM0_API_URL: http://mem0-api:8000
       OLLAMA_BASE_URL: http://ollama:11434
-      CALDERA_URL: http://caldera-rtpi:8888
-      CALDERA_API_KEY: "${CALDERA_API_KEY}"
       METASPLOIT_HOST: attackbox
       REDIS_URL: redis://redis:6379
       # Optional external model APIs

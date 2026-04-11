@@ -1,7 +1,7 @@
 services:
-  # PostgreSQL Database
+  # PostgreSQL Database (pgvector for memory embeddings)
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16-alpine
     container_name: rtpi-postgres
     environment:
       POSTGRES_USER: rtpi
@@ -1198,8 +1198,6 @@ services:
     environment:
       MEM0_API_URL: http://mem0-api:8000
       OLLAMA_BASE_URL: http://ollama:11434
-      CALDERA_URL: http://caldera-rtpi:8888
-      CALDERA_API_KEY: "${CALDERA_API_KEY:-}"
       METASPLOIT_HOST: attackbox
       REDIS_URL: redis://redis:6379
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"

@@ -21,6 +21,7 @@ export interface MemorySearchConfig {
   maxLimit: number;
   minSimilarityThreshold: number;
   textSearchFallback: boolean;
+  vectorSearchEnabled: boolean;
 }
 
 export interface MemoryRetentionConfig {
@@ -66,6 +67,7 @@ export const mem0Config: Mem0Config = {
       process.env.MEMORY_SEARCH_MIN_SIMILARITY || "0.7",
     ),
     textSearchFallback: process.env.MEMORY_SEARCH_TEXT_FALLBACK !== "false",
+    vectorSearchEnabled: process.env.MEMORY_VECTOR_SEARCH_ENABLED !== "false",
   },
   retention: {
     defaultTtlDays: process.env.MEMORY_DEFAULT_TTL_DAYS

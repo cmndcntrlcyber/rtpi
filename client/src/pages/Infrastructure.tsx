@@ -120,7 +120,7 @@ export default function Infrastructure() {
           <TabsTrigger value="containers">Containers</TabsTrigger>
           <TabsTrigger value="devices">Devices</TabsTrigger>
           <TabsTrigger value="health">Health Checks</TabsTrigger>
-          <TabsTrigger value="empire">Empire C2</TabsTrigger>
+          <TabsTrigger value="empire">C2 Warroom</TabsTrigger>
           <TabsTrigger value="workspaces">Workspaces</TabsTrigger>
         </TabsList>
 

@@ -230,6 +230,33 @@ Format the output as a professional penetration test report with:
       return { url: null, findingsExported: 0 };
     }
   }
+
+  /**
+   * Automated report generation pipeline.
+   * Queries all operation memories, enriches with vulnerability data,
+   * generates a comprehensive report, and submits to SysReptor.
+   * Can be triggered automatically at the end of a workflow.
+   */
+  async generateAutomatedReport(
+    operationId: string,
+    options: {
+      template?: string;
+      includeToolOutput?: boolean;
+      submitToSysReptor?: boolean;
+    } = {},
+  ): Promise<TaskResult> {
+    return this.executeTask({
+      taskType: "report_generation",
+      taskName: `Automated Report: Operation ${operationId}`,
+      operationId,
+      parameters: {
+        template: options.template || "pentest",
+        submitToSysReptor: options.submitToSysReptor ?? true,
+        includeToolOutput: options.includeToolOutput ?? true,
+        automated: true,
+      },
+    });
+  }
 }
 
 export const technicalWriterAgent = new TechnicalWriterAgent();

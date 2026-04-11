@@ -88,6 +88,16 @@ WORKDIR /opt/tools
 RUN git clone --depth 1 https://github.com/LaurieWired/GhidraMCP.git 2>/dev/null && \
     echo "GhidraMCP: Ghidra integration for MCP servers" > GhidraMCP/TOOL_INFO.txt || true
 
+# Frida - Dynamic instrumentation toolkit for RE and exploit development
+RUN pip3 install frida-tools 2>/dev/null && \
+    echo "Frida: Dynamic instrumentation toolkit" > /opt/tools/frida_info.txt || true
+
+# QEMU User-mode - CPU emulation for cross-architecture binary analysis
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends qemu-user qemu-user-static 2>/dev/null && \
+    rm -rf /var/lib/apt/lists/* && \
+    echo "QEMU: Cross-architecture binary emulation" > /opt/tools/qemu_info.txt || true
+
 # Binary Analysis MCPs
 RUN git clone --depth 1 https://github.com/ant4g0nist/BinaryAnalysisMCPs.git 2>/dev/null && \
     echo "BinaryAnalysisMCPs: Multiple binary analysis MCP integrations" > BinaryAnalysisMCPs/TOOL_INFO.txt || true

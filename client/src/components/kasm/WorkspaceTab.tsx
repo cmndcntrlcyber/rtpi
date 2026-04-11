@@ -170,7 +170,7 @@ export default function WorkspaceTab() {
             <SelectItem value="vscode">VS Code</SelectItem>
             <SelectItem value="kali">Kali Linux</SelectItem>
             <SelectItem value="firefox">Firefox</SelectItem>
-            <SelectItem value="empire">Empire C2</SelectItem>
+            <SelectItem value="empire">C2 Warroom</SelectItem>
             <SelectItem value="burp">Burp Suite</SelectItem>
           </SelectContent>
         </Select>

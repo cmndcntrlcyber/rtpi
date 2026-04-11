@@ -40,7 +40,7 @@ const WORKSPACE_LABELS = {
   vscode: 'VS Code IDE',
   kali: 'Kali Linux',
   firefox: 'Firefox Browser',
-  empire: 'Empire C2 Client',
+  empire: 'C2 Warroom Client',
   burp: 'Burp Suite',
 };
 

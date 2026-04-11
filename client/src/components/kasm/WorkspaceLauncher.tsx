@@ -49,7 +49,7 @@ const WORKSPACE_TYPES = [
   },
   {
     value: 'empire',
-    label: 'Empire C2 Client',
+    label: 'C2 Warroom Client',
     description: 'PowerShell Empire command and control',
     icon: Terminal,
     defaultCpu: '1',

@@ -26,6 +26,7 @@ import { NucleiExecutor } from '../nuclei-executor';
 import { DockerExecutor } from '../docker-executor';
 import { eq, and, inArray, like, or } from 'drizzle-orm';
 import { EventEmitter } from 'events';
+import { ToolExecutionLoop, LoopResult } from './tool-execution-loop';
 
 // ============================================================================
 // Types
@@ -908,6 +909,41 @@ ${r.customTemplateGenerated ? `- **Custom Template:** ${r.customTemplateGenerate
       activeScans: this.activeScans.size,
       maxConcurrentScans: this.config.maxConcurrentScans,
     };
+  }
+
+  /**
+   * Run autonomous web exploitation loop.
+   * The AI agent selects and executes web security tools iteratively.
+   */
+  async runAutonomousExploitation(
+    operationId: string,
+    targetId: string,
+    objective?: string,
+  ): Promise<LoopResult> {
+    if (!this.agentId) {
+      await this.initialize();
+    }
+
+    const defaultObjective = `Perform web application security testing. Use reconnaissance tools to discover endpoints, then run vulnerability scanners (nuclei, nikto, wpscan) to identify web vulnerabilities. Focus on OWASP Top 10 issues.`;
+
+    const loop = new ToolExecutionLoop(
+      this.agentId!,
+      "Web Hacker Agent",
+      operationId,
+      targetId,
+      objective || defaultObjective,
+      {
+        maxIterations: 12,
+        requireApprovalForCategories: ["exploitation", "post-exploitation", "c2"],
+        autonomyLevel: 5,
+      },
+    );
+
+    loop.on("tool_start", (data) => this.emit("tool_start", data));
+    loop.on("tool_complete", (data) => this.emit("tool_complete", data));
+    loop.on("iteration_complete", (data) => this.emit("iteration_complete", data));
+
+    return loop.run();
   }
 }
 

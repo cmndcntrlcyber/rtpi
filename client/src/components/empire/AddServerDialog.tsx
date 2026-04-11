@@ -81,9 +81,9 @@ export default function AddServerDialog({ onServerAdded }: AddServerDialogProps)
       <DialogContent className="sm:max-w-[500px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Add Empire C2 Server</DialogTitle>
+            <DialogTitle>Add C2 Warroom Server</DialogTitle>
             <DialogDescription>
-              Configure connection to an Empire C2 server instance
+              Configure connection to a C2 Warroom server instance
             </DialogDescription>
           </DialogHeader>
 

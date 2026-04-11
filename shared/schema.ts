@@ -9,7 +9,24 @@ import {
   pgEnum,
   real,
   uniqueIndex,
+  customType,
 } from "drizzle-orm/pg-core";
+
+// Custom pgvector column type for embedding storage
+const vector = customType<{ data: number[]; dpiData: string }>({
+  dataType() {
+    return "vector(1536)";
+  },
+  toDriver(value: number[]): string {
+    return `[${value.join(",")}]`;
+  },
+  fromDriver(value: unknown): number[] {
+    if (typeof value === "string") {
+      return JSON.parse(value.replace("(", "[").replace(")", "]"));
+    }
+    return value as number[];
+  },
+});
 
 // ============================================================================
 // ENUMERATIONS
@@ -2532,8 +2549,10 @@ export const memoryEntries = pgTable("memory_entries", {
   memoryText: text("memory_text").notNull(),
   memoryType: memoryTypeEnum("memory_type").notNull(),
 
-  // Embeddings stored as JSON array (future: migrate to pgvector vector(1536))
+  // Legacy: JSON-encoded embedding array (kept for backward compatibility during migration)
   embedding: json("embedding"),
+  // pgvector native column for indexed similarity search
+  embeddingVec: vector("embedding_vec"),
 
   // Source tracking
   sourceAgentId: uuid("source_agent_id").references(() => agents.id, { onDelete: "set null" }),
@@ -3036,3 +3055,66 @@ export const burpSetup = pgTable("burp_setup", {
 export const investigationStatusEnum = pgEnum("investigation_status", [
   "pending", "investigating", "validated", "false_positive", "inconclusive",
 ]);
+
+// ============================================================================
+// V2.8.1 AGENT CHAT SYSTEM
+// Enhancement: LLM Chatbot with persistent conversations per agent
+// ============================================================================
+
+export const conversationStatusEnum = pgEnum("conversation_status", [
+  "active", "archived", "deleted",
+]);
+
+export const chatMessageRoleEnum = pgEnum("chat_message_role", [
+  "user", "assistant", "system",
+]);
+
+// Agent conversations - tracks conversation sessions with agents
+export const agentConversations = pgTable("agent_conversations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  agentId: uuid("agent_id").references(() => agents.id, { onDelete: "set null" }),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+
+  // Conversation metadata
+  title: text("title"), // Auto-generated or user-set title
+  agentRole: text("agent_role"), // e.g., "operations_manager", "burp_orchestrator"
+  status: conversationStatusEnum("status").notNull().default("active"),
+
+  // Summary for quick loading
+  lastMessagePreview: text("last_message_preview"),
+  messageCount: integer("message_count").notNull().default(0),
+  totalTokensUsed: integer("total_tokens_used").notNull().default(0),
+
+  // AI provider info
+  lastProvider: text("last_provider"),
+  lastModel: text("last_model"),
+
+  // Timing
+  lastMessageAt: timestamp("last_message_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Agent conversation messages - individual messages within conversations
+export const agentConversationMessages = pgTable("agent_conversation_messages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  conversationId: uuid("conversation_id").notNull().references(() => agentConversations.id, { onDelete: "cascade" }),
+
+  // Message content
+  role: chatMessageRoleEnum("role").notNull(),
+  content: text("content").notNull(),
+
+  // AI metadata (for assistant messages)
+  provider: text("provider"),
+  model: text("model"),
+  tokensUsed: integer("tokens_used"),
+  promptTokens: integer("prompt_tokens"),
+  completionTokens: integer("completion_tokens"),
+  durationMs: integer("duration_ms"),
+
+  // Context that was used for this response
+  contextSummary: json("context_summary"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});

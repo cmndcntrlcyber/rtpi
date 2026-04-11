@@ -107,7 +107,7 @@ const AGENT_CONFIGS: Omit<AgentConfig, "dbId">[] = [
   },
   {
     id: "empire-c2",
-    name: "Empire C2 Agent",
+    name: "C2 Warroom Agent",
     type: "empire-tools",
     dockerImage: "rtpi/empire-tools:latest",
     description: "Command & Control, payload generation, and post-exploitation",
@@ -170,7 +170,7 @@ const AGENT_CONFIGS: Omit<AgentConfig, "dbId">[] = [
 // Map DB agent names → config keys
 const AGENT_NAME_TO_KEY: Record<string, string> = {
   "Burp Suite Orchestrator": "burp-suite",
-  "Empire C2 Manager": "empire-c2",
+  "C2 Warroom Manager": "empire-c2",
   "Advanced Fuzzing Agent": "fuzzing",
   "Framework Security Agent": "framework-security",
   "Maldev Agent": "maldev",

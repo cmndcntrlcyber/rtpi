@@ -10,6 +10,7 @@ import {
   real,
   uniqueIndex,
   customType,
+  foreignKey,
 } from "drizzle-orm/pg-core";
 
 // Custom pgvector column type for embedding storage
@@ -655,7 +656,7 @@ export const surfaceAssessments = pgTable("surface_assessments", {
 
 export const discoveredAssets = pgTable("discovered_assets", {
   id: uuid("id").primaryKey().defaultRandom(),
-  surfaceAssessmentId: uuid("surface_assessment_id").references(() => surfaceAssessments.id, { onDelete: "cascade" }),
+  surfaceAssessmentId: uuid("surface_assessment_id"),
   operationId: uuid("operation_id").references(() => operations.id, { onDelete: "cascade" }),
   type: assetTypeEnum("type").notNull(),
   value: text("value").notNull(), // IP, domain, URL
@@ -675,6 +676,7 @@ export const discoveredAssets = pgTable("discovered_assets", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
   uniqueIndex("discovered_assets_op_type_value_idx").on(table.operationId, table.type, table.value),
+  foreignKey({ columns: [table.surfaceAssessmentId], foreignColumns: [surfaceAssessments.id], name: "discovered_assets_surface_asmt_id_fk" }).onDelete("cascade"),
 ]);
 
 export const discoveredServices = pgTable("discovered_services", {
@@ -2143,12 +2145,14 @@ export const agentActivityReports = pgTable("agent_activity_reports", {
   // Phase 2: Memory integration
   memoryIds: json("memory_ids").default([]),
   synthesisStatus: text("synthesis_status").default("pending"),
-  synthesizedByManagerTaskId: uuid("synthesized_by_manager_task_id").references(() => operationsManagerTasks.id, { onDelete: "set null" }),
+  synthesizedByManagerTaskId: uuid("synthesized_by_manager_task_id"),
 
   // Metadata
   metadata: json("metadata").default({}),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  foreignKey({ columns: [table.synthesizedByManagerTaskId], foreignColumns: [operationsManagerTasks.id], name: "activity_reports_mgr_task_id_fk" }).onDelete("set null"),
+]);
 
 // Operations Manager tasks - Manager coordination activities
 export const operationsManagerTasks = pgTable("operations_manager_tasks", {
@@ -2871,7 +2875,7 @@ export const owaspLlmVulnerabilities = pgTable("owasp_llm_vulnerabilities", {
 
 export const owaspLlmAttackVectors = pgTable("owasp_llm_attack_vectors", {
   id: uuid("id").primaryKey().defaultRandom(),
-  vulnerabilityId: uuid("vulnerability_id").notNull().references(() => owaspLlmVulnerabilities.id, { onDelete: "cascade" }),
+  vulnerabilityId: uuid("vulnerability_id").notNull(),
   name: text("name").notNull(),
   description: text("description"),
   attackComplexity: text("attack_complexity"),
@@ -2879,11 +2883,13 @@ export const owaspLlmAttackVectors = pgTable("owasp_llm_attack_vectors", {
   payloadExamples: text("payload_examples").array(),
   metadata: json("metadata"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  foreignKey({ columns: [table.vulnerabilityId], foreignColumns: [owaspLlmVulnerabilities.id], name: "owasp_llm_attack_vec_vuln_id_fk" }).onDelete("cascade"),
+]);
 
 export const owaspLlmMitigations = pgTable("owasp_llm_mitigations", {
   id: uuid("id").primaryKey().defaultRandom(),
-  vulnerabilityId: uuid("vulnerability_id").notNull().references(() => owaspLlmVulnerabilities.id, { onDelete: "cascade" }),
+  vulnerabilityId: uuid("vulnerability_id").notNull(),
   name: text("name").notNull(),
   description: text("description"),
   implementationGuidance: text("implementation_guidance"),
@@ -2891,7 +2897,9 @@ export const owaspLlmMitigations = pgTable("owasp_llm_mitigations", {
   cost: text("cost"),
   metadata: json("metadata"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  foreignKey({ columns: [table.vulnerabilityId], foreignColumns: [owaspLlmVulnerabilities.id], name: "owasp_llm_mitigations_vuln_id_fk" }).onDelete("cascade"),
+]);
 
 // NIST AI RMF (AI Risk Management Framework)
 
@@ -2995,12 +3003,14 @@ export const operationFrameworkCoverage = pgTable("operation_framework_coverage"
   testResults: json("test_results"),
   notes: text("notes"),
 
-  linkedVulnerabilityId: uuid("linked_vulnerability_id").references(() => vulnerabilities.id, { onDelete: "set null" }),
+  linkedVulnerabilityId: uuid("linked_vulnerability_id"),
   linkedTargetId: uuid("linked_target_id").references(() => targets.id, { onDelete: "set null" }),
 
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  foreignKey({ columns: [table.linkedVulnerabilityId], foreignColumns: [vulnerabilities.id], name: "op_framework_cov_vuln_id_fk" }).onDelete("set null"),
+]);
 
 // ============================================================================
 // BurpSuite Activation System (v2.3.6.0)
@@ -3099,7 +3109,7 @@ export const agentConversations = pgTable("agent_conversations", {
 // Agent conversation messages - individual messages within conversations
 export const agentConversationMessages = pgTable("agent_conversation_messages", {
   id: uuid("id").primaryKey().defaultRandom(),
-  conversationId: uuid("conversation_id").notNull().references(() => agentConversations.id, { onDelete: "cascade" }),
+  conversationId: uuid("conversation_id").notNull(),
 
   // Message content
   role: chatMessageRoleEnum("role").notNull(),
@@ -3117,4 +3127,6 @@ export const agentConversationMessages = pgTable("agent_conversation_messages", 
   contextSummary: json("context_summary"),
 
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  foreignKey({ columns: [table.conversationId], foreignColumns: [agentConversations.id], name: "agent_conv_msgs_conversation_id_fk" }).onDelete("cascade"),
+]);

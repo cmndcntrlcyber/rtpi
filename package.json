@@ -20,7 +20,8 @@
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "db:create-admin": "tsx server/scripts/create-admin.ts"
   },
   "keywords": [],
   "author": "",

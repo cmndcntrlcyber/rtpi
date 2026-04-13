@@ -1,7 +1,7 @@
 services:
   # PostgreSQL Database (pgvector for memory embeddings)
   postgres:
-    image: pgvector/pgvector:pg16-alpine
+    image: pgvector/pgvector:pg16
     container_name: rtpi-postgres
     environment:
       POSTGRES_USER: rtpi
@@ -1176,6 +1176,7 @@ services:
         condition: service_healthy
       ollama:
         condition: service_started
+        required: false
     networks:
       - rtpi-network
 
@@ -1224,9 +1225,13 @@ services:
       CONTAINER_VULNRESEARCH: rtpi-research-agent
       CONTAINER_LLM_SECURITY: rtpi-llm-sec-agent
     depends_on:
-      - mem0-api
-      - redis
-      - ollama
+      mem0-api:
+        condition: service_started
+      redis:
+        condition: service_started
+      ollama:
+        condition: service_started
+        required: false
     networks:
       - rtpi-network
 

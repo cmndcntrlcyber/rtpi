@@ -26,7 +26,7 @@ docker compose up -d postgres redis
 npm run db:push
 
 # 5. Create default admin user
-npx tsx scripts/create-admin.ts
+npm run db:create-admin
 
 # 6. Start development servers (two terminals)
 
@@ -72,6 +72,7 @@ npm run build            # Build frontend for production
 npm run db:generate      # Generate migrations
 npm run db:push          # Apply migrations
 npm run db:studio        # Open database studio
+npm run db:create-admin  # Create default admin user
 
 # Code Quality
 npm run lint             # Run ESLint

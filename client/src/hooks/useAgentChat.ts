@@ -35,7 +35,7 @@ interface SendMessageResponse {
   tokensUsed: number;
 }
 
-export function useAgentChat(agentRole: string, operationId: string | null) {
+export function useAgentChat(agentRole: string, operationId: string | null, agentId?: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -64,7 +64,7 @@ export function useAgentChat(agentRole: string, operationId: string | null) {
           conversation: Conversation | null;
           messages: ChatMessage[];
         }>(`/agent-chat/${agentRole}/conversation`, {
-          params: { operationId },
+          params: { operationId, agentId },
         });
 
         if (data.conversation) {
@@ -97,7 +97,7 @@ export function useAgentChat(agentRole: string, operationId: string | null) {
     };
 
     loadConversation();
-  }, [agentRole, operationId]);
+  }, [agentRole, operationId, agentId]);
 
   // Send a message
   const sendMessage = useCallback(
@@ -121,6 +121,7 @@ export function useAgentChat(agentRole: string, operationId: string | null) {
             operationId,
             message: content.trim(),
             conversationId: conversationId || undefined,
+            agentId,
           }
         );
 
@@ -145,7 +146,7 @@ export function useAgentChat(agentRole: string, operationId: string | null) {
         setSending(false);
       }
     },
-    [agentRole, operationId, conversationId]
+    [agentRole, operationId, conversationId, agentId]
   );
 
   // Clear conversation (archive and start fresh)
@@ -154,7 +155,7 @@ export function useAgentChat(agentRole: string, operationId: string | null) {
 
     try {
       await api.delete(`/agent-chat/${agentRole}/conversation`, {
-        operationId,
+        params: { operationId, agentId },
       });
       setMessages([]);
       setConversationId(null);
@@ -162,7 +163,7 @@ export function useAgentChat(agentRole: string, operationId: string | null) {
     } catch (err: any) {
       setError(err.message || "Failed to clear conversation");
     }
-  }, [agentRole, operationId]);
+  }, [agentRole, operationId, agentId]);
 
   return {
     messages,

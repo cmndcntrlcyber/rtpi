@@ -1,8 +1,15 @@
 import { useState, useEffect } from "react";
-import { GitCompare, FileText } from "lucide-react";
+import { GitCompare, FileText, Download, ChevronDown, AlertTriangle } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 import OverviewTab from "@/components/surface-assessment/OverviewTab";
@@ -23,6 +30,40 @@ export default function SurfaceAssessment() {
   const [loading, setLoading] = useState(true);
   const [comparisonDialogOpen, setComparisonDialogOpen] = useState(false);
   const [reportGenerating, setReportGenerating] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async (format: "csv" | "json" | "txt") => {
+    if (!selectedOperation) return;
+    setExporting(true);
+    try {
+      const res = await fetch(
+        `/api/v1/surface-assessment/${selectedOperation}/export?format=${format}`,
+        { credentials: "include" }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || err.error || `HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get("content-disposition") || "";
+      const match = /filename="?([^"]+)"?/i.exec(disposition);
+      const filename = match?.[1] ?? `surface-assessment.${format}`;
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      toast.success(`Exported ${filename}`);
+    } catch (error: any) {
+      toast.error("Export failed", { description: error?.message || "Unknown error" });
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useEffect(() => {
     loadOperations();
@@ -112,6 +153,20 @@ export default function SurfaceAssessment() {
             <FileText className="h-4 w-4 mr-2" />
             {reportGenerating ? "Generating..." : "Generate Report"}
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" disabled={!selectedOperation || exporting}>
+                <Download className="h-4 w-4 mr-2" />
+                {exporting ? "Exporting..." : "Export"}
+                <ChevronDown className="h-4 w-4 ml-2" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleExport("csv")}>CSV</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport("json")}>JSON</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport("txt")}>TXT</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             variant="outline"
             onClick={() => setComparisonDialogOpen(true)}
@@ -133,6 +188,14 @@ export default function SurfaceAssessment() {
           </Select>
         </div>
       </div>
+
+      <Alert className="mb-6 border-yellow-500/50 bg-yellow-500/10">
+        <AlertTriangle className="h-4 w-4 text-yellow-500" />
+        <h5 className="mb-1 font-medium leading-none tracking-tight text-yellow-500">OPSEC Warning: Loud Scans</h5>
+        <AlertDescription className="text-yellow-500/90">
+          Automated scans initiated from this dashboard (including BBOT) have a loud network profile and will actively enumerate targets. Ensure you have proper authorization before proceeding.
+        </AlertDescription>
+      </Alert>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="flex w-full mb-6">

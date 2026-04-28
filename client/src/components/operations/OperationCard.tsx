@@ -11,7 +11,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Calendar, Users, Target, AlertCircle, Clock, Edit, Trash2, Download, CheckCircle } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Calendar, Users, Target, AlertCircle, Clock, Edit, Trash2, Download, CheckCircle, MoreVertical } from "lucide-react";
 import { api } from "@/lib/api";
 
 interface Operation {
@@ -247,58 +253,86 @@ export default function OperationCard({
             </div>
           </div>
           {/* FIX BUG #2: Inline status dropdown or static badge */}
-          {onStatusChange ? (
-            <div onClick={(e) => e.stopPropagation()}>
-              <Select
-                value={operation.status}
-                onValueChange={handleStatusChange}
-                disabled={updatingStatus}
+          <div className="flex items-center gap-2">
+            {onStatusChange ? (
+              <div onClick={(e) => e.stopPropagation()}>
+                <Select
+                  value={operation.status}
+                  onValueChange={handleStatusChange}
+                  disabled={updatingStatus}
+                >
+                  <SelectTrigger className="w-32 h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="planning">
+                      <span className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-blue-500" />
+                        Planning
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="active">
+                      <span className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-green-500" />
+                        Active
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="paused">
+                      <span className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-yellow-500" />
+                        Paused
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="completed">
+                      <span className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-secondary0" />
+                        Completed
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="cancelled">
+                      <span className="flex items-center gap-2 text-red-600">
+                        <span className="w-2 h-2 rounded-full bg-red-500" />
+                        Cancelled
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <Badge 
+                variant="secondary" 
+                className={`${statusColors[operation.status as keyof typeof statusColors]} px-2 py-1 text-xs font-medium`}
               >
-                <SelectTrigger className="w-32 h-8">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="planning">
-                    <span className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-blue-500" />
-                      Planning
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="active">
-                    <span className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-green-500" />
-                      Active
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="paused">
-                    <span className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-yellow-500" />
-                      Paused
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="completed">
-                    <span className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-secondary0" />
-                      Completed
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="cancelled">
-                    <span className="flex items-center gap-2 text-red-600">
-                      <span className="w-2 h-2 rounded-full bg-red-500" />
-                      Cancelled
-                    </span>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          ) : (
-            <Badge 
-              variant="secondary" 
-              className={`${statusColors[operation.status as keyof typeof statusColors]} px-2 py-1 text-xs font-medium`}
-            >
-              {operation.status}
-            </Badge>
-          )}
+                {operation.status}
+              </Badge>
+            )}
+
+            {(onEdit || onDelete) && (
+              <div onClick={(e) => e.stopPropagation()}>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" className="h-8 w-8 p-0" aria-label="Open menu">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-[160px]">
+                    {onEdit && (
+                      <DropdownMenuItem onClick={() => onEdit(operation)}>
+                        <Edit className="mr-2 h-4 w-4" />
+                        Edit
+                      </DropdownMenuItem>
+                    )}
+                    {onDelete && (
+                      <DropdownMenuItem onClick={() => onDelete(operation)} className="text-red-600 focus:text-red-700">
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            )}
+          </div>
         </div>
         
         <div className="grid grid-cols-2 gap-4 text-sm mb-3">
@@ -403,39 +437,6 @@ export default function OperationCard({
           </p>
         )}
 
-        {/* Action Buttons */}
-        {(onEdit || onDelete) && (
-          <div className="flex gap-2 mt-4 pt-3 border-t border-border">
-            {onEdit && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit(operation);
-                }}
-                className="flex-1"
-              >
-                <Edit className="h-3 w-3 mr-1" />
-                Edit
-              </Button>
-            )}
-            {onDelete && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(operation);
-                }}
-                className="flex-1 text-red-600 hover:text-red-700 hover:bg-red-500/10"
-              >
-                <Trash2 className="h-3 w-3 mr-1" />
-                Delete
-              </Button>
-            )}
-          </div>
-        )}
       </CardContent>
     </Card>
   );

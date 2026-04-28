@@ -12,7 +12,7 @@ class Mem0Settings(BaseSettings):
 
     # LLM Provider (for fact extraction)
     llm_provider: str = "ollama"
-    llm_model: str = "qwen2.5-coder:7b"
+    llm_model: str = "qwen3:14b"
     llm_base_url: str = "http://ollama:11434"
     llm_temperature: float = 0.1
 

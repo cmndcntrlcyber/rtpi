@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Bot, Server, Activity, Clock, Plus, RotateCcw, Pause, Target, CheckCircle, AlertTriangle, Zap, GripVertical, ArrowRight, X, Import, Workflow, ChevronDown, ChevronRight, Pencil, Trash2, Search, MoveRight, Ban } from "lucide-react";
+import { Bot, Server, Activity, Clock, Plus, RotateCcw, Pause, Target, CheckCircle, AlertTriangle, Zap, GripVertical, ArrowRight, X, Import, Workflow, ChevronDown, ChevronRight, Pencil, Trash2, Search, MoveRight, Ban, MessageSquare } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useAgents } from "@/hooks/useAgents";
@@ -26,6 +26,7 @@ import WorkflowDetailsDialog from "@/components/agents/WorkflowDetailsDialog";
 import ImportAgentDialog from "@/components/agents/ImportAgentDialog";
 import WorkflowBuilder from "@/components/agents/WorkflowBuilder";
 import WorkflowEditDialog from "@/components/agents/WorkflowEditDialog";
+import { useAgentChatManager } from "@/contexts/AgentChatContext";
 import {
   DndContext,
   closestCenter,
@@ -258,6 +259,7 @@ export default function Agents() {
   const { tools } = useTools();
   const { runningWorkflows, allNonRunning, getWorkflowDetails, cancelWorkflow } = useWorkflows();
   const { templates: workflowTemplates, reorderTemplates, deleteTemplate, updateTemplate, refetch: refetchTemplates } = useWorkflowTemplates();
+  const { openAgentChat } = useAgentChatManager();
   
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -1308,6 +1310,14 @@ export default function Agents() {
                                 Start Loop
                               </Button>
                             )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openAgentChat(agent.id, agent.name, agent.config?.role || agent.type)}
+                            >
+                              <MessageSquare className="h-4 w-4 mr-1" />
+                              Chat
+                            </Button>
                             <Button
                               size="sm"
                               variant="outline"

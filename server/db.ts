@@ -6,7 +6,7 @@ import dotenv from "dotenv";
 // Ensure environment variables are loaded
 dotenv.config();
 
-const connectionString = process.env.DATABASE_URL || "postgresql://rtpi:rtpi@localhost:5432/rtpi_main";
+const connectionString = process.env.DATABASE_URL || "postgresql://rtpi:rtpi@localhost:5434/rtpi_main";
 
 // Create postgres client
 export const client = postgres(connectionString);

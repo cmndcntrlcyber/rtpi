@@ -125,7 +125,7 @@ services:
       - rtpi-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "mongosh", "-u", "workbench", "-p", "workbench123", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD-SHELL", "mongosh -u workbench -p \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --quiet --eval \"db.adminCommand('ping')\""]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -674,7 +674,7 @@ services:
       - ACTIVATION_MODE=dormant
     ports:
       - "9876:9876"   # Burp MCP Server
-      - "8182:8082"   # Burp Proxy (when active) — 8082 conflicts with empire range
+      - "8283:8082"   # Burp Proxy (when active) — avoids 8182 conflict with kasm-share
     volumes:
       - burp-tools:/opt/tools
       - /mnt/nvme/tmp/burp-setup:/opt/burp-setup
@@ -929,7 +929,7 @@ services:
       - sysreptor
     restart: unless-stopped
     ports:
-      - "0.0.0.0:9000:8000"  # SysReptor API/app (localhost only — accessed via Caddy on :7777)
+      - "127.0.0.1:9005:8000"  # SysReptor API/app (localhost only — accessed via Caddy on :7777; 9000 reserved by minio)
     volumes:
       - sysreptor-app-data:/app/data
       - ./configs/rtpi-sysreptor/app.env:/app/.env:ro
@@ -941,6 +941,8 @@ services:
     command: /bin/bash /app/api/start.sh
     networks:
       - rtpi-network
+    dns:
+      - 127.0.0.11
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -968,6 +970,8 @@ services:
       - sysreptor-app
     networks:
       - rtpi-network
+    dns:
+      - 127.0.0.11
     logging:
       driver: "json-file"
       options:
@@ -981,11 +985,13 @@ services:
       - sysreptor
     restart: unless-stopped
     environment:
-      - REDIS_PASSWORD=sysreptorredispassword
+      - REDIS_PASSWORD=${SYSREPTOR_REDIS_PASSWORD:-sysreptorredispassword}
     networks:
       - rtpi-network
+    dns:
+      - 127.0.0.11
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "sysreptorredispassword", "ping"]
+      test: ["CMD", "sh", "-c", "redis-cli -a \"$$REDIS_PASSWORD\" ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -1152,8 +1158,10 @@ services:
       context: ./services/mem0
       dockerfile: Dockerfile
     container_name: rtpi-mem0-api
+    profiles:
+      - mem0
     ports:
-      - "8000:8000"
+      - "8005:8000"  # Avoids conflict with portainer edge agent on 8000
     environment:
       MEM0_LLM_PROVIDER: ollama
       MEM0_LLM_MODEL: qwen2.5-coder:7b
@@ -1190,7 +1198,7 @@ services:
       dockerfile: Dockerfile
     container_name: rtpi-orchestrator
     ports:
-      - "8085:8080"
+      - "8185:8080"
     volumes:
       - ./skills:/app/skills:ro
       - tool-results:/app/findings
@@ -1227,6 +1235,7 @@ services:
     depends_on:
       mem0-api:
         condition: service_started
+        required: false
       redis:
         condition: service_started
       ollama:
@@ -1339,6 +1348,28 @@ services:
       - shared-data:/samples
       - tool-results:/findings
     entrypoint: ["tail", "-f", "/dev/null"]
+
+  # ===========================================================================
+  # Bootstrap — one-shot secret generator (profile: bootstrap)
+  # Runs scripts/bootstrap-secrets.sh inside a minimal Alpine container.
+  # Usage: docker compose --profile bootstrap run --rm rtpi-bootstrap
+  # ===========================================================================
+  rtpi-bootstrap:
+    image: alpine:3.20
+    container_name: rtpi-bootstrap
+    profiles:
+      - bootstrap
+    volumes:
+      - .:/workspace
+      - ${HOME}/.rtpi:/root/.rtpi
+    working_dir: /workspace
+    environment:
+      HOME: /root
+    entrypoint:
+      - sh
+      - -c
+      - "apk add --no-cache bash openssl util-linux coreutils >/dev/null && bash scripts/bootstrap-secrets.sh \"$@\""
+      - --
 
 networks:
   rtpi-network:

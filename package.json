@@ -9,6 +9,7 @@
   },
   "scripts": {
     "test": "vitest",
+    "bootstrap": "bash scripts/bootstrap-secrets.sh",
     "dev": "tsx watch server/index.ts",
     "dev:frontend": "vite",
     "build": "vite build",

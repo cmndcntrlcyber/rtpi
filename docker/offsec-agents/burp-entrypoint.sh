@@ -10,7 +10,7 @@ BURP_SETUP_DIR="/opt/burp-setup"
 JAR_PATH="$BURP_SETUP_DIR/burpsuite_pro.jar"
 LICENSE_PATH="$BURP_SETUP_DIR/burpsuite.license"
 ACTIVATION_FLAG="$BURP_SETUP_DIR/.activate"
-BURP_HOME="/root/.BurpSuite"
+BURP_HOME="${BURP_HOME:-$HOME/.BurpSuite}"
 MCP_PORT="${BURP_MCP_PORT:-9876}"
 
 echo "[BurpAgent] Starting in dormant mode monitoring..."

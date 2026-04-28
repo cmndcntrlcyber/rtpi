@@ -409,12 +409,19 @@ class ResponseCache {
 // ============================================================================
 
 export class OllamaAIClient {
-  private readonly OLLAMA_HOST: string;
   private readonly DEFAULT_MODEL = process.env.RKLLM_DEFAULT_MODEL || "llama3:8b";
   private readonly CODE_MODEL = process.env.RKLLM_CODE_MODEL || "qwen2.5-coder:7b";
   private readonly cache = new ResponseCache();
-  constructor(host: string = process.env.OLLAMA_HOST || "http://localhost:11434") {
-    this.OLLAMA_HOST = host.replace(/\/$/, "");
+  private overrideHost: string | null = null;
+  constructor(host?: string) {
+    if (host) this.overrideHost = host.replace(/\/$/, "");
+  }
+
+  // Read endpoint fresh on every access so UI-driven updates to
+  // process.env.OLLAMA_HOST take effect without a process restart.
+  private get OLLAMA_HOST(): string {
+    const src = this.overrideHost || process.env.OLLAMA_HOST || "http://localhost:11434";
+    return src.replace(/\/$/, "");
   }
 
   // Delegate to centralized AI client manager

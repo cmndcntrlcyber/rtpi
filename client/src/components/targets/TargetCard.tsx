@@ -2,7 +2,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Globe, Server, Radio, Edit, Trash2, Scan, GripVertical } from "lucide-react";
+import { Globe, Server, Radio, Edit, Trash2, Scan, GripVertical, MoreVertical } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
@@ -137,41 +143,37 @@ export default function TargetCard({
           )}
         </div>
 
-        <div className="flex items-center gap-1 flex-shrink-0">
-          {onScan && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2"
-              onClick={(e) => { e.stopPropagation(); onScan(target); }}
-            >
-              <Scan className="h-3 w-3 mr-1" />
-              Scan
-            </Button>
-          )}
-          {onEdit && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2"
-              onClick={(e) => { e.stopPropagation(); onEdit(target); }}
-            >
-              <Edit className="h-3 w-3 mr-1" />
-              Edit
-            </Button>
-          )}
-          {onDelete && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
-              onClick={(e) => { e.stopPropagation(); onDelete(target); }}
-            >
-              <Trash2 className="h-3 w-3 mr-1" />
-              Delete
-            </Button>
-          )}
-        </div>
+        {(onScan || onEdit || onDelete) && (
+          <div className="flex items-center flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="h-8 w-8 p-0" aria-label="Open menu">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-[160px]">
+                {onScan && (
+                  <DropdownMenuItem onClick={() => onScan(target)}>
+                    <Scan className="mr-2 h-4 w-4" />
+                    Scan
+                  </DropdownMenuItem>
+                )}
+                {onEdit && (
+                  <DropdownMenuItem onClick={() => onEdit(target)}>
+                    <Edit className="mr-2 h-4 w-4" />
+                    Edit
+                  </DropdownMenuItem>
+                )}
+                {onDelete && (
+                  <DropdownMenuItem onClick={() => onDelete(target)} className="text-red-600 focus:text-red-700">
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
       </div>
     );
   }
@@ -209,6 +211,37 @@ export default function TargetCard({
               </div>
             </div>
           </div>
+          {(onScan || onEdit || onDelete) && (
+            <div onClick={(e) => e.stopPropagation()}>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="h-8 w-8 p-0" aria-label="Open menu">
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-[160px]">
+                  {onScan && (
+                    <DropdownMenuItem onClick={() => onScan(target)}>
+                      <Scan className="mr-2 h-4 w-4" />
+                      Scan
+                    </DropdownMenuItem>
+                  )}
+                  {onEdit && (
+                    <DropdownMenuItem onClick={() => onEdit(target)}>
+                      <Edit className="mr-2 h-4 w-4" />
+                      Edit
+                    </DropdownMenuItem>
+                  )}
+                  {onDelete && (
+                    <DropdownMenuItem onClick={() => onDelete(target)} className="text-red-600 focus:text-red-700">
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
         </div>
 
         <div className="space-y-2 text-sm mb-3">
@@ -229,50 +262,6 @@ export default function TargetCard({
           </p>
         )}
 
-        <div className="flex gap-2 mt-4 pt-3 border-t border-gray-100">
-          {onScan && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                onScan(target);
-              }}
-              className="flex-1"
-            >
-              <Scan className="h-3 w-3 mr-1" />
-              Scan
-            </Button>
-          )}
-          {onEdit && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                onEdit(target);
-              }}
-              className="flex-1"
-            >
-              <Edit className="h-3 w-3 mr-1" />
-              Edit
-            </Button>
-          )}
-          {onDelete && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(target);
-              }}
-              className="flex-1 text-red-600 hover:text-red-700 hover:bg-red-50"
-            >
-              <Trash2 className="h-3 w-3 mr-1" />
-              Delete
-            </Button>
-          )}
-        </div>
       </CardContent>
     </Card>
   );

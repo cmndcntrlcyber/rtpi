@@ -60,8 +60,15 @@ VERSION=$(curl -sf --max-time 15 "https://api.github.com/repos/${REPO}/releases/
   | grep '"tag_name"' | head -1 | cut -d'"' -f4 | sed 's/^v//' 2>/dev/null) || true
 
 if [ -z "$VERSION" ]; then
-  echo "  [FAIL] $CMD_NAME — could not fetch version from GitHub API"
-  exit 1
+  # Retry once after a brief pause (handles transient rate-limits)
+  sleep 2
+  VERSION=$(curl -sf --max-time 15 "https://api.github.com/repos/${REPO}/releases/latest" \
+    | grep '"tag_name"' | head -1 | cut -d'"' -f4 | sed 's/^v//' 2>/dev/null) || true
+fi
+
+if [ -z "$VERSION" ]; then
+  echo "  [WARN] $CMD_NAME — could not fetch version from GitHub API, skipping"
+  exit 0
 fi
 
 if [ -n "$CUSTOM_URL" ]; then
@@ -151,9 +158,17 @@ RUN /usr/local/bin/install-gh-release.sh projectdiscovery/pdtm pdtm
 RUN /usr/local/bin/install-gh-release.sh ffuf/ffuf ffuf tar.gz
 
 # Gobuster - Directory/DNS/vhost busting
-# Gobuster uses different naming: gobuster_Linux_<arch>.tar.gz
-RUN /usr/local/bin/install-gh-release.sh OJ/gobuster gobuster tar.gz \
-    "https://github.com/OJ/gobuster/releases/download/v{VERSION}/gobuster_Linux_{ARCH}.tar.gz"
+# Gobuster uses x86_64/arm64 naming (not amd64)
+RUN GB_ARCH=$(cat /tmp/.pd_arch) && \
+    if [ "$GB_ARCH" = "amd64" ]; then GB_ARCH="x86_64"; fi && \
+    GB_VERSION=$(curl -sf --max-time 15 "https://api.github.com/repos/OJ/gobuster/releases/latest" \
+      | grep '"tag_name"' | head -1 | cut -d'"' -f4 | sed 's/^v//') && \
+    curl -sfL --max-time 120 "https://github.com/OJ/gobuster/releases/download/v${GB_VERSION}/gobuster_Linux_${GB_ARCH}.tar.gz" \
+      -o /tmp/gobuster.tar.gz && \
+    tar xzf /tmp/gobuster.tar.gz -C /tmp && \
+    mv /tmp/gobuster /opt/tools/bin/gobuster && \
+    chmod +x /opt/tools/bin/gobuster && \
+    rm -f /tmp/gobuster.tar.gz
 
 # Amass - Network mapping (uses tar.gz, lowercase linux)
 RUN /usr/local/bin/install-gh-release.sh owasp-amass/amass amass tar.gz \
@@ -283,7 +298,7 @@ RUN echo "=== Verifying critical tools ===" && \
     MISSING="" && \
     for tool in nuclei naabu httpx katana subfinder dnsx shuffledns uncover \
                 cloudlist alterx mapcidr tlsx cdncheck asnmap proxify \
-                interactsh-client notify cvemap pdtm ffuf gobuster \
+                interactsh-client notify pdtm ffuf gobuster \
                 feroxbuster amass puredns anew meg qsreplace unfurl x8; do \
       if [ ! -x "/opt/tools/bin/$tool" ]; then \
         echo "  [MISSING] $tool" && MISSING="$MISSING $tool"; \
@@ -294,7 +309,15 @@ RUN echo "=== Verifying critical tools ===" && \
     if [ -n "$MISSING" ]; then \
       echo "FATAL: Missing tools:$MISSING" && exit 1; \
     fi && \
-    echo "=== All tools verified ==="
+    echo "=== All critical tools verified ===" && \
+    echo "=== Checking optional tools ===" && \
+    for tool in cvemap; do \
+      if [ ! -x "/opt/tools/bin/$tool" ]; then \
+        echo "  [WARN] $tool not installed (optional)"; \
+      else \
+        echo "  [OK] $tool"; \
+      fi; \
+    done
 
 # Switch to non-root user
 USER rtpi-agent

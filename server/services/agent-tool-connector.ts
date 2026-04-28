@@ -337,6 +337,11 @@ export class AgentToolConnector {
         return await this.executeOpenAI(agent, context);
       case "anthropic":
         return await this.executeAnthropic(agent, context);
+      case "ollama":
+        // Ollama uses the unified AI client via agent-workflow-orchestrator;
+        // for tool-connector invocations, treat identically to custom so
+        // callers get a consistent AI-driven response path.
+        return await this.executeCustom(agent, context);
       case "mcp_server":
         return await this.executeMCP(agent, context);
       case "custom":

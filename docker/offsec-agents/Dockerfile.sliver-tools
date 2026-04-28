@@ -67,7 +67,7 @@ RUN chmod +x /opt/sliver-entrypoint.sh
 EXPOSE 31337 8888 80 443 53 9000
 
 # Switch back to agent user
-USER agent
-WORKDIR /home/agent
+USER rtpi-agent
+WORKDIR /home/rtpi-agent
 
 ENTRYPOINT ["/opt/sliver-entrypoint.sh"]

@@ -42,6 +42,31 @@ router.get("/models", async (_req, res) => {
 });
 
 /**
+ * GET /api/v1/ollama/models/live
+ * List models straight from the running Ollama server (no DB dependency).
+ * Used by UIs that need the current model list without running a sync first.
+ */
+router.get("/models/live", async (_req, res) => {
+  try {
+    const models = await ollamaManager.listModelsFromAPI();
+    res.json({
+      models: models.map((m) => ({
+        name: m.name,
+        size: m.size,
+        modifiedAt: (m as any).modified_at,
+      })),
+      host: process.env.OLLAMA_HOST || "http://localhost:11434",
+    });
+  } catch (error: any) {
+    res.status(502).json({
+      error: "Failed to reach Ollama server",
+      details: error?.message || "Connection failed",
+      host: process.env.OLLAMA_HOST || "http://localhost:11434",
+    });
+  }
+});
+
+/**
  * POST /api/v1/ollama/models/sync
  * Sync models from Ollama API to database
  */

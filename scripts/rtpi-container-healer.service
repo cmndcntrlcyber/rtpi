@@ -1,0 +1,13 @@
+[Unit]
+Description=RTPI Container Healer (one-shot scan)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=cmndcntrl
+Group=cmndcntrl
+WorkingDirectory=/home/cmndcntrl/code/rtpi
+ExecStart=/home/cmndcntrl/code/rtpi/scripts/container-healer.sh
+StandardOutput=journal
+StandardError=journal

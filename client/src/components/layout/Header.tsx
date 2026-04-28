@@ -8,9 +8,10 @@ import { NotificationCenter } from "@/components/shared/NotificationCenter";
 
 interface HeaderProps {
   onMenuClick: () => void;
+  onSearchClick?: () => void;
 }
 
-export default function Header({ onMenuClick }: HeaderProps) {
+export default function Header({ onMenuClick, onSearchClick }: HeaderProps) {
   const { user, logout } = useAuth();
   const { setShowHelp } = useKeyboardShortcutsContext();
   const [, navigate] = useLocation();
@@ -56,6 +57,19 @@ export default function Header({ onMenuClick }: HeaderProps) {
               {user?.role}
             </span>
           </div>
+          
+          <Button
+            variant="outline"
+            className="hidden md:flex relative h-9 w-full justify-start rounded-[0.5rem] bg-background text-sm font-normal text-muted-foreground shadow-none sm:pr-12 md:w-40 lg:w-64"
+            onClick={onSearchClick}
+          >
+            <span className="hidden lg:inline-flex">Search...</span>
+            <span className="inline-flex lg:hidden">Search...</span>
+            <kbd className="pointer-events-none absolute right-[0.3rem] top-[0.3rem] hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
+              <span className="text-xs">⌘</span>K
+            </kbd>
+          </Button>
+
           <Button
             variant="ghost"
             size="icon"

@@ -188,6 +188,7 @@ export default function Targets() {
   };
 
   const handleDeleteTarget = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this target? This action cannot be undone.")) return;
     try {
       await api.delete(`/targets/${id}`);
       setEditDialogOpen(false);

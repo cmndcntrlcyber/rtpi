@@ -148,8 +148,9 @@ export default function Operations() {
     // TODO: Pass operationId to targets page to pre-fill in add dialog
   };
   const handleDeleteClick = (operation: any) => {
-    setEditingOperation(operation);
-    setFormOpen(true);
+    if (window.confirm(`Are you sure you want to delete operation "${operation.name}"? This action cannot be undone.`)) {
+      handleDeleteOperation(operation.id);
+    }
   };
 
   const handleSelectOperation = (operation: any) => {

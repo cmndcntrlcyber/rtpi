@@ -5,6 +5,8 @@ import CommandPalette from "@/components/shared/CommandPalette";
 import KeyboardShortcutsHelp from "@/components/shared/KeyboardShortcutsHelp";
 import { useSidebarCollapse } from "@/hooks/useSidebarCollapse";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { AgentChatProvider } from "@/contexts/AgentChatContext";
+import AgentChatManager from "@/components/agents/AgentChatManager";
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -75,8 +77,9 @@ export default function MainLayout({ children }: MainLayoutProps) {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header onMenuClick={handleMenuClick} />
+    <AgentChatProvider>
+      <div className="min-h-screen bg-background">
+        <Header onMenuClick={handleMenuClick} onSearchClick={() => setCommandPaletteOpen(true)} />
       <Sidebar
         isOpen={sidebarOpen}
         isCollapsed={sidebarCollapsed}
@@ -90,8 +93,10 @@ export default function MainLayout({ children }: MainLayoutProps) {
       </main>
 
       {/* Global Components */}
-      <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
-      <KeyboardShortcutsHelp open={shortcutsHelpOpen} onOpenChange={setShortcutsHelpOpen} />
-    </div>
+        <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
+        <KeyboardShortcutsHelp open={shortcutsHelpOpen} onOpenChange={setShortcutsHelpOpen} />
+        <AgentChatManager />
+      </div>
+    </AgentChatProvider>
   );
 }

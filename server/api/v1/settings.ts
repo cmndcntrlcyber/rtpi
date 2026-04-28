@@ -18,6 +18,7 @@ const llmSettings = {
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || "",
   tavilyApiKey: process.env.TAVILY_API_KEY || "",
   defaultModel: process.env.DEFAULT_MODEL || "claude-sonnet-4-5",
+  ollamaHost: process.env.OLLAMA_HOST || "http://localhost:11434",
 };
 
 /**
@@ -64,6 +65,7 @@ function applyKeyUpdates(body: {
   anthropicApiKey?: string;
   tavilyApiKey?: string;
   defaultModel?: string;
+  ollamaHost?: string;
 }): void {
   const envUpdates: Record<string, string> = {};
 
@@ -82,6 +84,19 @@ function applyKeyUpdates(body: {
   if (body.defaultModel) {
     llmSettings.defaultModel = body.defaultModel;
     envUpdates.DEFAULT_MODEL = body.defaultModel;
+  }
+  if (typeof body.ollamaHost === "string" && body.ollamaHost.trim().length > 0) {
+    try {
+      const url = new URL(body.ollamaHost.trim());
+      if (url.protocol !== "http:" && url.protocol !== "https:") {
+        throw new Error("Protocol must be http or https");
+      }
+      const normalized = body.ollamaHost.trim().replace(/\/+$/, "");
+      llmSettings.ollamaHost = normalized;
+      envUpdates.OLLAMA_HOST = normalized;
+    } catch (e: any) {
+      throw new Error(`Invalid ollamaHost: ${e?.message || "not a valid URL"}`);
+    }
   }
 
   if (Object.keys(envUpdates).length > 0) {
@@ -104,6 +119,7 @@ router.get("/llm", async (_req, res) => {
         ? `tvly-...${llmSettings.tavilyApiKey.slice(-4)}`
         : "",
       defaultModel: llmSettings.defaultModel,
+      ollamaHost: llmSettings.ollamaHost,
     };
 
     res.json({ settings: maskedSettings });
@@ -139,6 +155,7 @@ router.get("/ai-provider", async (_req, res) => {
         ? `tvly-...${llmSettings.tavilyApiKey.slice(-4)}`
         : "",
       defaultModel: llmSettings.defaultModel,
+      ollamaHost: llmSettings.ollamaHost,
     };
 
     res.json({ settings: maskedSettings });

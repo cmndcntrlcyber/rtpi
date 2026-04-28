@@ -4,11 +4,14 @@
 
 -- SysReptor database and user
 CREATE DATABASE sysreptor;
-CREATE USER sysreptor WITH PASSWORD 'sysreptorpassword';
+CREATE USER sysreptor WITH PASSWORD 'Yu4fDzCVtqDogPOusrdeWNdf29NvpewU';
 GRANT ALL PRIVILEGES ON DATABASE sysreptor TO sysreptor;
 
 -- Enable uuid-ossp extension in all databases
 \c sysreptor;
+-- PG 15+ locks the public schema for non-owners; hand it to sysreptor so Django migrations can create tables.
+ALTER SCHEMA public OWNER TO sysreptor;
+GRANT ALL ON SCHEMA public TO sysreptor;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 \c rtpi_main;

@@ -62,7 +62,7 @@ RUN chmod +x /opt/loki-entrypoint.sh
 EXPOSE 4443 8443 9000
 
 # Switch back to agent user
-USER agent
-WORKDIR /home/agent
+USER rtpi-agent
+WORKDIR /home/rtpi-agent
 
 ENTRYPOINT ["/opt/loki-entrypoint.sh"]

@@ -79,13 +79,20 @@ export interface ModelUsageStats {
 // ============================================================================
 
 export class OllamaManager {
-  private readonly OLLAMA_HOST: string;
   private readonly AUTO_UNLOAD_TIMEOUT: number = 30 * 60 * 1000; // 30 minutes
   private readonly CHECK_INTERVAL: number = 5 * 60 * 1000; // 5 minutes
   private unloadTimer: NodeJS.Timeout | null = null;
+  private overrideHost: string | null = null;
 
-  constructor(host: string = process.env.OLLAMA_HOST || "http://localhost:11434") {
-    this.OLLAMA_HOST = host.replace(/\/$/, ""); // Remove trailing slash
+  constructor(host?: string) {
+    if (host) this.overrideHost = host.replace(/\/$/, "");
+  }
+
+  // Read endpoint fresh on every access so UI-driven updates to
+  // process.env.OLLAMA_HOST take effect without a process restart.
+  private get OLLAMA_HOST(): string {
+    const src = this.overrideHost || process.env.OLLAMA_HOST || "http://localhost:11434";
+    return src.replace(/\/$/, "");
   }
 
   // ==========================================================================

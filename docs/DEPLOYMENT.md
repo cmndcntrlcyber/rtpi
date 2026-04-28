@@ -18,6 +18,7 @@ This guide covers deploying the Unified RTPI platform in various environments, f
 - [Scaling](#scaling)
 - [Agent System Deployment](#agent-system-deployment-v21)
 - [OffSec Agent Containers](#offsec-agent-containers)
+- [SysReptor Reporting Platform](#sysreptor-reporting-platform)
 
 ---
 
@@ -61,15 +62,27 @@ This guide covers deploying the Unified RTPI platform in various environments, f
 
 The following ports must be available:
 
-- `3000` - Application server
-- `5432` - PostgreSQL database
-- `6379` - Redis cache
-- `4444` - rtpi-tools container (Metasploit/tool services)
-- `5555` - rtpi-tools container (additional tool services)
-- `80` - HTTP (production with reverse proxy)
-- `443` - HTTPS (production with reverse proxy)
+- `3001` - Backend API server
+- `5434` - PostgreSQL database (main)
+- `5435` - PostgreSQL database (mem0 vector store)
+- `6381` - Redis cache
+- `1337` - Empire REST API (proxied)
+- `5001` - Empire Web UI (proxied)
+- `8080-8100` - Empire dynamic listener ports
+- `3000` - Open WebUI
+- `3010` - ATT&CK Workbench API
+- `3020` - ATT&CK Workbench Frontend
+- `7474` / `7687` - Neo4j browser / Bolt
+- `8005` - mem0 API
+- `8185` - LangGraph orchestrator
+- `8888` - JupyterLab (research agent)
+- `9876` - Burp MCP Server
+- `8283` - Burp Proxy
+- `7777` - SysReptor UI (Caddy proxy — optional, `sysreptor` profile)
+- `9000` - SysReptor API (optional, `sysreptor` profile)
+- `80` / `443` - HTTP/HTTPS (production with reverse proxy)
 
-**Note**: Ports 4444 and 5555 are exposed by the rtpi-tools container for security tool operations but are typically not exposed to the internet.
+**Note**: The Empire dynamic listener range (8080-8100) is reserved. Do not assign other services to ports in this range.
 
 ---
 
@@ -96,21 +109,21 @@ PORT=3000
 
 ```bash
 DB_HOST=localhost
-DB_PORT=5432
+DB_PORT=5434
 DB_USER=rtpi
 DB_PASSWORD=<secure-password>
 DB_NAME=rtpi_main
-DATABASE_URL=postgresql://rtpi:<secure-password>@localhost:5432/rtpi_main
+DATABASE_URL=postgresql://rtpi:<secure-password>@localhost:5434/rtpi_main
 ```
 
 #### Redis Configuration
 
 ```bash
-REDIS_URL=redis://localhost:6379
+REDIS_URL=redis://localhost:6381
 REDIS_PASSWORD=<secure-password>
 ```
 
-**Note**: For production deployments with Docker Compose, ensure `REDIS_PASSWORD` is set to secure the Redis instance. The password will be used in the connection URL format: `redis://:<password>@redis:6379`
+**Note**: For production deployments with Docker Compose, ensure `REDIS_PASSWORD` is set to secure the Redis instance. The password will be used in the connection URL format: `redis://:<password>@redis:6381`
 
 #### Session Security
 
@@ -170,15 +183,49 @@ WORKFLOW_RETRY_BASE_DELAY_MS=1000
 
 ### Generating Secure Secrets
 
-Generate secure random secrets for production:
+#### Option A — Bootstrap Script (Recommended)
+
+Instead of copying `.env.example` and editing secrets by hand, run the bundled bootstrap:
 
 ```bash
-# Session secret
-openssl rand -base64 32
+# Host
+npm run bootstrap
 
-# JWT secret
-openssl rand -base64 64
+# or via Docker (no Node required)
+docker compose --profile bootstrap run --rm rtpi-bootstrap
 ```
+
+This will:
+
+- Generate every secret the stack needs (encryption key, session/JWT secrets, admin password, Empire/Workbench/Kasm passwords, Redis password, SysReptor SECRET_KEY + AES ENCRYPTION_KEYS, SysReptor DB/Redis passwords).
+- Write them to `.env` and `configs/rtpi-sysreptor/app.env` (derived from the `.example` templates).
+- Patch `docker/postgres-init/01-init-databases.sql` with the generated SysReptor DB password so the first-boot init creates the user correctly.
+- Save a mode-600 backup copy to `~/.rtpi/credentials-<timestamp>.env` with a convenience symlink at `~/.rtpi/credentials.latest.env`.
+- Refuse to overwrite an existing `.env` unless you pass `--force`.
+
+Your default admin password is printed once at the end of the run and stored in the backup file.
+
+**Regenerate everything:**
+
+```bash
+npm run bootstrap -- --force
+docker compose down -v   # wipe volumes so postgres-init re-runs with the new password
+docker compose up -d
+```
+
+#### Option B — Manual
+
+If you prefer to edit `.env` by hand, copy `.env.example` and `configs/rtpi-sysreptor/app.env.example`, then generate individual values:
+
+```bash
+openssl rand -hex 32        # ENCRYPTION_KEY (64 hex chars / 32 bytes)
+openssl rand -base64 64     # SESSION_SECRET, JWT_SECRET, WORKBENCH_SESSION_SECRET
+openssl rand -base64 50     # SysReptor SECRET_KEY
+openssl rand -base64 32     # SysReptor AES key (goes inside ENCRYPTION_KEYS JSON)
+cat /proc/sys/kernel/random/uuid  # SysReptor ENCRYPTION_KEYS key id + DEFAULT_ENCRYPTION_KEY_ID
+```
+
+Remember that `SYSREPTOR_DB_PASSWORD` in `.env` must match `DATABASE_PASSWORD` in `configs/rtpi-sysreptor/app.env` **and** the `CREATE USER sysreptor WITH PASSWORD` value in `docker/postgres-init/01-init-databases.sql`. Using Option A avoids these cross-file sync errors.
 
 ---
 
@@ -250,6 +297,20 @@ Expected output:
 ✅ Successfully seeded 19 security tools!
 ```
 
+### MITRE ATT&CK Data
+
+The ATT&CK Workflows tab and `/api/v1/attack/*` endpoints depend on the `attack_tactics`/`attack_techniques` tables being populated from a STIX bundle.
+
+**Automatic (default):** On startup, the server checks `attack_tactics`. If empty, it downloads the enterprise STIX bundle from `raw.githubusercontent.com/mitre/cti` and imports it. The bundle is cached at `server/data/attack/enterprise-attack.json` for subsequent runs.
+
+**Manual:** If the deployment has no outbound internet access, run the importer locally once and commit/ship the JSON under `server/data/attack/`:
+
+```bash
+npx tsx server/scripts/import-attack-data.ts
+```
+
+**Opt-out:** Set `ATTACK_AUTO_IMPORT=false` in the environment to skip the bootstrap entirely. Override the source URL with `ATTACK_STIX_URL` if you mirror it internally.
+
 ### Container Configuration
 
 The rtpi-tools container is configured in `docker-compose.yml`:
@@ -282,8 +343,8 @@ The container uses three volumes for data persistence:
 
 - **tool-results**: Stores tool execution results and logs
 - **tool-configs**: Configuration files for tools
-- **shared-data**: Shared data between containers
 
+- **shared-data**: Shared data between containers
 ### Testing Tool Execution
 
 Verify tools are working correctly:
@@ -736,6 +797,110 @@ docker compose --profile build-only build offsec-base
 
 ---
 
+## SysReptor Reporting Platform
+
+[SysReptor](https://docs.sysreptor.com/) is an optional, self-hosted penetration testing reporting platform bundled with RTPI. It provides engagement documentation, finding templates, and branded report export (PDF/HTML). It runs behind its own Caddy reverse proxy and is gated behind the `sysreptor` Compose profile — it does **not** start with the default `docker compose up`.
+
+### Architecture
+
+Three containers ship together under the `sysreptor` profile:
+
+| Container | Image | Role |
+|---|---|---|
+| `rtpi-sysreptor-app` | `syslifters/sysreptor:2025.37` | Django app + API |
+| `rtpi-sysreptor-caddy` | `caddy:2.8` | Reverse proxy on port 7777 (primary entry point) |
+| `rtpi-sysreptor-redis` | `bitnami/redis:latest` | Celery broker/result backend |
+
+SysReptor reuses the shared `rtpi-postgres` instance — its `sysreptor` database is created automatically on first init via `docker/postgres-init/`.
+
+### Configuration
+
+1. **Copy the example env file:**
+
+```bash
+cp configs/rtpi-sysreptor/app.env.example configs/rtpi-sysreptor/app.env
+```
+
+2. **Generate secrets** and update `configs/rtpi-sysreptor/app.env`:
+
+```bash
+# Django SECRET_KEY
+openssl rand -base64 50
+
+# AES-256 encryption key for stored finding data (base64-encoded 32-byte key)
+openssl rand -base64 32
+```
+
+Update the following fields in `app.env`:
+
+- `SECRET_KEY` — Django secret
+- `ENCRYPTION_KEYS` — the `key` value inside the JSON blob
+- `ALLOWED_HOSTS` — add your actual hostname / IP if accessing remotely
+
+3. **Set matching passwords in the root `.env`** (consumed by `docker-compose.yml`):
+
+```bash
+SYSREPTOR_DB_PASSWORD=<match-app.env-DATABASE_PASSWORD>
+SYSREPTOR_REDIS_PASSWORD=<match-app.env-REDIS_PASSWORD>
+SYSREPTOR_URL=http://rtpi-sysreptor-app:8000
+SYSREPTOR_API_TOKEN=            # generate in UI after first login
+```
+
+### Starting SysReptor
+
+```bash
+# Bring up SysReptor alongside the core stack
+docker compose --profile sysreptor up -d
+
+# Logs
+docker compose logs -f sysreptor-app sysreptor-caddy sysreptor-redis
+```
+
+The Caddy proxy is the supported entry point. Access the UI at **http://localhost:7777**. Direct access to port 9000 (the app container) is exposed for debugging but bypasses Caddy's `X-Forwarded-*` handling.
+
+### First-Time Setup
+
+1. Create a superuser inside the running container:
+
+```bash
+docker compose exec sysreptor-app python3 manage.py createsuperuser
+```
+
+2. Log in at `http://localhost:7777`, generate an API token under **User Settings → API Tokens**, and paste it into `SYSREPTOR_API_TOKEN` in the root `.env` so the RTPI backend can push findings.
+
+### Integration with RTPI
+
+The RTPI backend exports findings to SysReptor via the API token above. Confirm the wiring:
+
+```bash
+curl -H "Authorization: Bearer $SYSREPTOR_API_TOKEN" http://localhost:7777/api/v1/pentestprojects/
+```
+
+### Stopping / Removing
+
+```bash
+# Stop only the SysReptor profile
+docker compose --profile sysreptor down
+
+# Remove SysReptor data volumes (DESTRUCTIVE)
+docker volume rm rtpi_sysreptor-app-data rtpi_sysreptor-caddy-data
+```
+
+The `sysreptor` database inside `rtpi-postgres` is **not** removed by `down` — drop it manually if you want a clean re-init:
+
+```bash
+docker compose exec postgres psql -U rtpi -c "DROP DATABASE sysreptor;"
+```
+
+### Troubleshooting SysReptor
+
+- **UI won't load / 502 from Caddy**: the `sysreptor-app` container is still running migrations on first start. Tail logs with `docker compose logs -f sysreptor-app`; first boot can take 1–2 minutes.
+- **"DisallowedHost" errors in app logs**: add the hostname you're using to `ALLOWED_HOSTS` in `configs/rtpi-sysreptor/app.env` and restart the app container.
+- **Login loops / session errors**: check that `SECURE_SSL_REDIRECT=on` matches your deployment. For local HTTP-only access, set it to `off`.
+- **Empty/failed exports**: confirm `REDIS_PASSWORD` in `app.env` matches `SYSREPTOR_REDIS_PASSWORD` — Celery workers fail silently when they can't reach Redis.
+
+---
+
 ## Development Deployment
 
 ### Local Development Setup
@@ -1066,7 +1231,7 @@ npm run db:studio
 
 ```bash
 # Ensure .env file has correct DATABASE_URL for Docker
-# For Docker: postgresql://rtpi:password@localhost:5432/rtpi_main
+# For Docker: postgresql://rtpi:password@localhost:5434/rtpi_main
 npm run db:push
 
 # Or run from within the app container
@@ -1078,7 +1243,7 @@ docker compose exec app npm run db:push
 For production, configure connection pooling in the database URL:
 
 ```bash
-DATABASE_URL=postgresql://rtpi:password@localhost:5432/rtpi_main?pool_timeout=0&pool_max_conns=10
+DATABASE_URL=postgresql://rtpi:password@localhost:5434/rtpi_main?pool_timeout=0&pool_max_conns=10
 ```
 
 ---
@@ -1147,8 +1312,8 @@ sudo ufw allow 443/tcp   # HTTPS
 sudo ufw enable
 
 # Deny direct access to database and redis
-sudo ufw deny 5432/tcp
-sudo ufw deny 6379/tcp
+sudo ufw deny 5434/tcp
+sudo ufw deny 6381/tcp
 ```
 
 ### Environment Security
@@ -1351,7 +1516,7 @@ docker exec -it rtpi-postgres-prod psql -U rtpi -d rtpi_main
 docker network inspect rtpi-network
 
 # Test connection from app container
-docker compose -f docker-compose.prod.yml exec app nc -zv postgres 5432
+docker compose -f docker-compose.prod.yml exec app nc -zv postgres 5434
 ```
 
 #### Redis Connection Errors
@@ -1367,7 +1532,7 @@ docker exec -it rtpi-redis-prod redis-cli -a YOUR_REDIS_PASSWORD ping
 # Should return: PONG
 
 # Test from app container
-docker compose -f docker-compose.prod.yml exec app nc -zv redis 6379
+docker compose -f docker-compose.prod.yml exec app nc -zv redis 6381
 ```
 
 #### Application Won't Start
@@ -1475,10 +1640,10 @@ Configure PostgreSQL streaming replication:
 
 ```bash
 # Primary server
-DATABASE_URL=postgresql://rtpi:pass@primary:5432/rtpi_main
+DATABASE_URL=postgresql://rtpi:pass@primary:5434/rtpi_main
 
 # Read replica
-DATABASE_REPLICA_URL=postgresql://rtpi:pass@replica:5432/rtpi_main
+DATABASE_REPLICA_URL=postgresql://rtpi:pass@replica:5434/rtpi_main
 ```
 
 #### Connection Pooling

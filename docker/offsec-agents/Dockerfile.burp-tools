@@ -32,8 +32,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Create BurpSuite activation directories
-RUN mkdir -p /opt/burp-setup /opt/burp-projects && \
-    chown -R rtpi-agent:rtpi-agent /opt/burp-setup /opt/burp-projects
+RUN mkdir -p /opt/burp /opt/burp-setup /opt/burp-projects && \
+    chown -R rtpi-agent:rtpi-agent /opt/burp /opt/burp-setup /opt/burp-projects
 
 # Copy dormant-mode entrypoint for BurpSuite activation workflow
 COPY burp-entrypoint.sh /usr/local/bin/burp-entrypoint.sh

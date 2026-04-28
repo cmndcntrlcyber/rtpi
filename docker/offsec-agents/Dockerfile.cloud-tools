@@ -42,7 +42,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip \
     && unzip /tmp/awscliv2.zip -d /tmp \
-    && /tmp/aws/install \
+    && /tmp/aws/install --update \
     && rm -rf /tmp/aws /tmp/awscliv2.zip
 
 # ============================================================================
@@ -83,7 +83,6 @@ RUN pip install --no-cache-dir prowler
 RUN cd /opt/tools \
     && git clone --depth 1 https://github.com/RhinoSecurityLabs/pacu.git \
     && cd pacu \
-    && pip install --no-cache-dir -r requirements.txt \
     && pip install --no-cache-dir -e .
 
 # ============================================================================
@@ -123,8 +122,10 @@ RUN pip install --no-cache-dir parliament
 # Steampipe — SQL-based cloud resource querying
 # ============================================================================
 
-RUN curl -fsSL https://raw.githubusercontent.com/turbot/steampipe/main/install.sh | sh \
-    && steampipe plugin install aws gcp azure
+RUN /bin/sh -c "$(curl -fsSL https://steampipe.io/install/steampipe.sh)"
+USER rtpi-agent
+RUN steampipe plugin install aws gcp azure
+USER root
 
 # ============================================================================
 # cartography — Infrastructure graph mapping (Neo4j integration)

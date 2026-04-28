@@ -190,6 +190,7 @@ const sendMessageSchema = z.object({
   operationId: z.string().uuid(),
   message: z.string().min(1).max(10000),
   conversationId: z.string().uuid().optional(),
+  agentId: z.string().uuid().optional(),
 });
 
 router.post("/:agentRole/message", async (req, res) => {
@@ -200,7 +201,7 @@ router.post("/:agentRole/message", async (req, res) => {
       return res.status(400).json({ error: "Invalid request", details: parsed.error.errors });
     }
 
-    const { operationId, message, conversationId: existingConversationId } = parsed.data;
+    const { operationId, message, conversationId: existingConversationId, agentId } = parsed.data;
 
     // Verify operation exists
     const operation = await db
@@ -254,8 +255,28 @@ router.post("/:agentRole/message", async (req, res) => {
     }
 
     // Build AI messages
-    const systemPrompt = AGENT_SYSTEM_PROMPTS[agentRole] ||
-      `You are an AI agent assistant for the Red Team Portable Infrastructure (RTPI). Your role is: ${agentRole}. Help the user with their security operations questions and tasks.`;
+    let systemPrompt = AGENT_SYSTEM_PROMPTS[agentRole];
+
+    if (!systemPrompt && agentId) {
+      // Try to fetch agent-specific system prompt
+      const targetAgent = await db
+        .select()
+        .from(agents)
+        .where(eq(agents.id, agentId))
+        .limit(1);
+
+      if (targetAgent.length > 0) {
+        const config = targetAgent[0].config as any;
+        if (config?.systemPrompt) {
+          systemPrompt = config.systemPrompt;
+        }
+      }
+    }
+
+    // Fallback if no specific prompt is found
+    if (!systemPrompt) {
+      systemPrompt = `You are an AI agent assistant for the Red Team Portable Infrastructure (RTPI). Your role is: ${agentRole}. Help the user with their security operations questions and tasks.`;
+    }
 
     const aiMessages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
       {

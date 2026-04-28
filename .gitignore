@@ -87,6 +87,75 @@ dump.rdb
 # SysReptor secrets (use app.env.example as template)
 configs/rtpi-sysreptor/app.env
 
+# Bootstrap-generated credentials backup (lives in ~/.rtpi, defend against stray copies in repo)
+.rtpi/
+credentials-*.env
+credentials.latest.env
+
+# Bootstrap-rotation env backups (timestamped copies created by scripts/bootstrap-secrets.sh)
+.env.old-*
+.env.pre-bootstrap-*
+**/*.env.old-*
+**/*.env.pre-bootstrap-*
+
+# Generic env files anywhere in the tree (keep *.example / *.sample / *.template)
+**/*.env
+**/*.envrc
+**/secrets.env
+**/*.env.private
+!**/*.env.example
+!**/*.env.sample
+!**/*.env.template
+
+# Claude Code local overrides (may contain auth tokens)
+.claude/settings.local.json
+.claude/.credentials
+.claude/*.local.json
+.mcp.json
+.anthropic/
+
+# SSH / GPG / signing material
+id_rsa*
+id_ed25519*
+id_ecdsa*
+id_dsa*
+*.asc
+*.gpg
+*.csr
+*.der
+authorized_keys
+known_hosts
+
+# Cloud / container auth material
+.aws/
+.gcloud/
+.azure/
+.kube/
+kubeconfig*
+.docker/config.json
+.npmrc
+.netrc
+
+# Session / cookie / token artifacts
+cookies.txt
+session.json
+session_*.json
+auth.json
+api_keys.txt
+*.token
+
+# SQLite journal/wal sidecars
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Tool-specific state that may contain creds/findings
+msf.db
+empire.db
+*.burp
+burp-projects/
+.bbot/
+
 # Backup files
 *.bak
 *.backup

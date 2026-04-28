@@ -248,6 +248,23 @@ async function initializeServer() {
     // Initialize default admin user
     await initializeDefaultAdmin();
 
+    // Self-repair tool_registry rows with missing baseCommand/parameters.
+    // Non-fatal — logs a summary line and continues on any failure.
+    try {
+      const { repairToolRegistryConfigs } = await import("./services/tool-executor");
+      await repairToolRegistryConfigs();
+    } catch (repairErr) {
+      console.warn("⚠️  tool_registry self-repair skipped:", repairErr);
+    }
+
+    // Bootstrap MITRE ATT&CK data if the DB is empty. Non-fatal.
+    try {
+      const { bootstrapAttackData } = await import("./services/attack-bootstrap");
+      await bootstrapAttackData();
+    } catch (attackErr) {
+      console.warn("⚠️  MITRE ATT&CK bootstrap skipped:", attackErr);
+    }
+
     // Start server
     const server = app.listen(PORT, "0.0.0.0", () => {
       console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);

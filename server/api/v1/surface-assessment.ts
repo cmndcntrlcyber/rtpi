@@ -5,10 +5,12 @@ import {
   discoveredServices,
   vulnerabilities,
   axScanResults,
-  targets
+  targets,
+  operations
 } from '@shared/schema';
 import { eq, and, sql, desc, inArray } from 'drizzle-orm';
 import { ensureRole, logAudit } from '../../auth/middleware';
+import { toCsvMultiSection, toTxtReport } from '../../utils/export-format';
 
 const router = Router();
 
@@ -1161,6 +1163,222 @@ router.post('/:operationId/report/generate', async (req, res) => {
   } catch (error: any) {
     res.status(500).json({
       error: 'Failed to start report generation',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /api/v1/surface-assessment/:operationId/export?format=csv|json|txt
+ * Aggregated export of the entire Surface Assessment dataset for an operation.
+ */
+router.get('/:operationId/export', async (req, res) => {
+  try {
+    const { operationId } = req.params;
+    const format = String(req.query.format || 'json').toLowerCase();
+    if (!['csv', 'json', 'txt'].includes(format)) {
+      return res.status(400).json({ error: "format must be one of: csv, json, txt" });
+    }
+
+    // Operation (for filename + meta)
+    const [op] = await db
+      .select({ id: operations.id, name: operations.name, status: operations.status })
+      .from(operations)
+      .where(eq(operations.id, operationId))
+      .limit(1);
+    if (!op) return res.status(404).json({ error: "Operation not found" });
+
+    // Assets (full, un-paginated)
+    const assetRows = await db
+      .select({
+        id: discoveredAssets.id,
+        value: discoveredAssets.value,
+        type: discoveredAssets.type,
+        hostname: discoveredAssets.hostname,
+        ipAddress: discoveredAssets.ipAddress,
+        status: discoveredAssets.status,
+        discoveryMethod: discoveredAssets.discoveryMethod,
+        operatingSystem: discoveredAssets.operatingSystem,
+        tags: discoveredAssets.tags,
+        lastSeenAt: discoveredAssets.lastSeenAt,
+      })
+      .from(discoveredAssets)
+      .where(eq(discoveredAssets.operationId, operationId));
+
+    // Services (joined with asset value)
+    const serviceRows = await db
+      .select({
+        id: discoveredServices.id,
+        name: discoveredServices.name,
+        port: discoveredServices.port,
+        protocol: discoveredServices.protocol,
+        version: discoveredServices.version,
+        state: discoveredServices.state,
+        assetId: discoveredServices.assetId,
+        assetValue: discoveredAssets.value,
+      })
+      .from(discoveredServices)
+      .innerJoin(discoveredAssets, eq(discoveredServices.assetId, discoveredAssets.id))
+      .where(eq(discoveredAssets.operationId, operationId));
+
+    // Vulnerabilities
+    const vulnRows = await db
+      .select({
+        id: vulnerabilities.id,
+        title: vulnerabilities.title,
+        severity: vulnerabilities.severity,
+        status: vulnerabilities.status,
+        cvssScore: vulnerabilities.cvssScore,
+        cveId: vulnerabilities.cveId,
+        targetId: vulnerabilities.targetId,
+        discoveredAt: vulnerabilities.discoveredAt,
+      })
+      .from(vulnerabilities)
+      .where(eq(vulnerabilities.operationId, operationId));
+
+    // Activity (scan results)
+    const activityRows = await db
+      .select({
+        id: axScanResults.id,
+        toolName: axScanResults.toolName,
+        status: axScanResults.status,
+        assetsFound: axScanResults.assetsFound,
+        servicesFound: axScanResults.servicesFound,
+        vulnerabilitiesFound: axScanResults.vulnerabilitiesFound,
+        startedAt: axScanResults.startedAt,
+        completedAt: axScanResults.completedAt,
+        errorMessage: axScanResults.errorMessage,
+      })
+      .from(axScanResults)
+      .where(eq(axScanResults.operationId, operationId))
+      .orderBy(desc(axScanResults.createdAt));
+
+    // Derived summary counts
+    const typeCounts = assetRows.reduce<Record<string, number>>((acc, a) => {
+      acc[a.type] = (acc[a.type] || 0) + 1;
+      return acc;
+    }, {});
+    const severityCounts = vulnRows.reduce<Record<string, number>>((acc, v) => {
+      acc[v.severity] = (acc[v.severity] || 0) + 1;
+      return acc;
+    }, {});
+    const statusCounts = vulnRows.reduce<Record<string, number>>((acc, v) => {
+      const s = (v.status || 'open').replace('-', '_');
+      acc[s] = (acc[s] || 0) + 1;
+      return acc;
+    }, {});
+    const webVulnIds = new Set<string>();
+    // Conservative heuristic: any vuln whose linked service has an HTTP/HTTPS port.
+    const webPorts = new Set([80, 443, 8080, 8443, 8000, 8888]);
+    const webAssetIds = new Set(
+      serviceRows.filter(s => webPorts.has(s.port || 0) || /^http/i.test(s.name || '')).map(s => s.assetId)
+    );
+    for (const v of vulnRows) if (v.targetId && webAssetIds.has(v.targetId)) webVulnIds.add(v.id);
+
+    const summary = {
+      totalAssets: assetRows.length,
+      ips: typeCounts.ip || 0,
+      domains: typeCounts.domain || 0,
+      urls: typeCounts.url || 0,
+      services: serviceRows.length,
+      vulnerabilities: vulnRows.length,
+      webVulnerabilities: webVulnIds.size,
+      severity: severityCounts,
+      status: statusCounts,
+      exportedAt: new Date().toISOString(),
+      operationId: op.id,
+      operationName: op.name,
+      operationStatus: op.status,
+    };
+
+    const safeName = (op.name || 'operation').replace(/[^a-z0-9_\-]+/gi, '-').toLowerCase();
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `surface-assessment-${safeName}-${stamp}.${format}`;
+
+    if (format === 'json') {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(JSON.stringify({
+        meta: summary,
+        assets: assetRows,
+        services: serviceRows,
+        vulnerabilities: vulnRows,
+        activity: activityRows,
+      }, null, 2));
+      return;
+    }
+
+    if (format === 'csv') {
+      const csv = toCsvMultiSection([
+        {
+          title: 'Summary',
+          headers: ['metric', 'value'],
+          rows: [
+            { metric: 'operationName', value: op.name },
+            { metric: 'operationStatus', value: op.status },
+            { metric: 'totalAssets', value: summary.totalAssets },
+            { metric: 'ips', value: summary.ips },
+            { metric: 'domains', value: summary.domains },
+            { metric: 'urls', value: summary.urls },
+            { metric: 'services', value: summary.services },
+            { metric: 'vulnerabilities', value: summary.vulnerabilities },
+            { metric: 'webVulnerabilities', value: summary.webVulnerabilities },
+            ...Object.entries(summary.severity).map(([k, v]) => ({ metric: `severity.${k}`, value: v })),
+            ...Object.entries(summary.status).map(([k, v]) => ({ metric: `status.${k}`, value: v })),
+            { metric: 'exportedAt', value: summary.exportedAt },
+          ],
+        },
+        {
+          title: 'Assets',
+          headers: ['id', 'value', 'type', 'hostname', 'ipAddress', 'status', 'discoveryMethod', 'operatingSystem', 'tags', 'lastSeenAt'],
+          rows: assetRows,
+        },
+        {
+          title: 'Services',
+          headers: ['id', 'assetValue', 'name', 'port', 'protocol', 'version', 'state', 'assetId'],
+          rows: serviceRows,
+        },
+        {
+          title: 'Vulnerabilities',
+          headers: ['id', 'title', 'severity', 'status', 'cvssScore', 'cveId', 'targetId', 'discoveredAt'],
+          rows: vulnRows,
+        },
+        {
+          title: 'Activity',
+          headers: ['id', 'toolName', 'status', 'assetsFound', 'servicesFound', 'vulnerabilitiesFound', 'startedAt', 'completedAt', 'errorMessage'],
+          rows: activityRows,
+        },
+      ]);
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(csv);
+      return;
+    }
+
+    // TXT
+    const txt = toTxtReport(`RTPI Surface Assessment — ${op.name}`, [
+      {
+        title: 'Summary',
+        body: [
+          { metric: 'Total Assets', value: `${summary.totalAssets}  (${summary.ips} IPs, ${summary.domains} Domains, ${summary.urls} URLs)` },
+          { metric: 'Services', value: summary.services },
+          { metric: 'Vulnerabilities', value: summary.vulnerabilities },
+          { metric: 'Web Vulnerabilities', value: summary.webVulnerabilities },
+          { metric: 'Severity', value: JSON.stringify(summary.severity) },
+          { metric: 'Status', value: JSON.stringify(summary.status) },
+        ],
+      },
+      { title: `Assets (${assetRows.length})`, body: assetRows as any },
+      { title: `Services (${serviceRows.length})`, body: serviceRows as any },
+      { title: `Vulnerabilities (${vulnRows.length})`, body: vulnRows as any },
+      { title: `Activity (${activityRows.length})`, body: activityRows as any },
+    ]);
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(txt);
+  } catch (error: any) {
+    res.status(500).json({
+      error: 'Export failed',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }

@@ -69,7 +69,7 @@ RUN chmod +x /opt/adaptix-entrypoint.sh
 EXPOSE 40443 443 80 9000
 
 # Switch back to agent user
-USER agent
-WORKDIR /home/agent
+USER rtpi-agent
+WORKDIR /home/rtpi-agent
 
 ENTRYPOINT ["/opt/adaptix-entrypoint.sh"]

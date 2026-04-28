@@ -36,6 +36,8 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -92,6 +94,13 @@ const MITRE_TACTICS: TacticDef[] = [
   { id: "TA0010", name: "Exfiltration", shortName: "exfiltration", icon: Upload, color: "bg-lime-500" },
   { id: "TA0040", name: "Impact", shortName: "impact", icon: Skull, color: "bg-rose-500" },
 ];
+
+// Presentation-only lookup keyed by MITRE attackId. Tactics not in this map
+// (e.g. ICS/mobile additions) still render with a neutral fallback.
+const TACTIC_META: Record<string, { icon: React.ElementType; color: string }> = Object.fromEntries(
+  MITRE_TACTICS.map(t => [t.id, { icon: t.icon, color: t.color }])
+);
+const FALLBACK_TACTIC_META = { icon: Target, color: "bg-slate-500" };
 
 // Static agent config data (UI metadata)
 const AGENT_CONFIGS: Omit<AgentConfig, "dbId">[] = [
@@ -459,6 +468,9 @@ function BulkAssignmentControls({
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function TacticWorkflowsView() {
+  const { isAdmin, isOperator } = useAuth();
+  const canMutate = isAdmin() || isOperator();
+
   const [expandedTactics, setExpandedTactics] = useState<Set<string>>(new Set(["TA0043"]));
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
@@ -477,17 +489,27 @@ export default function TacticWorkflowsView() {
         fetch("/api/v1/attack/tactics", { credentials: "include" }),
       ]);
 
-      const agentsData = await agentsRes.json();
-      const tacticsData = await tacticsRes.json();
+      if (!agentsRes.ok) {
+        toast.error(`Failed to load agents (${agentsRes.status})`);
+      }
+      if (!tacticsRes.ok) {
+        toast.error(`Failed to load MITRE tactics (${tacticsRes.status})`);
+      }
+
+      const agentsData = agentsRes.ok ? await agentsRes.json() : { agents: [] };
+      const tacticsData = tacticsRes.ok ? await tacticsRes.json() : [];
 
       // Build agent configs by matching DB records to static metadata
       const dbAgents: any[] = agentsData.agents || [];
       const matched: AgentConfig[] = [];
 
       for (const dbAgent of dbAgents) {
+        // Prefer name map, fall back to matching AGENT_CONFIGS by static `type`
+        // (e.g. dbAgent.type === "burp-tools" → AGENT_CONFIGS[i].type).
         const configKey = AGENT_NAME_TO_KEY[dbAgent.name];
-        if (!configKey) continue;
-        const staticCfg = AGENT_CONFIGS.find(c => c.id === configKey);
+        const staticCfg =
+          (configKey && AGENT_CONFIGS.find(c => c.id === configKey)) ||
+          AGENT_CONFIGS.find(c => c.type === dbAgent.type);
         if (!staticCfg) continue;
 
         matched.push({
@@ -508,6 +530,13 @@ export default function TacticWorkflowsView() {
       }));
       setDbTactics(tactics);
 
+      if (tactics.length === 0) {
+        toast.warning(
+          "MITRE ATT&CK data is not loaded. Run `npx tsx server/scripts/import-attack-data.ts` or let the server bootstrap it on next start.",
+          { duration: 8000 }
+        );
+      }
+
       // Collect all assignments from enriched agents
       const allAssignments: Assignment[] = [];
       for (const dbAgent of dbAgents) {
@@ -524,16 +553,22 @@ export default function TacticWorkflowsView() {
       }
       setAssignments(allAssignments);
 
-      // Seed defaults if no assignments exist yet
-      if (allAssignments.length === 0 && matched.length > 0 && tactics.length > 0) {
+      // Seed defaults if no assignments exist yet (operator/admin only)
+      if (
+        allAssignments.length === 0 &&
+        matched.length > 0 &&
+        tactics.length > 0 &&
+        canMutate
+      ) {
         await seedDefaults(matched, tactics);
       }
     } catch (err) {
       console.error("Failed to load ATT&CK workflow data:", err);
+      toast.error("Failed to load ATT&CK workflow data");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [canMutate]);
 
   // Seed default assignments on first load
   const seedDefaults = async (agents: AgentConfig[], tactics: TacticRecord[]) => {
@@ -600,6 +635,15 @@ export default function TacticWorkflowsView() {
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
+  async function explainHttpError(res: Response, fallback: string): Promise<string> {
+    try {
+      const body = await res.json();
+      return body?.error || body?.message || `${fallback} (${res.status})`;
+    } catch {
+      return `${fallback} (${res.status})`;
+    }
+  }
+
   const handleAddToTactics = async (agentDbId: string, tacticDbIds: string[]) => {
     try {
       const res = await fetch(`/api/v1/agents/${agentDbId}/tactics`, {
@@ -608,9 +652,15 @@ export default function TacticWorkflowsView() {
         credentials: "include",
         body: JSON.stringify({ tacticIds: tacticDbIds }),
       });
-      if (res.ok) await fetchData();
+      if (!res.ok) {
+        toast.error(await explainHttpError(res, "Failed to add tactic assignments"));
+        return;
+      }
+      toast.success(`Assigned ${tacticDbIds.length} tactic${tacticDbIds.length === 1 ? "" : "s"}`);
+      await fetchData();
     } catch (err) {
       console.error("Failed to add tactic assignments:", err);
+      toast.error("Failed to add tactic assignments");
     }
   };
 
@@ -620,15 +670,20 @@ export default function TacticWorkflowsView() {
         method: "DELETE",
         credentials: "include",
       });
-      if (res.ok) await fetchData();
+      if (!res.ok) {
+        toast.error(await explainHttpError(res, "Failed to remove tactic assignment"));
+        return;
+      }
+      await fetchData();
     } catch (err) {
       console.error("Failed to remove tactic assignment:", err);
+      toast.error("Failed to remove tactic assignment");
     }
   };
 
   const handleBulkAssign = async (agentDbIds: string[], tacticDbIds: string[]) => {
     try {
-      await Promise.all(
+      const results = await Promise.all(
         agentDbIds.map(agentDbId =>
           fetch(`/api/v1/agents/${agentDbId}/tactics`, {
             method: "POST",
@@ -638,25 +693,42 @@ export default function TacticWorkflowsView() {
           })
         )
       );
+      const failed = results.filter(r => !r.ok);
+      if (failed.length > 0) {
+        toast.error(await explainHttpError(failed[0], `${failed.length}/${results.length} assignments failed`));
+      } else {
+        toast.success(`Assigned ${agentDbIds.length} agent${agentDbIds.length === 1 ? "" : "s"} to ${tacticDbIds.length} tactic${tacticDbIds.length === 1 ? "" : "s"}`);
+      }
       await fetchData();
     } catch (err) {
       console.error("Failed to bulk assign:", err);
+      toast.error("Failed to bulk assign");
     }
   };
 
   const handleStartAgent = async (agent: AgentConfig) => {
-    console.log("Starting/stopping agent:", agent.id);
-    setAgentConfigs(prev =>
-      prev.map(a =>
-        a.id === agent.id
-          ? { ...a, status: a.status === "running" ? "stopped" as const : "running" as const }
-          : a
-      )
-    );
+    const isRunning = agent.status === "running";
+    const action = isRunning ? "stop" : "start";
+    try {
+      const res = await fetch(`/api/v1/offsec-agents/${agent.id}/${action}`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        toast.error(await explainHttpError(res, `Failed to ${action} ${agent.name}`));
+        return;
+      }
+      toast.success(`${isRunning ? "Stopped" : "Started"} ${agent.name}`);
+      await fetchData();
+    } catch (err) {
+      console.error(`Failed to ${action} agent:`, err);
+      toast.error(`Failed to ${action} ${agent.name}`);
+    }
   };
 
   const handleConfigureAgent = (agent: AgentConfig) => {
-    console.log("Configure agent:", agent.id);
+    // The R&D Agents tab is the source of truth for per-agent configuration.
+    toast.info(`Configure ${agent.name} from the R&D Agents tab`);
   };
 
   // ── UI helpers ─────────────────────────────────────────────────────────────
@@ -669,11 +741,23 @@ export default function TacticWorkflowsView() {
     });
   };
 
-  const expandAll = () => setExpandedTactics(new Set(MITRE_TACTICS.map(t => t.id)));
+  // Build display tactics from DB, hydrated with presentation metadata.
+  const displayTactics: TacticDef[] = dbTactics.map(t => {
+    const meta = TACTIC_META[t.attackId] || FALLBACK_TACTIC_META;
+    return {
+      id: t.attackId,
+      name: t.name,
+      shortName: t.shortName,
+      icon: meta.icon,
+      color: meta.color,
+    };
+  });
+
+  const expandAll = () => setExpandedTactics(new Set(displayTactics.map(t => t.id)));
   const collapseAll = () => setExpandedTactics(new Set());
 
   const filteredTactics = searchTerm
-    ? MITRE_TACTICS.filter(tactic => {
+    ? displayTactics.filter(tactic => {
         if (tactic.name.toLowerCase().includes(searchTerm.toLowerCase())) return true;
         const tacticAgents = getAgentsForTactic(tactic.id);
         return tacticAgents.some(
@@ -683,7 +767,7 @@ export default function TacticWorkflowsView() {
             agent.capabilities.some(cap => cap.toLowerCase().includes(searchTerm.toLowerCase()))
         );
       })
-    : MITRE_TACTICS;
+    : displayTactics;
 
   // ── Loading state ──────────────────────────────────────────────────────────
 
@@ -735,7 +819,7 @@ export default function TacticWorkflowsView() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-4">
-            <div className="text-2xl font-bold">{MITRE_TACTICS.length}</div>
+            <div className="text-2xl font-bold">{dbTactics.length}</div>
             <p className="text-sm text-muted-foreground">Tactics</p>
           </CardContent>
         </Card>

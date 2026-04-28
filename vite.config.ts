@@ -28,13 +28,7 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     port: 5000,
-    allowedHosts: [
-      "rtpi.local",
-      "localhost",
-      ".local",
-      "c3s-rtpi.attck.nexus",
-      ".attck.nexus",
-    ],
+    allowedHosts: true,
     proxy: {
       "/api": {
         target: "http://localhost:3001",

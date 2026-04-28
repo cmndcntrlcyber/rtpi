@@ -13,7 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, RefreshCw } from "lucide-react";
 
 interface AIProviderConfig {
   provider: "auto" | "ollama" | "openai" | "anthropic";
@@ -22,7 +22,10 @@ interface AIProviderConfig {
   maxTokens: number;
   useCache: boolean;
   preferLocal: boolean;
+  ollamaHost: string;
 }
+
+const DEFAULT_OLLAMA_HOST = "http://localhost:11434";
 
 interface ProviderStatus {
   ollama: boolean;
@@ -56,7 +59,12 @@ export function AIProviderSettings() {
     maxTokens: 2048,
     useCache: true,
     preferLocal: true,
+    ollamaHost: DEFAULT_OLLAMA_HOST,
   });
+  const [testingOllama, setTestingOllama] = useState(false);
+  const [ollamaModels, setOllamaModels] = useState<{ name: string; size?: number }[]>([]);
+  const [ollamaModelsLoading, setOllamaModelsLoading] = useState(false);
+  const [ollamaModelsError, setOllamaModelsError] = useState<string | null>(null);
   const [providerStatus, setProviderStatus] = useState<ProviderStatus>({
     ollama: false,
     openai: false,
@@ -68,7 +76,44 @@ export function AIProviderSettings() {
   useEffect(() => {
     loadSettings();
     checkProviderStatus();
+    void loadOllamaModels();
   }, []);
+
+  // Refresh model list whenever the user switches to Ollama (or Auto, which may prefer Ollama).
+  useEffect(() => {
+    if (config.provider === "ollama" || config.provider === "auto") {
+      void loadOllamaModels();
+    }
+  }, [config.provider]);
+
+  const loadOllamaModels = async () => {
+    try {
+      setOllamaModelsLoading(true);
+      setOllamaModelsError(null);
+      const res = await fetch("/api/v1/ollama/models/live");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setOllamaModels([]);
+        setOllamaModelsError(data.details || data.error || `HTTP ${res.status}`);
+        return;
+      }
+      setOllamaModels(Array.isArray(data.models) ? data.models : []);
+    } catch (e: any) {
+      setOllamaModels([]);
+      setOllamaModelsError(e?.message || "Network error");
+    } finally {
+      setOllamaModelsLoading(false);
+    }
+  };
+
+  const formatBytes = (bytes?: number): string => {
+    if (!bytes || bytes <= 0) return "";
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    let i = 0;
+    let v = bytes;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+  };
 
   const loadSettings = async () => {
     try {
@@ -84,6 +129,7 @@ export function AIProviderSettings() {
           setConfig((prev) => ({
             ...prev,
             model: data.settings.defaultModel || prev.model,
+            ollamaHost: data.settings.ollamaHost || prev.ollamaHost,
           }));
         }
       }
@@ -130,16 +176,57 @@ export function AIProviderSettings() {
       const response = await fetch("/api/v1/settings/ai-provider", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ defaultModel: config.model }),
+        body: JSON.stringify({
+          defaultModel: config.model,
+          ollamaHost: config.ollamaHost,
+        }),
       });
 
-      if (!response.ok) throw new Error("Failed to save settings");
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.details || err.error || "Failed to save settings");
+      }
 
       toast.success("AI provider settings have been updated");
+      // Refresh Ollama availability and model list after endpoint change.
+      void checkProviderStatus();
+      void loadOllamaModels();
     } catch (error: any) {
       toast.error(`Save Failed: ${error.message}`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const testOllamaConnection = async () => {
+    try {
+      setTestingOllama(true);
+      const url = (config.ollamaHost || "").trim().replace(/\/+$/, "");
+      if (!url) {
+        toast.error("Enter an Ollama endpoint first");
+        return;
+      }
+      try { new URL(url); } catch {
+        toast.error("Invalid URL — expected e.g. http://localhost:11434");
+        return;
+      }
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
+      try {
+        const res = await fetch(`${url}/api/tags`, { signal: controller.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        const count = Array.isArray(data.models) ? data.models.length : 0;
+        toast.success(`Ollama reachable at ${url} — ${count} model(s) available`);
+        void loadOllamaModels();
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch (error: any) {
+      const msg = error?.name === "AbortError" ? "Timed out after 5s" : (error?.message || "Connection failed");
+      toast.error(`Ollama unreachable: ${msg}`);
+    } finally {
+      setTestingOllama(false);
     }
   };
 
@@ -205,21 +292,79 @@ export function AIProviderSettings() {
           </p>
         </div>
 
+        <div className="space-y-2">
+          <Label htmlFor="ollamaHost">Ollama API Endpoint</Label>
+          <div className="flex gap-2">
+            <Input
+              id="ollamaHost"
+              type="url"
+              placeholder={DEFAULT_OLLAMA_HOST}
+              value={config.ollamaHost}
+              onChange={(e) => setConfig({ ...config, ollamaHost: e.target.value })}
+              spellCheck={false}
+              autoComplete="off"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={testOllamaConnection}
+              disabled={testingOllama}
+            >
+              {testingOllama ? <Loader2 className="h-4 w-4 animate-spin" /> : "Test"}
+            </Button>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Base URL of the Ollama HTTP API. Default is <code>{DEFAULT_OLLAMA_HOST}</code>.
+            Use e.g. <code>http://ollama:11434</code> when running inside Docker, or a remote URL for a GPU host.
+            Persisted to <code>OLLAMA_HOST</code> in <code>.env</code>.
+          </p>
+        </div>
+
         {config.provider !== "auto" && (
           <div className="space-y-2">
-            <Label htmlFor="model">Model</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="model">Model</Label>
+              {config.provider === "ollama" && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={loadOllamaModels}
+                  disabled={ollamaModelsLoading}
+                  className="h-7 px-2"
+                >
+                  {ollamaModelsLoading ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3 w-3 mr-1" />
+                  )}
+                  {!ollamaModelsLoading && "Refresh"}
+                </Button>
+              )}
+            </div>
             <Select
               value={config.model}
               onValueChange={(value) => setConfig({ ...config, model: value })}
             >
               <SelectTrigger id="model">
-                <SelectValue placeholder="Select a model" />
+                <SelectValue placeholder={
+                  config.provider === "ollama" && ollamaModelsLoading
+                    ? "Loading models…"
+                    : "Select a model"
+                } />
               </SelectTrigger>
               <SelectContent>
+                {config.provider === "ollama" && ollamaModels.length === 0 && !ollamaModelsLoading && (
+                  <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                    {ollamaModelsError
+                      ? `Ollama unreachable: ${ollamaModelsError}`
+                      : "No models installed on this Ollama server"}
+                  </div>
+                )}
                 {config.provider === "ollama" &&
-                  RECOMMENDED_MODELS.ollama.map((model) => (
-                    <SelectItem key={model.value} value={model.value}>
-                      {model.label}
+                  ollamaModels.map((m) => (
+                    <SelectItem key={m.name} value={m.name}>
+                      {m.name}{m.size ? ` — ${formatBytes(m.size)}` : ""}
                     </SelectItem>
                   ))}
                 {config.provider === "openai" &&
@@ -237,7 +382,9 @@ export function AIProviderSettings() {
               </SelectContent>
             </Select>
             <p className="text-sm text-muted-foreground">
-              Select the default model for AI operations
+              {config.provider === "ollama"
+                ? "Live list from the Ollama server. Click Refresh to re-sync."
+                : "Select the default model for AI operations"}
             </p>
           </div>
         )}

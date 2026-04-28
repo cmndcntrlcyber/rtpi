@@ -97,7 +97,8 @@ RUN git clone --depth 1 https://github.com/sneakerhax/Prompts.git && \
 # Install JADX for APK/DEX analysis (useful for pker)
 RUN mkdir -p /opt/tools/jadx && \
     cd /opt/tools/jadx && \
-    wget -q https://github.com/skylot/jadx/releases/latest/download/jadx-1.5.0.zip -O jadx.zip && \
+    JADX_VERSION=$(curl -sf https://api.github.com/repos/skylot/jadx/releases/latest | grep '"tag_name"' | head -1 | cut -d'"' -f4 | sed 's/^v//') && \
+    wget -q "https://github.com/skylot/jadx/releases/download/v${JADX_VERSION}/jadx-${JADX_VERSION}.zip" -O jadx.zip && \
     unzip -q jadx.zip && \
     rm jadx.zip && \
     ln -s /opt/tools/jadx/bin/jadx /opt/tools/bin/jadx && \

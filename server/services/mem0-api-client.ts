@@ -20,7 +20,7 @@ import type {
   FindingMetadata,
 } from "../../shared/types/mem0-types";
 
-const MEM0_API_URL = process.env.MEM0_API_URL || "http://localhost:8000";
+const MEM0_API_URL = process.env.MEM0_API_URL || "http://localhost:8005";
 
 async function mem0Fetch<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${MEM0_API_URL}${path}`;

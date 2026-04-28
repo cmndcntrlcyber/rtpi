@@ -5,11 +5,19 @@ import Anthropic from "@anthropic-ai/sdk";
 import fs from "fs";
 import path from "path";
 import { invalidateAIClients } from "../../services/ai-clients";
+import { readFeatureFlags } from "../../../shared/feature-flags";
 
 const router = Router();
 
-// Apply authentication - only admins can manage LLM settings
 router.use(ensureAuthenticated);
+
+// GET /api/v1/settings/features - Resolved feature flag map (any authenticated user)
+// Mounted before the admin role guard so the client can gate UI on flags.
+router.get("/features", (_req, res) => {
+  res.json({ features: readFeatureFlags() });
+});
+
+// Everything below this line is admin-only.
 router.use(ensureRole("admin"));
 
 // In-memory storage for LLM settings (synced with process.env and .env file)

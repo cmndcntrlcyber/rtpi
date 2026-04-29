@@ -414,6 +414,10 @@ export const mcpServers = pgTable("mcp_servers", {
   restartCount: integer("restart_count").notNull().default(0),
   uptime: timestamp("uptime"),
   lastError: text("last_error"),
+  // v2.9.1 Phase 5 — liveness probe results (populated by mcp-invoker)
+  livenessPath: text("liveness_path"), // optional override for HTTP-based MCP servers
+  lastProbeAt: timestamp("last_probe_at"),
+  lastProbeOk: boolean("last_probe_ok"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -890,6 +894,11 @@ export const toolRegistry = pgTable("tool_registry", {
   // Usage statistics (denormalized from toolExecutions for fast reads)
   usageCount: integer("usage_count").notNull().default(0),
   lastUsed: timestamp("last_used"),
+
+  // v2.9.1 Phase 5 — health probe (populated by health-checks service)
+  healthCheckCmd: text("health_check_cmd"),
+  lastHealthAt: timestamp("last_health_at"),
+  lastHealthOk: boolean("last_health_ok"),
 
   // Metadata
   tags: json("tags").default([]),

@@ -50,6 +50,7 @@ import { OllamaAIClient } from "../../services/ollama-ai-client";
 import { TOOL_HELP_CONFIG, DEFAULT_HELP_CONFIG } from "../../services/tool-tester";
 import type { ToolConfiguration } from "../../../shared/types/tool-config";
 import { frameworkBindingService } from "../../services/frameworks/framework-binding-service";
+import { ContainerError } from "../../services/runtime/error-classifier";
 
 const router = Router();
 
@@ -1006,8 +1007,13 @@ router.post("/registry/:id/execute", ensureRole("admin", "operator"), async (req
       result,
     });
   } catch (error: any) {
-    // Error logged for debugging
     await logAudit(user.id, "execute_tool", "/tools/registry", req.params.id, false, req);
+    if (error instanceof ContainerError) {
+      return res.status(error.suggestedHttpStatus).json({
+        error: "tool_execution_failed",
+        ...error.structured,
+      });
+    }
     res.status(500).json({ error: error.message });
   }
 });

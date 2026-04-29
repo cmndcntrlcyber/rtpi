@@ -12,6 +12,7 @@ import { Settings, Play, Save, Sparkles, Copy, Check, Shield, KeyRound, Crosshai
 import { Tool } from "@/services/tools";
 import { useTargets } from "@/hooks/useTargets";
 import { useExecuteDockerTool } from "@/hooks/useTools";
+import ContainerErrorBanner from "@/components/runtime/ContainerErrorBanner";
 
 interface ConfigureToolDialogProps {
   open: boolean;
@@ -35,6 +36,12 @@ export default function ConfigureToolDialog({
   const [selectedTargetId, setSelectedTargetId] = useState("");
   const [params, setParams] = useState<Record<string, any>>({});
   const [executionResult, setExecutionResult] = useState<any>(null);
+  const [executionError, setExecutionError] = useState<{
+    code?: string;
+    retryable?: boolean;
+    remediation?: string;
+    message?: string;
+  } | null>(null);
   const [generatedCommand, setGeneratedCommand] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -147,6 +154,7 @@ export default function ConfigureToolDialog({
       setParams({});
       setSelectedTargetId("");
       setExecutionResult(null);
+      setExecutionError(null);
       setGeneratedCommand(null);
       setCopied(false);
       setCredentialInfo(null);
@@ -211,6 +219,7 @@ export default function ConfigureToolDialog({
     }
 
     try {
+      setExecutionError(null);
       const execPayload: any = {
         targetId: selectedTargetId,
         agentId,
@@ -239,9 +248,22 @@ export default function ConfigureToolDialog({
       }
     } catch (err: any) {
       console.error("Execution error:", err);
-      const errMsg = err?.message || "Unknown error";
-      const details = err?.data?.details;
-      toast.error(`Execution failed: ${errMsg}`, details ? { description: details } : undefined);
+      // v2.9.1 Phase 5: server may return a structured ContainerError body
+      // ({code, retryable, remediation}). Surface it via setExecutionError so
+      // the dialog renders <ContainerErrorBanner /> with actionable copy.
+      const data = err?.data;
+      if (data?.code || data?.remediation) {
+        setExecutionError({
+          code: data.code ?? data.error,
+          retryable: data.retryable,
+          remediation: data.remediation,
+          message: data.message ?? err?.message,
+        });
+      } else {
+        const errMsg = err?.message || "Unknown error";
+        const details = err?.data?.details;
+        toast.error(`Execution failed: ${errMsg}`, details ? { description: details } : undefined);
+      }
     }
   };
 
@@ -553,6 +575,11 @@ export default function ConfigureToolDialog({
             <div className="text-center py-4 text-sm text-muted-foreground">
               No configuration parameters available for this tool
             </div>
+          )}
+
+          {/* Structured Container Error (v2.9.1 Phase 5) */}
+          {executionError && (
+            <ContainerErrorBanner error={executionError} onRetry={() => setExecutionError(null)} />
           )}
 
           {/* Execution Result */}

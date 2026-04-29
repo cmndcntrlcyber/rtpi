@@ -3,6 +3,7 @@ import { db } from "../../db";
 import { agents, mcpServers } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
+import { mcpInvoker, MCPInvokerError } from "../../services/agents/mcp-invoker";
 
 const router = Router();
 
@@ -10,13 +11,18 @@ const router = Router();
 router.use(ensureAuthenticated);
 
 // POST /api/v1/agents/:agentId/mcp-call - Call MCP server tool from agent
+// v2.9.1 Phase 5: replaced the mock stub with a real JSON-RPC 2.0 invocation
+// against the spawned MCP server's stdio (via mcpInvoker).
 router.post("/:agentId/mcp-call", ensureRole("admin", "operator"), async (req, res) => {
   const { agentId } = req.params;
-  const { toolName } = req.body;
+  const { toolName, args } = req.body ?? {};
   const user = req.user as any;
 
+  if (typeof toolName !== "string" || !toolName) {
+    return res.status(400).json({ error: "toolName is required" });
+  }
+
   try {
-    // Get agent configuration
     const agent = await db
       .select()
       .from(agents)
@@ -35,7 +41,6 @@ router.post("/:agentId/mcp-call", ensureRole("admin", "operator"), async (req, r
       return res.status(400).json({ error: "Agent has no MCP server configured" });
     }
 
-    // Get MCP server configuration
     const mcpServer = await db
       .select()
       .from(mcpServers)
@@ -48,25 +53,43 @@ router.post("/:agentId/mcp-call", ensureRole("admin", "operator"), async (req, r
     }
 
     if (mcpServer.status !== "running") {
-      return res.status(400).json({ error: "MCP server is not running" });
+      return res.status(503).json({
+        error: "mcp_not_running",
+        retryable: true,
+        remediation: `Start the MCP server '${mcpServer.name}' before invoking its tools.`,
+      });
     }
 
-    // TODO: Actual MCP tool execution would go here
-    // For now, return mock response
-    const mockResponse = {
-      success: true,
+    const result = await mcpInvoker.callTool(
+      mcpServerId,
       toolName,
-      result: `Mock result from ${toolName} via ${mcpServer.name}`,
-      timestamp: new Date().toISOString(),
-    };
+      typeof args === "object" && args ? args : {},
+    );
 
     await logAudit(user.id, "agent_mcp_call", "/agents", agentId, true, req);
 
-    res.json(mockResponse);
+    res.json({
+      success: !result.isError,
+      toolName,
+      server: { id: mcpServer.id, name: mcpServer.name },
+      result,
+      timestamp: new Date().toISOString(),
+    });
   } catch (error: any) {
-    // Error logged for debugging
     await logAudit(user.id, "agent_mcp_call", "/agents", agentId, false, req);
-    res.status(500).json({ error: "Failed to execute MCP tool call", details: error?.message || "Internal server error" });
+    if (error instanceof MCPInvokerError) {
+      const status = error.code === "not_running" ? 503 : error.code === "timeout" ? 504 : 502;
+      return res.status(status).json({
+        error: "mcp_invocation_failed",
+        code: error.code,
+        rpcCode: error.rpcCode,
+        message: error.message,
+      });
+    }
+    res.status(500).json({
+      error: "Failed to execute MCP tool call",
+      details: error?.message || "Internal server error",
+    });
   }
 });
 
@@ -104,39 +127,40 @@ router.get("/:agentId/mcp-tools", async (req, res) => {
       return res.json({ tools: [] });
     }
 
-    // Return Tavily tools if this is a Tavily server
-    if (mcpServer.command.includes("tavily")) {
-      const tools = [
-        {
-          name: "tavily-search",
-          description: "Powerful web search with customizable parameters",
-          category: "search",
-        },
-        {
-          name: "tavily-extract",
-          description: "Extract content from specified URLs",
-          category: "extraction",
-        },
-        {
-          name: "tavily-crawl",
-          description: "Structured web crawl starting from a base URL",
-          category: "crawl",
-        },
-        {
-          name: "tavily-map",
-          description: "Create structured map of website URLs",
-          category: "mapping",
-        },
-      ];
+    // v2.9.1 Phase 5: ask the live MCP server for its tool list (cached
+    // 60s by mcpInvoker). Falls back to an empty list if the server is
+    // unreachable so the UI degrades gracefully.
+    if (mcpServer.status !== "running") {
+      return res.json({ tools: [], server: mcpServer });
+    }
 
+    try {
+      const tools = await mcpInvoker.listTools(mcpServer.id);
       res.json({ tools, server: mcpServer });
-    } else {
-      // Other MCP servers would list their tools here
-      res.json({ tools: [], server: mcpServer });
+    } catch (err: any) {
+      if (err instanceof MCPInvokerError) {
+        return res.json({
+          tools: [],
+          server: mcpServer,
+          warning: { code: err.code, message: err.message },
+        });
+      }
+      throw err;
     }
   } catch (error: any) {
-    // Error logged for debugging
     res.status(500).json({ error: "Failed to get MCP tools", details: error?.message || "Internal server error" });
+  }
+});
+
+// GET /api/v1/agents/mcp-servers/:id/probe - Force a liveness probe right now
+// (separate from the 30s background loop)
+router.get("/mcp-servers/:id/probe", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const ok = await mcpInvoker.probe(id);
+    res.json({ ok, probedAt: new Date().toISOString() });
+  } catch (error: any) {
+    res.status(500).json({ error: "Probe failed", details: error?.message });
   }
 });
 

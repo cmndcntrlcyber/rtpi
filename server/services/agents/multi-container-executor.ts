@@ -8,6 +8,7 @@
 import { db } from '../../db';
 import { toolRegistry } from '../../../shared/schema';
 import { DockerExecutor, ExecutionResult, ExecutionOptions } from '../docker-executor';
+import { containerRuntime } from '../runtime/container-runtime';
 import { eq } from 'drizzle-orm';
 
 export interface ToolExecutionOptions extends ExecutionOptions {
@@ -74,8 +75,10 @@ export class MultiContainerExecutor {
 
     console.log(`[MultiContainerExecutor] Executing ${toolName} in ${containerName} as ${containerUser}`);
 
-    // Execute in container
-    return this.dockerExecutor.exec(containerName, cmd, {
+    // Execute via the runtime so a stopped container surfaces as a
+    // structured ContainerError {code:"not_running", retryable, remediation}
+    // instead of a raw dockerode stack trace.
+    return containerRuntime.exec(containerName, cmd, {
       timeout: options.timeout,
       workDir: options.workDir,
       env: options.env,
@@ -126,10 +129,10 @@ export class MultiContainerExecutor {
     command: string,
     options: ExecutionOptions = {}
   ): Promise<ExecutionResult> {
-    return this.dockerExecutor.exec(
+    return containerRuntime.exec(
       containerName,
       ['bash', '-c', command],
-      options
+      options,
     );
   }
 

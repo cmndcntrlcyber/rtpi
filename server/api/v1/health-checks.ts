@@ -1,13 +1,75 @@
 import { Router } from "express";
 import { db } from "../../db";
-import { healthChecks } from "@shared/schema";
+import { healthChecks, toolRegistry, mcpServers } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole } from "../../auth/middleware";
+import { containerRuntime } from "../../services/runtime/container-runtime";
 
 const router = Router();
 
 // Apply authentication to all routes
 router.use(ensureAuthenticated);
+
+// GET /api/v1/health-checks/containers (v2.9.1 Phase 5)
+// Aggregated container readiness summary for the runtime panel.
+// Registered before `/:id` so it isn't shadowed by the wildcard route.
+router.get("/containers", async (_req, res) => {
+  try {
+    // Distinct containers referenced by registered tools.
+    const tools = await db
+      .select({
+        containerName: toolRegistry.containerName,
+        toolId: toolRegistry.toolId,
+        lastHealthAt: toolRegistry.lastHealthAt,
+        lastHealthOk: toolRegistry.lastHealthOk,
+      })
+      .from(toolRegistry);
+
+    const byContainer = new Map<string, { tools: string[]; lastHealth?: Date; lastOk?: boolean }>();
+    for (const t of tools) {
+      const name = t.containerName || "rtpi-tools";
+      const entry = byContainer.get(name) ?? { tools: [] };
+      entry.tools.push(t.toolId);
+      if (t.lastHealthAt && (!entry.lastHealth || t.lastHealthAt > entry.lastHealth)) {
+        entry.lastHealth = t.lastHealthAt;
+        entry.lastOk = t.lastHealthOk ?? undefined;
+      }
+      byContainer.set(name, entry);
+    }
+
+    const summaries = await Promise.all(
+      [...byContainer.entries()].map(async ([containerName, info]) => {
+        const status = await containerRuntime.inspectSafe(containerName);
+        return {
+          container: containerName,
+          tools: info.tools,
+          state: status?.state ?? "unknown",
+          running: status?.running ?? false,
+          image: status?.image,
+          lastHealthAt: info.lastHealth,
+          lastHealthOk: info.lastOk,
+        };
+      }),
+    );
+
+    const mcps = await db
+      .select({
+        id: mcpServers.id,
+        name: mcpServers.name,
+        status: mcpServers.status,
+        lastProbeAt: mcpServers.lastProbeAt,
+        lastProbeOk: mcpServers.lastProbeOk,
+      })
+      .from(mcpServers);
+
+    res.json({ containers: summaries, mcpServers: mcps });
+  } catch (error: any) {
+    res.status(500).json({
+      error: "Failed to summarize container health",
+      details: error?.message,
+    });
+  }
+});
 
 // GET /api/v1/health-checks - List all health checks
 router.get("/", async (_req, res) => {

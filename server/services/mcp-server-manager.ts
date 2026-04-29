@@ -17,6 +17,15 @@ class MCPServerManager {
   private processes: Map<string, MCPServerProcess> = new Map();
   private healthCheckInterval: NodeJS.Timeout | null = null;
 
+  /**
+   * v2.9.1 Phase 5 — read-only accessor used by mcp-invoker to send JSON-RPC
+   * messages over the existing stdio pipe. Returns the live ChildProcess
+   * (with stdin / stdout / stderr) or null if the server is not running.
+   */
+  public getChildProcess(serverId: string): ChildProcess | null {
+    return this.processes.get(serverId)?.process ?? null;
+  }
+
   constructor() {
     // Start periodic health checks
     this.startHealthMonitoring();

@@ -15,6 +15,8 @@ import { getToolByToolId, getToolOutputParser } from './tool-registry-manager';
 import { validateToolExecutionRequest } from '../validation/tool-config-schema';
 import { outputParserManager } from './output-parser-manager';
 import { dockerExecutor } from './docker-executor';
+import { containerRuntime } from './runtime/container-runtime';
+import { ContainerError, classifyContainerError } from './runtime/error-classifier';
 
 // Maximum concurrent tool executions
 const MAX_CONCURRENT_EXECUTIONS = parseInt(
@@ -187,10 +189,17 @@ export async function executeTool(
 
     return executionResult;
   } catch (error: any) {
-    // Update execution record with error
+    // Classify into the structured taxonomy so callers can render
+    // {code, retryable, remediation} instead of leaking exec internals.
+    const structured =
+      error instanceof ContainerError
+        ? error.structured
+        : classifyContainerError(error);
+    const finalStatus = structured.code === 'timeout' ? 'timeout' : 'failed';
+
     await db.update(toolExecutions)
       .set({
-        status: error.message.includes('timeout') ? 'timeout' : 'failed',
+        status: finalStatus,
         errorMessage: error.message,
         endTime: new Date(),
       })
@@ -400,7 +409,10 @@ async function runCommand(
   const cmdPrefix = binaryPath.endsWith('.pl') ? ['perl', binaryPath] : [binaryPath];
   const cmd = [...cmdPrefix, ...command.split(' ').filter(a => a.length > 0)];
 
-  const result = await dockerExecutor.exec(containerName, cmd, {
+  // Route through containerRuntime for preflight + structured errors.
+  // Throws ContainerError on inspect/exec failure; callers up the stack
+  // either re-throw or pass through error.structured to the UI.
+  const result = await containerRuntime.exec(containerName, cmd, {
     timeout,
     user: containerUser,
   });

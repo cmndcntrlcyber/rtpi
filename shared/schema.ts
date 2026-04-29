@@ -9,6 +9,7 @@ import {
   pgEnum,
   real,
   uniqueIndex,
+  index,
   customType,
   foreignKey,
 } from "drizzle-orm/pg-core";
@@ -2582,6 +2583,100 @@ export const memoryContexts = pgTable("memory_contexts", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+// ============================================================================
+// CTI Feeds + Vectorized Knowledge Base (v2.9.1 Phase 7)
+// ============================================================================
+
+export const ctiSourceKindEnum = pgEnum("cti_source_kind", [
+  "rss",
+  "taxii",
+  "json",
+  "atom",
+  "github",
+]);
+
+export const ctiSources = pgTable("cti_sources", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().unique(),
+  kind: ctiSourceKindEnum("kind").notNull(),
+  url: text("url").notNull(),
+  // For TAXII: the collection ID. For GitHub: optional path. For RSS: unused.
+  collection: text("collection"),
+  // Optional headers / auth tokens passed verbatim. Server-side only.
+  authHeaders: json("auth_headers"),
+  enabled: boolean("enabled").notNull().default(true),
+  cadenceSeconds: integer("cadence_seconds").notNull().default(3600),
+  lastRunAt: timestamp("last_run_at"),
+  lastRunStatus: text("last_run_status"), // "ok" | "partial" | "failed"
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const ctiIngestionRunStatusEnum = pgEnum("cti_ingestion_run_status", [
+  "running",
+  "ok",
+  "partial",
+  "failed",
+]);
+
+export const ctiIngestionRuns = pgTable("cti_ingestion_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sourceId: uuid("source_id").notNull().references(() => ctiSources.id, { onDelete: "cascade" }),
+  status: ctiIngestionRunStatusEnum("status").notNull().default("running"),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  finishedAt: timestamp("finished_at"),
+  itemsSeen: integer("items_seen").notNull().default(0),
+  itemsNew: integer("items_new").notNull().default(0),
+  itemsUpdated: integer("items_updated").notNull().default(0),
+  errorMessage: text("error_message"),
+}, (table) => [
+  index("cti_runs_source_started_idx").on(table.sourceId, table.startedAt),
+]);
+
+export const ctiItems = pgTable("cti_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sourceId: uuid("source_id").notNull().references(() => ctiSources.id, { onDelete: "cascade" }),
+  // Source-defined identifier (TAXII object id, RSS guid, etc.).
+  externalId: text("external_id").notNull(),
+  title: text("title"),
+  summary: text("summary"),
+  link: text("link"),
+  publishedAt: timestamp("published_at"),
+  // Tags can include severity, threat actor, malware family, MITRE technique IDs.
+  tags: json("tags").default([]),
+  // Original payload (STIX object, RSS item, etc.) for re-processing.
+  rawJson: json("raw_json"),
+  // Hash of normalized content used for dedup; new ingest with same hash is a no-op.
+  contentHash: text("content_hash"),
+  // Optional embedding (vector(1536)). NULL when no embedding provider available.
+  embedding: vector("embedding"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("cti_items_source_external_idx").on(table.sourceId, table.externalId),
+  index("cti_items_published_idx").on(table.publishedAt),
+]);
+
+export const stixImportRuns = pgTable("stix_import_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  source: text("source").notNull(), // "atlas" | "attck" | "custom"
+  bundleId: text("bundle_id"),
+  taxiiCollection: text("taxii_collection"),
+  objectsTotal: integer("objects_total").notNull().default(0),
+  objectsImported: integer("objects_imported").notNull().default(0),
+  objectsSkipped: integer("objects_skipped").notNull().default(0),
+  errors: json("errors"),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  finishedAt: timestamp("finished_at"),
+}, (table) => [
+  index("stix_runs_source_started_idx").on(table.source, table.startedAt),
+]);
+
+// ============================================================================
+// Memory entries (existing) — referenced by CTI items via tags/metadata
+// ============================================================================
 
 // Memory entries - individual memory records with optional vector embeddings
 export const memoryEntries = pgTable("memory_entries", {

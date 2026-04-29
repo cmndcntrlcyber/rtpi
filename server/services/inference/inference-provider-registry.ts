@@ -25,6 +25,7 @@ import {
   probeVLLM,
   getVLLMBaseUrl,
   getVLLMDefaultModel,
+  vllmEmbed,
   type VLLMProbeResult,
 } from "./vllm-client";
 
@@ -70,6 +71,13 @@ export interface InferenceProvider {
   endpoint(): string | undefined;
   defaultModel(): string | undefined;
   probe(): Promise<ProbeResult>;
+  /**
+   * Embed one or more inputs. Implementations should respect EMBEDDING_MODEL
+   * env when present and fall back to a sensible default. Throws on transport
+   * failure; returns null when this provider can't embed (e.g. Anthropic).
+   * v2.9.1 Phase 7.
+   */
+  embed?(inputs: string[]): Promise<number[][] | null>;
 }
 
 // ----------------------------------------------------------------------------
@@ -111,6 +119,11 @@ class VLLMProvider implements InferenceProvider {
       error: r.error,
       details: { baseUrl: r.baseUrl },
     };
+  }
+  async embed(inputs: string[]): Promise<number[][]> {
+    const model = process.env.EMBEDDING_MODEL || getVLLMDefaultModel();
+    const result = await vllmEmbed({ input: inputs, model });
+    return (result?.data ?? []).map((d: any) => d.embedding as number[]);
   }
 }
 
@@ -156,6 +169,47 @@ class OllamaProvider implements InferenceProvider {
         details: { endpoint: this.endpoint() },
       };
     }
+  }
+  /**
+   * Ollama embed via /api/embed (newer) with /api/embeddings legacy fallback.
+   * Default model is EMBEDDING_MODEL or 'nomic-embed-text:latest'.
+   */
+  async embed(inputs: string[]): Promise<number[][]> {
+    const host = (this.endpoint() || "http://localhost:11434").replace(/\/+$/, "");
+    const model = process.env.EMBEDDING_MODEL || "nomic-embed-text:latest";
+    // Try /api/embed first (supports batch); fall back to /api/embeddings (single).
+    try {
+      const res = await fetch(`${host}/api/embed`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model, input: inputs }),
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (res.ok) {
+        const body = (await res.json()) as { embeddings?: number[][] };
+        if (Array.isArray(body.embeddings)) return body.embeddings;
+      }
+    } catch {
+      // Fall through to legacy endpoint.
+    }
+    const out: number[][] = [];
+    for (const input of inputs) {
+      const res = await fetch(`${host}/api/embeddings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model, prompt: input }),
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (!res.ok) {
+        throw new Error(`Ollama embed failed (${res.status})`);
+      }
+      const body = (await res.json()) as { embedding?: number[] };
+      if (!Array.isArray(body.embedding)) {
+        throw new Error("Ollama embed returned no embedding");
+      }
+      out.push(body.embedding);
+    }
+    return out;
   }
 }
 
@@ -211,6 +265,13 @@ class OpenAIProvider implements InferenceProvider {
       };
     }
   }
+  async embed(inputs: string[]): Promise<number[][] | null> {
+    const client = getOpenAIClient();
+    if (!client) return null;
+    const model = process.env.EMBEDDING_MODEL || "text-embedding-3-small";
+    const res = await client.embeddings.create({ model, input: inputs });
+    return res.data.map((d: any) => d.embedding as number[]);
+  }
 }
 
 class AnthropicProvider implements InferenceProvider {
@@ -254,6 +315,10 @@ class AnthropicProvider implements InferenceProvider {
         note: "SDK initialized — actual roundtrip exercised on first chat call",
       },
     };
+  }
+  async embed(_inputs: string[]): Promise<number[][] | null> {
+    // Anthropic does not currently expose an embeddings endpoint.
+    return null;
   }
 }
 

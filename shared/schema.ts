@@ -356,6 +356,11 @@ export const agents = pgTable("agents", {
   lastActivity: timestamp("last_activity"),
   tasksCompleted: integer("tasks_completed").notNull().default(0),
   tasksFailed: integer("tasks_failed").notNull().default(0),
+  // v2.9.1 Phase 6 — per-agent provider override + tool-choice strategy
+  // Values: 'vllm' | 'ollama' | 'openai' | 'anthropic' | null (use registry default).
+  inferenceProviderId: text("inference_provider_id"),
+  // Values: 'auto' | 'required' | 'none' | a specific tool name (model-dependent).
+  toolChoiceStrategy: text("tool_choice_strategy"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

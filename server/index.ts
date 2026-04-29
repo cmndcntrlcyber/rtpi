@@ -73,6 +73,7 @@ import bugBountyImportRoutes from "./api/v1/bug-bounty-import";
 import agentChatRoutes from "./api/v1/agent-chat";
 import c2WarroomRoutes from "./api/v1/c2-warroom";
 import sysreptorRoutes from "./api/v1/sysreptor";
+import inferenceRoutes from "./api/v1/inference";
 import "./services/rd-feedback-loop"; // Activate R&D tool testing feedback loop
 import { initializeDefaultAdmin } from "./services/admin-initialization";
 import { opsManagerScheduler } from "./services/ops-manager-scheduler";
@@ -139,6 +140,7 @@ app.use("/api/v1/users", usersRoutes);
 app.use("/api/v1/empire", empireRoutes);
 app.use("/api/v1/c2-warroom", c2WarroomRoutes);
 app.use("/api/v1/sysreptor", sysreptorRoutes);
+app.use("/api/v1/inference", inferenceRoutes);
 app.use("/api/v1/attack", attackRoutes);
 app.use("/api/v1/attack-flows", attackFlowsRoutes);
 app.use("/api/v1/workbench", workbenchRoutes);

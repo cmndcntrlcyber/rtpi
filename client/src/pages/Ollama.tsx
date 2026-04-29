@@ -3,6 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ModelManager } from "@/components/ollama/ModelManager";
 import { AIProviderSettings } from "@/components/ollama/AIProviderSettings";
+import InferenceProvidersPanel from "@/components/inference/InferenceProvidersPanel";
 import { PerformanceBenchmarks } from "@/components/ollama/PerformanceBenchmarks";
 import { Cpu, Settings2, TrendingUp } from "lucide-react";
 
@@ -53,9 +54,22 @@ export default function Ollama() {
         <TabsContent value="settings" className="space-y-4">
           <Card>
             <CardHeader>
+              <CardTitle>Inference Providers</CardTitle>
+              <CardDescription>
+                Registered providers (vLLM, Ollama, OpenAI, Anthropic) — capabilities,
+                endpoint, default model, and live probe status. Per-agent overrides
+                in <code className="text-xs">agents.inference_provider_id</code>.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <InferenceProvidersPanel />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
               <CardTitle>AI Provider Settings</CardTitle>
               <CardDescription>
-                Configure AI providers and default model preferences
+                Cloud API keys + Ollama host configuration
               </CardDescription>
             </CardHeader>
             <CardContent>

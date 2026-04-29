@@ -1002,6 +1002,67 @@ services:
         max-file: "3"
 
   # ===========================================================================
+  # vLLM — Qwen3.5-9B serving (v2.9.1 Phase 6, RTPI_INFERENCE_PROVIDER=vllm)
+  # OpenAI-compatible inference for agentic workloads on Blackwell-class GPUs.
+  # Tool-call parsing happens server-side via --tool-call-parser qwen3_coder;
+  # the orchestrator's mcp-invoker (Phase 5) handles MCP dispatch.
+  # Usage: docker compose --profile vllm up -d
+  # Set VLLM_BASE_URL=http://rtpi-vllm:8000 in app env.
+  # NOTE: For Blackwell sm_120 (RTX 5060 Ti) the published nightly may need
+  # a source rebuild — see docs/enhancements/2.9/references/Inference-Agent-Architecture.md.
+  # ===========================================================================
+
+  vllm-qwen:
+    image: vllm/vllm-openai:nightly
+    container_name: rtpi-vllm
+    profiles:
+      - vllm
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18000:8000"  # OpenAI-compatible API (localhost only)
+    volumes:
+      - vllm-hf-cache:/root/.cache/huggingface
+    environment:
+      - HF_HOME=/root/.cache/huggingface
+      - VLLM_LOGGING_LEVEL=${VLLM_LOGGING_LEVEL:-INFO}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    # Command flags follow Inference-Agent-Architecture.md:
+    # - reasoning-parser qwen3 enables thinking/non-thinking switching
+    # - tool-call-parser qwen3_coder + enable-auto-tool-choice activates the
+    #   XML-format tool calling Qwen3.5 was trained for
+    # - language-model-only skips the vision encoder to save ~1GB VRAM
+    # - speculative-config enables Multi-Token Prediction for ~3-5x decoding
+    command:
+      - "--model=${VLLM_MODEL:-Qwen/Qwen3.5-9B}"
+      - "--port=8000"
+      - "--tensor-parallel-size=1"
+      - "--max-model-len=131072"
+      - "--reasoning-parser=qwen3"
+      - "--enable-auto-tool-choice"
+      - "--tool-call-parser=qwen3_coder"
+    networks:
+      - rtpi-network
+    dns:
+      - 127.0.0.11
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ===========================================================================
   # Chromium Headless Shell (v2.9.1 Phase 3 — app-side PDF generation)
   # Small alpine-based Chrome devtools-protocol endpoint used by the
   # documentRenderer service. Bind 127.0.0.1 only — never exposed externally.
@@ -1441,6 +1502,8 @@ volumes:
   # LLM / AI volumes
   ollama-models:
   open-webui-data:
+  # Phase 6: Hugging Face cache for vLLM-served Qwen weights
+  vllm-hf-cache:
   # OffSec Agent volumes (v2.2)
   maldev-tools:
   azure-ad-tools:

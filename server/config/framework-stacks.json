@@ -1,0 +1,85 @@
+{
+  "$comment": "v2.9.1 Phase 9 manifest. Maps each user-visible deployment to the set of named compose containers the orchestrator should start/stop. Bundles depend on other deployments by name.",
+  "deployments": [
+    {
+      "name": "empire",
+      "kind": "c2_empire",
+      "displayName": "Empire C2",
+      "description": "Empire C2 framework — listeners, stagers, agent management.",
+      "composeProfile": "empire",
+      "containers": ["rtpi-empire-agent", "rtpi-empire-server", "rtpi-empire-proxy"]
+    },
+    {
+      "name": "sliver",
+      "kind": "c2_sliver",
+      "displayName": "Sliver C2",
+      "description": "BishopFox Sliver — implant generation + operator console.",
+      "composeProfile": "sliver",
+      "containers": ["rtpi-sliver-agent"]
+    },
+    {
+      "name": "adaptix",
+      "kind": "c2_adaptix",
+      "displayName": "Adaptix C2",
+      "description": "Adaptix C2 framework agent.",
+      "composeProfile": "adaptix",
+      "containers": ["rtpi-adaptix-agent"]
+    },
+    {
+      "name": "c3",
+      "kind": "c2_c3",
+      "displayName": "C3 (ReversecLabs)",
+      "description": "Custom Command and Control framework agent.",
+      "composeProfile": "c3",
+      "containers": ["rtpi-c3-agent"]
+    },
+    {
+      "name": "loki",
+      "kind": "c2_loki",
+      "displayName": "Loki C2",
+      "description": "boku7 Loki C2 framework agent.",
+      "composeProfile": "loki",
+      "containers": ["rtpi-loki-agent"]
+    },
+    {
+      "name": "vllm",
+      "kind": "vllm",
+      "displayName": "vLLM (Qwen3.5-9B)",
+      "description": "Local OpenAI-compatible inference for Qwen3.5-9B / Coder-14B on Blackwell.",
+      "composeProfile": "vllm",
+      "containers": ["rtpi-vllm"]
+    },
+    {
+      "name": "chromium",
+      "kind": "chromium",
+      "displayName": "Chromium Headless Shell",
+      "description": "CDP endpoint used by Phase 3 PDF generation.",
+      "composeProfile": "pdf",
+      "containers": ["rtpi-chromium-shell"]
+    },
+    {
+      "name": "docmost",
+      "kind": "docmost",
+      "displayName": "Docmost",
+      "description": "Team docs platform (Phase 8). Includes a dedicated redis.",
+      "composeProfile": "docmost",
+      "containers": ["rtpi-docmost", "rtpi-docmost-redis"]
+    },
+    {
+      "name": "sysreptor",
+      "kind": "sysreptor",
+      "displayName": "SysReptor",
+      "description": "Pentest reporting platform. Caddy proxy + Redis.",
+      "composeProfile": "sysreptor",
+      "containers": ["rtpi-sysreptor-app", "rtpi-sysreptor-caddy", "rtpi-sysreptor-redis"]
+    }
+  ],
+  "bundles": [
+    {
+      "name": "all-c2",
+      "displayName": "All C2 Frameworks",
+      "description": "Spin up Empire, Sliver, Adaptix, C3, and Loki together.",
+      "members": ["empire", "sliver", "adaptix", "c3", "loki"]
+    }
+  ]
+}

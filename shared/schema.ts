@@ -3146,6 +3146,86 @@ export const operationFrameworkCoverage = pgTable("operation_framework_coverage"
   foreignKey({ columns: [table.linkedVulnerabilityId], foreignColumns: [vulnerabilities.id], name: "op_framework_cov_vuln_id_fk" }).onDelete("set null"),
 ]);
 
+// ============================================================================
+// Deployments (v2.9.1 Phase 9) — per-framework + bundle lifecycle
+// Each `deployment` row represents one user-visible unit (a single C2
+// framework, the chromium-shell, vLLM, etc.). The orchestrator transitions
+// `current_state` toward `desired_state`, emitting one `deployment_events`
+// row per state change. `deployment_dependencies` lets a "bundle" deployment
+// (e.g. all-c2) reference its child deployments.
+// ============================================================================
+
+export const deploymentKindEnum = pgEnum("deployment_kind", [
+  "c2_empire",
+  "c2_sliver",
+  "c2_c3",
+  "c2_adaptix",
+  "c2_loki",
+  "kasm",
+  "sysreptor",
+  "docmost",
+  "vllm",
+  "chromium",
+  "bundle",
+  "custom",
+]);
+
+export const deploymentStateEnum = pgEnum("deployment_state", [
+  "down",
+  "starting",
+  "up",
+  "degraded",
+  "stopping",
+  "error",
+  "unknown",
+]);
+
+export const deployments = pgTable("deployments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().unique(),
+  kind: deploymentKindEnum("kind").notNull(),
+  // Optional compose profile that gates this deployment in docker-compose.yml.
+  // Informational; the orchestrator uses dockerode to start/stop named
+  // containers via the container manifest, not `docker compose` CLI.
+  composeProfile: text("compose_profile"),
+  desiredState: deploymentStateEnum("desired_state").notNull().default("down"),
+  currentState: deploymentStateEnum("current_state").notNull().default("unknown"),
+  lastTransitionAt: timestamp("last_transition_at"),
+  // Free-form per-deployment knobs (e.g. listener ports, profile selection).
+  params: json("params").default({}),
+  // Last computed health summary keyed by container name.
+  healthSummary: json("health_summary").default({}),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const deploymentEventTypeEnum = pgEnum("deployment_event_type", [
+  "plan",
+  "up",
+  "down",
+  "health_change",
+  "error",
+]);
+
+export const deploymentEvents = pgTable("deployment_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  deploymentId: uuid("deployment_id").notNull().references(() => deployments.id, { onDelete: "cascade" }),
+  eventType: deploymentEventTypeEnum("event_type").notNull(),
+  payload: json("payload"),
+  at: timestamp("at").notNull().defaultNow(),
+}, (table) => [
+  index("deployment_events_deployment_at_idx").on(table.deploymentId, table.at),
+]);
+
+export const deploymentDependencies = pgTable("deployment_dependencies", {
+  parentId: uuid("parent_id").notNull().references(() => deployments.id, { onDelete: "cascade" }),
+  childId: uuid("child_id").notNull().references(() => deployments.id, { onDelete: "cascade" }),
+  ordinal: integer("ordinal").notNull().default(0),
+}, (table) => [
+  uniqueIndex("deployment_dependencies_pk").on(table.parentId, table.childId),
+]);
+
 // Framework bindings (v2.9.1 Phase 4) — link framework elements (OWASP LLM
 // controls, NIST AI subcategories, CIS safeguards, ATLAS/ATT&CK techniques)
 // to executable assets (tools, agents, workflows). Distinct from

@@ -2,6 +2,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ContainerCard from "@/components/infrastructure/ContainerCard";
 import EmpireTab from "@/components/empire/EmpireTab";
 import WorkspaceTab from "@/components/kasm/WorkspaceTab";
+import DeploymentsPanel from "@/components/deployments/DeploymentsPanel";
 
 export default function Infrastructure() {
   // Mock data for containers
@@ -118,6 +119,7 @@ export default function Infrastructure() {
       <Tabs defaultValue="containers" className="space-y-6">
         <TabsList>
           <TabsTrigger value="containers">Containers</TabsTrigger>
+          <TabsTrigger value="deployments">Deployments</TabsTrigger>
           <TabsTrigger value="devices">Devices</TabsTrigger>
           <TabsTrigger value="health">Health Checks</TabsTrigger>
           <TabsTrigger value="empire">C2 Warroom</TabsTrigger>
@@ -136,6 +138,10 @@ export default function Infrastructure() {
               />
             ))}
           </div>
+        </TabsContent>
+
+        <TabsContent value="deployments" className="space-y-4">
+          <DeploymentsPanel />
         </TabsContent>
 
         <TabsContent value="devices" className="space-y-4">

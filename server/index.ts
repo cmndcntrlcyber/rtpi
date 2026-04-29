@@ -77,6 +77,7 @@ import inferenceRoutes from "./api/v1/inference";
 import ctiRoutes from "./api/v1/cti";
 import knowledgeRoutes from "./api/v1/knowledge";
 import stixRoutes from "./api/v1/stix";
+import docmostRoutes from "./api/v1/docmost";
 import "./services/rd-feedback-loop"; // Activate R&D tool testing feedback loop
 import { initializeDefaultAdmin } from "./services/admin-initialization";
 import { opsManagerScheduler } from "./services/ops-manager-scheduler";
@@ -147,6 +148,7 @@ app.use("/api/v1/inference", inferenceRoutes);
 app.use("/api/v1/cti", ctiRoutes);
 app.use("/api/v1/knowledge", knowledgeRoutes);
 app.use("/api/v1/stix", stixRoutes);
+app.use("/api/v1/docmost", docmostRoutes);
 app.use("/api/v1/attack", attackRoutes);
 app.use("/api/v1/attack-flows", attackFlowsRoutes);
 app.use("/api/v1/workbench", workbenchRoutes);

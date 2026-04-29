@@ -18,6 +18,8 @@ import SysReptorExportDialog from "@/components/reports/SysReptorExportDialog";
 import SysReptorProjectsList from "@/components/reports/SysReptorProjectsList";
 import SysReptorHealthBanner from "@/components/reports/SysReptorHealthBanner";
 import GeneratePdfButton from "@/components/reports/GeneratePdfButton";
+import DocmostHealthBanner from "@/components/reports/DocmostHealthBanner";
+import PublishToDocmostButton from "@/components/reports/PublishToDocmostButton";
 
 const REPORT_GROUPS_KEY = "rtpi-report-groups-expanded";
 
@@ -268,6 +270,9 @@ export default function Reports() {
       {/* Sysreptor health banner */}
       <SysReptorHealthBanner />
 
+      {/* Docmost health banner (renders only when FF_DOCMOST is on) */}
+      <DocmostHealthBanner />
+
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
@@ -408,6 +413,7 @@ export default function Reports() {
                             </Button>
                           )}
                           <GeneratePdfButton reportId={report.id} reportName={report.name} />
+                          <PublishToDocmostButton reportId={report.id} />
                           <Button
                             size="sm"
                             variant="ghost"

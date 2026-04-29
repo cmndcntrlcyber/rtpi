@@ -14,6 +14,16 @@ ALTER SCHEMA public OWNER TO sysreptor;
 GRANT ALL ON SCHEMA public TO sysreptor;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Docmost database and user (v2.9.1 Phase 8)
+\c postgres;
+CREATE DATABASE docmost;
+CREATE USER docmost WITH PASSWORD 'docmostpassword';
+GRANT ALL PRIVILEGES ON DATABASE docmost TO docmost;
+\c docmost;
+ALTER SCHEMA public OWNER TO docmost;
+GRANT ALL ON SCHEMA public TO docmost;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 \c rtpi_main;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "vector";

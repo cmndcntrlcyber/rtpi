@@ -1,9 +1,79 @@
 import axios, { AxiosInstance } from 'axios';
 import https from 'https';
+import fs from 'fs';
 import { db } from '../db';
 import { kasmWorkspaces, kasmSessions } from '@shared/schema';
 import { eq, and, lt, isNull, sql, desc } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
+
+// ============================================================================
+// v2.9.1 Phase 10 — TLS hardening + circuit breaker
+//
+// Three-mode TLS resolution for the KASM API client:
+//   1. KASM_CA_PATH set      → pin to that CA (preferred)
+//   2. RTPI_KASM_INSECURE_TLS=1 → fall back to rejectUnauthorized:false with a logged warning
+//   3. neither               → standard system trust store; self-signed certs will fail
+//
+// The circuit breaker trips after CB_FAIL_THRESHOLD consecutive failures
+// and stays open for CB_OPEN_MS, short-circuiting requests with a cached
+// error so the orchestrator doesn't hammer a flapping KASM instance.
+// ============================================================================
+
+type TLSMode = 'pinned' | 'system' | 'insecure';
+
+const CB_FAIL_THRESHOLD = 5;
+const CB_OPEN_MS = 60_000;
+
+function buildKasmHttpsAgent(): { agent: https.Agent; mode: TLSMode } {
+  const caPath = process.env.KASM_CA_PATH;
+  if (caPath) {
+    try {
+      const ca = fs.readFileSync(caPath);
+      return {
+        agent: new https.Agent({ ca, rejectUnauthorized: true }),
+        mode: 'pinned',
+      };
+    } catch (err) {
+      console.warn(
+        `[KasmWorkspaceManager] KASM_CA_PATH=${caPath} could not be read; falling back. ` +
+          (err instanceof Error ? err.message : ''),
+      );
+    }
+  }
+
+  if (process.env.RTPI_KASM_INSECURE_TLS === '1' || process.env.RTPI_KASM_INSECURE_TLS === 'true') {
+    console.warn(
+      '[KasmWorkspaceManager] RTPI_KASM_INSECURE_TLS is on — KASM API certs are NOT verified. ' +
+        'Set KASM_CA_PATH to a pinned CA to harden.',
+    );
+    return { agent: new https.Agent({ rejectUnauthorized: false }), mode: 'insecure' };
+  }
+
+  return { agent: new https.Agent({ rejectUnauthorized: true }), mode: 'system' };
+}
+
+interface CircuitBreakerState {
+  failures: number;
+  openUntil: number;
+  lastError?: string;
+}
+
+/**
+ * Build dockerode client options. When FF_KASM_HARDENED=1, route through
+ * the docker-socket-proxy on the rtpi-network instead of touching
+ * /var/run/docker.sock directly. The proxy enforces a verb allowlist so a
+ * compromised workspace can't call /networks/* or /volumes/* — those return
+ * 403 even with full Docker socket access.
+ */
+function buildDockerOpts(): { host?: string; port?: number; protocol?: 'http' | 'https' } | {} {
+  const hardened =
+    process.env.FF_KASM_HARDENED === 'true' || process.env.FF_KASM_HARDENED === '1';
+  if (!hardened) return {};
+  // Connect to the proxy by service name on the compose network.
+  const host = process.env.RTPI_DOCKER_PROXY_HOST || 'docker-socket-proxy';
+  const port = Number(process.env.RTPI_DOCKER_PROXY_PORT) || 2375;
+  return { host, port, protocol: 'http' };
+}
 
 /**
  * Kasm Workspace Manager
@@ -112,6 +182,9 @@ export class KasmWorkspaceManager {
   private defaultExpiryHours: number;
   private cleanupIntervalMs: number;
   private cleanupTimer?: NodeJS.Timeout;
+  // v2.9.1 Phase 10
+  private tlsMode: TLSMode = 'system';
+  private breaker: CircuitBreakerState = { failures: 0, openUntil: 0 };
 
   // Default resource quotas
   private defaultQuota: ResourceQuota = {
@@ -146,20 +219,82 @@ export class KasmWorkspaceManager {
     this.defaultExpiryHours = options?.defaultExpiryHours || 24;
     this.cleanupIntervalMs = options?.cleanupIntervalMs || 5 * 60 * 1000; // 5 minutes
 
+    const { agent, mode } = buildKasmHttpsAgent();
+    this.tlsMode = mode;
+
     this.apiClient = axios.create({
       baseURL: this.kasmApiUrl,
       headers: {
         'Content-Type': 'application/json',
       },
-      httpsAgent: new https.Agent({
-        rejectUnauthorized: false, // For self-signed certs
-      }),
+      httpsAgent: agent,
     });
+
+    // v2.9.1 Phase 10 — circuit breaker around the KASM API client.
+    // Open state short-circuits requests so a flapping KASM doesn't get
+    // hammered every 5s by the cleanup loop.
+    this.apiClient.interceptors.request.use((config) => {
+      const now = Date.now();
+      if (now < this.breaker.openUntil) {
+        const ms = this.breaker.openUntil - now;
+        return Promise.reject(
+          new Error(
+            `KASM circuit-breaker open for ${Math.ceil(ms / 1000)}s more (last error: ${this.breaker.lastError ?? 'unknown'})`,
+          ),
+        );
+      }
+      return config;
+    });
+    this.apiClient.interceptors.response.use(
+      (response) => {
+        // Successful round-trip resets the failure counter.
+        this.breaker.failures = 0;
+        return response;
+      },
+      (error) => {
+        // Don't trip on auth/4xx — those are user errors, not service flapping.
+        const status = error?.response?.status;
+        if (typeof status === 'number' && status >= 400 && status < 500) {
+          return Promise.reject(error);
+        }
+        this.breaker.failures += 1;
+        this.breaker.lastError = error?.message ?? 'transport error';
+        if (this.breaker.failures >= CB_FAIL_THRESHOLD) {
+          this.breaker.openUntil = Date.now() + CB_OPEN_MS;
+          console.warn(
+            `[KasmWorkspaceManager] circuit breaker OPEN for ${CB_OPEN_MS / 1000}s after ${this.breaker.failures} consecutive failures (last: ${this.breaker.lastError})`,
+          );
+        }
+        return Promise.reject(error);
+      },
+    );
 
     // Start automatic cleanup process
     if (this.enabled) {
       this.startCleanupSchedule();
     }
+  }
+
+  /**
+   * v2.9.1 Phase 10 — health snapshot for the runtime panel.
+   * Surfaces the resolved TLS mode + breaker state without a network call.
+   */
+  getRuntimeHealth(): {
+    enabled: boolean;
+    tlsMode: TLSMode;
+    breaker: { open: boolean; failures: number; openForMs: number; lastError?: string };
+  } {
+    const now = Date.now();
+    return {
+      enabled: this.enabled,
+      tlsMode: this.tlsMode,
+      breaker: {
+        open: now < this.breaker.openUntil,
+        failures: this.breaker.failures,
+        openForMs: Math.max(0, this.breaker.openUntil - now),
+        lastError: this.breaker.lastError,
+      },
+    };
   }
 
   /**
@@ -903,6 +1038,98 @@ export class KasmWorkspaceManager {
     } catch (error) {
       console.error('[KasmWorkspaceManager] Failed to get expiring workspaces:', error);
       return [];
+    }
+  }
+
+  // ============================================================================
+  // Nested Containers (v2.9.1 Phase 10)
+  //
+  // KASM workspaces can spawn child containers tagged with the parent
+  // session id; the orchestrator uses dockerode through the docker-socket-
+  // proxy (when FF_KASM_HARDENED=true) so a compromised workspace can't
+  // touch volumes/networks. Children are queried by the same label so the
+  // UI can render the parent → children relationship.
+  // ============================================================================
+
+  /**
+   * Spawn a nested container linked to a parent KASM session.
+   * Container labels:
+   *   rtpi.parent_session_id = <session id>
+   *   rtpi.kind             = nested-workspace
+   *
+   * Returns the new container id. The caller is responsible for tearing it
+   * down (e.g. when the parent session expires) — `removeNestedContainer`
+   * is the matching helper.
+   */
+  async spawnNested(input: {
+    parentSessionId: string;
+    image: string;
+    name?: string;
+    cmd?: string[];
+    env?: Record<string, string>;
+    extraLabels?: Record<string, string>;
+  }): Promise<{ containerId: string; name?: string }> {
+    const { default: Docker } = await import('dockerode');
+    const docker = new Docker(buildDockerOpts());
+
+    const labels: Record<string, string> = {
+      'rtpi.parent_session_id': input.parentSessionId,
+      'rtpi.kind': 'nested-workspace',
+      ...(input.extraLabels ?? {}),
+    };
+
+    const env = Object.entries(input.env ?? {}).map(([k, v]) => `${k}=${v}`);
+
+    const container = await docker.createContainer({
+      Image: input.image,
+      Cmd: input.cmd,
+      Env: env.length ? env : undefined,
+      Labels: labels,
+      name: input.name,
+      HostConfig: {
+        // Run on the same compose network so the parent session can reach the child.
+        NetworkMode: 'rtpi-network',
+        AutoRemove: false,
+      },
+    });
+    await container.start();
+    return { containerId: container.id, name: input.name };
+  }
+
+  /** List nested containers for a parent KASM session. */
+  async listNested(parentSessionId: string): Promise<
+    Array<{ id: string; name: string; image: string; state: string; status: string }>
+  > {
+    const { default: Docker } = await import('dockerode');
+    const docker = new Docker(buildDockerOpts());
+    const containers = await docker.listContainers({
+      all: true,
+      filters: { label: [`rtpi.parent_session_id=${parentSessionId}`] },
+    });
+    return containers.map((c) => ({
+      id: c.Id,
+      name: (c.Names?.[0] ?? '').replace(/^\//, ''),
+      image: c.Image,
+      state: c.State,
+      status: c.Status,
+    }));
+  }
+
+  /** Stop + remove a nested container by id. Idempotent. */
+  async removeNestedContainer(containerId: string): Promise<void> {
+    const { default: Docker } = await import('dockerode');
+    const docker = new Docker(buildDockerOpts());
+    const container = docker.getContainer(containerId);
+    try {
+      const info = await container.inspect();
+      if (info.State?.Running) await container.stop({ t: 5 });
+    } catch {
+      // Already gone — nothing to stop.
+    }
+    try {
+      await container.remove({ force: true });
+    } catch {
+      // 404 is fine.
     }
   }
 

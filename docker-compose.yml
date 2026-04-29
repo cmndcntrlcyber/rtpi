@@ -1063,6 +1063,66 @@ services:
         max-file: "3"
 
   # ===========================================================================
+  # docker-socket-proxy (v2.9.1 Phase 10 — KASM hardening)
+  # When FF_KASM_HARDENED=true, KASM containers and the orchestrator's nested-
+  # container helper route Docker calls through this proxy instead of mounting
+  # /var/run/docker.sock directly. The proxy enforces a verb allowlist so a
+  # compromised KASM host can't, e.g., create networks or destroy volumes.
+  # Allowed: containers (read+write+exec) + images (read) + info.
+  # Denied:  networks, volumes, services, swarm, tasks, system, build.
+  # Usage: docker compose --profile kasm up -d (already brings KASM stack)
+  # ===========================================================================
+
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: rtpi-docker-socket-proxy
+    profiles:
+      - kasm
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:2375:2375"  # localhost only — KASM containers reach via rtpi-network
+    environment:
+      # Verb allowlist (1=allow, 0=deny). Matches Phase 10 acceptance test:
+      # `docker -H tcp://… network create` must return 403.
+      - CONTAINERS=1
+      - EXEC=1
+      - IMAGES=1
+      - INFO=1
+      - PING=1
+      - VERSION=1
+      - NETWORKS=0
+      - VOLUMES=0
+      - SERVICES=0
+      - SWARM=0
+      - TASKS=0
+      - SYSTEM=0
+      - BUILD=0
+      - COMMIT=0
+      - CONFIGS=0
+      - DISTRIBUTION=0
+      - PLUGINS=0
+      - SECRETS=0
+      - SESSION=0
+      - POST=1   # required for /containers/:id/exec
+      - DELETE=1 # required for nested-container teardown
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - rtpi-network
+    dns:
+      - 127.0.0.11
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:2375/_ping || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ===========================================================================
   # Docmost — Team documentation (v2.9.1 Phase 8)
   # Wiki-style docs platform; reports can be published here as pages.
   # Usage: docker compose --profile docmost up -d

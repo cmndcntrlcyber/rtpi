@@ -534,4 +534,83 @@ router.post('/admin/cleanup', ensureRole('admin'), async (_req, res) => {
   }
 });
 
+// ============================================================================
+// Nested containers (v2.9.1 Phase 10)
+// ============================================================================
+
+/**
+ * GET /api/v1/kasm-workspaces/runtime-health
+ * Surfaces TLS mode + circuit-breaker state without a network call to KASM.
+ * Used by the Infrastructure panel to show "Pinned CA / System / Insecure"
+ * + "Breaker open for Xs" diagnostics.
+ */
+router.get('/runtime-health', async (_req, res) => {
+  try {
+    const health = kasmWorkspaceManager.getRuntimeHealth();
+    res.json(health);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to read runtime health', details: error?.message });
+  }
+});
+
+/**
+ * GET /api/v1/kasm-workspaces/:id/children
+ * Lists nested containers spawned for the parent workspace's session.
+ */
+router.get('/:id/children', async (req, res) => {
+  try {
+    const workspace = await kasmWorkspaceManager.getWorkspace(req.params.id);
+    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    const sessionId = workspace.kasmSessionId;
+    if (!sessionId) return res.json({ children: [] });
+    const children = await kasmWorkspaceManager.listNested(sessionId);
+    res.json({ children });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to list nested containers', details: error?.message });
+  }
+});
+
+/**
+ * POST /api/v1/kasm-workspaces/:id/nested  [operator]
+ * Body: { image, name?, cmd?, env?, extraLabels? }
+ * Creates a child container labeled with the parent KASM session id.
+ */
+router.post('/:id/nested', ensureRole('admin', 'operator'), async (req, res) => {
+  try {
+    const workspace = await kasmWorkspaceManager.getWorkspace(req.params.id);
+    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace.kasmSessionId) {
+      return res.status(409).json({ error: 'Parent workspace has no active KASM session' });
+    }
+    const { image, name, cmd, env, extraLabels } = req.body ?? {};
+    if (typeof image !== 'string' || !image) {
+      return res.status(400).json({ error: 'image is required' });
+    }
+    const result = await kasmWorkspaceManager.spawnNested({
+      parentSessionId: workspace.kasmSessionId,
+      image,
+      name,
+      cmd,
+      env,
+      extraLabels,
+    });
+    res.status(201).json(result);
+  } catch (error: any) {
+    res.status(502).json({ error: 'Failed to spawn nested container', details: error?.message });
+  }
+});
+
+/**
+ * DELETE /api/v1/kasm-workspaces/:id/nested/:containerId  [operator]
+ * Stops + removes a nested container.
+ */
+router.delete('/:id/nested/:containerId', ensureRole('admin', 'operator'), async (req, res) => {
+  try {
+    await kasmWorkspaceManager.removeNestedContainer(req.params.containerId);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(502).json({ error: 'Failed to remove nested container', details: error?.message });
+  }
+});
+
 export default router;

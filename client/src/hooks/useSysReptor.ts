@@ -2,10 +2,59 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   sysReptorService,
   SysReptorStatus,
+  SysReptorHealth,
   SysReptorProject,
   SysReptorDesign,
   ExportResult,
 } from "@/services/sysreptor";
+
+/**
+ * Polls /api/v1/sysreptor/health for a richer health triple ({up,
+ * profileEnabled, reason, suggestion, ...}). Consumers gate UI on this and
+ * surface the reason+suggestion to the user when down.
+ */
+export function useSysReptorHealth(pollIntervalMs = 30_000) {
+  const [health, setHealth] = useState<SysReptorHealth | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const fetchHealth = useCallback(async () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+
+    try {
+      setError(null);
+      const response = await sysReptorService.checkHealth({
+        signal: abortControllerRef.current.signal,
+      });
+      setHealth(response);
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        return;
+      }
+      setError(err instanceof Error ? err.message : "Failed to check Sysreptor health");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchHealth();
+    if (pollIntervalMs <= 0) return;
+    const id = window.setInterval(fetchHealth, pollIntervalMs);
+    return () => {
+      window.clearInterval(id);
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [fetchHealth, pollIntervalMs]);
+
+  return { health, loading, error, refetch: fetchHealth };
+}
 
 export function useSysReptorStatus() {
   const [status, setStatus] = useState<SysReptorStatus | null>(null);

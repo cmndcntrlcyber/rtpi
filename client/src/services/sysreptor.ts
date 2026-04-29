@@ -16,11 +16,35 @@ export interface SysReptorDesign {
   language?: string;
 }
 
+export type SysReptorHealthReason =
+  | "not_configured"
+  | "profile_not_enabled"
+  | "service_unreachable"
+  | "timeout"
+  | "auth_error"
+  | "service_error";
+
+export interface SysReptorHealth {
+  up: boolean;
+  profileEnabled: boolean | undefined;
+  url: string;
+  tokenConfigured: boolean;
+  version?: string;
+  reason?: SysReptorHealthReason;
+  error?: string;
+  suggestion?: string;
+}
+
+/** Legacy status shape; kept for the existing /status consumers. */
 export interface SysReptorStatus {
   connected: boolean;
   version?: string;
   tokenConfigured: boolean;
   url: string;
+  profileEnabled?: boolean;
+  reason?: SysReptorHealthReason;
+  error?: string;
+  suggestion?: string;
 }
 
 export interface ExportResult {
@@ -41,6 +65,9 @@ export interface SyncResult {
 export const sysReptorService = {
   checkStatus: (options?: { signal?: AbortSignal }) =>
     api.get<SysReptorStatus>("/sysreptor/status", { signal: options?.signal }),
+
+  checkHealth: (options?: { signal?: AbortSignal }) =>
+    api.get<SysReptorHealth>("/sysreptor/health", { signal: options?.signal }),
 
   listProjects: (options?: { signal?: AbortSignal }) =>
     api.get<{ projects: SysReptorProject[] }>("/sysreptor/projects", { signal: options?.signal }),

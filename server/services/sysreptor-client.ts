@@ -88,6 +88,105 @@ export interface RtpiToSysReptorFinding {
 }
 
 // ============================================================================
+// Health result + error classifier
+// ============================================================================
+
+export type HealthReason =
+  | "not_configured"
+  | "profile_not_enabled"
+  | "service_unreachable"
+  | "timeout"
+  | "auth_error"
+  | "service_error";
+
+export interface HealthResult {
+  up: boolean;
+  /** True when Sysreptor responded; false when DNS failed (likely profile not active); undefined when token missing. */
+  profileEnabled: boolean | undefined;
+  url: string;
+  tokenConfigured: boolean;
+  version?: string;
+  reason?: HealthReason;
+  error?: string;
+  suggestion?: string;
+}
+
+/** Walk the Error.cause chain to find a Node errno code (ECONNREFUSED, ENOTFOUND, …). */
+function extractErrnoCode(err: unknown): string | undefined {
+  let current: any = err;
+  for (let i = 0; i < 5 && current; i++) {
+    if (typeof current.code === "string") return current.code;
+    if (Array.isArray(current.errors)) {
+      for (const sub of current.errors) {
+        const c = extractErrnoCode(sub);
+        if (c) return c;
+      }
+    }
+    current = current.cause;
+  }
+  return undefined;
+}
+
+function classifyFetchError(err: unknown, url: string, usesDockerHostname: boolean): HealthResult {
+  const e = err as { name?: string; message?: string };
+  const code = extractErrnoCode(err);
+  const name = e?.name;
+  const message = e instanceof Error ? e.message : "Connection failed";
+
+  // Abort due to AbortSignal.timeout()
+  if (name === "AbortError" || name === "TimeoutError") {
+    return {
+      up: false,
+      profileEnabled: true,
+      url,
+      tokenConfigured: true,
+      reason: "timeout",
+      error: message,
+      suggestion: "Sysreptor accepted the connection but did not respond in 5s. Check container CPU/IO and logs.",
+    };
+  }
+
+  // DNS resolution failed — on the docker network, this almost always means
+  // the `--profile sysreptor` services are not running.
+  if (code === "ENOTFOUND" || code === "EAI_AGAIN") {
+    return {
+      up: false,
+      profileEnabled: false,
+      url,
+      tokenConfigured: true,
+      reason: usesDockerHostname ? "profile_not_enabled" : "service_unreachable",
+      error: message,
+      suggestion: usesDockerHostname
+        ? "Start Sysreptor: `docker compose --profile sysreptor up -d`."
+        : `DNS for ${url} did not resolve. Verify SYSREPTOR_URL.`,
+    };
+  }
+
+  // Connection refused / reset — service is reachable on the network but
+  // nothing is listening (or it crashed).
+  if (code === "ECONNREFUSED" || code === "ECONNRESET") {
+    return {
+      up: false,
+      profileEnabled: false,
+      url,
+      tokenConfigured: true,
+      reason: "service_unreachable",
+      error: message,
+      suggestion: "Sysreptor host resolved but is not accepting connections. Check `docker compose ps rtpi-sysreptor-app`.",
+    };
+  }
+
+  return {
+    up: false,
+    profileEnabled: undefined,
+    url,
+    tokenConfigured: true,
+    reason: "service_unreachable",
+    error: message,
+  };
+}
+
+// ============================================================================
 // Client
 // ============================================================================
 
@@ -175,25 +274,115 @@ class SysReptorClient {
   // Health
   // --------------------------------------------------------------------------
 
-  async checkHealth(): Promise<{ connected: boolean; version?: string; error?: string }> {
+  /**
+   * Detailed health probe used by `GET /api/v1/sysreptor/health`.
+   *
+   * Distinguishes the common failure modes so the UI can surface actionable
+   * remediation copy instead of a generic "unreachable":
+   *
+   *   - `not_configured`     — SYSREPTOR_API_TOKEN missing
+   *   - `profile_not_enabled` — DNS for the docker hostname fails (very
+   *                             likely the `--profile sysreptor` services
+   *                             were never started)
+   *   - `service_unreachable` — TCP refused / network error after DNS resolved
+   *   - `timeout`            — TCP open but no response within budget
+   *   - `auth_error`         — HTTP 401/403 (token invalid or expired)
+   *   - `service_error`      — HTTP 5xx (service is up but degraded)
+   *   - `up`                 — HTTP 200 from the auth-protected projects API
+   */
+  async checkHealth(): Promise<HealthResult> {
+    const url = this.baseUrl;
+
     if (!this.token) {
-      return { connected: false, error: "SYSREPTOR_API_TOKEN not configured" };
+      return {
+        up: false,
+        profileEnabled: undefined,
+        url,
+        tokenConfigured: false,
+        reason: "not_configured",
+        suggestion: "Set SYSREPTOR_API_TOKEN in your environment or via the settings UI.",
+      };
     }
+
+    let res: Response;
     try {
-      const res = await fetch(`${this.baseUrl}/api/v1/pentestprojects/`, {
+      res = await fetch(`${this.baseUrl}/api/v1/pentestprojects/`, {
         method: "GET",
         headers: this.headers(),
         signal: AbortSignal.timeout(5000),
       });
-      if (res.ok) {
-        return { connected: true };
-      }
-      return { connected: false, error: `HTTP ${res.status}` };
     } catch (err) {
+      return classifyFetchError(err, url, this.usesDockerHostname());
+    }
+
+    if (res.status === 401 || res.status === 403) {
       return {
-        connected: false,
-        error: err instanceof Error ? err.message : "Connection failed",
+        up: false,
+        profileEnabled: true,
+        url,
+        tokenConfigured: true,
+        reason: "auth_error",
+        error: `HTTP ${res.status}`,
+        suggestion: "SYSREPTOR_API_TOKEN is invalid or expired. Regenerate it in Sysreptor admin and update the env var.",
       };
+    }
+
+    if (res.status >= 500) {
+      return {
+        up: false,
+        profileEnabled: true,
+        url,
+        tokenConfigured: true,
+        reason: "service_error",
+        error: `HTTP ${res.status}`,
+        suggestion: "Sysreptor returned a server error. Check container logs: `docker compose logs rtpi-sysreptor-app`.",
+      };
+    }
+
+    if (!res.ok) {
+      return {
+        up: false,
+        profileEnabled: true,
+        url,
+        tokenConfigured: true,
+        reason: "service_error",
+        error: `HTTP ${res.status}`,
+      };
+    }
+
+    // Service is responding successfully. Best-effort version probe; never
+    // downgrade the up=true result if the version endpoint is missing.
+    const version = await this.tryGetVersion();
+    return {
+      up: true,
+      profileEnabled: true,
+      url,
+      tokenConfigured: true,
+      version,
+    };
+  }
+
+  private usesDockerHostname(): boolean {
+    // Docker DNS only resolves these when the compose service is up.
+    return /:\/\/rtpi-sysreptor-app(:|\/|$)/.test(this.baseUrl);
+  }
+
+  /**
+   * Try to read the deployed Sysreptor version. Returns undefined on any
+   * failure — version is informational, not load-bearing.
+   */
+  private async tryGetVersion(): Promise<string | undefined> {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/v1/utils/settings/`, {
+        method: "GET",
+        headers: this.headers(),
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!res.ok) return undefined;
+      const data = (await res.json().catch(() => null)) as { version?: string } | null;
+      return data?.version;
+    } catch {
+      return undefined;
     }
   }
 

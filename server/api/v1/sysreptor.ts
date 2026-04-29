@@ -9,24 +9,69 @@ import { Router } from "express";
 import { db } from "../../db";
 import { vulnerabilities, operations, targets } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { sysReptorClient } from "../../services/sysreptor-client";
+import { sysReptorClient, type HealthResult } from "../../services/sysreptor-client";
 import { ensureAuthenticated } from "../../auth/middleware";
 
 const router = Router();
 router.use(ensureAuthenticated);
 
 // ============================================================================
-// GET /api/v1/sysreptor/status
-// Check SysReptor connectivity and token validity
+// Health probe with short-lived cache
+//
+// The Reports page, the SysReptor projects list, and any future surface that
+// needs to gate UI on Sysreptor availability all hit this endpoint. A 5s TTL
+// keeps the experience snappy without hammering Sysreptor on every page load.
+// ============================================================================
+
+const HEALTH_CACHE_TTL_MS = 5_000;
+let cachedHealth: { at: number; result: HealthResult } | null = null;
+
+async function getCachedHealth(): Promise<HealthResult> {
+  const now = Date.now();
+  if (cachedHealth && now - cachedHealth.at < HEALTH_CACHE_TTL_MS) {
+    return cachedHealth.result;
+  }
+  const result = await sysReptorClient.checkHealth();
+  cachedHealth = { at: now, result };
+  return result;
+}
+
+// ============================================================================
+// GET /api/v1/sysreptor/health
+// Returns {up, profileEnabled, version, reason, suggestion, ...} so the UI
+// can render a banner with actionable remediation copy.
+// Replies 200 even when Sysreptor is down — the body carries the diagnostic.
+// ============================================================================
+
+router.get("/health", async (_req, res) => {
+  const result = await getCachedHealth().catch((error) => ({
+    up: false,
+    profileEnabled: undefined,
+    url: process.env.SYSREPTOR_URL || "http://rtpi-sysreptor-app:8000",
+    tokenConfigured: sysReptorClient.configured,
+    reason: "service_error" as const,
+    error: error instanceof Error ? error.message : "Health check threw",
+  }));
+  res.json(result);
+});
+
+// ============================================================================
+// GET /api/v1/sysreptor/status (legacy)
+// Back-compat alias; existing client code consumes {connected, ...}.
 // ============================================================================
 
 router.get("/status", async (_req, res) => {
   try {
-    const health = await sysReptorClient.checkHealth();
+    const health = await getCachedHealth();
     res.json({
-      ...health,
-      url: process.env.SYSREPTOR_URL || "http://rtpi-sysreptor-app:8000",
-      tokenConfigured: sysReptorClient.configured,
+      connected: health.up,
+      version: health.version,
+      url: health.url,
+      tokenConfigured: health.tokenConfigured,
+      profileEnabled: health.profileEnabled,
+      reason: health.reason,
+      error: health.error,
+      suggestion: health.suggestion,
     });
   } catch (error) {
     res.status(500).json({

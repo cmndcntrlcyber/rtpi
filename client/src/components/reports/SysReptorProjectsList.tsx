@@ -7,13 +7,12 @@ import {
   ExternalLink,
   Download,
   RefreshCw,
-  AlertCircle,
   Loader2,
   FileText,
   Search,
 } from "lucide-react";
 import {
-  useSysReptorStatus,
+  useSysReptorHealth,
   useSysReptorProjects,
 } from "@/hooks/useSysReptor";
 import { sysReptorService, SysReptorProject } from "@/services/sysreptor";
@@ -23,7 +22,7 @@ interface SysReptorProjectsListProps {
 }
 
 export default function SysReptorProjectsList({ operationId }: SysReptorProjectsListProps) {
-  const { status, loading: statusLoading } = useSysReptorStatus();
+  const { health, loading: healthLoading } = useSysReptorHealth();
   const { projects, loading: projectsLoading, refetch } = useSysReptorProjects();
   const [syncing, setSyncing] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
@@ -82,7 +81,7 @@ export default function SysReptorProjectsList({ operationId }: SysReptorProjects
     }
   };
 
-  if (statusLoading) {
+  if (healthLoading && !health) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
         <Loader2 className="h-4 w-4 animate-spin" />
@@ -91,28 +90,10 @@ export default function SysReptorProjectsList({ operationId }: SysReptorProjects
     );
   }
 
-  if (!status?.connected && !status?.tokenConfigured) {
-    return (
-      <div className="text-center py-8 bg-card rounded-lg border border-border">
-        <AlertCircle className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-        <p className="text-sm font-medium text-foreground">SysReptor Not Configured</p>
-        <p className="text-xs text-muted-foreground mt-1">
-          Set SYSREPTOR_URL and SYSREPTOR_API_TOKEN in your environment to enable report export.
-        </p>
-      </div>
-    );
-  }
-
-  if (!status?.connected) {
-    return (
-      <div className="text-center py-8 bg-card rounded-lg border border-border">
-        <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
-        <p className="text-sm font-medium text-foreground">SysReptor Unreachable</p>
-        <p className="text-xs text-muted-foreground mt-1">
-          Cannot connect to {status?.url}. Check that SysReptor is running.
-        </p>
-      </div>
-    );
+  // When unhealthy, the page-level <SysReptorHealthBanner> already explains why.
+  // Don't duplicate the message — just render nothing here.
+  if (!health?.up) {
+    return null;
   }
 
   return (
@@ -221,7 +202,7 @@ export default function SysReptorProjectsList({ operationId }: SysReptorProjects
                   size="sm"
                   variant="ghost"
                   className="h-7 px-2"
-                  onClick={() => window.open(`${status?.url}/projects/${project.id}`, "_blank")}
+                  onClick={() => window.open(`${health?.url}/projects/${project.id}`, "_blank")}
                 >
                   <ExternalLink className="h-3 w-3" />
                 </Button>

@@ -16,6 +16,7 @@ import GenerateReportDialog from "@/components/reports/GenerateReportDialog";
 import EditReportDialog from "@/components/reports/EditReportDialog";
 import SysReptorExportDialog from "@/components/reports/SysReptorExportDialog";
 import SysReptorProjectsList from "@/components/reports/SysReptorProjectsList";
+import SysReptorHealthBanner from "@/components/reports/SysReptorHealthBanner";
 
 const REPORT_GROUPS_KEY = "rtpi-report-groups-expanded";
 
@@ -262,6 +263,9 @@ export default function Reports() {
           </Button>
         </div>
       </div>
+
+      {/* Sysreptor health banner */}
+      <SysReptorHealthBanner />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">

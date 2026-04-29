@@ -49,11 +49,23 @@ import { multiContainerExecutor } from "../../services/agents/multi-container-ex
 import { OllamaAIClient } from "../../services/ollama-ai-client";
 import { TOOL_HELP_CONFIG, DEFAULT_HELP_CONFIG } from "../../services/tool-tester";
 import type { ToolConfiguration } from "../../../shared/types/tool-config";
+import { frameworkBindingService } from "../../services/frameworks/framework-binding-service";
 
 const router = Router();
 
 // Apply authentication to all routes
 router.use(ensureAuthenticated);
+
+// GET /api/v1/tools/:id/frameworks (v2.9.1 Phase 4 reverse lookup)
+// Returns every framework element this tool is bound to.
+router.get("/:id/frameworks", async (req, res) => {
+  try {
+    const refs = await frameworkBindingService.listForTool(req.params.id);
+    res.json({ frameworks: refs });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to list framework bindings", details: error?.message });
+  }
+});
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({

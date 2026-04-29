@@ -3037,6 +3037,48 @@ export const operationFrameworkCoverage = pgTable("operation_framework_coverage"
   foreignKey({ columns: [table.linkedVulnerabilityId], foreignColumns: [vulnerabilities.id], name: "op_framework_cov_vuln_id_fk" }).onDelete("set null"),
 ]);
 
+// Framework bindings (v2.9.1 Phase 4) — link framework elements (OWASP LLM
+// controls, NIST AI subcategories, CIS safeguards, ATLAS/ATT&CK techniques)
+// to executable assets (tools, agents, workflows). Distinct from
+// frameworkMappings (which links framework-to-framework) so the semantics
+// don't overload one table.
+export const frameworkBindingKindEnum = pgEnum("framework_binding_kind", [
+  "tool",
+  "agent",
+  "workflow",
+]);
+
+export const frameworkBindingStrengthEnum = pgEnum("framework_binding_strength", [
+  "primary",
+  "supports",
+  "validates",
+]);
+
+export const frameworkBindings = pgTable("framework_bindings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  // E.g. "owasp_llm" | "nist_ai" | "cis_v8" | "atlas" | "attck"
+  frameworkType: text("framework_type").notNull(),
+  // External canonical ID of the framework element (e.g. "LLM01", "GV.OC-01", "1.1")
+  frameworkElementExternalId: text("framework_element_external_id").notNull(),
+  // Discriminates target table: tool, agent, workflow.
+  bindingKind: frameworkBindingKindEnum("binding_kind").notNull(),
+  // FK by convention; not enforced because the target table varies. Resolved
+  // at query time by the binding service.
+  targetId: uuid("target_id").notNull(),
+  strength: frameworkBindingStrengthEnum("strength").notNull().default("supports"),
+  confidence: real("confidence").default(1.0),
+  rationale: text("rationale"),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("framework_bindings_unique_idx").on(
+    table.frameworkType,
+    table.frameworkElementExternalId,
+    table.bindingKind,
+    table.targetId,
+  ),
+]);
+
 // ============================================================================
 // BurpSuite Activation System (v2.3.6.0)
 // ============================================================================

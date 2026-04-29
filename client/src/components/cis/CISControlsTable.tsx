@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import FrameworkBindingsPanel from "@/components/frameworks/FrameworkBindingsPanel";
 
 interface Safeguard {
   id: string;
@@ -144,6 +145,9 @@ export default function CISControlsTable() {
                     {sg.description && (
                       <p className="text-xs text-muted-foreground">{sg.description}</p>
                     )}
+                    <div className="mt-2">
+                      <FrameworkBindingsPanel frameworkType="cis_v8" externalId={sg.safeguardId} />
+                    </div>
                   </div>
                 ))}
               </div>

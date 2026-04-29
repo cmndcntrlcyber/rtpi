@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import FrameworkBindingsPanel from "@/components/frameworks/FrameworkBindingsPanel";
 
 interface Subcategory {
   id: string;
@@ -122,6 +123,7 @@ export default function NISTCategoriesTable() {
                             </ul>
                           </div>
                         )}
+                        <FrameworkBindingsPanel frameworkType="nist_ai" externalId={sub.subcategoryId} />
                       </div>
                     )}
                   </div>

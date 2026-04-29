@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { ChevronDown, ChevronRight, AlertTriangle } from "lucide-react";
+import FrameworkBindingsPanel from "@/components/frameworks/FrameworkBindingsPanel";
 
 interface Vulnerability {
   id: string;
@@ -117,6 +118,8 @@ export default function VulnerabilitiesTable() {
                   </div>
                 </div>
               )}
+
+              <FrameworkBindingsPanel frameworkType="owasp_llm" externalId={v.owaspId} />
             </div>
           )}
         </div>

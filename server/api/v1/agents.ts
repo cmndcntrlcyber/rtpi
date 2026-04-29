@@ -3,11 +3,23 @@ import { db } from "../../db";
 import { agents, agentCapabilities, agentTactics, attackTactics, workflowTemplates, workflowInstances } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
+import { frameworkBindingService } from "../../services/frameworks/framework-binding-service";
 
 const router = Router();
 
 // Apply authentication to all routes
 router.use(ensureAuthenticated);
+
+// GET /api/v1/agents/:id/frameworks (v2.9.1 Phase 4 reverse lookup)
+// Returns every framework element this agent is bound to.
+router.get("/:id/frameworks", async (req, res) => {
+  try {
+    const refs = await frameworkBindingService.listForAgent(req.params.id);
+    res.json({ frameworks: refs });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to list framework bindings", details: error?.message });
+  }
+});
 
 // GET /api/v1/agents - List all agents
 router.get("/", async (_req, res) => {

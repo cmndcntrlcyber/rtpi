@@ -1,12 +1,31 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Settings as SettingsIcon, Shield, Database, Bell, Moon, Sun, Brain, Eye, EyeOff } from "lucide-react";
+import {
+  Settings as SettingsIcon,
+  Shield,
+  Database,
+  Bell,
+  Moon,
+  Sun,
+  Brain,
+  Eye,
+  EyeOff,
+  ExternalLink,
+  RefreshCw,
+  Loader2,
+} from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
+
+interface OllamaModelOption {
+  name: string;
+  size?: number;
+}
 
 export default function Settings() {
   const [darkMode, setDarkMode] = useState(false);
@@ -23,6 +42,33 @@ export default function Settings() {
   const [testingConnection, setTestingConnection] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
 
+  // Live Ollama models — same source as the Ollama AI page (/api/v1/ollama/models/live).
+  // Lets the Default Model dropdown surface whatever's loaded on the user's
+  // remote Ollama (e.g. Qwen on the Blackwell host) without hard-coding model IDs.
+  const [ollamaModels, setOllamaModels] = useState<OllamaModelOption[]>([]);
+  const [ollamaModelsLoading, setOllamaModelsLoading] = useState(false);
+  const [ollamaModelsError, setOllamaModelsError] = useState<string | null>(null);
+
+  const loadOllamaModels = useCallback(async () => {
+    try {
+      setOllamaModelsLoading(true);
+      setOllamaModelsError(null);
+      const res = await fetch("/api/v1/ollama/models/live", { credentials: "include" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setOllamaModels([]);
+        setOllamaModelsError(data.details || data.error || `HTTP ${res.status}`);
+        return;
+      }
+      setOllamaModels(Array.isArray(data.models) ? data.models : []);
+    } catch (e: any) {
+      setOllamaModels([]);
+      setOllamaModelsError(e?.message || "Network error");
+    } finally {
+      setOllamaModelsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     // Check for saved dark mode preference
     const savedMode = localStorage.getItem("darkMode");
@@ -30,10 +76,11 @@ export default function Settings() {
       setDarkMode(true);
       document.documentElement.classList.add("dark");
     }
-    
-    // Load LLM settings
+
+    // Load LLM settings + live Ollama models in parallel.
     loadLlmSettings();
-  }, []);
+    loadOllamaModels();
+  }, [loadOllamaModels]);
 
   const loadLlmSettings = async () => {
     try {
@@ -136,9 +183,19 @@ export default function Settings() {
         {/* LLM API Keys */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Brain className="h-5 w-5" />
-              AI & LLM Configuration
+            <CardTitle className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2">
+                <Brain className="h-5 w-5" />
+                AI &amp; LLM Configuration
+              </span>
+              <Link
+                href="/ollama"
+                className="text-xs font-normal text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                title="Open Ollama AI page to install / unload / benchmark models"
+              >
+                Manage in Ollama AI
+                <ExternalLink className="h-3 w-3" />
+              </Link>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -207,7 +264,23 @@ export default function Settings() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="default-model">Default Model</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="default-model">Default Model</Label>
+                  <button
+                    type="button"
+                    onClick={loadOllamaModels}
+                    disabled={ollamaModelsLoading}
+                    className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 disabled:opacity-50"
+                    title="Re-fetch live models from the configured Ollama host"
+                  >
+                    {ollamaModelsLoading ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3 w-3" />
+                    )}
+                    Refresh Ollama models
+                  </button>
+                </div>
                 <select
                   id="default-model"
                   className="flex h-10 w-full rounded-md border border-border bg-card px-3 py-2 text-sm"
@@ -224,7 +297,44 @@ export default function Settings() {
                     <option value="gpt-5.2-chat-latest">GPT-5.2 Instant (Standard)</option>
                     <option value="gpt-4.1-mini">GPT-4.1 Mini (Fast)</option>
                   </optgroup>
+                  {/* Live Ollama models pulled from /api/v1/ollama/models/live —
+                      same source as the Ollama AI page. Empty when Ollama is
+                      unreachable; the optgroup falls back to a help row. */}
+                  <optgroup
+                    label={
+                      ollamaModelsLoading
+                        ? "Ollama (loading…)"
+                        : ollamaModelsError
+                          ? "Ollama (unavailable)"
+                          : `Ollama (${ollamaModels.length} model${ollamaModels.length === 1 ? "" : "s"})`
+                    }
+                  >
+                    {ollamaModels.length > 0 ? (
+                      ollamaModels.map((m) => (
+                        <option key={m.name} value={m.name}>
+                          {m.name}
+                          {typeof m.size === "number"
+                            ? ` (${(m.size / 1024 / 1024 / 1024).toFixed(1)} GB)`
+                            : ""}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="" disabled>
+                        {ollamaModelsError
+                          ? `unavailable: ${ollamaModelsError}`
+                          : "no models loaded — open Ollama AI to pull one"}
+                      </option>
+                    )}
+                  </optgroup>
                 </select>
+                {ollamaModelsError && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    Couldn't reach Ollama: {ollamaModelsError}.{" "}
+                    <Link href="/ollama" className="underline hover:no-underline">
+                      Configure host
+                    </Link>
+                  </p>
+                )}
               </div>
 
               <Button type="submit" disabled={saving} className="w-full">

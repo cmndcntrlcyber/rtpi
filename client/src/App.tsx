@@ -36,6 +36,7 @@ import EngagementDashboard from "@/pages/EngagementDashboard";
 import Implants from "@/pages/Implants";
 import Ollama from "@/pages/Ollama";
 import OffSecTeam from "@/pages/OffSecTeam";
+import CTI from "@/pages/CTI";
 import Login from "@/pages/Login";
 import AdminReporters from "@/pages/AdminReporters";
 
@@ -76,6 +77,7 @@ function AuthenticatedApp() {
           <Route path="/tool-migration" component={ToolMigration} />
           <Route path="/reports" component={Reports} />
           <Route path="/offsec-rd" component={OffSecTeam} />
+          <Route path="/cti" component={CTI} />
           <Route path="/settings" component={Settings} />
           <Route path="/profile" component={Profile} />
           <Route path="/users" component={Users} />

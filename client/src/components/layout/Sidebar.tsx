@@ -2,33 +2,8 @@ import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
-import type { LucideIcon } from "lucide-react";
-import {
-  LayoutDashboard,
-  Target,
-  AlertTriangle,
-  Bot,
-  Server,
-  Wrench,
-  FileText,
-  Settings,
-  User,
-  ListTodo,
-  Users,
-  BarChart3,
-  Package,
-  Shield,
-  Crown,
-  Cpu,
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
-  Download,
-  Brain,
-  Microscope,
-  Radio,
-  Gauge,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
+import { navGroups, adminNavItems } from "@/config/nav-groups";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -36,86 +11,6 @@ interface SidebarProps {
   onToggleCollapse: () => void;
   onClose: () => void;
 }
-
-interface NavItem {
-  path: string;
-  label: string;
-  icon: LucideIcon;
-}
-
-interface NavGroup {
-  label: string;
-  items: NavItem[];
-  collapsible?: boolean;
-}
-
-const navGroups: NavGroup[] = [
-  {
-    label: "",
-    items: [
-      { path: "/", label: "Dashboard", icon: LayoutDashboard },
-      { path: "/engagement", label: "Engagement", icon: Gauge },
-    ],
-  },
-  {
-    label: "Operations",
-    collapsible: true,
-    items: [
-      { path: "/operations", label: "Operations", icon: ListTodo },
-      { path: "/targets", label: "Targets", icon: Target },
-      { path: "/vulnerabilities", label: "Vulnerabilities", icon: AlertTriangle },
-      { path: "/surface-assessment", label: "Surface Assessment", icon: BarChart3 },
-    ],
-  },
-  {
-    label: "Intelligence",
-    collapsible: true,
-    items: [
-      { path: "/frameworks", label: "Frameworks", icon: Shield },
-      { path: "/reports", label: "Reports", icon: FileText },
-      { path: "/offsec-rd", label: "OffSec Team R&D", icon: Microscope },
-    ],
-  },
-  {
-    label: "Automation",
-    collapsible: true,
-    items: [
-      { path: "/agents", label: "Agents", icon: Bot },
-      { path: "/empire", label: "C2 Warroom", icon: Crown },
-      { path: "/implants", label: "Agentic Implants", icon: Cpu },
-      { path: "/ollama", label: "Ollama AI", icon: Brain },
-    ],
-  },
-  {
-    label: "Tools",
-    collapsible: true,
-    items: [
-      { path: "/tools", label: "Tools", icon: Wrench },
-      { path: "/tool-registry", label: "Tool Registry", icon: Package },
-      { path: "/tool-migration", label: "Tool Migration", icon: Download },
-    ],
-  },
-  {
-    label: "Infrastructure",
-    collapsible: true,
-    items: [
-      { path: "/infrastructure", label: "Infrastructure", icon: Server },
-    ],
-  },
-  {
-    label: "Settings",
-    collapsible: true,
-    items: [
-      { path: "/settings", label: "Settings", icon: Settings },
-      { path: "/profile", label: "Profile", icon: User },
-    ],
-  },
-];
-
-const adminNavItems = [
-  { path: "/users", label: "User Management", icon: Users },
-  { path: "/reporters", label: "Reporter Agents", icon: Radio },
-];
 
 const COLLAPSED_GROUPS_KEY = "rtpi_sidebar_collapsed_groups";
 

@@ -1002,6 +1002,47 @@ services:
         max-file: "3"
 
   # ===========================================================================
+  # Chromium Headless Shell (v2.9.1 Phase 3 — app-side PDF generation)
+  # Small alpine-based Chrome devtools-protocol endpoint used by the
+  # documentRenderer service. Bind 127.0.0.1 only — never exposed externally.
+  # Usage: docker compose --profile pdf up -d
+  # Set CHROMIUM_WS_ENDPOINT=ws://rtpi-chromium-shell:9222 in app env.
+  # ===========================================================================
+
+  chromium-shell:
+    image: chromedp/headless-shell:latest
+    container_name: rtpi-chromium-shell
+    profiles:
+      - pdf
+    restart: unless-stopped
+    # Defaults expose CDP on :9222 with no auth — keep on the rtpi-network only.
+    ports:
+      - "127.0.0.1:9222:9222"
+    networks:
+      - rtpi-network
+    dns:
+      - 127.0.0.11
+    # Hardening: read-only rootfs, no new privileges, drop capabilities.
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=256m,exec
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9222/json/version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ===========================================================================
   # Portainer - Container Management UI
   # Usage: docker compose --profile management up -d
   # Access: https://localhost:9443

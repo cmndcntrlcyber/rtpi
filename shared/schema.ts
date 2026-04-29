@@ -506,6 +506,31 @@ export const reportTemplates = pgTable("report_templates", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+// Async PDF render jobs (v2.9.1 Phase 3, FF_PDF_NATIVE)
+// One row per render request. Persisted across server restarts so a worker
+// can reattach status. file_path is relative to REPORTS_DIR; the cleanup job
+// deletes rows + files older than the configured retention.
+export const pdfJobStatusEnum = pgEnum("pdf_job_status", [
+  "queued",
+  "rendering",
+  "completed",
+  "failed",
+]);
+
+export const pdfJobs = pgTable("pdf_jobs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  reportId: uuid("report_id").references(() => reports.id, { onDelete: "cascade" }),
+  requestedBy: uuid("requested_by").references(() => users.id, { onDelete: "set null" }),
+  status: pdfJobStatusEnum("status").notNull().default("queued"),
+  filePath: text("file_path"),
+  fileSize: integer("file_size"),
+  error: text("error"),
+  durationMs: integer("duration_ms"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+});
+
 // ============================================================================
 // SECURITY TOOLS TABLE (1 table)
 // ============================================================================

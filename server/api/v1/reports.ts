@@ -1,18 +1,107 @@
 import { Router } from "express";
 import { db } from "../../db";
-import { reports, reportTemplates } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { reports, reportTemplates, pdfJobs } from "@shared/schema";
+import { eq, lt } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import { generateMarkdownReport, getReportFilePath } from "../../services/report-generator";
 import { pdfReportGenerator } from "../../services/pdf-report-generator";
 import { executiveSummaryGenerator } from "../../services/executive-summary-generator";
 import fs from "fs/promises";
+import path from "path";
 import crypto from "crypto";
 
 const router = Router();
 
 // Apply authentication to all routes
 router.use(ensureAuthenticated);
+
+// ============================================================================
+// PDF render-job worker (v2.9.1 Phase 3, FF_PDF_NATIVE)
+//
+// The worker runs out-of-band so POST /:id/pdf returns immediately. State is
+// persisted to pdf_jobs so the UI can poll status across requests, and so a
+// cleanup pass can reclaim disk + DB rows after retention.
+// ============================================================================
+
+const PDF_JOB_RETENTION_MS = Number(process.env.PDF_JOB_RETENTION_MS) || 24 * 60 * 60 * 1000;
+const REPORTS_DIR = process.env.REPORTS_DIR || "./uploads/reports";
+
+interface RenderJobInput {
+  reportId: string | null;
+  reportData: any;
+  pdfOptions?: any;
+}
+
+async function runPdfJob(jobId: string, input: RenderJobInput): Promise<void> {
+  const startedAt = new Date();
+  await db
+    .update(pdfJobs)
+    .set({ status: "rendering", startedAt })
+    .where(eq(pdfJobs.id, jobId));
+
+  try {
+    const result = await pdfReportGenerator.generatePDFReport(
+      input.reportData,
+      input.pdfOptions || {},
+    );
+    const completedAt = new Date();
+    await db
+      .update(pdfJobs)
+      .set({
+        status: "completed",
+        filePath: result.filePath,
+        fileSize: result.fileSize,
+        completedAt,
+        durationMs: completedAt.getTime() - startedAt.getTime(),
+      })
+      .where(eq(pdfJobs.id, jobId));
+  } catch (err: any) {
+    await db
+      .update(pdfJobs)
+      .set({
+        status: "failed",
+        error: err?.message || "Unknown render error",
+        completedAt: new Date(),
+      })
+      .where(eq(pdfJobs.id, jobId));
+  }
+}
+
+/**
+ * Hourly cleanup: delete pdf_jobs older than retention + their files.
+ * Best-effort — ignores per-row failures so one bad row doesn't block the rest.
+ */
+async function cleanupExpiredPdfJobs(): Promise<void> {
+  const cutoff = new Date(Date.now() - PDF_JOB_RETENTION_MS);
+  const expired = await db
+    .select({ id: pdfJobs.id, filePath: pdfJobs.filePath })
+    .from(pdfJobs)
+    .where(lt(pdfJobs.createdAt, cutoff));
+
+  for (const row of expired) {
+    if (row.filePath) {
+      try {
+        await fs.unlink(path.join(REPORTS_DIR, row.filePath));
+      } catch {
+        // File might be missing or already cleaned up — ignore.
+      }
+    }
+    try {
+      await db.delete(pdfJobs).where(eq(pdfJobs.id, row.id));
+    } catch (err) {
+      console.warn(`[pdf-jobs] failed to delete row ${row.id}:`, err);
+    }
+  }
+}
+
+// Run cleanup hourly. Skip in test runs (NODE_ENV=test).
+if (process.env.NODE_ENV !== "test") {
+  setInterval(() => {
+    cleanupExpiredPdfJobs().catch((err) => {
+      console.warn("[pdf-jobs] cleanup pass failed:", err);
+    });
+  }, 60 * 60 * 1000).unref();
+}
 
 // GET /api/v1/reports - List all reports
 router.get("/", async (_req, res) => {
@@ -374,6 +463,165 @@ router.post("/generate-executive-summary", ensureRole("admin", "operator"), asyn
     // Error logged for debugging
     await logAudit(user.id, "generate_executive_summary", "/reports/generate-executive-summary", null, false, req);
     res.status(500).json({ error: "Failed to generate executive summary", details: error?.message || "Internal server error" });
+  }
+});
+
+// ============================================================================
+// Async PDF render endpoints (v2.9.1 Phase 3)
+// ============================================================================
+
+// POST /api/v1/reports/:id/pdf - Queue an async PDF render for a report
+router.post("/:id/pdf", ensureRole("admin", "operator"), async (req, res) => {
+  const { id: reportId } = req.params;
+  const user = req.user as any;
+
+  try {
+    const result = await db
+      .select()
+      .from(reports)
+      .where(eq(reports.id, reportId))
+      .limit(1);
+
+    if (!result || result.length === 0) {
+      return res.status(404).json({ error: "Report not found" });
+    }
+
+    const report = result[0];
+    const content = (report.content as any) || {};
+
+    // Build the PDF input. Caller may override any field via request body.
+    const reportData = {
+      id: report.id,
+      operationId: report.operationId,
+      name: report.name,
+      type: report.type as any,
+      reportDate: new Date(),
+      testDates: req.body?.testDates
+        ? {
+            start: new Date(req.body.testDates.start),
+            end: new Date(req.body.testDates.end),
+          }
+        : { start: new Date(), end: new Date() },
+      client: req.body?.client ?? content.client,
+      tester: req.body?.tester ?? content.tester ?? { name: user.name, email: user.email },
+      scope: req.body?.scope ?? content.scope,
+      methodology: req.body?.methodology ?? content.methodology,
+      findings: req.body?.findings ?? content.findings,
+      executiveSummary: req.body?.executiveSummary ?? content.executiveSummary,
+      conclusion: req.body?.conclusion ?? content.conclusion,
+      recommendations: req.body?.recommendations ?? content.recommendations,
+      metadata: req.body?.metadata ?? content.metadata,
+    };
+
+    const inserted = await db
+      .insert(pdfJobs)
+      .values({
+        reportId,
+        requestedBy: user.id,
+        status: "queued",
+      })
+      .returning({ id: pdfJobs.id });
+
+    const jobId = inserted[0].id;
+
+    // Fire and forget — runPdfJob updates the row to rendering/completed/failed.
+    runPdfJob(jobId, {
+      reportId,
+      reportData,
+      pdfOptions: req.body?.pdfOptions,
+    }).catch((err) => {
+      console.error(`[pdf-jobs] worker for ${jobId} threw:`, err);
+    });
+
+    await logAudit(user.id, "queue_pdf_render", `/reports/${reportId}/pdf`, jobId, true, req);
+
+    res.status(202).json({ jobId, status: "queued" });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to queue PDF render", details: error?.message });
+  }
+});
+
+// GET /api/v1/reports/jobs/:jobId - Poll PDF render job status
+router.get("/jobs/:jobId", async (req, res) => {
+  const { jobId } = req.params;
+
+  try {
+    const result = await db
+      .select()
+      .from(pdfJobs)
+      .where(eq(pdfJobs.id, jobId))
+      .limit(1);
+
+    if (!result || result.length === 0) {
+      return res.status(404).json({ error: "Job not found" });
+    }
+
+    const job = result[0];
+    res.json({
+      job: {
+        id: job.id,
+        reportId: job.reportId,
+        status: job.status,
+        fileSize: job.fileSize,
+        error: job.error,
+        durationMs: job.durationMs,
+        createdAt: job.createdAt,
+        startedAt: job.startedAt,
+        completedAt: job.completedAt,
+        downloadUrl:
+          job.status === "completed" ? `/api/v1/reports/jobs/${job.id}/download` : null,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to load job", details: error?.message });
+  }
+});
+
+// GET /api/v1/reports/jobs/:jobId/download - Stream the rendered PDF
+router.get("/jobs/:jobId/download", async (req, res) => {
+  const { jobId } = req.params;
+
+  try {
+    const result = await db
+      .select()
+      .from(pdfJobs)
+      .where(eq(pdfJobs.id, jobId))
+      .limit(1);
+
+    if (!result || result.length === 0) {
+      return res.status(404).json({ error: "Job not found" });
+    }
+
+    const job = result[0];
+
+    if (job.status !== "completed" || !job.filePath) {
+      return res.status(409).json({
+        error: "Job is not ready",
+        status: job.status,
+        details: job.error,
+      });
+    }
+
+    const fullPath = path.resolve(REPORTS_DIR, job.filePath);
+
+    try {
+      await fs.access(fullPath);
+    } catch {
+      return res.status(404).json({ error: "Rendered file missing on disk" });
+    }
+
+    const isHtmlFallback = job.filePath.toLowerCase().endsWith(".html");
+    const contentType = isHtmlFallback ? "text/html" : "application/pdf";
+    const downloadName = path.basename(job.filePath);
+
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Disposition", `attachment; filename="${downloadName}"`);
+    if (job.fileSize) res.setHeader("Content-Length", job.fileSize);
+
+    const data = await fs.readFile(fullPath);
+    res.send(data);
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to download", details: error?.message });
   }
 });
 

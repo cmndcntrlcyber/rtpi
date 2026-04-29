@@ -1,21 +1,19 @@
 /**
  * PDF Report Generator Service
  *
- * Generates professional PDF reports with:
- * - Professional templates with branding
- * - Cover page with logo and metadata
- * - Table of contents with page links
- * - Charts and graphs
- * - Page numbers and headers/footers
- * - Multiple report types (penetration test, vulnerability assessment, executive summary)
+ * Owns template assembly (HTML composition) for penetration test, vulnerability
+ * assessment, executive summary, and operation summary reports. Delegates the
+ * actual HTML→PDF render to `documentRenderer` (server/services/reports/), which
+ * connects to the chromium-shell sidecar via Chrome DevTools Protocol.
  *
- * NOTE: Requires puppeteer to be installed
- * Install with: npm install puppeteer
+ * When CHROMIUM_WS_ENDPOINT is unset or the sidecar is unreachable, the
+ * generator falls back to writing the HTML to disk so the caller still gets
+ * a downloadable artifact (just labeled .html instead of .pdf).
  */
 
 import fs from "fs/promises";
 import path from "path";
-// import puppeteer, { Browser, Page } from "puppeteer"; // Requires: npm install puppeteer
+import { documentRenderer, RendererError } from "./reports/document-renderer";
 
 const REPORTS_DIR = process.env.REPORTS_DIR || "./uploads/reports";
 const LOGO_PATH = process.env.COMPANY_LOGO_PATH || "./assets/logo.png";
@@ -90,34 +88,25 @@ export interface GeneratedReport {
 // ============================================================================
 
 export class PDFReportGenerator {
-  private browser: any | null = null; // Browser type - requires puppeteer
-
   /**
-   * Initialize the PDF generator (launch browser)
+   * Ensures the reports directory exists. Idempotent — call on demand.
    */
   async initialize(): Promise<void> {
-    // NOTE: Uncomment when puppeteer is installed
-    // this.browser = await puppeteer.launch({
-    //   headless: true,
-    //   args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    // });
-
-    // Ensure reports directory exists
     await fs.mkdir(REPORTS_DIR, { recursive: true });
   }
 
   /**
-   * Close the browser instance
+   * Close the renderer's browser connection.
+   * Used during graceful shutdown.
    */
   async close(): Promise<void> {
-    if (this.browser) {
-      await this.browser.close();
-      this.browser = null;
-    }
+    await documentRenderer.disconnect();
   }
 
   /**
-   * Generate a PDF report from report data
+   * Generate a PDF report from report data. Falls back to HTML on disk when
+   * the chromium sidecar is unavailable so callers always get a downloadable
+   * artifact.
    */
   async generatePDFReport(
     reportData: ReportData,
@@ -134,10 +123,7 @@ export class PDFReportGenerator {
       watermark,
     } = options;
 
-    // Ensure browser is initialized
-    if (!this.browser) {
-      await this.initialize();
-    }
+    await this.initialize();
 
     // Generate filename
     const timestamp = Date.now();
@@ -153,42 +139,46 @@ export class PDFReportGenerator {
       watermark,
     });
 
-    // NOTE: Uncomment when puppeteer is installed
-    /*
-    // Create new page
-    const page = await this.browser.newPage();
+    // Try to render via the chromium sidecar. Fall back to HTML on disk
+    // when the sidecar is unconfigured/unreachable so callers still get
+    // an artifact and a clear filename suffix indicating the format.
+    if (documentRenderer.configured) {
+      try {
+        const pdfBuffer = await documentRenderer.renderToPdf(html, {
+          format,
+          printBackground: true,
+          displayHeaderFooter: pageNumbers || !!headerText || !!footerText,
+          headerTemplate: this.generateHeaderTemplate(headerText),
+          footerTemplate: this.generateFooterTemplate(footerText, pageNumbers),
+        });
 
-    // Set HTML content
-    await page.setContent(html, { waitUntil: 'networkidle0' });
+        await fs.writeFile(filePath, pdfBuffer);
+        const stats = await fs.stat(filePath);
+        return {
+          filePath: filename,
+          fileSize: stats.size,
+          generatedAt: new Date(),
+        };
+      } catch (err) {
+        if (err instanceof RendererError) {
+          // Log diagnostic, then fall through to HTML fallback below.
+          console.warn(
+            `[PDFReportGenerator] Renderer ${err.code}: ${err.message}. Falling back to HTML.`,
+          );
+        } else {
+          throw err;
+        }
+      }
+    }
 
-    // Generate PDF
-    await page.pdf({
-      path: filePath,
-      format,
-      printBackground: true,
-      displayHeaderFooter: pageNumbers || headerText || footerText,
-      headerTemplate: this.generateHeaderTemplate(headerText),
-      footerTemplate: this.generateFooterTemplate(footerText, pageNumbers),
-      margin: {
-        top: '80px',
-        bottom: '80px',
-        left: '60px',
-        right: '60px',
-      },
-    });
-
-    await page.close();
-    */
-
-    // Mock implementation - write HTML to file for demonstration
-    const htmlPath = filePath.replace('.pdf', '.html');
-    await fs.writeFile(htmlPath, html, 'utf-8');
-
-    // Get file stats (using HTML file for now)
+    // Fallback: write HTML to disk. Filename keeps the .pdf base so the
+    // calling DB row points at a real file, but content type is HTML.
+    const htmlPath = filePath.replace(".pdf", ".html");
+    const htmlFilename = filename.replace(".pdf", ".html");
+    await fs.writeFile(htmlPath, html, "utf-8");
     const stats = await fs.stat(htmlPath);
-
     return {
-      filePath: filename,
+      filePath: htmlFilename,
       fileSize: stats.size,
       generatedAt: new Date(),
     };

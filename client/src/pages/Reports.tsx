@@ -17,6 +17,7 @@ import EditReportDialog from "@/components/reports/EditReportDialog";
 import SysReptorExportDialog from "@/components/reports/SysReptorExportDialog";
 import SysReptorProjectsList from "@/components/reports/SysReptorProjectsList";
 import SysReptorHealthBanner from "@/components/reports/SysReptorHealthBanner";
+import GeneratePdfButton from "@/components/reports/GeneratePdfButton";
 
 const REPORT_GROUPS_KEY = "rtpi-report-groups-expanded";
 
@@ -406,6 +407,7 @@ export default function Reports() {
                               Edit
                             </Button>
                           )}
+                          <GeneratePdfButton reportId={report.id} reportName={report.name} />
                           <Button
                             size="sm"
                             variant="ghost"

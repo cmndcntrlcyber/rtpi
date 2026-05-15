@@ -16,25 +16,24 @@ ENV TOOLS_PATH=/opt/tools
 # Switch to root for package installation
 USER root
 
-# Install additional dependencies for malware development and binary analysis
-RUN apt-get update && apt-get install -y \
-    # Binary analysis tools
-    binutils binwalk \
-    # Assembly and compilation
-    nasm yasm \
-    # Debugging tools
-    gdb gdb-multiarch strace ltrace \
-    # PE/ELF analysis
-    pev upx-ucl \
-    # Development libraries (libcapstone available, keystone/unicorn via pip)
-    libcapstone-dev \
-    # Cross-compilation support (ARM64 and x86_64)
-    gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
-    binutils-x86-64-linux-gnu \
-    binutils-i686-linux-gnu \
-    # Additional utilities
-    xxd hexedit jq \
-    && rm -rf /var/lib/apt/lists/*
+# Install additional dependencies for malware development and binary analysis.
+# apt retry/timeout config inherited from offsec-base.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    set -eux; \
+    for i in 1 2 3; do \
+      apt-get update && break || { echo "apt-get update failed (attempt $i)"; sleep $((i*5)); }; \
+    done; \
+    apt-get install -y --no-install-recommends \
+      binutils binwalk \
+      nasm yasm \
+      gdb gdb-multiarch strace ltrace \
+      pev upx-ucl \
+      libcapstone-dev \
+      gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+      binutils-x86-64-linux-gnu \
+      binutils-i686-linux-gnu \
+      xxd hexedit jq
 
 # Install mingw cross-compiler (x86 only, skip on ARM64)
 RUN ARCH=$(dpkg --print-architecture) && \
@@ -63,18 +62,57 @@ RUN pip3 install --no-cache-dir \
     yara-python \
     jmespath
 
-# Add Rust targets for cross-compilation
+# Add Rust targets for cross-compilation.
+#
+# rustup pulls each target from static.rust-lang.org. Network blips during
+# image build (DNS, TLS, partial download) cause `rustup target add` to exit
+# non-zero with no retry, which fails the whole image and cancels every
+# parallel offsec-agent build. Wrap each operation in a 3-attempt retry
+# with linear backoff so a transient blip doesn't kill a 4-minute build.
 USER rtpi-agent
-RUN rustup target add x86_64-pc-windows-gnu && \
-    rustup target add x86_64-unknown-linux-musl && \
-    rustup target add aarch64-unknown-linux-gnu && \
-    rustup component add rust-src
+RUN set -eu; \
+    retry() { \
+      n=0; max=3; sleep_s=10; \
+      until "$@"; do \
+        n=$((n+1)); \
+        if [ "$n" -ge "$max" ]; then \
+          echo "[fatal] $* failed after $max attempts" >&2; \
+          return 1; \
+        fi; \
+        echo "[retry $n/$max] $* failed, sleeping ${sleep_s}s..." >&2; \
+        sleep "$sleep_s"; \
+        sleep_s=$((sleep_s * 2)); \
+      done; \
+    }; \
+    retry rustup target add x86_64-pc-windows-gnu; \
+    retry rustup target add x86_64-unknown-linux-musl; \
+    retry rustup target add aarch64-unknown-linux-gnu; \
+    retry rustup component add rust-src
 
-# Install Rust-based security tools
-RUN cargo install xgadget && \
-    cargo install feroxbuster && \
-    cargo install ripgrep && \
-    cargo install fd-find
+# Install Rust-based security tools.
+#
+# `cargo install` fetches the crate index + dependency graph + sources from
+# crates.io. Same transient-failure surface as rustup above; same retry shape.
+# Note: `cargo install` is naturally idempotent — re-running after a partial
+# install resumes from cache, so the retry doesn't re-download everything.
+RUN set -eu; \
+    retry() { \
+      n=0; max=3; sleep_s=10; \
+      until "$@"; do \
+        n=$((n+1)); \
+        if [ "$n" -ge "$max" ]; then \
+          echo "[fatal] $* failed after $max attempts" >&2; \
+          return 1; \
+        fi; \
+        echo "[retry $n/$max] $* failed, sleeping ${sleep_s}s..." >&2; \
+        sleep "$sleep_s"; \
+        sleep_s=$((sleep_s * 2)); \
+      done; \
+    }; \
+    retry cargo install xgadget; \
+    retry cargo install feroxbuster; \
+    retry cargo install ripgrep; \
+    retry cargo install fd-find
 
 # Switch back to root for tool cloning
 USER root

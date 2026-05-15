@@ -9,12 +9,12 @@
 #   sudo ./build.sh --slug myorg --enable-ssl               # SSL + Cloudflare DNS
 #   sudo ./build.sh --slug myorg --enable-ssl --server-ip 1.2.3.4
 #
-# SSL-enabled domains (example slug 'myorg'):
-#   myorg.attck-node.net          — RTPI main dashboard
-#   myorg-reports.attck-node.net  — SysReptor reporting
-#   myorg-empire.attck-node.net   — Empire C2
-#   myorg-mgmt.attck-node.net     — Portainer management
-#   myorg-kasm.attck-node.net     — Kasm Workspaces
+# SSL-enabled domains (example slug 'myorg', CF_DOMAIN='example.com'):
+#   myorg.example.com          — RTPI main dashboard
+#   myorg-reports.example.com  — SysReptor reporting
+#   myorg-empire.example.com   — Empire C2
+#   myorg-mgmt.example.com     — Portainer management
+#   myorg-kasm.example.com     — Kasm Workspaces
 #
 # Prerequisites:
 #   - .env configured with CF_API_TOKEN, CF_ZONE_ID, CF_DOMAIN, CF_EMAIL
@@ -24,10 +24,13 @@
 set -e
 
 # ─── Configuration ──────────────────────────────────────────────────────────
-DOMAIN="attck-node.net"
+# Parent domain comes from .env's CF_DOMAIN (loaded in preflight_checks).
 CERT_MANAGER="./setup/cert_manager.sh"
 DNS_MANAGER="./setup/cloudflare_dns_manager.sh"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MANIFEST_PATH="${PROJECT_ROOT}/setup/services.manifest"
+# shellcheck disable=SC1091
+source "${PROJECT_ROOT}/setup/services_manifest.sh"
 
 # ─── Colors ──────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -138,22 +141,23 @@ setup_ssl() {
 
     log "Setting up SSL for slug: $slug (IP: $server_ip)"
 
-    # Create DNS A records
+    # Create DNS A records (only for subdomains whose profile is active)
     log "Creating Cloudflare DNS A records..."
-    "$DNS_MANAGER" create-records "$slug" "$server_ip"
+    "$DNS_MANAGER" create-records "$slug" "$server_ip" "$PROFILES"
 
     # Wait for DNS propagation
     log "Waiting 60s for DNS propagation..."
     sleep 60
 
-    # Generate and deploy certificates
-    "$CERT_MANAGER" full-setup "$slug"
+    # Generate and deploy certificates (manifest-filtered by active profiles)
+    "$CERT_MANAGER" full-setup "$slug" "$PROFILES"
 
     log "✅ SSL setup complete"
     info "Domains:"
-    for suffix in "" "-reports" "-empire" "-mgmt" "-kasm"; do
-        info "  https://${slug}${suffix}.$DOMAIN"
-    done
+    local m_suffix m_gate m_upstream m_ws m_tls
+    while IFS='|' read -r m_suffix m_gate m_upstream m_ws m_tls; do
+        info "  https://${slug}${m_suffix}.${CF_DOMAIN}"
+    done < <(iterate_manifest "$MANIFEST_PATH" "$PROFILES")
 }
 
 # ─── Build docker-compose profile flags ──────────────────────────────────────
@@ -196,11 +200,21 @@ print_summary() {
 
     if [ "$ENABLE_SSL" = "true" ] && [ -n "$SLUG" ]; then
         echo -e "${GREEN}SSL-Enabled Service URLs:${NC}"
-        printf "  %-25s %s\n" "RTPI Dashboard:"  "https://$SLUG.$DOMAIN"
-        printf "  %-25s %s\n" "SysReptor:"       "https://$SLUG-reports.$DOMAIN"
-        printf "  %-25s %s\n" "Empire C2:"       "https://$SLUG-empire.$DOMAIN"
-        printf "  %-25s %s\n" "Portainer:"       "https://$SLUG-mgmt.$DOMAIN"
-        printf "  %-25s %s\n" "Kasm Workspaces:" "https://$SLUG-kasm.$DOMAIN"
+        local m_suffix m_gate m_upstream m_ws m_tls label
+        while IFS='|' read -r m_suffix m_gate m_upstream m_ws m_tls; do
+            case "$m_suffix" in
+                "")        label="RTPI Dashboard:" ;;
+                -reports)  label="SysReptor:" ;;
+                -empire)   label="Empire C2:" ;;
+                -mgmt)     label="Portainer:" ;;
+                -kasm)     label="Kasm Workspaces:" ;;
+                -wiki)     label="Docmost Wiki:" ;;
+                -vscode)   label="Kasm VS Code:" ;;
+                -kali)     label="Kasm Kali:" ;;
+                *)         label="${m_suffix#-}:" ;;
+            esac
+            printf "  %-25s %s\n" "$label" "https://${SLUG}${m_suffix}.${CF_DOMAIN}"
+        done < <(iterate_manifest "$MANIFEST_PATH" "$PROFILES")
         echo ""
         echo -e "${YELLOW}Post-SSL steps:${NC}"
         echo "  1. Install nginx SSL config:"

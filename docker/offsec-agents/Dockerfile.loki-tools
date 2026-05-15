@@ -17,23 +17,21 @@ ENV LOKI_HOME=/opt/loki
 # Switch to root for package installation
 USER root
 
-# Install Loki dependencies
-RUN apt-get update && apt-get install -y \
-    # C build tools (Loki is C-based)
-    build-essential gcc \
-    # Windows cross-compilation
-    mingw-w64 \
-    # Network tools
-    nmap netcat-openbsd socat \
-    # SSL/crypto
-    openssl libssl-dev \
-    # Assembly tools
-    nasm \
-    # Python for helper scripts
-    python3-dev python3-pip \
-    # Utilities
-    unzip jq git \
-    && rm -rf /var/lib/apt/lists/*
+# Install Loki dependencies. apt retry/timeout config inherited from offsec-base.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    set -eux; \
+    for i in 1 2 3; do \
+      apt-get update && break || { echo "apt-get update failed (attempt $i)"; sleep $((i*5)); }; \
+    done; \
+    apt-get install -y --no-install-recommends \
+      build-essential gcc \
+      mingw-w64 \
+      nmap netcat-openbsd socat \
+      openssl libssl-dev \
+      nasm \
+      python3-dev python3-pip \
+      unzip jq git
 
 # Clone Loki
 RUN mkdir -p ${LOKI_HOME} && \

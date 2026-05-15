@@ -2,16 +2,21 @@
 
 # RTPI Cloudflare DNS Manager
 # Manages DNS records for Let's Encrypt ACME challenges and service A records
-# Version: 1.1.0
+# Version: 1.2.0
 #
 # Requires .env to be sourced (or export vars):
 #   CF_API_TOKEN, CF_DOMAIN, CF_ZONE_ID, CF_EMAIL
 
 # Configuration from environment (loaded by build.sh via: set -a; source .env; set +a)
 CLOUDFLARE_API_TOKEN=${CF_API_TOKEN}
-DOMAIN=${CF_DOMAIN:-attck-node.net}
+DOMAIN=${CF_DOMAIN}
 ZONE_ID=${CF_ZONE_ID}
 EMAIL=${CF_EMAIL}
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MANIFEST_PATH="${SCRIPT_DIR}/services.manifest"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/services_manifest.sh"
 
 # Colors
 RED='\033[0;31m'
@@ -145,26 +150,34 @@ handle_dns_challenge() {
     esac
 }
 
-# Create A records pointing to server IP for all service subdomains
+# Create A records pointing to server IP for every subdomain in the manifest
+# whose profile_gate matches one of the active profiles.
 create_service_records() {
     local slug=$1
     local server_ip=$2
+    local profiles=${3:-}
 
-    [ -z "$slug" ] || [ -z "$server_ip" ] && { error "Usage: create_service_records <slug> <ip>"; return 1; }
+    if [ -z "$slug" ] || [ -z "$server_ip" ]; then
+        error "Usage: create_service_records <slug> <ip> [active_profiles]"
+        return 1
+    fi
 
-    local services=("$slug" "$slug-reports" "$slug-empire" "$slug-mgmt" "$slug-kasm")
-    for service in "${services[@]}"; do
-        log "A record: $service.$DOMAIN -> $server_ip"
+    local suffix gate upstream ws tls service
+    while IFS='|' read -r suffix gate upstream ws tls; do
+        service="${slug}${suffix}"
+        log "A record: ${service}.${DOMAIN} -> ${server_ip} (gate=${gate:-always})"
         local response
         response=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/dns_records" \
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             -H "Content-Type: application/json" \
             --data "{\"type\":\"A\",\"name\":\"$service\",\"content\":\"$server_ip\",\"ttl\":300,\"proxied\":false}")
         local success; success=$(echo "$response" | jq -r '.success // false')
-        [ "$success" = "true" ] \
-            && log "✅ A record created: $service.$DOMAIN" \
-            || warn "⚠️ Failed: $service.$DOMAIN — $(echo "$response" | jq -r '.errors[0].message // "unknown"')"
-    done
+        if [ "$success" = "true" ]; then
+            log "✅ A record created: ${service}.${DOMAIN}"
+        else
+            warn "⚠️ Failed: ${service}.${DOMAIN} — $(echo "$response" | jq -r '.errors[0].message // "unknown"')"
+        fi
+    done < <(iterate_manifest "$MANIFEST_PATH" "$profiles")
 }
 
 check_dependencies

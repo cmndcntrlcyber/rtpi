@@ -32,7 +32,12 @@ import {
   RefreshCw,
   Database,
   ArrowLeftRight,
+  ExternalLink,
 } from "lucide-react";
+
+const WORKBENCH_FRONTEND_URL =
+  (import.meta.env.VITE_WORKBENCH_FRONTEND_URL as string | undefined) ??
+  "http://localhost:3020";
 
 interface WorkbenchCollection {
   stix: {
@@ -473,18 +478,33 @@ export default function WorkbenchTab() {
       {health?.status === "connected" && (
         <Card>
           <CardHeader>
-            <CardTitle>ATT&CK Workbench Frontend</CardTitle>
-            <CardDescription>
-              Interactive ATT&CK Workbench editor embedded from local instance
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>ATT&CK Workbench Frontend</CardTitle>
+                <CardDescription>
+                  Interactive ATT&CK Workbench editor embedded from local instance
+                </CardDescription>
+              </div>
+              <Button asChild size="sm" variant="outline">
+                <a
+                  href={WORKBENCH_FRONTEND_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Open in new tab
+                </a>
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             <iframe
-              src="http://localhost:3020"
+              src={WORKBENCH_FRONTEND_URL}
               className="w-full border-0 rounded-b-lg"
               style={{ height: "70vh" }}
               title="ATT&CK Workbench"
-              sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+              referrerPolicy="origin"
+              allow="clipboard-read; clipboard-write"
             />
           </CardContent>
         </Card>

@@ -14,11 +14,16 @@ ENV TOOLS_PATH=/opt/tools
 # Switch to root for package installation
 USER root
 
-# Install dependencies
-RUN apt-get update && apt-get install -y \
-    curl wget \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+# Install dependencies. apt retry/timeout config inherited from offsec-base.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    set -eux; \
+    for i in 1 2 3; do \
+      apt-get update && break || { echo "apt-get update failed (attempt $i)"; sleep $((i*5)); }; \
+    done; \
+    apt-get install -y --no-install-recommends \
+      curl wget \
+      git
 
 # Create directories
 RUN mkdir -p /opt/tools/bin

@@ -1,0 +1,63 @@
+upstream kasm_api    { server kasm-api:8080; }
+upstream kasm_share  { server kasm-share:8182; }
+
+# Per-workspace server { ... } blocks (workspace-<id>.kasm.<domain>) — written
+# by KasmNginxManager into containers.d/ on session provision/terminate. Each
+# generated file is a full vhost with its own server_name; nginx routes via
+# SNI and the Host header. Glob against an empty dir is fine.
+include /etc/nginx/conf.d/containers.d/*.conf;
+
+# HTTP → HTTPS redirect (preserves the public HTTPS port).
+# The nginx:alpine entrypoint expands ${KASM_PUBLIC_HTTPS_PORT} via envsubst
+# from the env var injected by docker-compose (default 8443 for dev, 443 for
+# prod fronted by real DNS on standard ports).
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    return 301 https://$host:${KASM_PUBLIC_HTTPS_PORT}$request_uri;
+}
+
+# HTTPS reverse proxy fronting the Kasm admin/API + share service.
+# Per-workspace location blocks are written into /etc/nginx/conf.d/containers.d/
+# by KasmNginxManager (server/services/kasm-nginx-manager.ts) on session
+# provision/terminate, and merged into this server block via the include below.
+server {
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    http2 on;
+    server_name _;
+
+    ssl_certificate     /etc/nginx/certs/kasm_nginx.crt;
+    ssl_certificate_key /etc/nginx/certs/kasm_nginx.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    client_max_body_size 1G;
+    proxy_read_timeout 86400;
+    proxy_send_timeout 86400;
+
+    # Share service (file uploads / downloads)
+    location /share/ {
+        proxy_pass http://kasm_share/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+    }
+
+    # Everything else → Kasm API (admin UI, /api/, websockify, etc.)
+    location / {
+        proxy_pass http://kasm_api;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+    }
+}

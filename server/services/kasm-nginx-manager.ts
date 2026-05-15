@@ -787,6 +787,10 @@ ${sslConfig}${accessLogConfig}
 // Export singleton instance
 export const kasmNginxManager = new KasmNginxManager({
   enabled: process.env.KASM_PROXY_ENABLED === 'true',
-  nginxContainer: process.env.KASM_NGINX_CONTAINER || 'kasm-proxy',
+  nginxContainer: process.env.KASM_NGINX_CONTAINER || 'rtpi-kasm-proxy',
   kasmDomain: process.env.KASM_DOMAIN || 'kasm.attck.nexus',
+  // Per-workspace configs live in their own subdir so they don't collide with
+  // the templated default.conf. Matches the include directive in
+  // docker/kasm-proxy/default.conf.template.
+  configPath: '/etc/nginx/conf.d/containers.d',
 });

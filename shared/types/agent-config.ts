@@ -83,9 +83,19 @@ export interface AgentConfig {
   enabledTools?: string[];
 
   /**
-   * MCP server ID for this agent
+   * Primary MCP server ID for this agent (legacy single-server field).
+   * Kept in sync with `mcpServerIds[0]` so single-server consumers continue to
+   * work; new code should prefer `mcpServerIds`.
    */
   mcpServerId?: string;
+
+  /**
+   * v2.9.3 — multi-server selection. The first id mirrors the legacy
+   * `mcpServerId` field for backward compatibility. Backend dispatch
+   * (POST /api/v1/agents/:id/mcp-call) iterates this array and routes the
+   * tool call to whichever server's listTools() owns the requested tool.
+   */
+  mcpServerIds?: string[];
 
   /**
    * Additional metadata

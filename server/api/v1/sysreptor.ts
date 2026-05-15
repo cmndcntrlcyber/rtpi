@@ -56,6 +56,33 @@ router.get("/health", async (_req, res) => {
 });
 
 // ============================================================================
+// POST /api/v1/sysreptor/auto-connect
+// Mints a fresh API token by docker-exec'ing into rtpi-sysreptor-app and
+// running a Django shell snippet. Persists to .env and updates the in-memory
+// client. Used by the SysReptorHealthBanner "Connect" button when the token
+// is missing but the container is reachable.
+// Replies 200 with the structured result regardless of outcome — the UI uses
+// `ok: false` + `reason` to render actionable copy.
+// ============================================================================
+
+router.post("/auto-connect", async (_req, res) => {
+  try {
+    const result = await sysReptorClient.autoConnectFromUI();
+    if (result.ok) {
+      // Force a fresh health probe on the next request so the banner clears.
+      cachedHealth = null;
+    }
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      reason: "exec_failed",
+      message: error instanceof Error ? error.message : "Auto-connect threw",
+    });
+  }
+});
+
+// ============================================================================
 // GET /api/v1/sysreptor/status (legacy)
 // Back-compat alias; existing client code consumes {connected, ...}.
 // ============================================================================

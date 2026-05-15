@@ -17,17 +17,18 @@ ENV SLIVER_HOME=/opt/sliver
 # Switch to root for package installation
 USER root
 
-# Install Sliver dependencies
-RUN apt-get update && apt-get install -y \
-    # Build tools
-    build-essential mingw-w64 \
-    # Network tools
-    nmap netcat-openbsd socat \
-    # SSL/crypto
-    openssl libssl-dev \
-    # Utilities
-    unzip jq \
-    && rm -rf /var/lib/apt/lists/*
+# Install Sliver dependencies. apt retry/timeout config inherited from offsec-base.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    set -eux; \
+    for i in 1 2 3; do \
+      apt-get update && break || { echo "apt-get update failed (attempt $i)"; sleep $((i*5)); }; \
+    done; \
+    apt-get install -y --no-install-recommends \
+      build-essential mingw-w64 \
+      nmap netcat-openbsd socat \
+      openssl libssl-dev \
+      unzip jq
 
 # Install Go (required for Sliver implant compilation)
 RUN ARCH=$(uname -m) && \

@@ -1,0 +1,160 @@
+###############################################################################
+# Example tfvars for v2.9.5. Copy to terraform.tfvars and fill in real values.
+# DO NOT COMMIT terraform.tfvars — it carries Google client secrets.
+#
+# Pass secrets via env instead, e.g.:
+#   export TF_VAR_attck_client_secret="GOCSPX-..."
+# and reference them below as var.attck_client_secret if you prefer that pattern.
+###############################################################################
+
+cloudflare_account_id = "REPLACE_WITH_32_CHAR_HEX_ACCOUNT_ID"
+
+tenants = [
+  {
+    id               = "attck"
+    name             = "attck-workspace"
+    workspace_domain = "attck.nexus"
+    client_id        = "665194864071-bspf7uinfctsvnngckl6aigps97rj66v.apps.googleusercontent.com"
+    client_secret    = "REPLACE_OR_USE_TF_VAR_attck_client_secret"
+    enable_scim      = false
+  },
+  {
+    id               = "c3s"
+    name             = "c3s-Workspace"
+    workspace_domain = "c3s.nexus"
+    client_id        = "665194864071-bspf7uinfctsvnngckl6aigps97rj66v.apps.googleusercontent.com"
+    client_secret    = "REPLACE_OR_USE_TF_VAR_c3s_client_secret"
+    enable_scim      = false
+  },
+  {
+    id               = "d3fend"
+    name             = "d3fend-Workspace"
+    workspace_domain = "d3fend.nexus"
+    client_id        = "665194864071-bspf7uinfctsvnngckl6aigps97rj66v.apps.googleusercontent.com"
+    client_secret    = "REPLACE_OR_USE_TF_VAR_d3fend_client_secret"
+    enable_scim      = false
+  },
+]
+
+# One application = one public hostname behind Access.
+#
+# IMPORTANT: domain values must match the hostnames build.sh provisions. That
+# script reads setup/services.manifest as the single source of truth and emits
+# `${SLUG}-${suffix}.${CF_DOMAIN}` per row. The entries below mirror the
+# manifest for the example slug `attck` against the `attck.nexus` parent.
+#
+# To add a new RTPI surface to public Access:
+#   1. Append a row to setup/services.manifest (the script will mint DNS + cert).
+#   2. Append a matching application here.
+applications = [
+  # ── RTPI Dashboard (always-on, suffix="" in manifest) ────────────────────
+  {
+    id                 = "rtpi-attck"
+    name               = "RTPI Dashboard (attck)"
+    domain             = "attck.attck.nexus"
+    allowed_tenant_ids = ["attck"]
+    session_duration   = "24h"
+    auto_redirect      = true
+    policies = [
+      {
+        name           = "rtpi-admins-only"
+        decision       = "allow"
+        precedence     = 10
+        include_emails = []
+        include_groups = ["rtpi-admins", "rtpi-operators"]
+        require_groups = []
+      },
+    ]
+  },
+  # ── SysReptor (manifest suffix=-reports, profile=sysreptor) ──────────────
+  {
+    id                 = "rtpi-reports-attck"
+    name               = "SysReptor (attck)"
+    domain             = "attck-reports.attck.nexus"
+    allowed_tenant_ids = ["attck"]
+    session_duration   = "24h"
+    auto_redirect      = true
+    policies           = []
+  },
+  # ── Empire C2 (always-on, suffix=-empire) ────────────────────────────────
+  {
+    id                 = "rtpi-empire-attck"
+    name               = "Empire C2 (attck)"
+    domain             = "attck-empire.attck.nexus"
+    allowed_tenant_ids = ["attck"]
+    session_duration   = "8h"
+    auto_redirect      = true
+    policies           = []
+  },
+  # ── Portainer (suffix=-mgmt, profile=management) ─────────────────────────
+  {
+    id                 = "rtpi-mgmt-attck"
+    name               = "Portainer (attck)"
+    domain             = "attck-mgmt.attck.nexus"
+    allowed_tenant_ids = ["attck"]
+    session_duration   = "8h"
+    auto_redirect      = true
+    policies           = []
+  },
+  # ── Kasm Workspaces management plane (suffix=-kasm, profile=kasm) ────────
+  {
+    id                 = "rtpi-kasm-attck"
+    name               = "Kasm Workspaces mgmt (attck)"
+    domain             = "attck-kasm.attck.nexus"
+    allowed_tenant_ids = ["attck"]
+    session_duration   = "8h"
+    auto_redirect      = true
+    policies           = []
+  },
+  # ── Docmost Wiki (suffix=-wiki, profile=docmost) ─────────────────────────
+  {
+    id                 = "rtpi-wiki-attck"
+    name               = "Docmost Wiki (attck)"
+    domain             = "attck-wiki.attck.nexus"
+    allowed_tenant_ids = ["attck"]
+    session_duration   = "24h"
+    auto_redirect      = true
+    policies           = []
+  },
+  # ── Kasm VS Code direct workspace (suffix=-vscode, profile=kasm) ─────────
+  {
+    id                 = "rtpi-vscode-attck"
+    name               = "Kasm VS Code (attck)"
+    domain             = "attck-vscode.attck.nexus"
+    allowed_tenant_ids = ["attck"]
+    session_duration   = "8h"
+    auto_redirect      = true
+    policies           = []
+  },
+  # ── Kasm Kali direct workspace (suffix=-kali, profile=kasm) ──────────────
+  {
+    id                 = "rtpi-kali-attck"
+    name               = "Kasm Kali Desktop (attck)"
+    domain             = "attck-kali.attck.nexus"
+    allowed_tenant_ids = ["attck"]
+    session_duration   = "8h"
+    auto_redirect      = true
+    policies           = []
+  },
+  # ── Cross-tenant admin console (NOT slug-based — illustrative only) ──────
+  # Accepts logins from all three Workspaces; gated by a platform-admins group.
+  # Provision its DNS and cert outside build.sh (this hostname is not in the manifest).
+  {
+    id                 = "rtpi-console-shared"
+    name               = "RTPI Console (multi-tenant)"
+    domain             = "console.rtpi.io"
+    allowed_tenant_ids = ["attck", "c3s", "d3fend"]
+    session_duration   = "4h"
+    auto_redirect      = false
+    policies = [
+      {
+        name           = "platform-admins"
+        decision       = "allow"
+        precedence     = 5
+        include_emails = []
+        include_groups = ["rtpi-platform-admins"]
+        require_groups = []
+      },
+    ]
+  },
+]

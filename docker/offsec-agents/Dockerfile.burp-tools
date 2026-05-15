@@ -15,21 +15,21 @@ ENV TOOLS_PATH=/opt/tools
 # Switch to root for package installation
 USER root
 
-# Install web security testing dependencies + Java 21 for Burp Pro
-RUN apt-get update && apt-get install -y \
-    # HTTP tools
-    curl wget httpie \
-    # SSL/TLS tools
-    openssl ca-certificates \
-    # Proxy tools
-    mitmproxy \
-    # XML/JSON processing
-    jq xmlstarlet \
-    # Additional utilities
-    socat netcat-openbsd \
-    # Java 21 runtime for BurpSuite Pro
-    openjdk-21-jre-headless \
-    && rm -rf /var/lib/apt/lists/*
+# Install web security testing dependencies + Java 21 for Burp Pro.
+# apt retry/timeout config inherited from offsec-base.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    set -eux; \
+    for i in 1 2 3; do \
+      apt-get update && break || { echo "apt-get update failed (attempt $i)"; sleep $((i*5)); }; \
+    done; \
+    apt-get install -y --no-install-recommends \
+      curl wget httpie \
+      openssl ca-certificates \
+      mitmproxy \
+      jq xmlstarlet \
+      socat netcat-openbsd \
+      openjdk-21-jre-headless
 
 # Create BurpSuite activation directories
 RUN mkdir -p /opt/burp /opt/burp-setup /opt/burp-projects && \
@@ -157,8 +157,30 @@ RUN git clone --depth 1 https://github.com/sullo/nikto.git && \
     echo "nikto: Web server vulnerability scanner" > nikto/TOOL_INFO.txt
 
 # Wapiti - Web application scanner
-RUN git clone --depth 1 https://github.com/wapiti-scanner/wapiti.git && \
-    cd wapiti && pip3 install . && \
+#
+# Wrapped in a 3-attempt retry loop with linear backoff because both the
+# `git clone` (against github.com) and the `pip3 install` (against PyPI +
+# transitive deps) are subject to the same transient DNS / TLS blips that
+# took down the maldev rustup step. See Dockerfile.maldev-tools for the
+# matching pattern; both share the same offsec-base image but the retry
+# helper is inlined per-RUN since each RUN gets a fresh shell.
+RUN set -eu; \
+    retry() { \
+      n=0; max=3; sleep_s=10; \
+      until "$@"; do \
+        n=$((n+1)); \
+        if [ "$n" -ge "$max" ]; then \
+          echo "[fatal] $* failed after $max attempts" >&2; \
+          return 1; \
+        fi; \
+        echo "[retry $n/$max] $* failed, sleeping ${sleep_s}s..." >&2; \
+        sleep "$sleep_s"; \
+        sleep_s=$((sleep_s * 2)); \
+      done; \
+    }; \
+    retry git clone --depth 1 https://github.com/wapiti-scanner/wapiti.git; \
+    cd wapiti; \
+    retry pip3 install .; \
     echo "wapiti: Web application vulnerability scanner" > TOOL_INFO.txt
 
 # =============================================================================

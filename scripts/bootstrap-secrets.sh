@@ -40,6 +40,11 @@ STATEFUL_VOLUMES=(
   rtpi_postgres-data
   rtpi_sysreptor-db-data
   rtpi_mem0-postgres-data
+  rtpi_kasm-db-data
+  rtpi_kasm-api-data
+  rtpi_kasm-manager-data
+  rtpi_kasm-agent-data
+  rtpi_kasm-guac-data
 )
 
 MARKER="# RTPI_BOOTSTRAP_GENERATED"
@@ -133,6 +138,10 @@ EMPIRE_PASSWORD="$(gen_password 24)"
 WORKBENCH_DB_PASSWORD="$(gen_alnum 32)"
 WORKBENCH_SESSION_SECRET="$(gen_b64 64)"
 KASM_VNC_PASSWORD="$(gen_password 16)"
+KASM_SHARE_ID="$(gen_uuid)"                     # kasmweb/share requires a valid UUID
+KASM_MANAGER_ID="$(gen_uuid)"                   # kasmweb/manager requires a valid UUID
+KASM_AGENT_ID="$(gen_uuid)"                     # kasmweb/agent requires a valid UUID
+KASM_DB_PASSWORD="$(gen_alnum 32)"              # Postgres password for kasmapp user
 SYSREPTOR_DB_PASSWORD="$(gen_alnum 32)"
 SYSREPTOR_REDIS_PASSWORD="$(gen_alnum 32)"
 SYSREPTOR_SECRET_KEY="$(gen_b64 50)"
@@ -171,6 +180,12 @@ sub "$ENV_FILE" EMPIRE_PASSWORD            "$EMPIRE_PASSWORD"
 sub "$ENV_FILE" WORKBENCH_DB_PASSWORD      "$WORKBENCH_DB_PASSWORD"
 sub "$ENV_FILE" WORKBENCH_SESSION_SECRET   "$WORKBENCH_SESSION_SECRET"
 sub "$ENV_FILE" KASM_VNC_PASSWORD          "$KASM_VNC_PASSWORD"
+sub "$ENV_FILE" KASM_PROXY_ENABLED         "true"
+sub "$ENV_FILE" KASM_PUBLIC_HTTPS_PORT     "8443"
+sub "$ENV_FILE" KASM_SHARE_ID              "$KASM_SHARE_ID"
+sub "$ENV_FILE" KASM_MANAGER_ID            "$KASM_MANAGER_ID"
+sub "$ENV_FILE" KASM_AGENT_ID              "$KASM_AGENT_ID"
+sub "$ENV_FILE" KASM_DB_PASSWORD           "$KASM_DB_PASSWORD"
 sub "$ENV_FILE" SYSREPTOR_DB_PASSWORD      "$SYSREPTOR_DB_PASSWORD"
 sub "$ENV_FILE" SYSREPTOR_REDIS_PASSWORD   "$SYSREPTOR_REDIS_PASSWORD"
 chmod 600 "$ENV_FILE"
@@ -242,6 +257,10 @@ EMPIRE_PASSWORD=${EMPIRE_PASSWORD}
 WORKBENCH_DB_PASSWORD=${WORKBENCH_DB_PASSWORD}
 WORKBENCH_SESSION_SECRET=${WORKBENCH_SESSION_SECRET}
 KASM_VNC_PASSWORD=${KASM_VNC_PASSWORD}
+KASM_SHARE_ID=${KASM_SHARE_ID}
+KASM_MANAGER_ID=${KASM_MANAGER_ID}
+KASM_AGENT_ID=${KASM_AGENT_ID}
+KASM_DB_PASSWORD=${KASM_DB_PASSWORD}
 SYSREPTOR_DB_PASSWORD=${SYSREPTOR_DB_PASSWORD}
 SYSREPTOR_REDIS_PASSWORD=${SYSREPTOR_REDIS_PASSWORD}
 SYSREPTOR_SECRET_KEY=${SYSREPTOR_SECRET_KEY}

@@ -26,6 +26,12 @@ const llmSettings = {
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || "",
   tavilyApiKey: process.env.TAVILY_API_KEY || "",
   defaultModel: process.env.DEFAULT_MODEL || "claude-sonnet-4-5",
+  // Per-role default models. defaultModel above stays as the global fallback;
+  // these three carry the role-specific overrides surfaced in Settings → Default Models.
+  // Empty string means "fall back to defaultModel".
+  defaultAgentModel: process.env.DEFAULT_AGENT_MODEL || "",
+  defaultReasoningModel: process.env.DEFAULT_REASONING_MODEL || "",
+  defaultEmbeddingModel: process.env.EMBEDDING_MODEL || "text-embedding-3-small",
   ollamaHost: process.env.OLLAMA_HOST || "http://localhost:11434",
 };
 
@@ -73,6 +79,9 @@ function applyKeyUpdates(body: {
   anthropicApiKey?: string;
   tavilyApiKey?: string;
   defaultModel?: string;
+  defaultAgentModel?: string;
+  defaultReasoningModel?: string;
+  defaultEmbeddingModel?: string;
   ollamaHost?: string;
 }): void {
   const envUpdates: Record<string, string> = {};
@@ -92,6 +101,22 @@ function applyKeyUpdates(body: {
   if (body.defaultModel) {
     llmSettings.defaultModel = body.defaultModel;
     envUpdates.DEFAULT_MODEL = body.defaultModel;
+  }
+  // Per-role overrides — empty string clears the override (env var stays empty
+  // so callers fall back to DEFAULT_MODEL). The embedding override writes
+  // EMBEDDING_MODEL to match the v2.9.1 Phase 7 routing-layer name already in
+  // .env.example; agent + reasoning use new env-var names.
+  if (typeof body.defaultAgentModel === "string") {
+    llmSettings.defaultAgentModel = body.defaultAgentModel;
+    envUpdates.DEFAULT_AGENT_MODEL = body.defaultAgentModel;
+  }
+  if (typeof body.defaultReasoningModel === "string") {
+    llmSettings.defaultReasoningModel = body.defaultReasoningModel;
+    envUpdates.DEFAULT_REASONING_MODEL = body.defaultReasoningModel;
+  }
+  if (typeof body.defaultEmbeddingModel === "string") {
+    llmSettings.defaultEmbeddingModel = body.defaultEmbeddingModel;
+    envUpdates.EMBEDDING_MODEL = body.defaultEmbeddingModel;
   }
   if (typeof body.ollamaHost === "string" && body.ollamaHost.trim().length > 0) {
     try {
@@ -127,6 +152,9 @@ router.get("/llm", async (_req, res) => {
         ? `tvly-...${llmSettings.tavilyApiKey.slice(-4)}`
         : "",
       defaultModel: llmSettings.defaultModel,
+      defaultAgentModel: llmSettings.defaultAgentModel,
+      defaultReasoningModel: llmSettings.defaultReasoningModel,
+      defaultEmbeddingModel: llmSettings.defaultEmbeddingModel,
       ollamaHost: llmSettings.ollamaHost,
     };
 
@@ -163,6 +191,9 @@ router.get("/ai-provider", async (_req, res) => {
         ? `tvly-...${llmSettings.tavilyApiKey.slice(-4)}`
         : "",
       defaultModel: llmSettings.defaultModel,
+      defaultAgentModel: llmSettings.defaultAgentModel,
+      defaultReasoningModel: llmSettings.defaultReasoningModel,
+      defaultEmbeddingModel: llmSettings.defaultEmbeddingModel,
       ollamaHost: llmSettings.ollamaHost,
     };
 

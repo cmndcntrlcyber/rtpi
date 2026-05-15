@@ -16,6 +16,11 @@ export const FEATURE_FLAGS = {
   frameworkDeploy: "FF_FRAMEWORK_DEPLOY",
   ctiVector: "FF_CTI_VECTOR",
   kasmHardened: "FF_KASM_HARDENED",
+  defaultMcp: "FF_DEFAULT_MCP_SERVERS",
+  nexusMesh: "FF_NEXUS_MESH",
+  matrixA2a: "FF_MATRIX_A2A",
+  gmlTelemetry: "FF_GML_TELEMETRY",
+  a2aCapabilityGate: "FF_A2A_CAPABILITY_GATE",
 } as const;
 
 export type FeatureFlagKey = keyof typeof FEATURE_FLAGS;

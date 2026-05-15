@@ -106,8 +106,9 @@ echo "  2) Build base + Priority agents (framework, research, fuzzing) [~2 hours
 echo "  3) Build base + All agents (framework, research, fuzzing, maldev, azure-ad, burp, empire) [~4 hours]"
 echo "  4) Build specific agents (custom selection)"
 echo "  5) Exit"
+echo "  6) Resilient build — base + all 14 children, parallel with retry (recommended for production)"
 echo ""
-read -p "Select option [1-5]: " OPTION
+read -p "Select option [1-6]: " OPTION
 
 case $OPTION in
     1)
@@ -153,6 +154,13 @@ case $OPTION in
     5)
         print_info "Exiting..."
         exit 0
+        ;;
+    6)
+        # Hand off to the non-interactive resilient builder. It enumerates
+        # all 14 child services, runs each in its own `docker compose build`
+        # invocation at bounded parallelism, and retries transient failures.
+        print_info "Delegating to scripts/build-resilient.sh"
+        exec bash "$(dirname "$0")/build-resilient.sh"
         ;;
     *)
         print_fail "Invalid option"

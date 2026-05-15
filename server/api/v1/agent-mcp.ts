@@ -10,9 +10,31 @@ const router = Router();
 // Apply authentication to all routes
 router.use(ensureAuthenticated);
 
+/**
+ * v2.9.3 — resolve the list of MCP server IDs attached to an agent. Prefers
+ * the new multi-select array `config.mcpServerIds`; falls back to the legacy
+ * single-server `config.mcpServerId`. Returns an empty array when neither is
+ * set, so the caller can decide whether that's a 400 or an empty list.
+ */
+function resolveAgentMcpServerIds(config: unknown): string[] {
+  const cfg = (config ?? {}) as { mcpServerIds?: unknown; mcpServerId?: unknown };
+  if (Array.isArray(cfg.mcpServerIds)) {
+    const ids = cfg.mcpServerIds.filter((id): id is string => typeof id === "string" && id.length > 0);
+    if (ids.length > 0) return ids;
+  }
+  if (typeof cfg.mcpServerId === "string" && cfg.mcpServerId.length > 0) {
+    return [cfg.mcpServerId];
+  }
+  return [];
+}
+
 // POST /api/v1/agents/:agentId/mcp-call - Call MCP server tool from agent
 // v2.9.1 Phase 5: replaced the mock stub with a real JSON-RPC 2.0 invocation
 // against the spawned MCP server's stdio (via mcpInvoker).
+// v2.9.3: when the agent has multiple MCP servers attached
+// (`config.mcpServerIds`), iterate over them and dispatch to whichever owns
+// the requested toolName. The first attached server whose listTools()
+// includes the tool wins; ordering matches the operator's selection order.
 router.post("/:agentId/mcp-call", ensureRole("admin", "operator"), async (req, res) => {
   const { agentId } = req.params;
   const { toolName, args } = req.body ?? {};
@@ -34,34 +56,66 @@ router.post("/:agentId/mcp-call", ensureRole("admin", "operator"), async (req, r
       return res.status(404).json({ error: "Agent not found" });
     }
 
-    const config = agent.config as any;
-    const mcpServerId = config?.mcpServerId;
-
-    if (!mcpServerId) {
-      return res.status(400).json({ error: "Agent has no MCP server configured" });
+    const serverIds = resolveAgentMcpServerIds(agent.config);
+    if (serverIds.length === 0) {
+      return res.status(400).json({ error: "Agent has no MCP servers configured" });
     }
 
-    const mcpServer = await db
-      .select()
-      .from(mcpServers)
-      .where(eq(mcpServers.id, mcpServerId))
-      .limit(1)
-      .then((rows) => rows[0]);
+    // Hydrate full server rows for everything attached so we can return
+    // useful diagnostic info (running state, names) regardless of which one
+    // ends up handling the call.
+    const attachedServers = await Promise.all(
+      serverIds.map((id) =>
+        db
+          .select()
+          .from(mcpServers)
+          .where(eq(mcpServers.id, id))
+          .limit(1)
+          .then((rows) => rows[0]),
+      ),
+    );
+    const liveServers = attachedServers.filter((s): s is NonNullable<typeof s> => Boolean(s));
+    const runningServers = liveServers.filter((s) => s.status === "running");
 
-    if (!mcpServer) {
-      return res.status(404).json({ error: "MCP server not found" });
+    if (liveServers.length === 0) {
+      return res.status(404).json({
+        error: "No attached MCP servers exist (rows missing)",
+        attached: serverIds,
+      });
     }
-
-    if (mcpServer.status !== "running") {
+    if (runningServers.length === 0) {
       return res.status(503).json({
         error: "mcp_not_running",
         retryable: true,
-        remediation: `Start the MCP server '${mcpServer.name}' before invoking its tools.`,
+        remediation: `Start one of the attached MCP servers (${liveServers.map((s) => s.name).join(", ")}) before invoking tools.`,
+      });
+    }
+
+    // Find which running server owns the tool. listTools is cached per
+    // server (60s TTL inside mcpInvoker) so this loop stays cheap on
+    // repeated calls.
+    let targetServer: typeof runningServers[number] | null = null;
+    for (const candidate of runningServers) {
+      try {
+        const tools = await mcpInvoker.listTools(candidate.id);
+        if (tools.some((t) => t.name === toolName)) {
+          targetServer = candidate;
+          break;
+        }
+      } catch {
+        // Skip — server might have crashed mid-loop; try the next one.
+      }
+    }
+
+    if (!targetServer) {
+      return res.status(404).json({
+        error: `Tool '${toolName}' not found on any attached MCP server`,
+        servers: runningServers.map((s) => ({ id: s.id, name: s.name })),
       });
     }
 
     const result = await mcpInvoker.callTool(
-      mcpServerId,
+      targetServer.id,
       toolName,
       typeof args === "object" && args ? args : {},
     );
@@ -71,7 +125,7 @@ router.post("/:agentId/mcp-call", ensureRole("admin", "operator"), async (req, r
     res.json({
       success: !result.isError,
       toolName,
-      server: { id: mcpServer.id, name: mcpServer.name },
+      server: { id: targetServer.id, name: targetServer.name },
       result,
       timestamp: new Date().toISOString(),
     });
@@ -94,6 +148,11 @@ router.post("/:agentId/mcp-call", ensureRole("admin", "operator"), async (req, r
 });
 
 // GET /api/v1/agents/:agentId/mcp-tools - Get available MCP tools for agent
+// v2.9.3: aggregates listTools() across every attached MCP server
+// (`config.mcpServerIds`). Each tool object is tagged with `_serverId` and
+// `_serverName` so the UI / agent runtime can show which server provides it.
+// Response also includes a `servers: [{id, name, status, toolCount, warning?}]`
+// array so the operator can see at a glance which attachments contributed.
 router.get("/:agentId/mcp-tools", async (req, res) => {
   const { agentId } = req.params;
 
@@ -109,44 +168,80 @@ router.get("/:agentId/mcp-tools", async (req, res) => {
       return res.status(404).json({ error: "Agent not found" });
     }
 
-    const config = agent.config as any;
-    const mcpServerId = config?.mcpServerId;
-
-    if (!mcpServerId) {
-      return res.json({ tools: [] });
+    const serverIds = resolveAgentMcpServerIds(agent.config);
+    if (serverIds.length === 0) {
+      return res.json({ tools: [], servers: [] });
     }
 
-    const mcpServer = await db
-      .select()
-      .from(mcpServers)
-      .where(eq(mcpServers.id, mcpServerId))
-      .limit(1)
-      .then((rows) => rows[0]);
+    type ServerSummary = {
+      id: string;
+      name: string;
+      status: string;
+      toolCount: number;
+      warning?: { code: string; message: string };
+    };
+    const aggregatedTools: Array<Record<string, unknown>> = [];
+    const serverSummaries: ServerSummary[] = [];
 
-    if (!mcpServer) {
-      return res.json({ tools: [] });
-    }
-
-    // v2.9.1 Phase 5: ask the live MCP server for its tool list (cached
-    // 60s by mcpInvoker). Falls back to an empty list if the server is
-    // unreachable so the UI degrades gracefully.
-    if (mcpServer.status !== "running") {
-      return res.json({ tools: [], server: mcpServer });
-    }
-
-    try {
-      const tools = await mcpInvoker.listTools(mcpServer.id);
-      res.json({ tools, server: mcpServer });
-    } catch (err: any) {
-      if (err instanceof MCPInvokerError) {
-        return res.json({
-          tools: [],
-          server: mcpServer,
-          warning: { code: err.code, message: err.message },
+    for (const id of serverIds) {
+      const server = await db
+        .select()
+        .from(mcpServers)
+        .where(eq(mcpServers.id, id))
+        .limit(1)
+        .then((rows) => rows[0]);
+      if (!server) {
+        // Attached id no longer exists in DB — surface in summary so the
+        // operator can clean up dangling references.
+        serverSummaries.push({
+          id,
+          name: "(missing)",
+          status: "missing",
+          toolCount: 0,
+          warning: { code: "missing", message: "MCP server row not found in DB" },
         });
+        continue;
       }
-      throw err;
+      if (server.status !== "running") {
+        serverSummaries.push({
+          id: server.id,
+          name: server.name,
+          status: server.status,
+          toolCount: 0,
+        });
+        continue;
+      }
+      try {
+        const tools = await mcpInvoker.listTools(server.id);
+        for (const tool of tools) {
+          aggregatedTools.push({
+            ...(tool as Record<string, unknown>),
+            _serverId: server.id,
+            _serverName: server.name,
+          });
+        }
+        serverSummaries.push({
+          id: server.id,
+          name: server.name,
+          status: server.status,
+          toolCount: tools.length,
+        });
+      } catch (err: any) {
+        if (err instanceof MCPInvokerError) {
+          serverSummaries.push({
+            id: server.id,
+            name: server.name,
+            status: server.status,
+            toolCount: 0,
+            warning: { code: err.code, message: err.message },
+          });
+          continue;
+        }
+        throw err;
+      }
     }
+
+    res.json({ tools: aggregatedTools, servers: serverSummaries });
   } catch (error: any) {
     res.status(500).json({ error: "Failed to get MCP tools", details: error?.message || "Internal server error" });
   }

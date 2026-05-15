@@ -5,6 +5,7 @@ import { db } from '../db';
 import { kasmWorkspaces, kasmSessions } from '@shared/schema';
 import { eq, and, lt, isNull, sql, desc } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
+import { kasmNginxManager } from './kasm-nginx-manager';
 
 // ============================================================================
 // v2.9.1 Phase 10 — TLS hardening + circuit breaker
@@ -412,6 +413,16 @@ export class KasmWorkspaceManager {
         `(total: ${provisioningDuration}ms, quota: ${quotaCheckDuration}ms, ` +
         `session: ${sessionCreateDuration}ms, db: ${dbInsertDuration}ms)`
       );
+
+      // Register a per-workspace nginx route on kasm-proxy so the user can
+      // reach the session over HTTPS. Failures are non-fatal — the workspace
+      // is already in the DB and can serve via the access URL even if the
+      // route registration retries elsewhere.
+      try {
+        await kasmNginxManager.registerWorkspaceProxy(workspaceId, kasmSession.port);
+      } catch (err) {
+        console.error(`[KasmWorkspaceManager] Workspace ${workspaceId} provisioned but proxy route registration failed:`, err);
+      }
 
       // Start monitoring the workspace with performance tracking
       this.monitorWorkspaceStartup(workspaceId, provisioningStartTime);
@@ -824,6 +835,15 @@ export class KasmWorkspaceManager {
           console.error('[KasmWorkspaceManager] Failed to destroy Kasm session:', error);
           // Continue with database cleanup even if Kasm API call fails
         }
+      }
+
+      // Remove the per-workspace nginx route. Non-fatal — a stale conf is
+      // harmless because the upstream is gone, and the next reload will
+      // just log an error for that one location.
+      try {
+        await kasmNginxManager.unregisterWorkspaceProxy(workspaceId);
+      } catch (err) {
+        console.error(`[KasmWorkspaceManager] Failed to unregister proxy route for ${workspaceId}:`, err);
       }
 
       // Update database

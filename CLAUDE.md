@@ -25,6 +25,19 @@ npm run db:studio        # Open Drizzle Studio GUI
 # Code quality
 npm run lint             # Run ESLint
 npm run format           # Format with Prettier
+
+# Deployment gates
+npm run deploy:check     # Pre-deploy: docker/env/.env validation
+npm run deploy:verify    # Post-deploy: gate that fails if any container is in a
+                         # restart loop, exited unexpectedly, or stays unhealthy.
+                         # Run this immediately after `docker compose up -d` in
+                         # production rollouts. See docs/DEPLOYMENT.md →
+                         # "Post-Deploy Verification".
+npm run build:offsec     # Build offsec agent images: serial offsec-base, then
+                         # 14 children at concurrency 2 with per-image retry.
+                         # Replaces `docker compose --profile offsec-agents build`
+                         # which is fragile (one image's failure cancels siblings).
+                         # See docs/DEPLOYMENT.md → "Resilient Build".
 ```
 
 ## Architecture
@@ -59,6 +72,7 @@ shared/                # Shared code between frontend and backend
 - `agent-workflow-orchestrator.ts`: Coordinates multi-agent penetration test workflows
 - `agent-tool-connector.ts`: Bridges AI agents with security tools
 - `mcp-server-manager.ts`: Manages Model Context Protocol servers
+- `mcp/default-servers-catalog.ts` + `mcp/catalog-sync.ts`: Built-in MCP defaults (v2.9.3, gated by `FF_DEFAULT_MCP_SERVERS`). Catalog is pure data; sync runs from `MCPServerManager`'s constructor and is `INSERT ... ON CONFLICT (seed_key) DO NOTHING` — never overwrites operator edits to existing managed rows.
 - `metasploit-executor.ts`: Interfaces with Metasploit Framework
 - `bbot-executor.ts`: Runs BBOT reconnaissance scans
 - `report-generator.ts`: AI-powered penetration test report generation

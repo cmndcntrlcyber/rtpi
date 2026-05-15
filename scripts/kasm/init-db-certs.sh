@@ -1,5 +1,6 @@
-#!/bin/bash
+#!/bin/sh
 # Kasm Database SSL Certificate Generator
+# POSIX sh — runs in alpine:latest (busybox) without bash installed.
 # This script generates self-signed certificates for the kasm-db container
 # if they don't already exist.
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Bot, Server, Activity, Clock, Plus, RotateCcw, Pause, Target, CheckCircle, AlertTriangle, Zap, GripVertical, ArrowRight, X, Import, Workflow, ChevronDown, ChevronRight, Pencil, Trash2, Search, MoveRight, Ban, MessageSquare } from "lucide-react";
+import { Bot, Server, Activity, Clock, Plus, RotateCcw, Pause, Target, CheckCircle, AlertTriangle, Zap, GripVertical, ArrowRight, X, Import, Workflow, ChevronDown, ChevronRight, Pencil, Trash2, Search, MoveRight, Ban, MessageSquare, RefreshCw, Loader2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useAgents } from "@/hooks/useAgents";
@@ -26,6 +26,8 @@ import WorkflowDetailsDialog from "@/components/agents/WorkflowDetailsDialog";
 import ImportAgentDialog from "@/components/agents/ImportAgentDialog";
 import WorkflowBuilder from "@/components/agents/WorkflowBuilder";
 import WorkflowEditDialog from "@/components/agents/WorkflowEditDialog";
+import { AgentsTablePanel } from "@/components/agents/AgentsTablePanel";
+import { DefaultServersPanel } from "@/components/mcp/DefaultServersPanel";
 import { useAgentChatManager } from "@/contexts/AgentChatContext";
 import {
   DndContext,
@@ -282,6 +284,7 @@ export default function Agents() {
     completed: false,
     failed: false,
     workflowOrder: true,
+    workflows: true,
     agentsTabs: true,
   });
   const [workflowDetailsOpen, setWorkflowDetailsOpen] = useState(false);
@@ -300,6 +303,10 @@ export default function Agents() {
       loopExitCondition: "functional_poc",
       flowOrder: 0,
       enabledTools: [] as string[],
+      // v2.9.3 — `mcpServerIds` is the multi-select source of truth; the
+      // legacy `mcpServerId` is the first entry, kept in sync on every save
+      // so single-server consumers (current dispatch fallback) keep working.
+      mcpServerIds: [] as string[],
       mcpServerId: "" as string,
     },
     capabilities: [],
@@ -318,6 +325,33 @@ export default function Agents() {
   const [agentMcpSearch, setAgentMcpSearch] = useState("");
   const [toolSearch, setToolSearch] = useState("");
   const [tactics, setTactics] = useState<{ id: string; attackId: string; name: string; shortName: string }[]>([]);
+
+  // Live Ollama models — same source the Settings / Ollama AI pages use.
+  // Populated on demand when the Edit AI Agent dialog opens, so the Model
+  // dropdown can list whatever's loaded on the configured Ollama host.
+  const [ollamaModels, setOllamaModels] = useState<{ name: string; size?: number }[]>([]);
+  const [ollamaModelsLoading, setOllamaModelsLoading] = useState(false);
+  const [ollamaModelsError, setOllamaModelsError] = useState<string | null>(null);
+
+  const loadOllamaModels = useCallback(async () => {
+    try {
+      setOllamaModelsLoading(true);
+      setOllamaModelsError(null);
+      const res = await fetch("/api/v1/ollama/models/live", { credentials: "include" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setOllamaModels([]);
+        setOllamaModelsError(data.details || data.error || `HTTP ${res.status}`);
+        return;
+      }
+      setOllamaModels(Array.isArray(data.models) ? data.models : []);
+    } catch (e: any) {
+      setOllamaModels([]);
+      setOllamaModelsError(e?.message || "Network error");
+    } finally {
+      setOllamaModelsLoading(false);
+    }
+  }, []);
 
   // Load ATT&CK tactics for agent-tactic assignment dropdowns
   useEffect(() => {
@@ -365,11 +399,23 @@ export default function Agents() {
   const handleEditAgent = (agent: any) => {
     setEditingAgent(agent);
     const config = agent.config || {};
+    // v2.9.3 — hydrate multi-select state. Prefer the new `mcpServerIds`
+    // array; fall back to the legacy `mcpServerId` as a single-element array;
+    // empty when neither is set.
+    const incomingMcpIds: string[] = Array.isArray(config.mcpServerIds)
+      ? config.mcpServerIds.filter((id: unknown): id is string => typeof id === "string" && id.length > 0)
+      : config.mcpServerId
+      ? [config.mcpServerId]
+      : [];
     setNewAgent({
       name: agent.name,
       type: agent.type,
       config: {
-        model: config.model || (agent.type === "openai" ? "gpt-5.2-chat-latest" : "claude-sonnet-4-5"),
+        model: config.model || (
+          agent.type === "openai" ? "gpt-5.2-chat-latest" :
+          agent.type === "anthropic" ? "claude-sonnet-4-5" :
+          ""
+        ),
         systemPrompt: config.systemPrompt || "",
         loopEnabled: config.loopEnabled || false,
         loopPartnerId: config.loopPartnerId || "",
@@ -377,7 +423,8 @@ export default function Agents() {
         loopExitCondition: config.loopExitCondition || "functional_poc",
         flowOrder: config.flowOrder || 0,
         enabledTools: config.enabledTools || [],
-        mcpServerId: config.mcpServerId || "",
+        mcpServerIds: incomingMcpIds,
+        mcpServerId: incomingMcpIds[0] ?? "",
       },
       capabilities: agent.capabilities || [],
     });
@@ -401,9 +448,9 @@ export default function Agents() {
       await refetchAgents();
       setAgentDialogOpen(false);
       setEditingAgent(null);
-      setNewAgent({ 
-        name: "", 
-        type: "openai", 
+      setNewAgent({
+        name: "",
+        type: "openai",
         config: {
           model: "gpt-5.2-chat-latest",
           systemPrompt: "",
@@ -413,9 +460,10 @@ export default function Agents() {
           loopExitCondition: "functional_poc",
           flowOrder: 0,
           enabledTools: [],
+          mcpServerIds: [],
           mcpServerId: "",
-        }, 
-        capabilities: [] 
+        },
+        capabilities: []
       });
     } catch (err) {
       toast.error(`Failed to save agent: ${err instanceof Error ? err.message : "Unknown error"}`);
@@ -635,6 +683,40 @@ export default function Agents() {
     }
   };
 
+  const handleStartAllServers = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    let started = 0;
+    let failed = 0;
+    // Parallel POSTs — the manager queues spawns internally so this won't
+    // overwhelm the host. Per-row errors are captured into the failed
+    // counter; the row's lastError column gets the structured preflight
+    // message (e.g. command_missing, path_unwritable, disabled_by_default)
+    // for the operator to inspect afterward.
+    await Promise.all(
+      ids.map(async (id) => {
+        try {
+          const response = await fetch(`/api/v1/mcp-servers/${id}/start`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+          });
+          if (response.ok) started += 1;
+          else failed += 1;
+        } catch {
+          failed += 1;
+        }
+      }),
+    );
+    await refetchServers();
+    if (failed === 0) {
+      toast.success(`Started ${started} MCP server${started === 1 ? "" : "s"}`);
+    } else if (started === 0) {
+      toast.error(`Failed to start ${failed} server${failed === 1 ? "" : "s"} — check rows for last_error details`);
+    } else {
+      toast.warning(`Started ${started}, failed ${failed} — check rows for last_error details`);
+    }
+  };
+
   const handleStopServer = async (id: string) => {
     try {
       const response = await fetch(`/api/v1/mcp-servers/${id}/stop`, {
@@ -684,10 +766,15 @@ export default function Agents() {
     }
   };
 
-  const handleDeleteServer = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this MCP server?")) return;
+  const handleDeleteServer = async (id: string, force = false) => {
+    if (!force && !confirm("Are you sure you want to delete this MCP server?")) return;
     try {
-      const response = await fetch(`/api/v1/mcp-servers/${id}`, {
+      // ?force=true is required by the backend when the row is a managed
+      // catalog default (seedKey non-null) — see server/api/v1/mcp-servers.ts
+      // delete handler. The DefaultServersPanel passes force=true after its
+      // own confirmation step, so we don't double-prompt here.
+      const url = force ? `/api/v1/mcp-servers/${id}?force=true` : `/api/v1/mcp-servers/${id}`;
+      const response = await fetch(url, {
         method: "DELETE",
         credentials: "include",
       });
@@ -892,10 +979,10 @@ export default function Agents() {
         </div>
       </div>
 
-      {/* Workflow Order + Active Workflows side by side */}
+      {/* Workflow Order + combined Workflows (Active + History) — share row 1.
+          The AI Agents / MCP Servers panel sits alone in row 2 below. */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* Workflow Order — collapsible; full-width bar when collapsed */}
-        <Card className={`bg-card ${!expandedGroups.workflowOrder ? "lg:col-span-2" : ""}`}>
+        <Card className={`bg-card ${expandedGroups.workflowOrder !== expandedGroups.workflows ? "lg:col-span-2" : ""}`}>
           <CardHeader
             className="cursor-pointer hover:bg-secondary/50 rounded-t-lg transition-colors"
             onClick={() => setExpandedGroups(prev => ({ ...prev, workflowOrder: !prev.workflowOrder }))}
@@ -1011,56 +1098,133 @@ export default function Agents() {
           </CardContent>}
         </Card>
 
-        {/* Active Workflows — expands to full width when Workflow Order is collapsed */}
-        <Card className={`bg-card ${!expandedGroups.workflowOrder ? "lg:col-span-2" : ""}`}>
+        {/* Combined Workflows — Active + History as tabs in one card.
+            Replaces the previous side-by-side Active Workflows + Workflow
+            History panels so operators see both states in one place.
+            Toggle behavior matches Workflow Order: when one of the two cards
+            is collapsed and the other expanded, the expanded card spans
+            both columns so the row reclaims the freed space. */}
+        <Card className={`bg-card ${expandedGroups.workflowOrder !== expandedGroups.workflows ? "lg:col-span-2" : ""}`}>
           <CardHeader
-            className="cursor-pointer hover:bg-secondary/50 rounded-t-lg transition-colors"
-            onClick={() => setExpandedGroups(prev => ({ ...prev, running: !prev.running }))}
+            className="cursor-pointer hover:bg-secondary/50 rounded-t-lg transition-colors pb-3"
+            onClick={() => setExpandedGroups(prev => ({ ...prev, workflows: !prev.workflows }))}
           >
             <CardTitle className="flex items-center gap-2">
-              {expandedGroups.running ? (
+              {expandedGroups.workflows ? (
                 <ChevronDown className="h-4 w-4" />
               ) : (
                 <ChevronRight className="h-4 w-4" />
               )}
               <Activity className="h-5 w-5 text-blue-600" />
-              Active Workflows
+              Workflows
               <Badge variant="secondary" className="ml-2 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
-                {runningWorkflows.length}
+                {runningWorkflows.length} active
+              </Badge>
+              <Badge variant="secondary" className="ml-1">
+                {allNonRunning.length} history
               </Badge>
             </CardTitle>
           </CardHeader>
-          {expandedGroups.running && runningWorkflows.length > 0 ? (
-            <CardContent>
-              <div className="space-y-4">
-                {runningWorkflows.map((workflow) => (
-                  <WorkflowProgressCard
-                    key={workflow.id}
-                    workflow={workflow}
-                    tasks={workflowTasksMap[workflow.id] || []}
-                    agents={agents}
-                    onCancel={handleCancelWorkflow}
-                    onViewDetails={handleViewWorkflowDetails}
-                  />
-                ))}
-              </div>
-            </CardContent>
-          ) : runningWorkflows.length === 0 ? (
-            <CardContent>
-              <div className="text-center py-8 text-muted-foreground">
-                <Activity className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p className="text-sm">No active workflows</p>
-                <p className="text-xs mt-1">Execute a workflow to see progress here.</p>
-              </div>
-            </CardContent>
-          ) : null}
+          {expandedGroups.workflows && <CardContent>
+            <Tabs defaultValue="active" className="w-full">
+              <TabsList>
+                <TabsTrigger value="active" className="flex items-center gap-2">
+                  <Activity className="h-4 w-4" />
+                  Active
+                  <Badge variant="secondary" className="ml-1 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
+                    {runningWorkflows.length}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger value="history" className="flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  History
+                  <Badge variant="secondary" className="ml-1">
+                    {allNonRunning.length}
+                  </Badge>
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="active" className="space-y-4 mt-4">
+                {runningWorkflows.length > 0 ? (
+                  <div className="space-y-4">
+                    {runningWorkflows.map((workflow) => (
+                      <WorkflowProgressCard
+                        key={workflow.id}
+                        workflow={workflow}
+                        tasks={workflowTasksMap[workflow.id] || []}
+                        agents={agents}
+                        onCancel={handleCancelWorkflow}
+                        onViewDetails={handleViewWorkflowDetails}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Activity className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p className="text-sm">No active workflows</p>
+                    <p className="text-xs mt-1">Execute a workflow to see progress here.</p>
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="history" className="space-y-3 mt-4">
+                {allNonRunning.length > 0 ? (
+                  <div className="space-y-3">
+                    {allNonRunning.slice(0, 10).map((workflow) => (
+                      <div
+                        key={workflow.id}
+                        className="p-3 bg-secondary rounded border border-border hover:bg-secondary/80 transition-colors"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex-1">
+                            <h4 className="text-sm font-medium text-foreground">
+                              {workflow.name}
+                            </h4>
+                            <p className="text-xs text-muted-foreground">
+                              {workflow.completedAt
+                                ? new Date(workflow.completedAt).toLocaleString()
+                                : new Date(workflow.createdAt).toLocaleString()}
+                            </p>
+                          </div>
+                          <Badge
+                            variant="secondary"
+                            className={`${
+                              workflow.status === "completed"
+                                ? "bg-green-500/10 text-green-600"
+                                : workflow.status === "failed"
+                                ? "bg-red-500/10 text-red-600"
+                                : "bg-secondary/10 text-muted-foreground"
+                            }`}
+                          >
+                            {workflow.status.toUpperCase()}
+                          </Badge>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleViewWorkflowDetails(workflow.id)}
+                          className="w-full text-xs"
+                        >
+                          View Details
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Clock className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p className="text-sm">No workflow history</p>
+                    <p className="text-xs mt-1">Completed workflows will appear here.</p>
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
+          </CardContent>}
         </Card>
       </div>
 
-      {/* AI Agents/MCP Toggle + Workflow History side by side */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Tabs: AI Agents / MCP Servers — collapsible; full-width bar when collapsed */}
-        <Card className={`bg-card ${!expandedGroups.agentsTabs ? "lg:col-span-2" : ""}`}>
+      {/* AI Agents / MCP Servers — full-width row 2 */}
+      <Card className="bg-card">
           <CardHeader
             className="cursor-pointer hover:bg-secondary/50 rounded-t-lg transition-colors"
             onClick={() => setExpandedGroups(prev => ({ ...prev, agentsTabs: !prev.agentsTabs }))}
@@ -1097,248 +1261,23 @@ export default function Agents() {
           </div>
 
           <TabsContent value="ai" className="space-y-4">
-            <div className="flex justify-end gap-2 mb-4">
-              <Button variant="outline" onClick={() => setAgentDialogOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                New Agent
-              </Button>
-              <Button onClick={() => setImportDialogOpen(true)}>
-                <Import className="h-4 w-4 mr-2" />
-                Import Agent
-              </Button>
-            </div>
+            <AgentsTablePanel
+              agents={agents}
+              tactics={tactics}
+              tools={tools}
+              searchQuery={agentMcpSearch}
+              onNewAgent={() => setAgentDialogOpen(true)}
+              onImportAgent={() => setImportDialogOpen(true)}
+              onChatAgent={(agent) => openAgentChat(agent.id, agent.name, agent.config?.role || agent.type)}
+              onEditAgent={handleEditAgent}
+              onDeleteAgent={handleDeleteAgent}
+              onAssignTactic={handleAssignTactic}
+              onRemoveTactic={handleRemoveTactic}
+              onStartLoop={handleStartLoop}
+            />
 
-            {agentsLoading ? (
-              <p className="text-muted-foreground">Loading AI agents...</p>
-            ) : agents.length === 0 ? (
-              <div className="text-center py-12 bg-card rounded-lg border border-border">
-                <Bot className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">No AI agents configured</p>
-                <p className="text-sm text-muted-foreground mb-4">Create or import an AI agent to get started</p>
-                <div className="flex justify-center gap-2">
-                  <Button variant="outline" onClick={() => setAgentDialogOpen(true)}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    New Agent
-                  </Button>
-                  <Button onClick={() => setImportDialogOpen(true)}>
-                    <Import className="h-4 w-4 mr-2" />
-                    Import Agent
-                  </Button>
-                </div>
-              </div>
-            ) : (
+            {!agentsLoading && agents.length > 0 && (
               <>
-                <div className="grid grid-cols-1 gap-6">
-                  {agents
-                    .filter((agent) => {
-                      if (!agentMcpSearch.trim()) return true;
-                      const q = agentMcpSearch.toLowerCase();
-                      return (
-                        agent.name.toLowerCase().includes(q) ||
-                        agent.type.toLowerCase().includes(q) ||
-                        (agent.status || "").toLowerCase().includes(q)
-                      );
-                    })
-                    .map((agent) => {
-                    const config = agent.config as any;
-                    const loopPartner = config?.loopEnabled
-                      ? agents.find((a) => a.id === config.loopPartnerId)
-                      : null;
-
-                    return (
-                      <Card key={agent.id} className="bg-card">
-                        <CardContent className="p-6">
-                          <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center">
-                              <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white mr-3">
-                                <Bot className="h-5 w-5" />
-                              </div>
-                              <div>
-                                <h3 className="font-semibold text-foreground">{agent.name}</h3>
-                                <p className="text-sm text-muted-foreground capitalize">{agent.type}</p>
-                              </div>
-                            </div>
-                            <Badge
-                              variant="secondary"
-                              className={`${
-                                agent.status === "running"
-                                  ? "bg-green-500/10 text-green-600"
-                                  : "bg-secondary0/10 text-muted-foreground"
-                              }`}
-                            >
-                              {agent.status}
-                            </Badge>
-                          </div>
-
-                          {/* Tactic Assignment */}
-                          <div className="flex items-center gap-2 mb-4">
-                            {agent.tactic ? (
-                              <Badge variant="secondary" className="bg-amber-500/10 text-amber-600 text-xs">
-                                {agent.tactic.attackId} — {agent.tactic.name}
-                              </Badge>
-                            ) : (
-                              <span className="text-xs text-muted-foreground italic">No tactic assigned</span>
-                            )}
-
-                            <div className="ml-auto flex items-center gap-1">
-                              {/* Add to tactic (+) */}
-                              {!agent.tactic && (
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Assign to tactic">
-                                      <Plus className="h-4 w-4 text-green-600" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    {tactics.map(t => (
-                                      <DropdownMenuItem key={t.id} onClick={() => handleAssignTactic(agent.id, t.id)}>
-                                        {t.attackId} — {t.name}
-                                      </DropdownMenuItem>
-                                    ))}
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              )}
-
-                              {/* Move to different tactic (arrow) */}
-                              {agent.tactic && (
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" title="Move to different tactic">
-                                      <MoveRight className="h-4 w-4 text-blue-600" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    {tactics
-                                      .filter(t => t.id !== agent.tactic?.tacticId)
-                                      .map(t => (
-                                        <DropdownMenuItem key={t.id} onClick={() => handleAssignTactic(agent.id, t.id)}>
-                                          {t.attackId} — {t.name}
-                                        </DropdownMenuItem>
-                                      ))}
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              )}
-
-                              {/* Remove from tactic (red circle-slash) */}
-                              {agent.tactic && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-7 w-7 p-0"
-                                  title="Remove from tactic"
-                                  onClick={() => handleRemoveTactic(agent.id)}
-                                >
-                                  <Ban className="h-4 w-4 text-red-500" />
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Capabilities Section */}
-                          <div className="mb-4 p-3 bg-secondary rounded">
-                            <h4 className="text-xs font-semibold text-foreground mb-2">CAPABILITIES</h4>
-                            <p className="text-xs text-muted-foreground">
-                              {agent.type === "openai" && "Advanced reasoning, vulnerability analysis, comprehensive reporting, ethical assessment"}
-                              {agent.type === "anthropic" && "Advanced reasoning, vulnerability analysis, comprehensive reporting, ethical assessment"}
-                              {agent.type === "mcp_server" && "Tool integration, automated workflows, external service connectivity"}
-                              {agent.type === "custom" && "Custom AI processing and analysis"}
-                            </p>
-                          </div>
-
-                          {/* Tools Enabled Section */}
-                          {config?.enabledTools && config.enabledTools.length > 0 && (
-                            <div className="mb-4 p-3 bg-indigo-50 rounded border-l-4 border-indigo-600">
-                              <div className="flex items-center gap-2 mb-2">
-                                <Zap className="h-4 w-4 text-indigo-600" />
-                                <h4 className="text-xs font-semibold text-foreground">TOOLS ENABLED</h4>
-                              </div>
-                              <div className="text-xs text-muted-foreground space-y-1">
-                                {config.enabledTools.slice(0, 3).map((toolId: string) => {
-                                  const tool = tools.find((t) => t.id === toolId);
-                                  return tool ? (
-                                    <div key={toolId}>
-                                      • {tool.name} ({tool.category.replace(/_/g, " ")})
-                                    </div>
-                                  ) : null;
-                                })}
-                                {config.enabledTools.length > 3 && (
-                                  <div className="text-indigo-600 font-medium">
-                                    + {config.enabledTools.length - 3} more tools
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Loop Configuration Display */}
-                          {config?.loopEnabled && loopPartner && (
-                            <div className="mb-4 p-3 bg-blue-50 rounded border-l-4 border-blue-600">
-                              <div className="flex items-center gap-2 mb-2">
-                                <RotateCcw className="h-4 w-4 text-blue-600" />
-                                <h4 className="text-xs font-semibold text-foreground">LOOP ENABLED</h4>
-                              </div>
-                              <div className="text-xs text-muted-foreground space-y-1">
-                                <div>Partner: {loopPartner.name}</div>
-                                <div>Max Iterations: {config.maxLoopIterations || 5}</div>
-                                <div>Exit: {config.loopExitCondition || "functional_poc"}</div>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Stats */}
-                          <div className="grid grid-cols-2 gap-4 text-sm mb-4">
-                            <div className="flex items-center text-muted-foreground">
-                              <Activity className="h-4 w-4 mr-2" />
-                              <span>{agent.tasksCompleted || 0} tasks</span>
-                            </div>
-                            {agent.lastActivity && (
-                              <div className="flex items-center text-muted-foreground">
-                                <Clock className="h-4 w-4 mr-2" />
-                                <span>{new Date(agent.lastActivity).toLocaleTimeString()}</span>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Actions */}
-                          <div className="flex gap-2">
-                            {config?.loopEnabled && loopPartner && (
-                              <Button
-                                size="sm"
-                                onClick={() => handleStartLoop(agent.id)}
-                              >
-                                <RotateCcw className="h-3 w-3 mr-1" />
-                                Start Loop
-                              </Button>
-                            )}
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openAgentChat(agent.id, agent.name, agent.config?.role || agent.type)}
-                            >
-                              <MessageSquare className="h-4 w-4 mr-1" />
-                              Chat
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleEditAgent(agent)}
-                            >
-                              Edit
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleDeleteAgent(agent.id)}
-                              className="hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-600 dark:hover:text-red-400 hover:border-red-600 dark:hover:border-red-400"
-                            >
-                              Delete
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
 
                 {/* Active Loops Section */}
                 {activeLoops.length > 0 && (
@@ -1438,195 +1377,34 @@ export default function Agents() {
           </TabsContent>
 
           <TabsContent value="mcp" className="space-y-4">
-          <div className="flex justify-end mb-4">
-            <Button onClick={() => setServerDialogOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add MCP Server
-            </Button>
-          </div>
-
-          {serversLoading ? (
-            <p className="text-muted-foreground">Loading MCP servers...</p>
-          ) : mcpServers.length === 0 ? (
-            <div className="text-center py-12 bg-card rounded-lg border border-border">
-              <Server className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">No MCP servers configured</p>
-              <p className="text-sm text-muted-foreground mb-4">Add an MCP server to get started</p>
-              <Button onClick={() => setServerDialogOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add MCP Server
-              </Button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {mcpServers
-                .filter((server) => {
-                  if (!agentMcpSearch.trim()) return true;
-                  const q = agentMcpSearch.toLowerCase();
-                  return (
-                    server.name.toLowerCase().includes(q) ||
-                    (server.command || "").toLowerCase().includes(q) ||
-                    (server.status || "").toLowerCase().includes(q)
-                  );
-                })
-                .map((server) => (
-                <Card key={server.id} className="bg-card">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center">
-                        <div className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center text-white mr-3">
-                          <Server className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-foreground">{server.name}</h3>
-                          <p className="text-sm text-muted-foreground">MCP Server</p>
-                        </div>
-                      </div>
-                      <Badge
-                        variant="secondary"
-                        className={`${
-                          server.status === "running"
-                            ? "bg-green-500/10 text-green-600"
-                            : "bg-secondary0/10 text-muted-foreground"
-                        }`}
-                      >
-                        {server.status}
-                      </Badge>
-                    </div>
-                    <div className="text-sm text-muted-foreground mb-2 truncate">
-                      {server.command}
-                    </div>
-                    {server.autoRestart && (
-                      <div className="text-xs text-muted-foreground">
-                        Auto-restart enabled
-                      </div>
-                    )}
-                    <div className="flex gap-2 mt-4">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleEditServer(server)}
-                        className="hover:bg-blue-50 dark:hover:bg-blue-950 hover:text-blue-600 dark:hover:text-blue-400"
-                      >
-                        <Pencil className="h-3 w-3 mr-1" />
-                        Edit
-                      </Button>
-                      {server.status === "stopped" && (
-                        <Button
-                          size="sm"
-                          onClick={() => handleStartServer(server.id)}
-                        >
-                          Start Server
-                        </Button>
-                      )}
-                      {server.status === "running" && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleStopServer(server.id)}
-                        >
-                          Stop Server
-                        </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleDeleteServer(server.id)}
-                        className="hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-600 dark:hover:text-red-400 hover:border-red-300 dark:hover:border-red-800"
-                      >
-                        <Trash2 className="h-3 w-3 mr-1" />
-                        Delete
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
+          <DefaultServersPanel
+            onChange={refetchServers}
+            onEditServer={(serverId) => {
+              const s = mcpServers.find((s) => s.id === serverId);
+              if (s) handleEditServer(s);
+            }}
+            onStartServer={handleStartServer}
+            onStopServer={handleStopServer}
+            onDeleteServer={handleDeleteServer}
+            onAddServer={() => setServerDialogOpen(true)}
+            onStartAll={handleStartAllServers}
+            userServers={mcpServers.filter((s) => !s.seedKey)}
+            searchQuery={agentMcpSearch}
+          />
         </TabsContent>
       </Tabs>
           </CardContent>}
         </Card>
 
-        {/* Workflow History — expands to full width when Agents/MCP is collapsed */}
-        <Card className={`bg-card ${!expandedGroups.agentsTabs ? "lg:col-span-2" : ""}`}>
-          <CardHeader
-            className="cursor-pointer hover:bg-secondary/50 rounded-t-lg transition-colors"
-            onClick={() => setExpandedGroups(prev => ({ ...prev, completed: !prev.completed }))}
-          >
-            <CardTitle className="flex items-center gap-2">
-              {expandedGroups.completed ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
-              <Clock className="h-5 w-5 text-muted-foreground" />
-              Workflow History
-              <Badge variant="secondary" className="ml-2">
-                {allNonRunning.length}
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          {expandedGroups.completed && allNonRunning.length > 0 ? (
-            <CardContent>
-              <div className="space-y-3">
-                {allNonRunning.slice(0, 10).map((workflow) => (
-                  <div
-                    key={workflow.id}
-                    className="p-3 bg-secondary rounded border border-border hover:bg-secondary/80 transition-colors"
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex-1">
-                        <h4 className="text-sm font-medium text-foreground">
-                          {workflow.name}
-                        </h4>
-                        <p className="text-xs text-muted-foreground">
-                          {workflow.completedAt
-                            ? new Date(workflow.completedAt).toLocaleString()
-                            : new Date(workflow.createdAt).toLocaleString()}
-                        </p>
-                      </div>
-                      <Badge
-                        variant="secondary"
-                        className={`${
-                          workflow.status === "completed"
-                            ? "bg-green-500/10 text-green-600"
-                            : workflow.status === "failed"
-                            ? "bg-red-500/10 text-red-600"
-                            : "bg-secondary/10 text-muted-foreground"
-                        }`}
-                      >
-                        {workflow.status.toUpperCase()}
-                      </Badge>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleViewWorkflowDetails(workflow.id)}
-                      className="w-full text-xs"
-                    >
-                      View Details
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          ) : allNonRunning.length === 0 ? (
-            <CardContent>
-              <div className="text-center py-8 text-muted-foreground">
-                <Clock className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p className="text-sm">No workflow history</p>
-                <p className="text-xs mt-1">Completed workflows will appear here.</p>
-              </div>
-            </CardContent>
-          ) : null}
-        </Card>
-      </div>
 
       {/* Import/Edit Agent Dialog */}
       <Dialog open={agentDialogOpen} onOpenChange={(open) => {
         setAgentDialogOpen(open);
-        if (!open) {
+        if (open) {
+          // Pre-fetch live Ollama models so the Model dropdown is ready
+          // if the operator switches Agent Type to Ollama.
+          loadOllamaModels();
+        } else {
           setEditingAgent(null);
           setToolSearch("");
         }
@@ -1648,17 +1426,28 @@ export default function Agents() {
             
             <div>
               <Label htmlFor="agent-type">Agent Type</Label>
-              <Select 
-                value={newAgent.type} 
+              <Select
+                value={newAgent.type}
                 onValueChange={(value: any) => {
-                  // Set default model based on type
-                  const defaultModel = value === "openai" ? "gpt-5.2-chat-latest" : 
-                                      value === "anthropic" ? "claude-sonnet-4-5" : "";
-                  setNewAgent({ 
-                    ...newAgent, 
+                  // Set default model based on type. Ollama defaults to the
+                  // first live model if any are loaded; otherwise empty so
+                  // the dropdown forces an explicit selection.
+                  const defaultModel =
+                    value === "openai" ? "gpt-5.2-chat-latest" :
+                    value === "anthropic" ? "claude-sonnet-4-5" :
+                    value === "ollama" ? (ollamaModels[0]?.name ?? "") :
+                    "";
+                  setNewAgent({
+                    ...newAgent,
                     type: value,
                     config: { ...newAgent.config, model: defaultModel }
                   });
+                  if (value === "ollama") {
+                    // Refresh on selection so the list reflects the host's
+                    // current state (operators often pull a model and come
+                    // straight back to wire it up).
+                    loadOllamaModels();
+                  }
                 }}
               >
                 <SelectTrigger>
@@ -1667,6 +1456,7 @@ export default function Agents() {
                 <SelectContent>
                   <SelectItem value="openai">OpenAI</SelectItem>
                   <SelectItem value="anthropic">Anthropic (Claude)</SelectItem>
+                  <SelectItem value="ollama">Ollama (Local / Self-Hosted)</SelectItem>
                   <SelectItem value="mcp_server">MCP Server</SelectItem>
                   <SelectItem value="custom">Custom</SelectItem>
                 </SelectContent>
@@ -1704,6 +1494,85 @@ export default function Agents() {
                     )}
                   </SelectContent>
                 </Select>
+              </div>
+            )}
+
+            {/* Ollama: live model list from /api/v1/ollama/models/live —
+                same source the Settings + Ollama AI pages use, so whatever
+                is loaded on the configured host (local, remote, or vLLM in
+                OpenAI-compat mode) shows up without code changes. */}
+            {newAgent.type === "ollama" && (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <Label htmlFor="ollama-model">Model</Label>
+                  <button
+                    type="button"
+                    onClick={loadOllamaModels}
+                    disabled={ollamaModelsLoading}
+                    className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 disabled:opacity-50"
+                    title="Re-fetch live models from the configured Ollama host"
+                  >
+                    {ollamaModelsLoading ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3 w-3" />
+                    )}
+                    Refresh
+                  </button>
+                </div>
+                <select
+                  id="ollama-model"
+                  className="flex h-10 w-full rounded-md border border-border bg-card px-3 py-2 text-sm"
+                  value={newAgent.config.model}
+                  onChange={(e) => setNewAgent({
+                    ...newAgent,
+                    config: { ...newAgent.config, model: e.target.value }
+                  })}
+                  disabled={ollamaModelsLoading || ollamaModels.length === 0}
+                >
+                  {ollamaModels.length > 0 ? (
+                    <>
+                      {!newAgent.config.model && (
+                        <option value="" disabled>
+                          Select a model…
+                        </option>
+                      )}
+                      {ollamaModels.map((m) => (
+                        <option key={m.name} value={m.name}>
+                          {m.name}
+                          {typeof m.size === "number"
+                            ? ` (${(m.size / 1024 / 1024 / 1024).toFixed(1)} GB)`
+                            : ""}
+                        </option>
+                      ))}
+                    </>
+                  ) : (
+                    <option value="" disabled>
+                      {ollamaModelsLoading
+                        ? "loading…"
+                        : ollamaModelsError
+                          ? `unavailable: ${ollamaModelsError}`
+                          : "no models loaded — open Ollama AI to pull one"}
+                    </option>
+                  )}
+                </select>
+                {ollamaModelsError && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                    Couldn't reach Ollama: {ollamaModelsError}.{" "}
+                    <a href="/ollama" className="underline hover:no-underline">
+                      Configure host
+                    </a>
+                  </p>
+                )}
+                {!ollamaModelsError && ollamaModels.length === 0 && !ollamaModelsLoading && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    No models loaded.{" "}
+                    <a href="/ollama" className="underline hover:no-underline">
+                      Open Ollama AI
+                    </a>{" "}
+                    to pull one.
+                  </p>
+                )}
               </div>
             )}
 
@@ -1846,35 +1715,82 @@ export default function Agents() {
               </div>
 
               <div>
-                <Label htmlFor="mcp-server">Select MCP Server (Optional)</Label>
+                <Label>Select MCP Servers (Optional)</Label>
                 <p className="text-sm text-muted-foreground mb-2">
-                  Connect this agent to an MCP server for enhanced capabilities like web search and data extraction
+                  Connect this agent to one or more running MCP servers. The
+                  first selected server is the primary; backend dispatch will
+                  route each tool call to whichever attached server provides it.
                 </p>
-                <Select
-                  value={newAgent.config.mcpServerId || ""}
-                  onValueChange={(value) => setNewAgent({
-                    ...newAgent,
-                    config: { ...newAgent.config, mcpServerId: value || "" }
-                  })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="No MCP server selected" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {mcpServers
-                      .filter((s) => s.status === "running")
-                      .map((server) => (
-                        <SelectItem key={server.id} value={server.id}>
-                          {server.name} ({server.status})
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-                {newAgent.config.mcpServerId && (
-                  <p className="text-xs text-purple-600 mt-2">
-                    ✓ Agent will have access to MCP tools (search, extract, crawl, map)
-                  </p>
-                )}
+                {(() => {
+                  const selectedIds: string[] = newAgent.config.mcpServerIds ?? [];
+                  const runningServers = mcpServers.filter((s) => s.status === "running");
+                  if (runningServers.length === 0) {
+                    return (
+                      <div className="rounded-md border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
+                        No running MCP servers. Start one in the MCP Servers tab to attach it here.
+                      </div>
+                    );
+                  }
+                  return (
+                    <>
+                      <div className="max-h-48 overflow-y-auto rounded-md border border-border p-2 space-y-1">
+                        {runningServers.map((server) => {
+                          const checked = selectedIds.includes(server.id);
+                          return (
+                            <div
+                              key={server.id}
+                              className="flex items-center gap-2 py-1 px-1 rounded hover:bg-secondary/40"
+                            >
+                              <Checkbox
+                                id={`mcp-${server.id}`}
+                                checked={checked}
+                                onCheckedChange={(state) => {
+                                  const isChecked = state === true;
+                                  const next = isChecked
+                                    ? [...selectedIds, server.id]
+                                    : selectedIds.filter((id) => id !== server.id);
+                                  setNewAgent({
+                                    ...newAgent,
+                                    config: {
+                                      ...newAgent.config,
+                                      mcpServerIds: next,
+                                      mcpServerId: next[0] ?? "",
+                                    },
+                                  });
+                                }}
+                              />
+                              <Label
+                                htmlFor={`mcp-${server.id}`}
+                                className="flex-1 cursor-pointer text-sm font-normal"
+                              >
+                                {server.name}
+                                <span className="ml-2 text-xs text-muted-foreground">
+                                  ({server.status})
+                                </span>
+                                {checked && selectedIds[0] === server.id && (
+                                  <Badge variant="secondary" className="ml-2 bg-purple-500/10 text-purple-600 text-[10px]">
+                                    primary
+                                  </Badge>
+                                )}
+                              </Label>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Selected: {selectedIds.length} server{selectedIds.length === 1 ? "" : "s"}
+                        {selectedIds.length > 0 && (
+                          <>
+                            {" · "}
+                            <span className="text-purple-600">
+                              ✓ Agent will have access to MCP tools across all selected servers
+                            </span>
+                          </>
+                        )}
+                      </p>
+                    </>
+                  );
+                })()}
               </div>
             </div>
 

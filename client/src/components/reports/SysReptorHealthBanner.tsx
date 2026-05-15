@@ -1,7 +1,9 @@
-import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import { useState } from "react";
+import { AlertTriangle, CheckCircle2, ExternalLink, Link2, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSysReptorHealth } from "@/hooks/useSysReptor";
-import type { SysReptorHealth, SysReptorHealthReason } from "@/services/sysreptor";
+import { sysReptorService, type SysReptorHealth, type SysReptorHealthReason } from "@/services/sysreptor";
+import { toast } from "sonner";
 
 interface SysReptorHealthBannerProps {
   /** Hide entirely when service is up. Default: false (show a thin "connected" pill). */
@@ -20,7 +22,7 @@ const REASON_TITLES: Record<SysReptorHealthReason, string> = {
 function defaultSuggestion(reason: SysReptorHealthReason | undefined): string {
   switch (reason) {
     case "not_configured":
-      return "Set SYSREPTOR_API_TOKEN in your environment, then restart the API.";
+      return "Click Connect to mint an API token automatically, or set SYSREPTOR_API_TOKEN manually and restart.";
     case "profile_not_enabled":
       return "Run: docker compose --profile sysreptor up -d";
     case "service_unreachable":
@@ -95,6 +97,30 @@ function HealthyPill({ health, onRefresh }: { health: SysReptorHealth; onRefresh
 function UnhealthyBanner({ health, onRefresh }: { health: SysReptorHealth; onRefresh: () => void }) {
   const title = health.reason ? REASON_TITLES[health.reason] : "Sysreptor is unavailable";
   const suggestion = health.suggestion || defaultSuggestion(health.reason);
+  const [connecting, setConnecting] = useState(false);
+
+  // Auto-connect is only meaningful when the missing piece is a token. For
+  // profile_not_enabled / service_unreachable / timeout / service_error the
+  // operator has to fix the underlying container first.
+  const showConnect = health.reason === "not_configured" || health.reason === "auth_error";
+
+  const handleConnect = async () => {
+    setConnecting(true);
+    try {
+      const result = await sysReptorService.autoConnect();
+      if (result.ok) {
+        toast.success(result.message);
+        // Give the server one tick to invalidate its health cache, then refresh.
+        setTimeout(onRefresh, 200);
+      } else {
+        toast.error(result.message);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Auto-connect failed");
+    } finally {
+      setConnecting(false);
+    }
+  };
 
   return (
     <div className="px-4 py-3 mb-4 bg-red-500/10 border border-red-500/30 rounded-md">
@@ -110,9 +136,27 @@ function UnhealthyBanner({ health, onRefresh }: { health: SysReptorHealth; onRef
             </div>
           )}
         </div>
-        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={onRefresh}>
-          <RefreshCw className="h-3 w-3 mr-1" /> Retry
-        </Button>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {showConnect && (
+            <Button
+              size="sm"
+              variant="default"
+              className="h-7 px-3"
+              onClick={handleConnect}
+              disabled={connecting}
+            >
+              {connecting ? (
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+              ) : (
+                <Link2 className="h-3 w-3 mr-1" />
+              )}
+              {connecting ? "Connecting..." : "Connect"}
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" className="h-7 px-2" onClick={onRefresh}>
+            <RefreshCw className="h-3 w-3 mr-1" /> Retry
+          </Button>
+        </div>
       </div>
     </div>
   );

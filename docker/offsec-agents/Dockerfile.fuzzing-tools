@@ -15,14 +15,20 @@ ENV TOOLS_PATH=/opt/tools
 # Switch to root for package installation
 USER root
 
-# Install dependencies (libpcap needed by naabu for SYN scanning)
-RUN apt-get update && apt-get install -y \
-    curl wget \
-    p7zip-full unzip \
-    jq \
-    dnsutils \
-    libpcap0.8 \
-    && rm -rf /var/lib/apt/lists/*
+# Install dependencies (libpcap needed by naabu for SYN scanning).
+# apt retry/timeout config inherited from offsec-base.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    set -eux; \
+    for i in 1 2 3; do \
+      apt-get update && break || { echo "apt-get update failed (attempt $i)"; sleep $((i*5)); }; \
+    done; \
+    apt-get install -y --no-install-recommends \
+      curl wget \
+      p7zip-full unzip \
+      jq \
+      dnsutils \
+      libpcap0.8
 
 # Create directories
 RUN mkdir -p /opt/tools/bin /opt/wordlists

@@ -17,6 +17,9 @@ export interface MCPServer {
   lastError?: string;
   createdAt: string;
   updatedAt: string;
+  // v2.9.3 Phase 1+: stable identifier for managed default servers
+  // (e.g. "default:tavily"). null/undefined for user-created rows.
+  seedKey?: string | null;
 }
 
 export function useMCPServers() {

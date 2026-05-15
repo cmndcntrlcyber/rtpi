@@ -15,10 +15,12 @@ This guide covers deploying the Unified RTPI platform in various environments, f
 - [Monitoring and Logging](#monitoring-and-logging)
 - [Backup and Recovery](#backup-and-recovery)
 - [Troubleshooting](#troubleshooting)
+- [Post-Deploy Verification](#post-deploy-verification)
 - [Scaling](#scaling)
 - [Agent System Deployment](#agent-system-deployment-v21)
 - [OffSec Agent Containers](#offsec-agent-containers)
 - [SysReptor Reporting Platform](#sysreptor-reporting-platform)
+- [VPN Tunnel Manager](#vpn-tunnel-manager)
 
 ---
 
@@ -516,8 +518,21 @@ On SIGTERM/SIGINT, the agent system:
 > - **Option A (Recommended)**: Skip OffSec agents entirely - [See Core-Only Deployment](#scenario-1-core-only-deployment-recommended)
 > - **Option B**: Build base image first, then selective agents - [See Build Sequence](#building-the-base-image-required-first)
 > - **Option C**: Full deployment (4-5 hours) - [See Complete Build](#scenario-3-complete-full-deployment)
+> - **Option D (Resilient)**: `npm run build:offsec` — base + 14 children with retry, see [Resilient Build](#resilient-build)
 > 
 > **Troubleshooting Guide**: If you already encountered build errors, see [OffSec Agents Build Failure Troubleshooting](./troubleshooting/offsec-agents-build-failure.md)
+
+> ⚠️ **Behavior change: OffSec agents are now profile-gated.**
+> 
+> The 14 offsec agent services (`offsec-maldev`, `offsec-c3`, `offsec-burp`, …) declare `profiles: [offsec-agents]` in `docker-compose.yml`. Effects:
+> 
+> - `docker compose up -d` (no profile) — **does NOT start the offsec agents** (regression vs. older versions where they came up by default).
+> - `docker compose up -d --profile offsec-agents` — base RTPI services + the 14 offsec agents.
+> - `docker compose down` (no profile) — does **not** stop or remove already-running offsec containers; pass `--profile offsec-agents` to manage them, or `--remove-orphans` to clear them.
+> 
+> Migration on an existing host: include `--profile offsec-agents` in your `up`/`down`/`pull` commands, or rely on `npm run build:offsec` for builds (which enumerates services explicitly and ignores profile semantics).
+> 
+> Why: under the old config, `--profile offsec-agents` was a no-op filter (the profile was undefined), and a build invocation would silently pull in `ghidra-headless`, `rtpi-orchestrator`, and `rtpi-tools`. Defining the profile makes scoping intentional.
 
 ---
 
@@ -528,6 +543,55 @@ The OffSec Team Agent containers are specialized Docker images for security rese
 **Important**: These containers are **optional** and not required for basic RTPI operations. Core services (PostgreSQL, Redis, rtpi-tools, Empire, ATT&CK Workbench) work independently.
 
 ---
+
+### Resilient Build
+
+Use `npm run build:offsec` (or `bash scripts/build-resilient.sh`) for production
+rollouts. It builds `offsec-base` first, then the 14 child agent images at
+bounded parallelism with per-image retry. Per-image logs go to
+`/tmp/rtpi-build/<service>.log`; a summary is written to
+`/tmp/rtpi-build/_summary`.
+
+```bash
+npm run build:offsec
+# or directly:
+bash scripts/build-resilient.sh
+```
+
+**Why this exists.** Plain `docker compose --profile offsec-agents build` runs
+all 15 image builds in one BuildKit DAG. If any one apt-get blip on
+`archive.ubuntu.com` causes a single image to fail, BuildKit cancels every
+sibling that was healthy mid-build. Production deploys lose 30+ minutes of
+compute to one transient mirror outage. The resilient script:
+
+- Spawns one `docker compose build` invocation per image, so a failure cannot
+  cancel siblings (each is its own DAG).
+- Retries a failed image up to `BUILD_RETRIES` times (default 2) with linear
+  backoff before giving up.
+- Reads BuildKit cache mounts on `/var/cache/apt` and `/var/lib/apt` baked
+  into every offsec Dockerfile (Layer 1 of the resilience work) — so apt
+  indices and `.deb` packages persist across builds.
+
+**Tunables (env vars):**
+
+| Variable | Default | Effect |
+|---|---|---|
+| `BUILD_CONCURRENCY` | `2` | How many images compile in parallel. Raise on hosts with bandwidth/CPU; lower if you're hammering shared apt mirrors. |
+| `BUILD_RETRIES` | `2` | Per-image retry count after the first attempt. `0` = single shot. |
+| `BUILD_RETRY_DELAY` | `15` | Seconds between retries (linear: 15, 30, 45 …). |
+| `LOG_DIR` | `/tmp/rtpi-build` | Where per-image logs and `_summary` land. |
+
+**Exit codes:**
+
+| Code | Meaning |
+|---|---|
+| `0` | base + every child built |
+| `2` | docker not reachable / bad args |
+| `10` | base failed (children skipped — fatal) |
+| `20` | base ok, ≥1 child failed all retries (deploy should not proceed) |
+
+Re-run the same command to retry only what's missing. Already-built images
+short-circuit through BuildKit cache + apt cache mount in seconds.
 
 ### Deployment Scenarios
 
@@ -898,6 +962,130 @@ docker compose exec postgres psql -U rtpi -c "DROP DATABASE sysreptor;"
 - **"DisallowedHost" errors in app logs**: add the hostname you're using to `ALLOWED_HOSTS` in `configs/rtpi-sysreptor/app.env` and restart the app container.
 - **Login loops / session errors**: check that `SECURE_SSL_REDIRECT=on` matches your deployment. For local HTTP-only access, set it to `off`.
 - **Empty/failed exports**: confirm `REDIS_PASSWORD` in `app.env` matches `SYSREPTOR_REDIS_PASSWORD` — Celery workers fail silently when they can't reach Redis.
+
+---
+
+## VPN Tunnel Manager
+
+The `vpn` profile ships an OpenVPN / WireGuard tunnel host (`rtpi-vpn-manager`) that owns the tunnel interfaces on behalf of every other RTPI container. It does **not** start with the default `docker compose up`.
+
+> **Status (v2.9.2 Phase 1):** The container, entrypoint, and healthcheck are in place. The backend service, REST API, frontend Infrastructure → VPN tab, and per-container routing automation land in later phases of [v2.9.2](enhancements/2.9/v2.9.2-vpn-infrastructure-integration.md). For now the container is operated via `docker exec`; uploading and managing configs through the UI is not yet available.
+
+### Architecture
+
+| Container | Image | Role |
+|---|---|---|
+| `rtpi-vpn-manager` | `./docker/vpn-manager` (Ubuntu 22.04 + openvpn + wireguard-tools) | Long-running supervisor; spawns `openvpn` / `wg-quick` on demand and tracks their state under `/var/run/vpn`. |
+
+The container runs with `cap_add: NET_ADMIN`, the host's `/dev/net/tun` device passed through, and `net.ipv4.ip_forward=1` so it can program iptables rules and route traffic. The `wireguard` kernel module must be present **on the host** — the container only ships userspace tools.
+
+### Host Prerequisites
+
+Verify TUN/TAP and WireGuard support on the host before bringing the profile up:
+
+```bash
+# TUN/TAP device must exist
+ls -la /dev/net/tun
+
+# WireGuard kernel module must be loadable
+lsmod | grep wireguard || sudo modprobe wireguard
+
+# Persist the module across reboots (Ubuntu/Debian)
+echo wireguard | sudo tee -a /etc/modules-load.d/wireguard.conf
+```
+
+If `/dev/net/tun` is missing, install the TUN module (`sudo modprobe tun`) and persist it the same way.
+
+### Starting the VPN Manager
+
+```bash
+# Build the image and start the container
+docker compose --profile vpn build vpn-manager
+docker compose --profile vpn up -d vpn-manager
+
+# Confirm it's healthy
+docker compose --profile vpn ps vpn-manager
+```
+
+Three named volumes are created on first start:
+
+- `vpn-configs` → `/etc/openvpn/configs` inside the container
+- `wg-configs` → `/etc/wireguard/configs` inside the container
+- `vpn-logs` → `/var/log/vpn` inside the container
+
+### Smoke Test
+
+```bash
+# List configs (empty array on first run — no configs uploaded yet)
+docker exec rtpi-vpn-manager /usr/local/bin/vpn-entrypoint.sh list
+
+# Status of all known tunnels (empty array on first run)
+docker exec rtpi-vpn-manager /usr/local/bin/vpn-entrypoint.sh status
+
+# Healthcheck script (exits 0 when the daemon, /dev/net/tun, and any active
+# tunnels are all in a good state)
+docker exec rtpi-vpn-manager /usr/local/bin/vpn-health-check.sh && echo OK
+```
+
+### Manually Connecting a Tunnel (interim, until Phase 2 ships the UI)
+
+**OpenVPN:**
+
+```bash
+# Copy a .ovpn into the configs volume (filename minus .ovpn becomes the tunnel name)
+docker cp ./client.ovpn rtpi-vpn-manager:/etc/openvpn/configs/client.ovpn
+
+# Bring it up
+docker exec rtpi-vpn-manager /usr/local/bin/vpn-entrypoint.sh connect openvpn client
+
+# Verify
+docker exec rtpi-vpn-manager /usr/local/bin/vpn-entrypoint.sh status client
+docker exec rtpi-vpn-manager ip addr show tun0
+
+# Tear down
+docker exec rtpi-vpn-manager /usr/local/bin/vpn-entrypoint.sh disconnect openvpn client
+```
+
+**WireGuard:**
+
+```bash
+# Copy a .conf into the wg-configs volume
+docker cp ./peer.conf rtpi-vpn-manager:/etc/wireguard/configs/peer.conf
+
+# Bring it up (the entrypoint symlinks it into /etc/wireguard/peer.conf for wg-quick)
+docker exec rtpi-vpn-manager /usr/local/bin/vpn-entrypoint.sh connect wireguard peer
+
+# Verify
+docker exec rtpi-vpn-manager wg show
+docker exec rtpi-vpn-manager /usr/local/bin/vpn-entrypoint.sh status peer
+
+# Tear down
+docker exec rtpi-vpn-manager /usr/local/bin/vpn-entrypoint.sh disconnect wireguard peer
+```
+
+The container shuts down all active tunnels cleanly on `docker stop` (SIGTERM is trapped by the entrypoint).
+
+### Routing Other Containers Through the VPN
+
+This is **not yet wired up** in Phase 1. Until the Phase 5 Docker executor lands, you can manually route a single container through the tunnel by setting `network_mode: "container:rtpi-vpn-manager"` on it in a compose override file. Note that this pins the container to the VPN manager's lifetime — if `vpn-manager` restarts, the routed container loses connectivity until it restarts too. The Phase 5 executor will replace this with iptables-based per-container NAT that survives restarts.
+
+### Stopping / Removing
+
+```bash
+# Stop only the VPN profile
+docker compose --profile vpn down
+
+# Remove VPN data volumes (DESTRUCTIVE — wipes all uploaded configs and logs)
+docker volume rm rtpi_vpn-configs rtpi_wg-configs rtpi_vpn-logs
+```
+
+### Troubleshooting VPN Manager
+
+- **`/dev/net/tun` missing** in the container's healthcheck output: the host doesn't have the TUN module loaded. Run `sudo modprobe tun` on the host and recreate the container.
+- **`wg-quick up` fails with `RTNETLINK answers: Operation not supported`**: the host kernel does not have the `wireguard` module loaded. Run `sudo modprobe wireguard` on the host.
+- **OpenVPN "auth-user-pass file does not exist"**: the .ovpn references a credentials file that wasn't shipped with the upload. Either embed the credentials inline (`<auth-user-pass>...</auth-user-pass>`) or `docker cp` the credentials file into `/etc/openvpn/configs/` alongside the .ovpn.
+- **Stale pidfile** flagged by the healthcheck: an openvpn process exited but its pidfile in `/var/run/vpn/openvpn-<name>.pid` was left behind. Clean up with `docker exec rtpi-vpn-manager rm /var/run/vpn/openvpn-<name>.pid` and re-run `connect`.
+- **Container won't start due to "operation not permitted"**: confirm `cap_add: NET_ADMIN` is honored — some hardened Docker daemons block capability adds. Check `docker info | grep -i seccomp` and your host's `/etc/docker/daemon.json`.
 
 ---
 
@@ -1691,6 +1879,83 @@ services:
 
 ---
 
+## Post-Deploy Verification
+
+`docker compose up -d` exits as soon as containers *start*, not when they're
+*working*. Several real classes of failure (broken entrypoint, baked-in
+default password, mismatched healthcheck) only surface after the first run
+loop. Production deploys must gate on a verification step that catches these
+before declaring success.
+
+### Running
+
+```bash
+npm run deploy:verify
+# or directly:
+bash scripts/deploy-verify.sh [--timeout 300] [--stability 30] [--project rtpi]
+```
+
+The script polls every container labeled
+`com.docker.compose.project=<project>` and fails the deploy if any container:
+
+| Symptom | Detection |
+|---|---|
+| Restart loop (broken entrypoint / command) | `state=restarting` or `RestartCount` grew during the run |
+| Crash loop (e.g. wrong DB password) | `state=exited` with non-zero exit, or rising restart count |
+| Pinned unhealthy (wrong healthcheck) | `health=unhealthy` after `start_period` |
+| Stuck starting (deadlock) | Stays out of `healthy` past `--timeout` |
+
+One-shot init containers (those declared with `restart: "no"` and used as
+`service_completed_successfully` dependencies) are recognized — they pass when
+they exit 0.
+
+### Exit codes
+
+- `0` — every container reached a stable healthy state for at least
+  `--stability` seconds (default 30s).
+- `2` — at least one container is in a hard-fail state. The script dumps the
+  last 25 log lines and an inspect summary for each failure.
+- `3` — timeout reached and at least one container never settled. Same
+  diagnostics.
+
+### Recommended deploy sequence
+
+```bash
+npm run deploy:check                    # environment / port / .env validation
+docker compose --profile <p> up -d      # start the stack
+npm run deploy:verify                   # gate — exits non-zero on failure
+# [migrations / smoke tests / etc.]
+```
+
+In CI/CD, treat a non-zero exit from `deploy:verify` as a blocker. The
+diagnostic output is sufficient to identify the failing container without
+opening a shell on the host.
+
+### Tuning
+
+| Flag | Default | When to change |
+|---|---|---|
+| `--timeout` | 300s | Increase if slow-starting services have long `start_period` healthchecks (e.g. databases initializing storage). |
+| `--stability` | 30s | Increase to demand a longer "still healthy" window — useful for catching late-arriving crash loops. |
+| `--poll` | 3s | Rarely changed. |
+| `--ignore name1,name2` | — | Skip containers known to be optional (profile-gated) but happen to be running. |
+
+Environment variable equivalents: `RTPI_VERIFY_TIMEOUT`,
+`RTPI_VERIFY_STABILITY`, `RTPI_VERIFY_POLL`, `RTPI_VERIFY_PROJECT`,
+`RTPI_VERIFY_IGNORE`.
+
+### Relationship to `container-healer`
+
+The healer (systemd timer `rtpi-container-healer.timer`) is a *reactive*
+watchdog that runs periodically and tries to repair already-broken containers
+with `docker restart` or targeted `compose up`. It catches transient drift
+*after* a deploy succeeded.
+
+`deploy-verify.sh` runs *during* the deploy and prevents bad state from being
+declared "shipped" in the first place. The two are complementary, not
+overlapping: verify gates the rollout, healer keeps it healthy in steady
+state.
+
 ## Maintenance
 
 ### Regular Maintenance Tasks
@@ -1786,8 +2051,10 @@ For security vulnerabilities, please follow responsible disclosure:
 - [ ] CORS settings configured for production domain
 
 ### Deployment
+- [ ] Pre-deployment environment check passed: `npm run deploy:check`
 - [ ] Application built: `docker compose -f docker-compose.prod.yml build`
 - [ ] Services started: `docker compose -f docker-compose.prod.yml up -d`
+- [ ] **Post-deploy verification gate passed: `npm run deploy:verify`** (fails the deploy if any container is in a restart loop, exited unexpectedly, or stays unhealthy past the stability window — see `## Post-Deploy Verification` below)
 - [ ] Database migrations applied: `docker compose -f docker-compose.prod.yml exec app npm run db:push`
 - [ ] Health endpoints accessible and returning healthy status
 

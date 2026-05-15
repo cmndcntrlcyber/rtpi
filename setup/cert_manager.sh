@@ -14,13 +14,16 @@
 
 set -e
 
-DOMAIN="attck-node.net"
-EMAIL="${CF_EMAIL:-admin@example.com}"
+DOMAIN="${CF_DOMAIN:?CF_DOMAIN must be set (export it or source .env before calling cert_manager.sh)}"
+EMAIL="${CF_EMAIL:?CF_EMAIL must be set}"
 CERT_DIR="/etc/letsencrypt"
 DEPLOY_BASE="/opt/rtpi/certs"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 DNS_MANAGER="$SCRIPT_DIR/cloudflare_dns_manager.sh"
+MANIFEST_PATH="$SCRIPT_DIR/services.manifest"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/services_manifest.sh"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -57,7 +60,7 @@ set -e
 DNS_MANAGER="$DNS_MANAGER"
 log() { echo "\$(date +'%Y-%m-%d %H:%M:%S') AUTH: \$1" >> /var/log/certbot-dns-hooks.log; }
 [ ! -f "\$DNS_MANAGER" ] && { echo "DNS manager not found: \$DNS_MANAGER"; exit 1; }
-SUBDOMAIN=\$(echo "\$CERTBOT_DOMAIN" | sed 's/\\.attck-node\\.net\$//')
+SUBDOMAIN="\${CERTBOT_DOMAIN%.${DOMAIN}}"
 log "Creating DNS record for \$SUBDOMAIN"
 "\$DNS_MANAGER" challenge create "\$SUBDOMAIN" "\$CERTBOT_VALIDATION"
 log "Waiting 30s for propagation..."
@@ -69,7 +72,7 @@ HOOK
 DNS_MANAGER="$DNS_MANAGER"
 log() { echo "\$(date +'%Y-%m-%d %H:%M:%S') CLEANUP: \$1" >> /var/log/certbot-dns-hooks.log; }
 [ ! -f "\$DNS_MANAGER" ] && { echo "DNS manager not found: \$DNS_MANAGER"; exit 1; }
-SUBDOMAIN=\$(echo "\$CERTBOT_DOMAIN" | sed 's/\\.attck-node\\.net\$//')
+SUBDOMAIN="\${CERTBOT_DOMAIN%.${DOMAIN}}"
 log "Cleaning up DNS record for \$SUBDOMAIN"
 "\$DNS_MANAGER" challenge delete "\$SUBDOMAIN" || true
 HOOK
@@ -82,12 +85,16 @@ HOOK
 
 generate_certificates() {
     local slug=$1
-    [ -z "$slug" ] && { error "Usage: generate_certificates <slug>"; return 1; }
+    local profiles=${2:-}
+    [ -z "$slug" ] && { error "Usage: generate_certificates <slug> [active_profiles]"; return 1; }
 
-    log "Generating certificates for slug: $slug"
-    local services=("$slug" "$slug-reports" "$slug-empire" "$slug-mgmt" "$slug-kasm")
-    local domains=()
-    for s in "${services[@]}"; do domains+=("-d" "$s.$DOMAIN"); done
+    log "Generating certificates for slug: $slug (profiles: ${profiles:-none})"
+    local domains=() services=()
+    local m_suffix m_gate m_upstream m_ws m_tls
+    while IFS='|' read -r m_suffix m_gate m_upstream m_ws m_tls; do
+        services+=("${slug}${m_suffix}")
+        domains+=("-d" "${slug}${m_suffix}.${DOMAIN}")
+    done < <(iterate_manifest "$MANIFEST_PATH" "$profiles")
     log "Domains: ${services[*]}"
 
     certbot certonly \
@@ -133,9 +140,72 @@ deploy_certificates() {
     log "✅ Certificates deployed to $deploy_dir"
 }
 
+# Emit one nginx server block (HTTP→HTTPS redirect + HTTPS proxy) for a single
+# subdomain. The main RTPI dashboard (suffix="") gets a special two-location
+# block that splits /api/ to port 3001 from / to port 5000.
+nginx_server_block() {
+    local subdomain=$1
+    local upstream=$2
+    local tls_upstream=$3
+    local websocket=$4
+    local is_root=$5  # "true" for the bare-slug RTPI dashboard
+
+    local proxy_extras=""
+    [ "$tls_upstream" = "true" ] && proxy_extras="${proxy_extras}        proxy_ssl_verify off;\n"
+    if [ "$websocket" = "true" ]; then
+        proxy_extras="${proxy_extras}        proxy_http_version 1.1;\n"
+        proxy_extras="${proxy_extras}        proxy_set_header Upgrade \$http_upgrade;\n"
+        proxy_extras="${proxy_extras}        proxy_set_header Connection \"upgrade\";\n"
+    fi
+
+    cat << NGINX
+server { listen 80;  server_name ${subdomain}; return 301 https://\$server_name\$request_uri; }
+server {
+    listen 443 ssl http2; server_name ${subdomain};
+NGINX
+
+    if [ "$is_root" = "true" ]; then
+        cat << NGINX
+    client_max_body_size 900M;
+    location /api/ {
+        proxy_pass http://localhost:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 600s;
+    }
+    location / {
+        proxy_pass ${upstream};
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+
+NGINX
+    else
+        cat << NGINX
+    location / {
+        proxy_pass ${upstream};
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+$(printf "%b" "$proxy_extras")    }
+}
+
+NGINX
+    fi
+}
+
 update_service_configs() {
     local slug=$1
-    [ -z "$slug" ] && { error "Usage: update_service_configs <slug>"; return 1; }
+    local profiles=${2:-}
+    [ -z "$slug" ] && { error "Usage: update_service_configs <slug> [active_profiles]"; return 1; }
 
     # Update SysReptor ALLOWED_HOSTS
     local sysreptor_env="$PROJECT_ROOT/configs/rtpi-sysreptor/app.env"
@@ -150,11 +220,14 @@ update_service_configs() {
         log "SysReptor config updated"
     fi
 
-    # Generate nginx SSL config
+    # Generate nginx SSL config from the manifest
     local nginx_ssl="$PROJECT_ROOT/docker/nginx-ssl.conf"
-    cat > "$nginx_ssl" << NGINX
+    {
+        cat << NGINX
 # RTPI Production SSL Proxy — generated for slug: $slug
+# Profiles: ${profiles:-none}
 # Cert path: $DEPLOY_BASE/$slug/
+# Source of truth: $MANIFEST_PATH
 
 ssl_certificate     $DEPLOY_BASE/$slug/nginx.crt;
 ssl_certificate_key $DEPLOY_BASE/$slug/nginx.key;
@@ -166,87 +239,22 @@ ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDS
 ssl_prefer_server_ciphers off;
 add_header Strict-Transport-Security "max-age=63072000" always;
 
-# ─── Main RTPI Dashboard ─────────────────────────────────────────────────────
-server { listen 80;  server_name $slug.$DOMAIN; return 301 https://\$server_name\$request_uri; }
-server {
-    listen 443 ssl http2; server_name $slug.$DOMAIN;
-    client_max_body_size 900M;
-    location /api/ {
-        proxy_pass http://localhost:3001;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 600s;
-    }
-    location / {
-        proxy_pass http://localhost:5000;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
-
-# ─── SysReptor (Reports) ─────────────────────────────────────────────────────
-server { listen 80;  server_name $slug-reports.$DOMAIN; return 301 https://\$server_name\$request_uri; }
-server {
-    listen 443 ssl http2; server_name $slug-reports.$DOMAIN;
-    location / {
-        proxy_pass http://localhost:7777;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
-
-# ─── Empire C2 ───────────────────────────────────────────────────────────────
-server { listen 80;  server_name $slug-empire.$DOMAIN; return 301 https://\$server_name\$request_uri; }
-server {
-    listen 443 ssl http2; server_name $slug-empire.$DOMAIN;
-    location / {
-        proxy_pass http://localhost:1337;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
-
-# ─── Portainer Management ────────────────────────────────────────────────────
-server { listen 80;  server_name $slug-mgmt.$DOMAIN; return 301 https://\$server_name\$request_uri; }
-server {
-    listen 443 ssl http2; server_name $slug-mgmt.$DOMAIN;
-    location / {
-        proxy_pass https://localhost:9443;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_ssl_verify off;
-    }
-}
-
-# ─── Kasm Workspaces ─────────────────────────────────────────────────────────
-server { listen 80;  server_name $slug-kasm.$DOMAIN; return 301 https://\$server_name\$request_uri; }
-server {
-    listen 443 ssl http2; server_name $slug-kasm.$DOMAIN;
-    location / {
-        proxy_pass https://localhost:8443;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_ssl_verify off;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-}
 NGINX
+
+        local m_suffix m_gate m_upstream m_ws m_tls is_root
+        while IFS='|' read -r m_suffix m_gate m_upstream m_ws m_tls; do
+            is_root=false
+            [ -z "$m_suffix" ] && is_root=true
+            echo "# ─── ${slug}${m_suffix}.${DOMAIN} (gate=${m_gate:-always}) ─────"
+            nginx_server_block \
+                "${slug}${m_suffix}.${DOMAIN}" \
+                "$m_upstream" \
+                "$m_tls" \
+                "$m_ws" \
+                "$is_root"
+        done < <(iterate_manifest "$MANIFEST_PATH" "$profiles")
+    } > "$nginx_ssl"
+
     log "✅ nginx SSL config written to $nginx_ssl"
     info "  Install: sudo cp $nginx_ssl /etc/nginx/conf.d/rtpi-ssl.conf && sudo nginx -t && sudo systemctl reload nginx"
 }
@@ -278,27 +286,27 @@ setup_renewal() {
 }
 
 main() {
-    local action=$1; local slug=$2
+    local action=$1; local slug=$2; local profiles=${3:-"sysreptor management"}
     case "$action" in
         install-deps)   check_root; install_dependencies ;;
-        generate)       [ -z "$slug" ] && { error "Usage: $0 generate <slug>"; exit 1; }; check_root; create_dns_hooks; generate_certificates "$slug" ;;
+        generate)       [ -z "$slug" ] && { error "Usage: $0 generate <slug> [profiles]"; exit 1; }; check_root; create_dns_hooks; generate_certificates "$slug" "$profiles" ;;
         deploy)         [ -z "$slug" ] && { error "Usage: $0 deploy <slug>"; exit 1; };   check_root; deploy_certificates "$slug" ;;
-        configure)      [ -z "$slug" ] && { error "Usage: $0 configure <slug>"; exit 1; }; update_service_configs "$slug" ;;
+        configure)      [ -z "$slug" ] && { error "Usage: $0 configure <slug> [profiles]"; exit 1; }; update_service_configs "$slug" "$profiles" ;;
         validate)       [ -z "$slug" ] && { error "Usage: $0 validate <slug>"; exit 1; };  validate_certificates "$slug" ;;
         setup-renewal)  [ -z "$slug" ] && { error "Usage: $0 setup-renewal <slug>"; exit 1; }; check_root; setup_renewal "$slug" ;;
         full-setup)
-            [ -z "$slug" ] && { error "Usage: $0 full-setup <slug>"; exit 1; }
+            [ -z "$slug" ] && { error "Usage: $0 full-setup <slug> [profiles]"; exit 1; }
             check_root
             install_dependencies
             create_dns_hooks
-            generate_certificates "$slug"
+            generate_certificates "$slug" "$profiles"
             deploy_certificates "$slug"
-            update_service_configs "$slug"
+            update_service_configs "$slug" "$profiles"
             validate_certificates "$slug"
             setup_renewal "$slug"
             ;;
         *)
-            echo "Usage: $0 <install-deps|generate|deploy|configure|validate|setup-renewal|full-setup> [slug]"
+            echo "Usage: $0 <install-deps|generate|deploy|configure|validate|setup-renewal|full-setup> [slug] [profiles]"
             exit 1
             ;;
     esac

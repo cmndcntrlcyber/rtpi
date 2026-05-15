@@ -362,6 +362,16 @@ export const agents = pgTable("agents", {
   inferenceProviderId: text("inference_provider_id"),
   // Values: 'auto' | 'required' | 'none' | a specific tool name (model-dependent).
   toolChoiceStrategy: text("tool_choice_strategy"),
+  // v2.9.6 / v2.9.6.2 — joint scaffold (Phase A0)
+  // BLAKE3 of the agent's Ed25519 public key, derived from `NodeIdentity` in
+  // `nexus-common`. Hex-encoded. Populated at agent creation when mesh or A2A
+  // is enabled; null otherwise. Unique so we can look up by peer.
+  peerId: text("peer_id").unique(),
+  // Routes outbound messages through MatrixA2A's GrpcChannel instead of the
+  // default in-DB AgentMessageBus. See ADR 011.
+  isA2aEnabled: boolean("is_a2a_enabled").notNull().default(false),
+  // Allows the agent to participate in the libp2p mesh (Phase E onward).
+  meshEnabled: boolean("mesh_enabled").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -424,9 +434,16 @@ export const mcpServers = pgTable("mcp_servers", {
   livenessPath: text("liveness_path"), // optional override for HTTP-based MCP servers
   lastProbeAt: timestamp("last_probe_at"),
   lastProbeOk: boolean("last_probe_ok"),
+  // v2.9.3 Phase 1 — stable identifier for managed default servers
+  // (e.g. "default:tavily"). NULL for user-created rows. Postgres UNIQUE
+  // treats NULLs as distinct, so a plain unique index permits unlimited
+  // user rows while constraining the managed catalog to one row per key.
+  seedKey: text("seed_key"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("mcp_servers_seed_key_uniq").on(table.seedKey),
+]);
 
 export const certificates = pgTable("certificates", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -3386,3 +3403,104 @@ export const agentConversationMessages = pgTable("agent_conversation_messages", 
 }, (table) => [
   foreignKey({ columns: [table.conversationId], foreignColumns: [agentConversations.id], name: "agent_conv_msgs_conversation_id_fk" }).onDelete("cascade"),
 ]);
+
+// ============================================================================
+// v2.9.6 / v2.9.6.1 / v2.9.6.2 — JOINT INITIATIVE TABLES (Phase A0 scaffold)
+// ============================================================================
+// These tables are scheduled for activation across phases B3 (siemAlerts +
+// agentSwarmGraphs), G (gmlPredictions — added in that phase), and H0/H
+// (a2aAgentCards + a2aCapabilityMatrix). They are defined here in A0 so that
+// parallel B-track work can reference one schema without inventing
+// alternatives. Apply with `npm run db:push` when you start the consuming
+// phase, not before.
+//
+// Retention: siemAlerts and agentSwarmGraphs accumulate at high volume.
+// Default policy is 90-day TTL via a scheduled prune job (added in B3).
+// Document the policy at the top of each consuming service.
+
+// SIEM-style structured alert sink. Sources alerts from existing surfaces
+// (axScanResults, vulnerabilities, rustNexusTelemetry anomalies). Idempotent
+// on (source, sourceId). Feeds GML training labels (G).
+export const siemAlerts = pgTable("siem_alerts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  // Origin of the alert: e.g. "ax_scan_results", "vulnerabilities",
+  // "rust_nexus_telemetry", or a future external SIEM connector name.
+  source: text("source").notNull(),
+  // Stable identifier within the source, used for idempotent ingestion.
+  sourceId: text("source_id").notNull(),
+  severity: severityEnum("severity").notNull(),
+  // Optional attribution to nodes — at least one should be set.
+  agentId: uuid("agent_id").references(() => agents.id, { onDelete: "set null" }),
+  host: text("host"),
+  service: text("service"),
+  // Raw payload for debugging and re-ingestion.
+  raw: json("raw").notNull(),
+  // When the underlying event happened (per the source).
+  occurredAt: timestamp("occurred_at").notNull(),
+  // When we ingested it.
+  ingestedAt: timestamp("ingested_at").notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("siem_alerts_source_unique_idx").on(table.source, table.sourceId),
+  index("siem_alerts_occurred_at_idx").on(table.occurredAt),
+  index("siem_alerts_agent_idx").on(table.agentId),
+]);
+
+// Hourly graph snapshots of the agent swarm. Nodes = agents/hosts/services;
+// edges = recent agent messages, MCP invocations, rust-nexus task results.
+// One row per snapshot interval. Consumed by GML inference (G).
+export const agentSwarmGraphs = pgTable("agent_swarm_graphs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  snapshotAt: timestamp("snapshot_at").notNull(),
+  // Lets us evolve the JSON shape without breaking historical rows.
+  schemaVersion: integer("schema_version").notNull().default(1),
+  nodeCount: integer("node_count").notNull(),
+  edgeCount: integer("edge_count").notNull(),
+  // [{ id, type: 'agent'|'host'|'service', attrs }]
+  nodes: json("nodes").notNull(),
+  // [{ src, dst, kind, weight, attrs }]
+  edges: json("edges").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("agent_swarm_graphs_snapshot_unique_idx").on(table.snapshotAt),
+  index("agent_swarm_graphs_created_at_idx").on(table.createdAt),
+]);
+
+// Ed25519-signed AgentCard storage. One row per A2A-enabled agent. Verified
+// before being added to MatrixA2A's topology matrix (H).
+export const a2aAgentCards = pgTable("a2a_agent_cards", {
+  agentId: uuid("agent_id").primaryKey().references(() => agents.id, { onDelete: "cascade" }),
+  // Canonical JSON encoding of the AgentCard (per A2A v0.3+ spec).
+  card: json("card").notNull(),
+  // 64-byte Ed25519 signature over the canonical encoding. Hex-encoded.
+  signatureHex: text("signature_hex").notNull(),
+  // Public key the signature must verify against. Hex-encoded.
+  signerPubkeyHex: text("signer_pubkey_hex").notNull(),
+  signedAt: timestamp("signed_at").notNull(),
+  // Most recent successful verification — null until first verify call.
+  lastVerifiedAt: timestamp("last_verified_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// A2A capability matrix C ∈ {agents × skills}. The hard gate for inter-agent
+// skill invocation when FF_A2A_CAPABILITY_GATE=true (Phase H). Coexists with
+// agentCapabilities (informational) during the H0 dual-write window — see
+// ADR 011 and the dual-read fallback in agent-tool-connector.
+export const a2aCapabilityMatrix = pgTable("a2a_capability_matrix", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  agentId: uuid("agent_id").notNull().references(() => agents.id, { onDelete: "cascade" }),
+  skillId: text("skill_id").notNull(),
+  granted: boolean("granted").notNull().default(false),
+  // Operator user ID, the literal string "backfill" (during H0), or a
+  // service identifier when granted by automation.
+  grantedBy: text("granted_by").notNull(),
+  grantedAt: timestamp("granted_at").notNull().defaultNow(),
+  // Null = never expires. Set on time-bound grants.
+  expiresAt: timestamp("expires_at"),
+  // Free-text justification for audit.
+  reason: text("reason"),
+}, (table) => [
+  uniqueIndex("a2a_caps_agent_skill_unique_idx").on(table.agentId, table.skillId),
+  index("a2a_caps_skill_idx").on(table.skillId),
+]);
+

@@ -10,14 +10,13 @@ import {
   Shield,
   Database,
   Bell,
-  Moon,
-  Sun,
   Brain,
   Eye,
   EyeOff,
   ExternalLink,
   RefreshCw,
   Loader2,
+  Cpu,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
@@ -27,14 +26,121 @@ interface OllamaModelOption {
   size?: number;
 }
 
+interface ModelDropdownProps {
+  ollamaModels: OllamaModelOption[];
+  ollamaModelsLoading: boolean;
+  ollamaModelsError: string | null;
+}
+
+const ollamaOptgroupLabel = (
+  ollamaModels: OllamaModelOption[],
+  loading: boolean,
+  error: string | null
+): string => {
+  if (loading) return "Ollama (loading…)";
+  if (error) return "Ollama (unavailable)";
+  return `Ollama (${ollamaModels.length} model${ollamaModels.length === 1 ? "" : "s"})`;
+};
+
+const formatBytes = (size?: number): string =>
+  typeof size === "number" ? ` (${(size / 1024 / 1024 / 1024).toFixed(1)} GB)` : "";
+
+/**
+ * Chat-model option set used by the global Default Model picker AND the
+ * Default Agent / Reasoning dropdowns. Single source of truth so adding a new
+ * frontier-model row updates every dropdown at once.
+ */
+function ChatModelOptions({
+  ollamaModels,
+  ollamaModelsLoading,
+  ollamaModelsError,
+}: ModelDropdownProps) {
+  return (
+    <>
+      <optgroup label="Anthropic">
+        <option value="claude-opus-4-6">Claude Opus 4.6 (Thinking)</option>
+        <option value="claude-sonnet-4-5">Claude Sonnet 4.5 (Standard)</option>
+        <option value="claude-haiku-4-5">Claude Haiku 4.5 (Fast)</option>
+      </optgroup>
+      <optgroup label="OpenAI">
+        <option value="gpt-5.2">GPT-5.2 (Thinking)</option>
+        <option value="gpt-5.2-chat-latest">GPT-5.2 Instant (Standard)</option>
+        <option value="gpt-4.1-mini">GPT-4.1 Mini (Fast)</option>
+      </optgroup>
+      <optgroup
+        label={ollamaOptgroupLabel(ollamaModels, ollamaModelsLoading, ollamaModelsError)}
+      >
+        {ollamaModels.length > 0 ? (
+          ollamaModels.map((m) => (
+            <option key={m.name} value={m.name}>
+              {m.name}
+              {formatBytes(m.size)}
+            </option>
+          ))
+        ) : (
+          <option value="" disabled>
+            {ollamaModelsError
+              ? `unavailable: ${ollamaModelsError}`
+              : "no models loaded — open Ollama AI to pull one"}
+          </option>
+        )}
+      </optgroup>
+    </>
+  );
+}
+
+/**
+ * Embedding-model option set. OpenAI and Ollama only — Anthropic does not
+ * publish a public embeddings API. The Ollama optgroup is shared with the
+ * chat dropdowns so any embedding model the operator pulls (e.g.
+ * nomic-embed-text, mxbai-embed-large) shows up here too.
+ */
+function EmbeddingModelOptions({
+  ollamaModels,
+  ollamaModelsLoading,
+  ollamaModelsError,
+}: ModelDropdownProps) {
+  return (
+    <>
+      <optgroup label="OpenAI">
+        <option value="text-embedding-3-small">text-embedding-3-small (1536d)</option>
+        <option value="text-embedding-3-large">text-embedding-3-large (3072d)</option>
+        <option value="text-embedding-ada-002">text-embedding-ada-002 (1536d, legacy)</option>
+      </optgroup>
+      <optgroup
+        label={ollamaOptgroupLabel(ollamaModels, ollamaModelsLoading, ollamaModelsError)}
+      >
+        {ollamaModels.length > 0 ? (
+          ollamaModels.map((m) => (
+            <option key={m.name} value={m.name}>
+              {m.name}
+              {formatBytes(m.size)}
+            </option>
+          ))
+        ) : (
+          <option value="" disabled>
+            {ollamaModelsError
+              ? `unavailable: ${ollamaModelsError}`
+              : "no models loaded — open Ollama AI to pull one"}
+          </option>
+        )}
+      </optgroup>
+    </>
+  );
+}
+
 export default function Settings() {
-  const [darkMode, setDarkMode] = useState(false);
   const [llmSettings, setLlmSettings] = useState({
     openaiApiKey: "",
     anthropicApiKey: "",
     tavilyApiKey: "",
     defaultModel: "claude-sonnet-4-5",
+    // Per-role overrides — empty string means "fall back to defaultModel".
+    defaultAgentModel: "",
+    defaultReasoningModel: "",
+    defaultEmbeddingModel: "text-embedding-3-small",
   });
+  const [savingModels, setSavingModels] = useState(false);
   const [showOpenAI, setShowOpenAI] = useState(false);
   const [showAnthropic, setShowAnthropic] = useState(false);
   const [showTavily, setShowTavily] = useState(false);
@@ -70,10 +176,9 @@ export default function Settings() {
   }, []);
 
   useEffect(() => {
-    // Check for saved dark mode preference
-    const savedMode = localStorage.getItem("darkMode");
-    if (savedMode === "true") {
-      setDarkMode(true);
+    // Apply any saved dark-mode preference on mount so theme persists across
+    // reloads even though the visible toggle moved off the Settings page.
+    if (localStorage.getItem("darkMode") === "true") {
       document.documentElement.classList.add("dark");
     }
 
@@ -91,10 +196,35 @@ export default function Settings() {
           anthropicApiKey: response.settings.anthropicApiKey || "",
           tavilyApiKey: response.settings.tavilyApiKey || "",
           defaultModel: response.settings.defaultModel || "claude-sonnet-4-5",
+          defaultAgentModel: response.settings.defaultAgentModel || "",
+          defaultReasoningModel: response.settings.defaultReasoningModel || "",
+          defaultEmbeddingModel:
+            response.settings.defaultEmbeddingModel || "text-embedding-3-small",
         });
       }
     } catch (error) {
       // Error handled via toast
+    }
+  };
+
+  // Save just the three per-role model fields (Default Models card).
+  const saveDefaultModels = async () => {
+    setSavingModels(true);
+    try {
+      await api.post("/settings/llm", {
+        defaultAgentModel: llmSettings.defaultAgentModel,
+        defaultReasoningModel: llmSettings.defaultReasoningModel,
+        defaultEmbeddingModel: llmSettings.defaultEmbeddingModel,
+      });
+      toast.success("Default models saved", {
+        description: "Agent, reasoning, and embedding models updated.",
+      });
+    } catch (error: any) {
+      toast.error("Failed to save default models", {
+        description: error?.message || "Please try again.",
+      });
+    } finally {
+      setSavingModels(false);
     }
   };
 
@@ -161,17 +291,6 @@ export default function Settings() {
       });
     } finally {
       setTestingConnection(false);
-    }
-  };
-
-  const toggleDarkMode = (enabled: boolean) => {
-    setDarkMode(enabled);
-    localStorage.setItem("darkMode", enabled.toString());
-    
-    if (enabled) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
     }
   };
 
@@ -287,45 +406,11 @@ export default function Settings() {
                   value={llmSettings.defaultModel}
                   onChange={(e) => setLlmSettings({ ...llmSettings, defaultModel: e.target.value })}
                 >
-                  <optgroup label="Anthropic">
-                    <option value="claude-opus-4-6">Claude Opus 4.6 (Thinking)</option>
-                    <option value="claude-sonnet-4-5">Claude Sonnet 4.5 (Standard)</option>
-                    <option value="claude-haiku-4-5">Claude Haiku 4.5 (Fast)</option>
-                  </optgroup>
-                  <optgroup label="OpenAI">
-                    <option value="gpt-5.2">GPT-5.2 (Thinking)</option>
-                    <option value="gpt-5.2-chat-latest">GPT-5.2 Instant (Standard)</option>
-                    <option value="gpt-4.1-mini">GPT-4.1 Mini (Fast)</option>
-                  </optgroup>
-                  {/* Live Ollama models pulled from /api/v1/ollama/models/live —
-                      same source as the Ollama AI page. Empty when Ollama is
-                      unreachable; the optgroup falls back to a help row. */}
-                  <optgroup
-                    label={
-                      ollamaModelsLoading
-                        ? "Ollama (loading…)"
-                        : ollamaModelsError
-                          ? "Ollama (unavailable)"
-                          : `Ollama (${ollamaModels.length} model${ollamaModels.length === 1 ? "" : "s"})`
-                    }
-                  >
-                    {ollamaModels.length > 0 ? (
-                      ollamaModels.map((m) => (
-                        <option key={m.name} value={m.name}>
-                          {m.name}
-                          {typeof m.size === "number"
-                            ? ` (${(m.size / 1024 / 1024 / 1024).toFixed(1)} GB)`
-                            : ""}
-                        </option>
-                      ))
-                    ) : (
-                      <option value="" disabled>
-                        {ollamaModelsError
-                          ? `unavailable: ${ollamaModelsError}`
-                          : "no models loaded — open Ollama AI to pull one"}
-                      </option>
-                    )}
-                  </optgroup>
+                  <ChatModelOptions
+                    ollamaModels={ollamaModels}
+                    ollamaModelsLoading={ollamaModelsLoading}
+                    ollamaModelsError={ollamaModelsError}
+                  />
                 </select>
                 {ollamaModelsError && (
                   <p className="text-xs text-amber-600 dark:text-amber-400">
@@ -344,22 +429,131 @@ export default function Settings() {
           </CardContent>
         </Card>
 
-        {/* Appearance Settings */}
+        {/* Default Models — per-role overrides (Agent, Reasoning, Embedding).
+            Each dropdown sources the same options as the global Default Model
+            picker above: Anthropic + OpenAI + live Ollama models. */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              {darkMode ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
-              Appearance
+            <CardTitle className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2">
+                <Cpu className="h-5 w-5" />
+                Default Models
+              </span>
+              <button
+                type="button"
+                onClick={loadOllamaModels}
+                disabled={ollamaModelsLoading}
+                className="text-xs font-normal text-muted-foreground hover:text-foreground inline-flex items-center gap-1 disabled:opacity-50"
+                title="Re-fetch live models from the configured Ollama host"
+              >
+                {ollamaModelsLoading ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3 w-3" />
+                )}
+                Refresh Ollama models
+              </button>
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label>Dark Mode</Label>
-                <p className="text-sm text-muted-foreground">Toggle dark theme</p>
+          <CardContent>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                saveDefaultModels();
+              }}
+              className="space-y-4"
+            >
+              <p className="text-xs text-muted-foreground -mt-1">
+                Per-role overrides. Leave Agent / Reasoning empty to fall back to the global
+                Default Model selected above.
+              </p>
+
+              {/* Default Agent Model */}
+              <div className="space-y-2">
+                <Label htmlFor="default-agent-model">Default Agent Model</Label>
+                <select
+                  id="default-agent-model"
+                  className="flex h-10 w-full rounded-md border border-border bg-card px-3 py-2 text-sm"
+                  value={llmSettings.defaultAgentModel}
+                  onChange={(e) =>
+                    setLlmSettings({ ...llmSettings, defaultAgentModel: e.target.value })
+                  }
+                >
+                  <option value="">— Use global default ({llmSettings.defaultModel})</option>
+                  <ChatModelOptions
+                    ollamaModels={ollamaModels}
+                    ollamaModelsLoading={ollamaModelsLoading}
+                    ollamaModelsError={ollamaModelsError}
+                  />
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Used by autonomous agents (operation-lead, web-hacker, etc.) for tool calls
+                  and code generation.
+                </p>
               </div>
-              <Switch checked={darkMode} onCheckedChange={toggleDarkMode} />
-            </div>
+
+              {/* Default Reasoning Model */}
+              <div className="space-y-2">
+                <Label htmlFor="default-reasoning-model">Default Reasoning Model</Label>
+                <select
+                  id="default-reasoning-model"
+                  className="flex h-10 w-full rounded-md border border-border bg-card px-3 py-2 text-sm"
+                  value={llmSettings.defaultReasoningModel}
+                  onChange={(e) =>
+                    setLlmSettings({ ...llmSettings, defaultReasoningModel: e.target.value })
+                  }
+                >
+                  <option value="">— Use global default ({llmSettings.defaultModel})</option>
+                  <ChatModelOptions
+                    ollamaModels={ollamaModels}
+                    ollamaModelsLoading={ollamaModelsLoading}
+                    ollamaModelsError={ollamaModelsError}
+                  />
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Used for chain-of-thought planning and multi-step deliberation. Pick a
+                  thinking-grade model.
+                </p>
+              </div>
+
+              {/* Default Embedding Model */}
+              <div className="space-y-2">
+                <Label htmlFor="default-embedding-model">Default Embedding Model</Label>
+                <select
+                  id="default-embedding-model"
+                  className="flex h-10 w-full rounded-md border border-border bg-card px-3 py-2 text-sm"
+                  value={llmSettings.defaultEmbeddingModel}
+                  onChange={(e) =>
+                    setLlmSettings({
+                      ...llmSettings,
+                      defaultEmbeddingModel: e.target.value,
+                    })
+                  }
+                >
+                  <EmbeddingModelOptions
+                    ollamaModels={ollamaModels}
+                    ollamaModelsLoading={ollamaModelsLoading}
+                    ollamaModelsError={ollamaModelsError}
+                  />
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Used by Memory + RAG vector search. Dimensions must match the schema; see
+                  MEMORY_EMBEDDING_DIMENSIONS in <code>.env</code>.
+                </p>
+                {ollamaModelsError && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    Couldn't reach Ollama: {ollamaModelsError}.{" "}
+                    <Link href="/ollama" className="underline hover:no-underline">
+                      Configure host
+                    </Link>
+                  </p>
+                )}
+              </div>
+
+              <Button type="submit" disabled={savingModels} className="w-full">
+                {savingModels ? "Saving..." : "Save Default Models"}
+              </Button>
+            </form>
           </CardContent>
         </Card>
 

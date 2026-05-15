@@ -17,19 +17,19 @@ ENV ADAPTIX_HOME=/opt/adaptix
 # Switch to root for package installation
 USER root
 
-# Install AdaptixC2 dependencies
-RUN apt-get update && apt-get install -y \
-    # Build tools
-    build-essential cmake \
-    # Network tools
-    nmap netcat-openbsd socat \
-    # SSL/crypto
-    openssl libssl-dev \
-    # Python
-    python3-dev python3-pip \
-    # Utilities
-    unzip jq git \
-    && rm -rf /var/lib/apt/lists/*
+# Install AdaptixC2 dependencies. apt retry/timeout config inherited from offsec-base.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    set -eux; \
+    for i in 1 2 3; do \
+      apt-get update && break || { echo "apt-get update failed (attempt $i)"; sleep $((i*5)); }; \
+    done; \
+    apt-get install -y --no-install-recommends \
+      build-essential cmake \
+      nmap netcat-openbsd socat \
+      openssl libssl-dev \
+      python3-dev python3-pip \
+      unzip jq git
 
 # Install Go (AdaptixC2 is Go-based)
 RUN ARCH=$(uname -m) && \

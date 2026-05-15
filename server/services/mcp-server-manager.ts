@@ -1,7 +1,11 @@
 import { spawn, ChildProcess } from 'child_process';
 import { db } from '../db';
 import { mcpServers } from '@shared/schema';
+import { readFeatureFlags } from '@shared/feature-flags';
 import { eq } from 'drizzle-orm';
+import { syncDefaultCatalog } from './mcp/catalog-sync';
+import { preflightServer, formatPreflightError } from './mcp/preflight';
+import { repairKnownBadCatalogEntries } from './mcp/repair-known-bad';
 
 // Spawn timeout in milliseconds (30 seconds)
 const SPAWN_TIMEOUT_MS = 30000;
@@ -29,6 +33,25 @@ class MCPServerManager {
   constructor() {
     // Start periodic health checks
     this.startHealthMonitoring();
+    // v2.9.3: seed the built-in MCP server catalog before recovery so any
+    // newly added defaults are visible to the recovery sweep. Gated by
+    // FF_DEFAULT_MCP_SERVERS — off by default. 1s delay matches the DB-connect
+    // pattern used by recoverErroredServers below.
+    //
+    // Order: repairKnownBadCatalogEntries() → syncDefaultCatalog(). Repair
+    // upgrades legacy bad rows from earlier v2.9.3 cuts (filesystem
+    // /workspace, searchcode 404, arxiv wrong PyPI package); sync then
+    // inserts any *missing* rows. Both are idempotent and operator-edit-safe.
+    if (readFeatureFlags(process.env).defaultMcp) {
+      setTimeout(async () => {
+        try {
+          await repairKnownBadCatalogEntries();
+          await syncDefaultCatalog();
+        } catch (err) {
+          console.error("[MCPServerManager] Default catalog repair/sync failed:", err);
+        }
+      }, 1000);
+    }
     // Auto-recover errored servers on startup (delayed to let DB connect)
     setTimeout(() => this.recoverErroredServers(), 5000);
   }
@@ -104,6 +127,22 @@ class MCPServerManager {
       // Parse command and arguments
       const args = Array.isArray(server.args) ? server.args : [];
       const env = server.env && typeof server.env === 'object' ? server.env : {};
+
+      // v2.9.3 self-healing: preflight catches command_missing, path_unwritable,
+      // and disabled_by_default before we burn maxRestarts on a doomed spawn.
+      // Auto-creates filesystem-server root directories so a missing
+      // /workspace (or whatever path was configured) is repaired in-place.
+      const preflight = await preflightServer({
+        command: server.command,
+        args: args as string[],
+        lastError: server.lastError,
+      });
+      if (!preflight.ok) {
+        const errMsg = formatPreflightError(preflight);
+        console.error(`Server ${serverId} preflight failed: ${errMsg}`);
+        await this.updateErrorStatus(serverId, errMsg);
+        return false;
+      }
 
       console.log(`Starting server ${serverId} with command: ${server.command} ${args.join(' ')}`);
 

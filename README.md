@@ -54,6 +54,35 @@ Default ports are configured to avoid conflicts with common local services:
 
 **Note:** Always access the full application through the frontend URL. The backend API serves JSON responses only.
 
+### Default MCP Servers
+
+When `FF_DEFAULT_MCP_SERVERS=true`, the backend seeds 11 built-in MCP servers into the `mcp_servers` table on first boot ([catalog source](server/services/mcp/default-servers-catalog.ts)). The seed is idempotent — re-runs only fill in missing rows and never overwrite operator edits. Eight servers boot ready; three need a key set on the row before they can start:
+
+| seed_key | Boot ready | Required env var |
+|---|---|---|
+| `default:playwright`, `default:fetch`, `default:chrome-devtools`, `default:filesystem`, `default:sequential-thinking`, `default:memory`, `default:searchcode`, `default:task-master`, `default:arxiv` | ✅ | — |
+| `default:github` | needs config | `GITHUB_PERSONAL_ACCESS_TOKEN` |
+| `default:tavily` | needs config | `TAVILY_API_KEY` |
+
+Set the missing values in `.env` (or per-row via the future `PATCH /api/v1/mcp-servers/:id/secrets` once Phase 3 ships) before starting those servers. The lifecycle endpoints (`/start`, `/stop`, `/restart`) work on managed and user-created rows alike. See [docs/enhancements/2.9/v2.9.3-default-mcp-integrations.md](docs/enhancements/2.9/v2.9.3-default-mcp-integrations.md) for the full rollout (REST `/catalog`, `/reset`, frontend panel, etc. — out of scope for the current phase).
+
+### Optional Compose Profiles
+
+Several integrations ship as opt-in services gated behind Docker Compose profiles — they do **not** start with the default `docker compose up`. Bring them up with `docker compose --profile <name> up -d`.
+
+| Profile | Service | Purpose |
+|---|---|---|
+| `sysreptor` | SysReptor + Caddy + Redis | Penetration-testing reporting platform (UI on :7777). |
+| `kasm` | Kasm Workspaces stack | Browser-based desktop streaming for analyst workspaces. |
+| `docmost` | Docmost + Redis | Wiki-style team documentation (UI on :13000). |
+| `vllm` | vLLM (Qwen3.5-9B) | OpenAI-compatible inference for agent workloads (GPU required). |
+| `pdf` | Headless Chromium | App-side PDF generation for reports. |
+| `vpn` | VPN Manager | OpenVPN / WireGuard tunnel host (v2.9.2 Phase 1 — container only; UI/backend land in later phases). |
+| `gpu` / `cpu` | Ollama | Local LLM inference (pick one based on hardware). |
+| `management` | Portainer | Container management UI on :9443. |
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for per-profile configuration.
+
 ## Available Commands
 
 ```bash

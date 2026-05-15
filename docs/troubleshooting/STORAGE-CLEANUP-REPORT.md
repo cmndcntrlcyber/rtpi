@@ -132,44 +132,56 @@ docker system prune -a --volumes
 
 ## 🛠️ Tools Created
 
-### 1. Automated Cleanup Script (Bi-weekly Cron Job)
-**Location:** `/home/cmndcntrl/code/rtpi/scripts/automated-storage-cleanup.sh`  
-**Schedule:** Every 2 weeks on Sunday at 3:00 AM  
-**Logs:** `/home/cmndcntrl/code/rtpi/logs/storage-cleanup-*.log`
+### Unified Cleanup Script
 
-**What it cleans:**
+As of the 2026-05 consolidation, both interactive and automated cleanup share a single script. The earlier `automated-storage-cleanup.sh` is now a thin shim that forwards to `cleanup-storage.sh --auto` for cron-entry backward compatibility.
+
+**Location:** `/home/cmndcntrl/code/rtpi/scripts/cleanup-storage.sh`
+**Logs (in `--auto` mode):** `/home/cmndcntrl/code/rtpi/logs/storage-cleanup-*.log` (rotated >30 days)
+
+**Interactive (manual):**
+```bash
+./scripts/cleanup-storage.sh                       # y/n per phase
+./scripts/cleanup-storage.sh --include-old         # also opt into 30-day prune
+./scripts/cleanup-storage.sh --include-untagged    # also opt into untagged-image phase
+```
+
+**Automated (cron / scheduled):**
+```bash
+./scripts/cleanup-storage.sh --auto                # non-interactive, logs to file
+./scripts/cleanup-storage.sh --yes                 # non-interactive, no log file
+./scripts/cleanup-storage.sh --auto --log-dir /var/log/rtpi
+```
+
+**Recommended cron entry** (every 2 weeks, Sunday 03:00):
+```cron
+0 3 */14 * 0 /home/cmndcntrl/code/rtpi/scripts/cleanup-storage.sh --auto
+```
+
+**What it cleans (always):**
 - Docker build cache
 - Stopped containers
 - Dangling images
 - Unused networks
 - npm cache
 
+**Opt-in phases** (only with `--include-old` / `--include-untagged`):
+- Images >30 days unused (`docker image prune --filter until=720h`)
+- Untagged `<none>` images
+
 **What it preserves:**
 - ✅ Wordlist volumes (rtpi_fuzzing-wordlists)
 - ✅ RKLLama models
 - ✅ Docker volumes (databases, persistent data)
-- ✅ Docker images (may be needed for operations)
+- ✅ Tagged Docker images currently in use
 
-**Manual run:**
+The interactive mode also prints (but does not run) the high-risk commands — `docker volume prune -a`, `docker image prune -a`, `docker system prune -a --volumes` — so the operator can copy-paste them after taking a backup.
+
+**View any active cron schedule:**
 ```bash
-/home/cmndcntrl/code/rtpi/scripts/automated-storage-cleanup.sh
+crontab -l                 # user crontab
+sudo cat /etc/cron.d/*     # system cron entries
 ```
-
-**View cron schedule:**
-```bash
-crontab -l
-```
-
-### 2. Interactive Cleanup Script
-**Location:** `/home/cmndcntrl/code/rtpi/cleanup-storage.sh`
-
-**Usage:**
-```bash
-cd /home/cmndcntrl/code/rtpi
-./cleanup-storage.sh
-```
-
-This interactive script guides you through safe cleanup options with confirmations.
 
 ---
 
@@ -199,12 +211,12 @@ Build Cache     477       0         63.26GB   13.76GB (21%)
 ### Automated Maintenance
 ✅ **Bi-weekly automated cleanup is now active!**
 - **Schedule:** Every 2 weeks on Sunday at 3:00 AM
-- **Script:** `/home/cmndcntrl/code/rtpi/scripts/automated-storage-cleanup.sh`
+- **Script:** `/home/cmndcntrl/code/rtpi/scripts/cleanup-storage.sh --auto`
 - **Logs:** `/home/cmndcntrl/code/rtpi/logs/storage-cleanup-*.log`
 - **Protected:** Wordlists and RKLLama models are preserved
 
 ### Manual Maintenance
-1. Run `./cleanup-storage.sh` for interactive cleanup
+1. Run `./scripts/cleanup-storage.sh` for interactive cleanup
 2. Monitor with: `docker system df`
 3. Review large volumes: `docker volume ls`
 4. Automated cleanup handles: Build cache, stopped containers, dangling images, npm cache

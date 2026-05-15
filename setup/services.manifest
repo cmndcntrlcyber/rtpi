@@ -1,0 +1,39 @@
+# RTPI Subdomain Manifest — single source of truth for build.sh, cert_manager.sh,
+# cloudflare_dns_manager.sh, and the Cloudflare Access Terraform module.
+#
+# Format: pipe-delimited, one row per public subdomain. Whitespace around
+# fields is trimmed. Lines starting with '#' and blank lines are ignored.
+#
+# Fields:
+#   suffix        — appended to the slug (e.g. "-reports"). Empty = bare slug
+#                   (so the row produces "${SLUG}.${CF_DOMAIN}").
+#   profile_gate  — docker compose profile required for this subdomain to be
+#                   provisioned. Empty = always-on, regardless of profile.
+#                   Multiple profiles may be listed comma-separated; the row
+#                   is included if ANY of them is in the active profile set.
+#   upstream_url  — what nginx proxy_pass targets on the host.
+#   websocket     — true|false; adds Upgrade/Connection: upgrade headers.
+#   tls_upstream  — true|false; if true, nginx sets proxy_ssl_verify off and
+#                   the proxy_pass URL must already be https://.
+#
+# To add a new RTPI surface to public DNS + Cloudflare Access:
+#   1. Append one row here.
+#   2. Append one matching application to
+#      infra/cloudflare-access/terraform.tfvars.example (and your real tfvars).
+#
+# Notes on entries below:
+#   • -kasm  is the Kasm Workspaces management plane (admin / session broker).
+#   • -vscode and -kali are direct per-workspace front doors. Cloudflare
+#     Access gates entry; Kasm's own VNC password gates the desktop session.
+#   • -wiki  (Docmost) is bound to 127.0.0.1:13000 in compose; nginx is the
+#     only intended way to reach it from outside the host.
+
+# suffix    | profile_gate | upstream_url            | websocket | tls_upstream
+            |              | http://localhost:5000   | false     | false
+-reports    | sysreptor    | http://localhost:7777   | false     | false
+-empire     |              | http://localhost:1337   | false     | false
+-mgmt       | management   | https://localhost:9443  | false     | true
+-kasm       | kasm         | https://localhost:8443  | true      | true
+-wiki       | docmost      | http://localhost:13000  | false     | false
+-vscode     | kasm         | https://localhost:6901  | true      | true
+-kali       | kasm         | https://localhost:6902  | true      | true

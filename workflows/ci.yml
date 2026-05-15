@@ -111,10 +111,41 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Run Snyk Security Scan
         uses: snyk/actions/node@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
           args: --severity-threshold=high
+
+  # rust-nexus workspace check (v2.9.6 A0). Two feature variants gate that the
+  # `mesh` Cargo feature stays "off by default" without silently regressing on
+  # unrelated PRs. Expand to `cargo test` once mesh phases land.
+  rust-nexus:
+    name: rust-nexus (${{ matrix.features }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - features: "default"
+            flags: "--no-default-features"
+          - features: "mesh"
+            flags: "--features mesh"
+          - features: "all-features"
+            flags: "--all-features"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust-nexus
+
+      - name: cargo check (${{ matrix.features }})
+        working-directory: rust-nexus
+        run: cargo check --workspace ${{ matrix.flags }}

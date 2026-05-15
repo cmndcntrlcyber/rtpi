@@ -90,4 +90,20 @@ export const sysReptorService = {
     api.post<SyncResult>(`/sysreptor/projects/${projectId}/sync`, {
       operationId,
     }),
+
+  autoConnect: () =>
+    api.post<AutoConnectResult>(`/sysreptor/auto-connect`, {}),
 };
+
+export interface AutoConnectResult {
+  ok: boolean;
+  message: string;
+  action?: "minted" | "already_configured" | "skipped";
+  reason?:
+    | "container_not_running"
+    | "no_superuser"
+    | "exec_failed"
+    | "token_parse_failed"
+    | "persist_failed";
+  persistedToEnv?: boolean;
+}

@@ -10,6 +10,9 @@
   "scripts": {
     "test": "vitest",
     "bootstrap": "bash scripts/bootstrap-secrets.sh",
+    "deploy:check": "bash scripts/pre-deployment-check.sh",
+    "deploy:verify": "bash scripts/deploy-verify.sh",
+    "build:offsec": "bash scripts/build-resilient.sh",
     "dev": "tsx watch server/index.ts",
     "dev:frontend": "vite",
     "build": "vite build",

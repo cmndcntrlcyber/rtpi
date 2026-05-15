@@ -6,21 +6,33 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
+# Apt resilience: per-request retries, generous timeouts, no recommends.
+# Children inherit /etc/apt/apt.conf.d/* automatically.
+RUN set -eux; \
+    printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\nAcquire::http::Pipeline-Depth "0";\n' \
+      > /etc/apt/apt.conf.d/80-rtpi-retries; \
+    printf 'APT::Install-Recommends "false";\nAPT::Install-Suggests "false";\n' \
+      > /etc/apt/apt.conf.d/80-rtpi-norecommends; \
+    rm -f /etc/apt/apt.conf.d/docker-clean
+
 # Create application directories
 RUN mkdir -p /opt/tools /var/log/rtpi /mcp /docs
 
-# Add external repositories and install base system packages
-RUN apt-get update && apt-get install -y \
-    # Basic system tools
-    curl wget unzip gnupg lsb-release ca-certificates software-properties-common \
-    build-essential git vim nano htop sudo \
-    # Python stack
-    python3 python3-pip python3-venv python-is-python3 pipx \
-    # Development tools
-    default-jdk cmake pkg-config libssl-dev \
-    # Networking tools
-    net-tools iputils-ping dnsutils \
-    && rm -rf /var/lib/apt/lists/*
+# Base system packages. Cache mount on /var/cache/apt + /var/lib/apt persists
+# the index/.deb cache across builds; outer for-loop retries `apt-get update`
+# itself if every internal Acquire::Retries attempt also fails.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    set -eux; \
+    for i in 1 2 3; do \
+      apt-get update && break || { echo "apt-get update failed (attempt $i)"; sleep $((i*5)); }; \
+    done; \
+    apt-get install -y --no-install-recommends \
+      curl wget unzip gnupg lsb-release ca-certificates software-properties-common \
+      build-essential git vim nano htop sudo \
+      python3 python3-dev python3-pip python3-venv python-is-python3 pipx \
+      default-jdk cmake pkg-config libssl-dev libffi-dev \
+      net-tools iputils-ping dnsutils
 
 # Install Go 1.22 (Ubuntu 22.04 provides Go 1.18 which is too old for modern tools)
 RUN ARCH=$(uname -m) && \
@@ -31,10 +43,13 @@ RUN ARCH=$(uname -m) && \
 ENV PATH="/usr/local/go/bin:${PATH}"
 ENV GOPATH="/home/rtpi-agent/go"
 
-# Install Node.js (LTS) for MCP server
-RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
-    && apt-get install -y nodejs \
-    && rm -rf /var/lib/apt/lists/*
+# Install Node.js (LTS) for MCP server. The nodesource setup script runs
+# `apt-get update` against deb.nodesource.com; retries are inherited from the
+# apt.conf.d files seeded above. Cache mount persists across builds.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs
 
 # Install AWS CLI for R2/S3-compatible storage access (wordlist sync)
 RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o "awscliv2.zip" && \

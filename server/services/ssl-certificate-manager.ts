@@ -356,7 +356,10 @@ dns_cloudflare_api_token = ${apiToken}
    */
   async listCertificates(): Promise<CertificateInfo[]> {
     try {
-      const listCmd = 'certbot certificates --cert-name';
+      // `certbot certificates` (no flags) lists every certificate. Adding
+      // `--cert-name` would require a value and turn it into a filter for one
+      // specific cert — which is not what this method needs.
+      const listCmd = 'certbot certificates';
       const { stdout } = await this.execInCertbotContainer(listCmd);
 
       // Parse certbot output to extract domain names
@@ -560,10 +563,7 @@ add_header X-XSS-Protection "1; mode=block" always;
    */
   async getCertbotStatus(): Promise<CertbotStatus> {
     try {
-      // Check if certbot container is running
-      const { stdout: psOutput } = await execAsync(`docker ps --filter name=${this.certbotContainer} --format "{{.Names}}"`);
-
-      if (!psOutput.trim()) {
+      if (!(await this.isCertbotContainerRunning())) {
         return {
           installed: false,
           certificateCount: 0,
@@ -604,9 +604,35 @@ add_header X-XSS-Protection "1; mode=block" always;
   // ============================================================================
 
   /**
-   * Execute command in certbot container
+   * Check whether the certbot container is currently running.
+   * Cheaper than `docker exec` failing and surfaces a clear precondition.
+   */
+  private async isCertbotContainerRunning(): Promise<boolean> {
+    try {
+      const { stdout } = await execAsync(
+        `docker inspect -f '{{.State.Running}}' ${this.certbotContainer}`,
+      );
+      return stdout.trim() === 'true';
+    } catch {
+      // `docker inspect` exits non-zero when the container does not exist.
+      return false;
+    }
+  }
+
+  /**
+   * Execute command in certbot container.
+   *
+   * Pre-checks that the container is running so callers get a precise
+   * "container not running" error instead of an opaque `docker exec` failure.
+   * The check adds ~one local docker call per command; this is not a hot path.
    */
   private async execInCertbotContainer(command: string): Promise<{ stdout: string; stderr: string }> {
+    if (!(await this.isCertbotContainerRunning())) {
+      throw new Error(
+        `Certbot container '${this.certbotContainer}' is not running. ` +
+          `Start it with: docker compose --profile certbot up -d`,
+      );
+    }
     const fullCommand = `docker exec ${this.certbotContainer} ${command}`;
     return await execAsync(fullCommand);
   }

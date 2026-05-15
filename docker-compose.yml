@@ -171,6 +171,12 @@ services:
     environment:
       # API endpoint configuration
       WORKBENCH_REST_API_URL: http://workbench-api:3010/api
+    volumes:
+      # Override the upstream image's stock nginx config which lacks both
+      # an SPA history fallback (so /matrices, /tactics, etc. 404) and an
+      # /api/ proxy (so the Angular SPA can't reach workbench-api).
+      # See configs/rtpi-workbench/default.conf for the corrected config.
+      - ./configs/rtpi-workbench/default.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       workbench-api:
         condition: service_healthy
@@ -201,12 +207,41 @@ services:
     networks:
       - rtpi-network
 
+  # Kasm Proxy Certificate Init - Generates self-signed nginx certs
+  kasm-proxy-init:
+    image: alpine:latest
+    container_name: rtpi-kasm-proxy-init
+    profiles:
+      - kasm  # Only start with Kasm profile
+    environment:
+      KASM_SERVER_HOSTNAME: ${KASM_SERVER_HOSTNAME:-localhost}
+    volumes:
+      - kasm-certs:/certs
+      - ./scripts/kasm:/scripts:ro
+    command: >
+      sh -c "
+        apk add --no-cache openssl &&
+        /scripts/init-proxy-certs.sh
+      "
+    networks:
+      - rtpi-network
+
   # Kasm PostgreSQL Database (separate from main RTPI database)
   kasm-db:
     image: postgres:16-alpine
     container_name: rtpi-kasm-db
     profiles:
       - kasm  # Only start with Kasm profile
+    # kasmweb/api 1.17.0 baked config requires SSL on the DB connection.
+    # The kasm-db-certs volume is populated by kasm-db-init.
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/etc/ssl/certs/kasm/db_server.crt
+      - -c
+      - ssl_key_file=/etc/ssl/certs/kasm/db_server.key
     environment:
       POSTGRES_USER: kasmapp
       POSTGRES_PASSWORD: ${KASM_DB_PASSWORD:-kasm123secure}
@@ -216,6 +251,8 @@ services:
     volumes:
       - kasm-db-data:/var/lib/postgresql/data
       - kasm-db-certs:/etc/ssl/certs/kasm:ro
+      # Loaded once on first init by the postgres image entrypoint.
+      - ./scripts/kasm/init-extensions.sql:/docker-entrypoint-initdb.d/01-extensions.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U kasmapp"]
       interval: 10s
@@ -225,7 +262,9 @@ services:
       kasm-db-init:
         condition: service_completed_successfully
     networks:
-      - rtpi-network
+      rtpi-network:
+        aliases:
+          - db  # kasmweb/api 1.17.0 baked config hardcodes hostname "db"
     restart: unless-stopped
 
   # Kasm Redis Cache (separate from main RTPI Redis)
@@ -244,7 +283,9 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - rtpi-network
+      rtpi-network:
+        aliases:
+          - kasm_redis  # kasmweb/api 1.17.0 baked config uses underscore form
     restart: unless-stopped
 
   # Kasm API Server - REST API for workspace management
@@ -253,17 +294,20 @@ services:
     container_name: rtpi-kasm-api
     profiles:
       - kasm  # Only start with Kasm profile
+    # Run as root so the entrypoint can sed-patch /opt/kasm/current/conf/...
+    # The image's default user "kasm" doesn't own that path.
+    user: "0:0"
     environment:
-      # Database connection
-      DATABASE_HOSTNAME: kasm-db
-      DATABASE_PORT: 5432
-      DATABASE_USER: kasmapp
-      DATABASE_PASSWORD: ${KASM_DB_PASSWORD:-kasm123secure}
-      DATABASE_NAME: kasm
-      DATABASE_SSL: "false"
-      # Redis connection
-      REDIS_HOSTNAME: kasm-redis
-      REDIS_PORT: 6379
+      # POSTGRES_* env vars are read by /usr/bin/startup.sh for DB initialization.
+      # The runtime API server reads its connection settings from
+      # /opt/kasm/current/conf/app/api/api.app.config.yaml — which the
+      # entrypoint below patches from these same env vars on every start.
+      POSTGRES_HOST: kasm-db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: kasmapp
+      POSTGRES_PASSWORD: ${KASM_DB_PASSWORD:-kasm123secure}
+      POSTGRES_DB: kasm
+      DB_AUTO_INITIALIZE: "1"   # tells startup.sh to create schema if absent
       # API configuration
       API_SERVER_ID: ${KASM_API_SERVER_ID:-default}
       SERVER_HOSTNAME: ${KASM_SERVER_HOSTNAME:-localhost}
@@ -272,8 +316,23 @@ services:
       HTTPS_ENABLED: "true"
       SSL_CERT_FILE: /opt/kasm/current/certs/kasm_nginx.crt
       SSL_KEY_FILE: /opt/kasm/current/certs/kasm_nginx.key
-    ports:
-      - "8443:443"  # Kasm HTTPS API port
+    # Override the default entrypoint to patch the baked api.app.config.yaml
+    # with the env-var values *before* startup.sh runs. The kasmweb/api:1.17.0
+    # image hardcodes "password: changeme" / "redis_password: changeme" /
+    # "host: db" in the YAML — these values win over the env vars at runtime.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        CFG=/opt/kasm/current/conf/app/api/api.app.config.yaml
+        if [ -f "$$CFG" ]; then
+          sed -i "s|^  password: .*|  password: $${POSTGRES_PASSWORD}|" "$$CFG"
+          sed -i 's|^  redis_password: .*|  redis_password: ""|' "$$CFG"
+          echo "[kasm-api] Patched $$CFG"
+        fi
+        exec /usr/bin/startup.sh
+    # No host port mapping — kasm-proxy fronts the API on the internal network.
+    # Exposing 443 here would collide with kasm-proxy's 8443:443 binding.
     volumes:
       - kasm-api-data:/opt/kasm/current
       - kasm-certs:/opt/kasm/current/certs
@@ -286,7 +345,8 @@ services:
       - rtpi-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-k", "-f", "https://localhost:443/api/__healthcheck"]
+      # API serves plain HTTP on 8080; HTTPS is terminated by kasm-proxy.
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/__healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -298,19 +358,26 @@ services:
     container_name: rtpi-kasm-manager
     profiles:
       - kasm  # Only start with Kasm profile
+    # Run as root so the entrypoint can sed-patch the YAML in its own volume.
+    user: "0:0"
     environment:
-      # Database connection
-      DATABASE_HOSTNAME: kasm-db
-      DATABASE_PORT: 5432
-      DATABASE_USER: kasmapp
-      DATABASE_PASSWORD: ${KASM_DB_PASSWORD:-kasm123secure}
-      DATABASE_NAME: kasm
-      # Redis connection
-      REDIS_HOSTNAME: kasm-redis
-      REDIS_PORT: 6379
-      # Manager configuration
+      # The kasmweb/manager image reads its DB/Redis config from
+      # /opt/kasm/current/conf/app/api/api.app.config.yaml in its own volume.
+      # We patch that YAML in the entrypoint below using these env vars.
+      POSTGRES_PASSWORD: ${KASM_DB_PASSWORD:-kasm123secure}
       MANAGER_ID: ${KASM_MANAGER_ID:-default-manager}
       SERVER_HOSTNAME: ${KASM_SERVER_HOSTNAME:-localhost}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        CFG=/opt/kasm/current/conf/app/api/api.app.config.yaml
+        if [ -f "$$CFG" ]; then
+          sed -i "s|^  password: .*|  password: $${POSTGRES_PASSWORD}|" "$$CFG"
+          sed -i 's|^  redis_password: .*|  redis_password: ""|' "$$CFG"
+          echo "[kasm-manager] Patched $$CFG"
+        fi
+        exec python3 /src/api_server/manager_api_server.pyc --cfg "$$CFG"
     volumes:
       - kasm-manager-data:/opt/kasm/current
       - /var/run/docker.sock:/var/run/docker.sock  # Docker socket for workspace management
@@ -333,20 +400,34 @@ services:
       - kasm  # Only start with Kasm profile
     environment:
       - SERVER_HOSTNAME=${KASM_SERVER_HOSTNAME:-localhost}
+      # Used by envsubst in default.conf.template — controls the redirect target.
+      # Set to 443 in production behind real DNS on standard ports.
+      - KASM_PUBLIC_HTTPS_PORT=${KASM_PUBLIC_HTTPS_PORT:-8443}
     ports:
       - "8443:443"  # HTTPS for workspace access
-      - "8080:80"   # HTTP redirect to HTTPS
+      - "8444:80"   # HTTP redirect to HTTPS (8080 reserved by rtpi-empire 8080-8100)
     volumes:
-      - kasm-proxy-config:/etc/nginx/conf.d
+      # Kasm-aware nginx config template. nginx:alpine's entrypoint runs
+      # envsubst over /etc/nginx/templates/*.template and writes the result
+      # to /etc/nginx/conf.d/, so ${KASM_PUBLIC_HTTPS_PORT} is expanded once
+      # at container start. Per-workspace configs are written by
+      # KasmNginxManager into the containers.d/ subdir below.
+      - ./docker/kasm-proxy/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - kasm-proxy-config:/etc/nginx/conf.d/containers.d
       - kasm-certs:/etc/nginx/certs:ro
     depends_on:
-      - kasm-api
-      - kasm-guac
+      kasm-proxy-init:
+        condition: service_completed_successfully
+      kasm-api:
+        condition: service_healthy
+      kasm-guac:
+        condition: service_healthy
     networks:
       - rtpi-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      # Probe HTTPS with -k (self-signed) instead of HTTP, since :80 is just a redirect.
+      test: ["CMD", "wget", "--no-check-certificate", "--quiet", "--tries=1", "--spider", "https://localhost:443/api/__healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -381,7 +462,10 @@ services:
   # Kasm Agent - Workspace provisioning and monitoring
   kasm-agent:
     image: kasmweb/agent:1.17.0
-    container_name: rtpi-kasm-agent
+    # The agent uses the Docker socket to inspect itself by container name
+    # "kasm_agent" (hardcoded in the image). Keep this name verbatim — renaming
+    # to rtpi-kasm-agent breaks self-registration.
+    container_name: kasm_agent
     profiles:
       - kasm  # Only start with Kasm profile
     environment:
@@ -410,17 +494,40 @@ services:
     container_name: rtpi-kasm-share
     profiles:
       - kasm  # Only start with Kasm profile
+    # Run as root so the entrypoint can sed-patch the YAML in the image layer.
+    user: "0:0"
     environment:
+      # Patched into api.app.config.yaml by the entrypoint below. The kasmweb/share
+      # image hardcodes "password: changeme" in the YAML; without this patch the
+      # share service hits "password authentication failed for user kasmapp"
+      # against kasm-db.
+      POSTGRES_PASSWORD: ${KASM_DB_PASSWORD:-kasm123secure}
       # Redis connection for share tracking
       REDIS_HOSTNAME: kasm-redis
       REDIS_PORT: 6379
       # Share service configuration
       SHARE_ID: ${KASM_SHARE_ID:-default-share}
+    # Override the default entrypoint to patch the baked api.app.config.yaml
+    # before launching share_server. Same pattern used by kasm-api and
+    # kasm-manager — kasm-redis has no auth, so blank redis_password.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        CFG=/opt/kasm/current/conf/app/api/api.app.config.yaml
+        if [ -f "$$CFG" ]; then
+          sed -i "s|^  password: .*|  password: $${POSTGRES_PASSWORD}|" "$$CFG"
+          sed -i 's|^  redis_password: .*|  redis_password: ""|' "$$CFG"
+          echo "[kasm-share] Patched $$CFG"
+        fi
+        exec python3 /src/api_server/share_server.pyc --cfg "$$CFG"
     ports:
       - "8182:8182"  # File sharing port
     volumes:
       - kasm-share-data:/opt/kasm/current/shares
     depends_on:
+      kasm-db:
+        condition: service_healthy
       kasm-redis:
         condition: service_healthy
     networks:
@@ -437,40 +544,73 @@ services:
       - CERTBOT_DOMAIN=${KASM_SERVER_HOSTNAME:-localhost}
       # Cloudflare API token for DNS-01 challenge (#KW-12)
       - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
+      # Container name to signal for an nginx reload after a renewal copy.
+      # Defaults to rtpi-kasm-proxy in this stack.
+      - KASM_NGINX_CONTAINER=${KASM_NGINX_CONTAINER:-rtpi-kasm-proxy}
     volumes:
       - certbot-conf:/etc/letsencrypt
       - certbot-www:/var/www/certbot
       - kasm-certs:/etc/nginx/certs
       - ./scripts/ssl:/scripts/ssl:ro  # SSL automation scripts
-    command: >
-      sh -c "
-      # Create Cloudflare credentials if API token is set
-      if [ -n \"$$CLOUDFLARE_API_TOKEN\" ]; then
-        echo \"dns_cloudflare_api_token = $$CLOUDFLARE_API_TOKEN\" > /etc/letsencrypt/cloudflare.ini
-        chmod 600 /etc/letsencrypt/cloudflare.ini
-      fi
+      # Read-only docker socket so the renewal loop can `docker exec` an
+      # nginx reload after copying new certs into kasm-certs.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    # The certbot/dns-cloudflare image sets ENTRYPOINT ["certbot"], which would
+    # cause our shell loop below to be passed as args to certbot. Override with
+    # /bin/sh so `command:` is interpreted as a script. Use a literal block
+    # scalar (|) — the previous folded (>) form collapsed multi-line if/fi
+    # constructs into a single unparseable line.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        # Install docker-cli once so we can signal the kasm-proxy nginx for a reload.
+        apk add --no-cache docker-cli >/dev/null 2>&1 || true
 
-      # Certificate renewal loop (#KW-13)
-      trap exit TERM
-      while :; do
-        # Renew certificates expiring within 30 days
-        certbot renew --quiet
-
-        # Copy certificates to nginx directory
-        if [ -d /etc/letsencrypt/live ]; then
-          for domain in /etc/letsencrypt/live/*; do
-            if [ -d \"$$domain\" ]; then
-              domain_name=\$$(basename \"$$domain\")
-              cp -L \"$$domain/fullchain.pem\" \"/etc/nginx/certs/\$${domain_name}.crt\" 2>/dev/null || true
-              cp -L \"$$domain/privkey.pem\" \"/etc/nginx/certs/\$${domain_name}.key\" 2>/dev/null || true
-            fi
-          done
+        # Create Cloudflare credentials if API token is set
+        if [ -n "$$CLOUDFLARE_API_TOKEN" ]; then
+          echo "dns_cloudflare_api_token = $$CLOUDFLARE_API_TOKEN" > /etc/letsencrypt/cloudflare.ini
+          chmod 600 /etc/letsencrypt/cloudflare.ini
         fi
 
-        # Renewal runs every 12 hours
-        sleep 12h & wait $$!
-      done
-      "
+        # Certificate renewal loop (#KW-13)
+        trap exit TERM
+        while :; do
+          # Renew certificates expiring within 30 days
+          certbot renew --quiet
+
+          cert_changed=0
+
+          # Copy certificates to nginx directory
+          if [ -d /etc/letsencrypt/live ]; then
+            for domain in /etc/letsencrypt/live/*; do
+              if [ -d "$$domain" ]; then
+                domain_name=$$(basename "$$domain")
+                cp -L "$$domain/fullchain.pem" "/etc/nginx/certs/$${domain_name}.crt" 2>/dev/null || true
+                cp -L "$$domain/privkey.pem" "/etc/nginx/certs/$${domain_name}.key" 2>/dev/null || true
+
+                # When this is the configured kasm hostname, also publish the
+                # cert under the canonical filenames the kasm-proxy nginx
+                # config loads (kasm_nginx.crt / kasm_nginx.key).
+                if [ "$${domain_name}" = "$$CERTBOT_DOMAIN" ]; then
+                  if ! cmp -s "$${domain}/fullchain.pem" /etc/nginx/certs/kasm_nginx.crt 2>/dev/null; then
+                    cp -L "$${domain}/fullchain.pem" /etc/nginx/certs/kasm_nginx.crt
+                    cp -L "$${domain}/privkey.pem"   /etc/nginx/certs/kasm_nginx.key
+                    cert_changed=1
+                  fi
+                fi
+              fi
+            done
+          fi
+
+          # Reload kasm-proxy nginx so it picks up the new cert without dropping connections.
+          if [ "$$cert_changed" = "1" ]; then
+            docker exec "$$KASM_NGINX_CONTAINER" nginx -s reload 2>&1 || \
+              echo "[certbot] warning: failed to reload $$KASM_NGINX_CONTAINER nginx (ok if not running yet)"
+          fi
+
+          # Renewal runs every 12 hours
+          sleep 12h & wait $$!
+        done
     networks:
       - rtpi-network
     restart: unless-stopped
@@ -609,6 +749,8 @@ services:
       context: ./docker/offsec-agents
       dockerfile: Dockerfile.maldev-tools
     image: rtpi/maldev-tools:latest
+    profiles:
+      - offsec-agents
     container_name: rtpi-maldev-agent
     stdin_open: true
     environment:
@@ -636,6 +778,8 @@ services:
       context: ./docker/offsec-agents
       dockerfile: Dockerfile.azure-ad-tools
     image: rtpi/azure-ad-tools:latest
+    profiles:
+      - offsec-agents
     container_name: rtpi-azure-ad-agent
     stdin_open: true
     environment:
@@ -663,6 +807,8 @@ services:
       context: ./docker/offsec-agents
       dockerfile: Dockerfile.burp-tools
     image: rtpi/burp-tools:latest
+    profiles:
+      - offsec-agents
     container_name: rtpi-burp-agent
     stdin_open: true
     environment:
@@ -698,6 +844,8 @@ services:
       context: ./docker/offsec-agents
       dockerfile: Dockerfile.empire-tools
     image: rtpi/empire-tools:latest
+    profiles:
+      - offsec-agents
     container_name: rtpi-empire-agent
     stdin_open: true
     environment:
@@ -724,6 +872,8 @@ services:
       context: ./docker/offsec-agents
       dockerfile: Dockerfile.c3-tools
     image: rtpi/c3-tools:latest
+    profiles:
+      - offsec-agents
     container_name: rtpi-c3-agent
     stdin_open: true
     environment:
@@ -744,6 +894,8 @@ services:
       context: ./docker/offsec-agents
       dockerfile: Dockerfile.sliver-tools
     image: rtpi/sliver-tools:latest
+    profiles:
+      - offsec-agents
     container_name: rtpi-sliver-agent
     stdin_open: true
     environment:
@@ -764,6 +916,8 @@ services:
       context: ./docker/offsec-agents
       dockerfile: Dockerfile.loki-tools
     image: rtpi/loki-tools:latest
+    profiles:
+      - offsec-agents
     container_name: rtpi-loki-agent
     stdin_open: true
     environment:
@@ -784,6 +938,8 @@ services:
       context: ./docker/offsec-agents
       dockerfile: Dockerfile.adaptix-tools
     image: rtpi/adaptix-tools:latest
+    profiles:
+      - offsec-agents
     container_name: rtpi-adaptix-agent
     stdin_open: true
     environment:
@@ -805,6 +961,8 @@ services:
       context: ./docker/offsec-agents
       dockerfile: Dockerfile.fuzzing-tools
     image: rtpi/fuzzing-tools:latest
+    profiles:
+      - offsec-agents
     container_name: rtpi-fuzzing-agent
     stdin_open: true
     environment:
@@ -837,6 +995,8 @@ services:
       context: ./docker/offsec-agents
       dockerfile: Dockerfile.framework-tools
     image: rtpi/framework-tools:latest
+    profiles:
+      - offsec-agents
     container_name: rtpi-framework-agent
     stdin_open: true
     environment:
@@ -864,6 +1024,8 @@ services:
       context: ./docker/offsec-agents
       dockerfile: Dockerfile.research-tools
     image: rtpi/research-tools:latest
+    profiles:
+      - offsec-agents
     container_name: rtpi-research-agent
     stdin_open: true
     ports:
@@ -929,7 +1091,7 @@ services:
       - sysreptor
     restart: unless-stopped
     ports:
-      - "127.0.0.1:9005:8000"  # SysReptor API/app (localhost only — accessed via Caddy on :7777; 9000 reserved by minio)
+      - "9005:8000"  # SysReptor API/app — exposed on all interfaces (operator-served from 0.0.0.0). 9000 is reserved by minio.
     volumes:
       - sysreptor-app-data:/app/data
       - ./configs/rtpi-sysreptor/app.env:/app/.env:ro
@@ -1294,8 +1456,11 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - rtpi-network
+    # The kasm desktop image always returns 401 (auth required) on every
+    # endpoint, so `curl -f` (fail on >=400) reports unhealthy even when the
+    # server is up. Treat any 2xx/3xx/4xx response as healthy.
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6901/"]
+      test: ["CMD-SHELL", "curl -sk -o /dev/null -w '%{http_code}' --max-time 5 https://localhost:6901/ | grep -qE '^[234]'"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -1326,8 +1491,9 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - rtpi-network
+    # See note on kasm-vscode — same 401-on-everything behavior.
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6901/"]
+      test: ["CMD-SHELL", "curl -sk -o /dev/null -w '%{http_code}' --max-time 5 https://localhost:6901/ | grep -qE '^[234]'"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -1482,6 +1648,8 @@ services:
       context: ./docker/offsec-agents
       dockerfile: Dockerfile.cloud-tools
     image: rtpi/cloud-tools:latest
+    profiles:
+      - offsec-agents
     container_name: rtpi-cloud-agent
     stdin_open: true
     environment:
@@ -1512,6 +1680,8 @@ services:
       context: ./docker/offsec-agents
       dockerfile: Dockerfile.agent-tools-llm-sec-tools
     image: rtpi/llm-sec-tools:latest
+    profiles:
+      - offsec-agents
     container_name: rtpi-llm-sec-agent
     stdin_open: true
     environment:
@@ -1538,6 +1708,8 @@ services:
       context: ./docker/offsec-agents
       dockerfile: Dockerfile.agent-tools-web-injection
     image: rtpi/web-injection-tools:latest
+    profiles:
+      - offsec-agents
     container_name: rtpi-web-injection-agent
     stdin_open: true
     environment:
@@ -1599,6 +1771,54 @@ services:
       - -c
       - "apk add --no-cache bash openssl util-linux coreutils >/dev/null && bash scripts/bootstrap-secrets.sh \"$@\""
       - --
+
+  # ===========================================================================
+  # VPN Manager (v2.9.2 Phase 1 — VPN Infrastructure Integration)
+  # Long-running container that owns OpenVPN / WireGuard tunnel interfaces on
+  # behalf of RTPI. The Phase 2 backend service writes uploaded .ovpn / .conf
+  # files into the mounted vpn-configs / wg-configs volumes, then triggers
+  # connect/disconnect via `docker exec rtpi-vpn-manager vpn-entrypoint.sh ...`.
+  # Usage: docker compose --profile vpn up -d
+  # Requires the host kernel to expose /dev/net/tun and the `wireguard` module.
+  # ===========================================================================
+
+  vpn-manager:
+    build:
+      context: ./docker/vpn-manager
+      dockerfile: Dockerfile
+    container_name: rtpi-vpn-manager
+    profiles:
+      - vpn
+    restart: unless-stopped
+    # Required to manage tun/wg interfaces and program iptables rules from
+    # inside the container. SYS_MODULE is *not* added — the host loads the
+    # wireguard kernel module; the container only uses the userspace tools.
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+    volumes:
+      - vpn-configs:/etc/openvpn/configs
+      - wg-configs:/etc/wireguard/configs
+      - vpn-logs:/var/log/vpn
+    networks:
+      - rtpi-network
+    dns:
+      - 127.0.0.11
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/vpn-health-check.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   rtpi-network:
@@ -1664,3 +1884,7 @@ volumes:
   neo4j-logs:
   skills-data:
   cloud-tools:
+  # v2.9.2 Phase 1 — VPN manager config + log volumes
+  vpn-configs:
+  wg-configs:
+  vpn-logs:

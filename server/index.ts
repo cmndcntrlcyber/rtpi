@@ -1,5 +1,9 @@
-import dotenv from "dotenv";
-dotenv.config();
+// Side-effect import: runs dotenv.config() at import time so .env is loaded
+// BEFORE any subsequent import evaluates module-level code (e.g. service
+// singletons that read process.env in their constructor). Required for ESM
+// because import statements hoist above executable code — `dotenv.config()`
+// on line 2 of the module body would otherwise run too late.
+import "dotenv/config";
 
 import express from "express";
 import cors from "cors";
@@ -34,6 +38,7 @@ import empireRoutes from "./api/v1/empire";
 import attackRoutes from "./api/v1/attack";
 import attackFlowsRoutes from "./api/v1/attack-flows";
 import workbenchRoutes from "./api/v1/workbench";
+import researchRoutes from "./api/v1/research";
 import toolMigrationRoutes from "./api/v1/tool-migration";
 import toolWorkflowsRoutes from "./api/v1/tool-workflows";
 import agentToolValidationRoutes from "./api/v1/agent-tool-validation";
@@ -154,6 +159,7 @@ app.use("/api/v1/deployments", frameworkDeployRoutes);
 app.use("/api/v1/attack", attackRoutes);
 app.use("/api/v1/attack-flows", attackFlowsRoutes);
 app.use("/api/v1/workbench", workbenchRoutes);
+app.use("/api/v1/research", researchRoutes);
 app.use("/api/v1/tool-migration", toolMigrationRoutes);
 app.use("/api/v1/tool-workflows", toolWorkflowsRoutes);
 app.use("/api/v1/agent-tool-validation", agentToolValidationRoutes);

@@ -23,18 +23,24 @@ USER root
 # System Dependencies
 # ============================================================================
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3-dev \
-    python3-pip \
-    python3-venv \
-    curl \
-    wget \
-    unzip \
-    jq \
-    git \
-    groff \
-    less \
-    && rm -rf /var/lib/apt/lists/*
+# apt retry/timeout config inherited from offsec-base.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    set -eux; \
+    for i in 1 2 3; do \
+      apt-get update && break || { echo "apt-get update failed (attempt $i)"; sleep $((i*5)); }; \
+    done; \
+    apt-get install -y --no-install-recommends \
+      python3-dev \
+      python3-pip \
+      python3-venv \
+      curl \
+      wget \
+      unzip \
+      jq \
+      git \
+      groff \
+      less
 
 # ============================================================================
 # AWS CLI v2
@@ -49,12 +55,17 @@ RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awsc
 # GCP CLI (gcloud)
 # ============================================================================
 
-RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.asc] https://packages.cloud.google.com/apt cloud-sdk main" \
-    > /etc/apt/sources.list.d/google-cloud-sdk.list \
-    && curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
-    | tee /usr/share/keyrings/cloud.google.asc > /dev/null \
-    && apt-get update && apt-get install -y --no-install-recommends google-cloud-cli \
-    && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    set -eux; \
+    echo "deb [signed-by=/usr/share/keyrings/cloud.google.asc] https://packages.cloud.google.com/apt cloud-sdk main" \
+      > /etc/apt/sources.list.d/google-cloud-sdk.list; \
+    curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+      | tee /usr/share/keyrings/cloud.google.asc > /dev/null; \
+    for i in 1 2 3; do \
+      apt-get update && break || { echo "apt-get update (gcloud repo) failed (attempt $i)"; sleep $((i*5)); }; \
+    done; \
+    apt-get install -y --no-install-recommends google-cloud-cli
 
 # ============================================================================
 # Python Virtual Environment for tools

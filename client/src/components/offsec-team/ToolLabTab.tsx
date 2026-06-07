@@ -20,6 +20,7 @@ interface Tool {
 export default function ToolLabTab() {
   const [tools, setTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(true);
+  const [testingId, setTestingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchTools();
@@ -35,6 +36,32 @@ export default function ToolLabTab() {
       console.error(error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleTest = async (tool: Tool) => {
+    setTestingId(tool.id);
+    try {
+      const res = await api.post<{ allPassed?: boolean; message?: string }>(
+        `/offsec-rd/tools/${tool.id}/test`,
+        {},
+      );
+      if (res.allPassed) {
+        toast.success(`${tool.toolName ?? "Tool"} passed all tests`);
+      } else {
+        toast.warning(res.message ?? `${tool.toolName ?? "Tool"} reported test failures`);
+      }
+      await fetchTools();
+    } catch (error: any) {
+      // 409 = no installed registry counterpart; 502 = container unreachable.
+      // APIError carries the parsed response body on `.data`.
+      const msg =
+        error?.data?.message ||
+        error?.message ||
+        "Tool test failed";
+      toast.error(msg);
+    } finally {
+      setTestingId(null);
     }
   };
 
@@ -185,9 +212,24 @@ export default function ToolLabTab() {
                   </div>
                 </div>
 
-                <Button size="sm" variant="outline" className="w-full">
-                  <PlayCircle className="h-4 w-4 mr-2" />
-                  Test Tool
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  disabled={testingId === tool.id}
+                  onClick={() => handleTest(tool)}
+                >
+                  {testingId === tool.id ? (
+                    <>
+                      <Activity className="h-4 w-4 mr-2 animate-spin" />
+                      Testing…
+                    </>
+                  ) : (
+                    <>
+                      <PlayCircle className="h-4 w-4 mr-2" />
+                      Test Tool
+                    </>
+                  )}
                 </Button>
               </div>
             </CardContent>

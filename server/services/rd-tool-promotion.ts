@@ -9,9 +9,10 @@
  */
 
 import { db } from '../db';
-import { toolRegistry, toolRegistryTactics, toolRegistryTechniques, attackTactics, attackTechniques, vulnerabilities } from '@shared/schema';
+import { toolRegistry, toolRegistryTactics, toolRegistryTechniques, attackTactics, attackTechniques, vulnerabilities, rdArtifacts, researchProjects, nucleiTemplates } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import type { POCArtifact } from './rd-experiment-orchestrator';
+import { createKnowledgeArticle } from './knowledge/knowledge-base-writer';
 
 // ============================================================================
 // Types
@@ -60,8 +61,8 @@ class RDToolPromotion {
         return this.failureResult(artifactId, `Artifact ${artifactId} not found`);
       }
 
-      if (artifact.artifact_type !== 'poc_code') {
-        return this.failureResult(artifactId, `Can only promote poc_code artifacts. Got: ${artifact.artifact_type}`);
+      if (artifact.artifactType !== 'poc_code') {
+        return this.failureResult(artifactId, `Can only promote poc_code artifacts. Got: ${artifact.artifactType}`);
       }
 
       // Extract metadata from POC artifact
@@ -79,7 +80,7 @@ class RDToolPromotion {
         toolId,
         name: toolName || artifact.filename || 'Custom R&D Tool',
         category: toolCategory as any,
-        description: `R&D-generated tool from experiment ${artifact.experiment_id}`,
+        description: `R&D-generated tool from experiment ${artifact.experimentId}`,
         binaryPath: `/opt/rd-tools/${artifact.filename}`,
         containerName: 'rtpi-tools',
         containerUser: 'rtpi-tools',
@@ -94,6 +95,43 @@ class RDToolPromotion {
 
       // Link artifact to tool
       await this.linkArtifactToTool(artifactId, tool.id);
+
+      // S4 — index the promoted tool into the Knowledge Base as a tool_doc so
+      // it's discoverable by R&D agents at experiment time (pairs with S2).
+      // Best-effort + idempotent (deduped by `tool:<id>`); never fail the
+      // promotion on a KB hiccup.
+      try {
+        const em = extractedMetadata;
+        const docLines = [
+          `# ${tool.name}`,
+          '',
+          em.usage ? String(em.usage) : '',
+          '',
+          em.language ? `**Language:** ${em.language}` : '',
+          em.targetPlatform ? `**Target platform:** ${em.targetPlatform}` : '',
+          em.reliability ? `**Reliability:** ${em.reliability}` : '',
+          Array.isArray(em.dependencies) && em.dependencies.length
+            ? `**Dependencies:** ${em.dependencies.join(', ')}`
+            : '',
+          Array.isArray(em.evasionTechniques) && em.evasionTechniques.length
+            ? `**Evasion:** ${em.evasionTechniques.join(', ')}`
+            : '',
+        ].filter(Boolean);
+        await createKnowledgeArticle({
+          title: tool.name,
+          content: docLines.join('\n'),
+          summary: `Promoted R&D tool${em.language ? ` (${em.language})` : ''} — category ${toolCategory}.`,
+          category: 'promoted_tool',
+          contentType: 'tool_doc',
+          tags: ['source:rd-tool', `tool_id:${tool.toolId}`],
+          attackTactics: attackMappings.tactics,
+          attackTechniques: attackMappings.techniques,
+          relatedProjectId: artifact.projectId ?? null,
+          dedupeTag: `tool:${tool.id}`,
+        });
+      } catch (err) {
+        console.warn('[rd-tool-promotion] S4 KB indexing failed (non-fatal):', err);
+      }
 
       return {
         success: true,
@@ -112,12 +150,85 @@ class RDToolPromotion {
   }
 
   /**
+   * S6 — promote a nuclei_template artifact into the active nuclei_templates
+   * registry so it's usable by the scan pipeline. The third artifact type
+   * (research/poc had promotion paths; nuclei did not). Idempotent on the
+   * unique templateId. Severity/category are parsed from the YAML since the
+   * persisted artifact metadata doesn't carry them.
+   *
+   * NOTE: this registers the template in the DB (the durable, testable step).
+   * Writing the YAML into a running nuclei container's templates dir is a
+   * separate deploy step that requires a live container; `filePath` records
+   * the intended location for that follow-up.
+   */
+  async promoteToNucleiTemplates(
+    artifactId: string,
+    name?: string,
+  ): Promise<{ success: boolean; templateId?: string; nucleiTemplateId?: string; alreadyExists?: boolean; error?: string }> {
+    try {
+      const artifact = await this.fetchArtifact(artifactId);
+      if (!artifact) return { success: false, error: `Artifact ${artifactId} not found` };
+      if (artifact.artifactType !== 'nuclei_template') {
+        return { success: false, error: `Can only deploy nuclei_template artifacts. Got: ${artifact.artifactType}` };
+      }
+
+      const yaml: string = artifact.content || '';
+      const templateId =
+        (artifact.filename || '').replace(/\.ya?ml$/i, '') ||
+        `rd-template-${Date.now().toString(36)}`;
+
+      const sevMatch = yaml.match(/severity:\s*([a-z]+)/i)?.[1]?.toLowerCase();
+      const validSevs = ['critical', 'high', 'medium', 'low', 'informational'];
+      const severity = (sevMatch && validSevs.includes(sevMatch) ? sevMatch : 'medium') as
+        'critical' | 'high' | 'medium' | 'low' | 'informational';
+
+      const category =
+        yaml.match(/tags:\s*([a-z0-9,\-\s]+)/i)?.[1]?.split(',')[0]?.trim() || undefined;
+
+      // Idempotent: templateId is unique.
+      const [existing] = await db
+        .select({ id: nucleiTemplates.id })
+        .from(nucleiTemplates)
+        .where(eq(nucleiTemplates.templateId, templateId))
+        .limit(1);
+      if (existing) {
+        return { success: true, templateId, nucleiTemplateId: existing.id, alreadyExists: true };
+      }
+
+      const targetVulnerabilityId = await this.getVulnerabilityIdFromArtifact(artifact);
+
+      const [row] = await db
+        .insert(nucleiTemplates)
+        .values({
+          templateId,
+          name: name || templateId,
+          severity,
+          category,
+          content: yaml,
+          filePath: `/opt/nuclei-templates/custom/${templateId}.yaml`,
+          isCustom: true,
+          generatedByAi: true,
+          targetVulnerabilityId: targetVulnerabilityId || null,
+          tags: ['r&d-generated'],
+        } as any)
+        .returning({ id: nucleiTemplates.id });
+
+      return { success: true, templateId, nucleiTemplateId: row.id };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      return { success: false, error: errorMsg };
+    }
+  }
+
+  /**
    * Fetch artifact from database
    */
   private async fetchArtifact(artifactId: string): Promise<any> {
-    const result = await db.query.rdArtifacts?.findFirst({
-      where: (artifacts, { eq }) => eq(artifacts.id, artifactId),
-    });
+    const [result] = await db
+      .select()
+      .from(rdArtifacts)
+      .where(eq(rdArtifacts.id, artifactId))
+      .limit(1);
     return result || null;
   }
 
@@ -213,10 +324,15 @@ class RDToolPromotion {
    * Get vulnerability ID from artifact's experiment/project chain
    */
   private async getVulnerabilityIdFromArtifact(artifact: any): Promise<string | null> {
-    // Get project from artifact
-    const project = await db.query.researchProjects?.findFirst({
-      where: (projects, { eq }) => eq(projects.id, artifact.project_id),
-    });
+    // Get project from artifact (Drizzle returns camelCase: projectId, not project_id)
+    if (!artifact?.projectId) {
+      return null;
+    }
+    const [project] = await db
+      .select()
+      .from(researchProjects)
+      .where(eq(researchProjects.id, artifact.projectId))
+      .limit(1);
 
     return project?.sourceVulnerabilityId || null;
   }

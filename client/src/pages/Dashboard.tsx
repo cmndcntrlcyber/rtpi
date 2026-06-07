@@ -1,6 +1,15 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Activity, Loader2, ClipboardList, GripVertical, Clock, ChevronDown, ChevronRight } from "lucide-react";
+import {
+  Activity,
+  AlertCircle,
+  ClipboardList,
+  GripVertical,
+  Clock,
+  ChevronDown,
+  ChevronRight,
+  LayoutDashboard,
+} from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -23,6 +32,9 @@ import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useOperations } from "@/hooks/useOperations";
 import { useTargets } from "@/hooks/useTargets";
 import { useVulnerabilities } from "@/hooks/useVulnerabilities";
@@ -135,13 +147,13 @@ function SortableDashboardRow({
             <h3 className="text-sm font-medium text-muted-foreground mb-2">
               {stat.label}
             </h3>
-            <p className={`text-3xl font-bold ${stat.color}`}>
-              {row.loading ? (
-                <Loader2 className="h-6 w-6 animate-spin" />
-              ) : (
-                stat.value
-              )}
-            </p>
+            {row.loading ? (
+              <Skeleton className="h-9 w-16 tabular-nums" />
+            ) : (
+              <p className={`text-3xl font-bold tabular-nums ${stat.color}`}>
+                {stat.value}
+              </p>
+            )}
           </div>
         ))}
       </div>
@@ -192,11 +204,10 @@ function SortableSurfaceAssessmentRow({
       </div>
 
       {surfaceLoading ? (
-        <div className="bg-card rounded-lg shadow-sm border border-border p-8">
-          <div className="flex items-center justify-center">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            <p className="ml-4 text-muted-foreground">Loading surface assessment data...</p>
-          </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Skeleton className="h-48 rounded-lg" />
+          <Skeleton className="h-48 rounded-lg" />
+          <Skeleton className="h-48 rounded-lg" />
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" onClick={(e) => e.stopPropagation()}>
@@ -386,8 +397,8 @@ export default function Dashboard() {
       loading: opsLoading,
       stats: [
         { label: "Total Operations", value: operations.length, color: "text-foreground" },
-        { label: "Active", value: operations.filter((op) => op.status === "active").length, color: "text-green-600" },
-        { label: "Planning", value: operations.filter((op) => op.status === "planning").length, color: "text-blue-600" },
+        { label: "Active", value: operations.filter((op) => op.status === "active").length, color: "text-success" },
+        { label: "Planning", value: operations.filter((op) => op.status === "planning").length, color: "text-info" },
         { label: "Completed", value: operations.filter((op) => op.status === "completed").length, color: "text-muted-foreground" },
       ],
     },
@@ -398,9 +409,9 @@ export default function Dashboard() {
       loading: targetsLoading,
       stats: [
         { label: "Total Targets", value: targets.length, color: "text-foreground" },
-        { label: "Active", value: targets.filter((t) => t.status === "active").length, color: "text-green-600" },
-        { label: "Scanning", value: targets.filter((t) => t.status === "scanning").length, color: "text-blue-600" },
-        { label: "Vulnerable", value: targets.filter((t) => t.status === "vulnerable").length, color: "text-red-600" },
+        { label: "Active", value: targets.filter((t) => t.status === "active").length, color: "text-success" },
+        { label: "Scanning", value: targets.filter((t) => t.status === "scanning").length, color: "text-info" },
+        { label: "Vulnerable", value: targets.filter((t) => t.status === "vulnerable").length, color: "text-destructive" },
       ],
     },
     vulnerabilities: {
@@ -410,9 +421,9 @@ export default function Dashboard() {
       loading: vulnLoading,
       stats: [
         { label: "Total Vulnerabilities", value: vulnerabilities.length, color: "text-foreground" },
-        { label: "Critical", value: vulnerabilities.filter((v) => v.severity === "critical").length, color: "text-red-600" },
-        { label: "High", value: vulnerabilities.filter((v) => v.severity === "high").length, color: "text-orange-600" },
-        { label: "Remediated", value: vulnerabilities.filter((v) => v.status === "remediated").length, color: "text-green-600" },
+        { label: "Critical", value: vulnerabilities.filter((v) => v.severity === "critical").length, color: "text-severity-critical" },
+        { label: "High", value: vulnerabilities.filter((v) => v.severity === "high").length, color: "text-severity-high" },
+        { label: "Remediated", value: vulnerabilities.filter((v) => v.status === "remediated").length, color: "text-success" },
       ],
     },
   };
@@ -424,72 +435,94 @@ export default function Dashboard() {
         <img src="/RTPI.png" alt="RTPI" className="max-w-[600px] w-full opacity-20" />
       </div>
 
-      <h1 className="text-3xl font-bold mb-8 -mt-[52vh]">RTPI Dashboard</h1>
+      <div className="-mt-[52vh]">
+        <PageHeader
+          icon={LayoutDashboard}
+          title="RTPI Dashboard"
+          description="Operational overview, workflows, and surface assessment summary."
+        />
+      </div>
 
       {hasError && (
-        <div className="mb-6 p-4 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg text-red-800 dark:text-red-200">
-          <p className="font-medium">Failed to load some dashboard data</p>
-          <p className="text-sm">{opsError || targetsError || vulnError || agentsError}</p>
+        <div
+          role="alert"
+          className="mb-6 p-4 rounded-lg border border-destructive/30 bg-destructive/10 text-destructive flex items-start gap-3"
+        >
+          <AlertCircle aria-hidden="true" className="h-5 w-5 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="font-medium">Failed to load some dashboard data</p>
+            <p className="text-sm">{opsError || targetsError || vulnError || agentsError}</p>
+          </div>
         </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
         {/* Active Operations */}
         <div
-          className="bg-card p-6 rounded-lg shadow border border-border cursor-pointer hover:shadow-lg transition-shadow"
+          className="bg-card p-6 rounded-lg shadow-sm border border-border cursor-pointer hover:shadow-lg transition-shadow"
           onClick={() => navigate("/operations")}
         >
           <h3 className="text-sm font-medium text-muted-foreground mb-2">Active Operations</h3>
-          <p className="text-3xl font-bold text-green-600 dark:text-green-400 flex items-center gap-2">
-            {loading ? <><Loader2 className="h-6 w-6 animate-spin" /> Loading...</> : stats.activeOperations}
-          </p>
+          {loading ? (
+            <Skeleton className="h-9 w-16" />
+          ) : (
+            <p className="text-3xl font-bold text-success tabular-nums">{stats.activeOperations}</p>
+          )}
         </div>
 
         {/* Targets */}
         <div
-          className="bg-card p-6 rounded-lg shadow border border-border cursor-pointer hover:shadow-lg transition-shadow"
+          className="bg-card p-6 rounded-lg shadow-sm border border-border cursor-pointer hover:shadow-lg transition-shadow"
           onClick={() => navigate("/targets")}
         >
           <h3 className="text-sm font-medium text-muted-foreground mb-2">Targets</h3>
-          <p className="text-3xl font-bold text-blue-600 dark:text-blue-400 flex items-center gap-2">
-            {loading ? <><Loader2 className="h-6 w-6 animate-spin" /> Loading...</> : stats.targets}
-          </p>
+          {loading ? (
+            <Skeleton className="h-9 w-16" />
+          ) : (
+            <p className="text-3xl font-bold text-info tabular-nums">{stats.targets}</p>
+          )}
         </div>
 
         {/* Vulnerabilities */}
         <div
-          className="bg-card p-6 rounded-lg shadow border border-border cursor-pointer hover:shadow-lg transition-shadow"
+          className="bg-card p-6 rounded-lg shadow-sm border border-border cursor-pointer hover:shadow-lg transition-shadow"
           onClick={() => navigate("/vulnerabilities")}
         >
           <h3 className="text-sm font-medium text-muted-foreground mb-2">Vulnerabilities</h3>
-          <p className="text-3xl font-bold text-red-600 dark:text-red-400 flex items-center gap-2">
-            {loading ? <><Loader2 className="h-6 w-6 animate-spin" /> Loading...</> : stats.vulnerabilities}
-          </p>
+          {loading ? (
+            <Skeleton className="h-9 w-16" />
+          ) : (
+            <p className="text-3xl font-bold text-destructive tabular-nums">{stats.vulnerabilities}</p>
+          )}
         </div>
 
         {/* Active Agents */}
         <div
-          className="bg-card p-6 rounded-lg shadow border border-border cursor-pointer hover:shadow-lg transition-shadow"
+          className="bg-card p-6 rounded-lg shadow-sm border border-border cursor-pointer hover:shadow-lg transition-shadow"
           onClick={() => navigate("/agents")}
         >
           <h3 className="text-sm font-medium text-muted-foreground mb-2">Active Agents</h3>
-          <p className="text-3xl font-bold text-purple-600 dark:text-purple-400 flex items-center gap-2">
-            {loading ? <><Loader2 className="h-6 w-6 animate-spin" /> Loading...</> : stats.activeAgents}
-          </p>
+          {loading ? (
+            <Skeleton className="h-9 w-16" />
+          ) : (
+            <p className="text-3xl font-bold text-foreground tabular-nums">{stats.activeAgents}</p>
+          )}
         </div>
 
         {/* Operations Manager */}
         <div
-          className="bg-card p-6 rounded-lg shadow border border-border cursor-pointer hover:shadow-lg transition-shadow"
+          className="bg-card p-6 rounded-lg shadow-sm border border-border cursor-pointer hover:shadow-lg transition-shadow"
           onClick={() => navigate("/operations?chat=open")}
         >
           <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
-            <ClipboardList className="h-4 w-4" />
+            <ClipboardList aria-hidden="true" className="h-4 w-4" />
             Operations Manager
           </h3>
-          <p className="text-3xl font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-2">
-            {loading ? <><Loader2 className="h-6 w-6 animate-spin" /> Loading...</> : stats.activeReporters}
-          </p>
+          {loading ? (
+            <Skeleton className="h-9 w-16" />
+          ) : (
+            <p className="text-3xl font-bold text-foreground tabular-nums">{stats.activeReporters}</p>
+          )}
           <p className="text-sm text-muted-foreground mt-2">
             Reporter agents active
           </p>
@@ -544,13 +577,13 @@ export default function Dashboard() {
           >
             <CardTitle className="flex items-center gap-2">
               {expandedWorkflows.active ? (
-                <ChevronDown className="h-4 w-4" />
+                <ChevronDown aria-hidden="true" className="h-4 w-4" />
               ) : (
-                <ChevronRight className="h-4 w-4" />
+                <ChevronRight aria-hidden="true" className="h-4 w-4" />
               )}
-              <Activity className="h-5 w-5 text-blue-600" />
+              <Activity aria-hidden="true" className="h-5 w-5 text-info" />
               Active Workflows
-              <Badge variant="secondary" className="ml-2 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
+              <Badge variant="secondary" className="ml-2 bg-info/10 text-info border-info/20">
                 {runningWorkflows.length}
               </Badge>
             </CardTitle>
@@ -572,11 +605,12 @@ export default function Dashboard() {
             </CardContent>
           ) : runningWorkflows.length === 0 ? (
             <CardContent>
-              <div className="text-center py-8 text-muted-foreground">
-                <Activity className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p className="text-sm">No active workflows</p>
-                <p className="text-xs mt-1">Execute a workflow to see progress here.</p>
-              </div>
+              <EmptyState
+                icon={Activity}
+                title="No active workflows"
+                description="Execute a workflow to see progress here."
+                className="border-0 bg-transparent"
+              />
             </CardContent>
           ) : null}
         </Card>
@@ -589,11 +623,11 @@ export default function Dashboard() {
           >
             <CardTitle className="flex items-center gap-2">
               {expandedWorkflows.history ? (
-                <ChevronDown className="h-4 w-4" />
+                <ChevronDown aria-hidden="true" className="h-4 w-4" />
               ) : (
-                <ChevronRight className="h-4 w-4" />
+                <ChevronRight aria-hidden="true" className="h-4 w-4" />
               )}
-              <Clock className="h-5 w-5 text-muted-foreground" />
+              <Clock aria-hidden="true" className="h-5 w-5 text-muted-foreground" />
               Workflow History
               <Badge variant="secondary" className="ml-2">
                 {allNonRunning.length}
@@ -621,13 +655,13 @@ export default function Dashboard() {
                       </div>
                       <Badge
                         variant="secondary"
-                        className={`${
+                        className={
                           workflow.status === "completed"
-                            ? "bg-green-500/10 text-green-600"
+                            ? "bg-success/10 text-success border-success/20"
                             : workflow.status === "failed"
-                            ? "bg-red-500/10 text-red-600"
-                            : "bg-secondary/10 text-muted-foreground"
-                        }`}
+                            ? "bg-destructive/10 text-destructive border-destructive/20"
+                            : "bg-secondary text-muted-foreground"
+                        }
                       >
                         {workflow.status.toUpperCase()}
                       </Badge>
@@ -646,11 +680,12 @@ export default function Dashboard() {
             </CardContent>
           ) : allNonRunning.length === 0 ? (
             <CardContent>
-              <div className="text-center py-8 text-muted-foreground">
-                <Clock className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p className="text-sm">No workflow history</p>
-                <p className="text-xs mt-1">Completed workflows will appear here.</p>
-              </div>
+              <EmptyState
+                icon={Clock}
+                title="No workflow history"
+                description="Completed workflows will appear here."
+                className="border-0 bg-transparent"
+              />
             </CardContent>
           ) : null}
         </Card>

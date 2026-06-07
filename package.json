@@ -11,6 +11,7 @@
     "test": "vitest",
     "bootstrap": "bash scripts/bootstrap-secrets.sh",
     "deploy:check": "bash scripts/pre-deployment-check.sh",
+    "deploy:sync-pg": "bash scripts/sync-shared-postgres-roles.sh",
     "deploy:verify": "bash scripts/deploy-verify.sh",
     "build:offsec": "bash scripts/build-resilient.sh",
     "dev": "tsx watch server/index.ts",
@@ -25,7 +26,9 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:create-admin": "tsx server/scripts/create-admin.ts"
+    "db:create-admin": "tsx server/scripts/create-admin.ts",
+    "skills:generate": "tsx scripts/generate-tool-skills.ts",
+    "bug-hunter:import-skills": "tsx scripts/import-bug-hunter-skills.ts"
   },
   "keywords": [],
   "author": "",

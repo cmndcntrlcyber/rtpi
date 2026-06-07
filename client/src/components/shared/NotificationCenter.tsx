@@ -63,11 +63,21 @@ export function NotificationCenter() {
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative">
-          <Bell className="h-5 w-5" />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative h-11 w-11 sm:h-10 sm:w-10"
+          aria-label={
+            unreadCount > 0
+              ? `Notifications, ${unreadCount} unread`
+              : "Notifications"
+          }
+        >
+          <Bell className="h-5 w-5" aria-hidden="true" />
           {unreadCount > 0 && (
             <Badge
               variant="destructive"
+              aria-hidden="true"
               className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
             >
               {unreadCount > 9 ? "9+" : unreadCount}

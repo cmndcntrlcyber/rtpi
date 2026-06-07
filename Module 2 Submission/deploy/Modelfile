@@ -1,0 +1,27 @@
+# Ollama Modelfile for qwen14b-code-trainer-v6 (Qwen2.5-Coder-14B, Q4_K_M GGUF)
+# Build:  ollama create qwen2.5-coder:14b -f ./Modelfile
+# The GGUF path is resolved by deploy_ollama.sh after the Hugging Face pull.
+
+FROM ./Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf
+
+TEMPLATE """{{ if .System }}<|im_start|>system
+{{ .System }}<|im_end|>
+{{ end }}{{ if .Prompt }}<|im_start|>user
+{{ .Prompt }}<|im_end|>
+{{ end }}<|im_start|>assistant
+"""
+
+# Qwen ChatML turn boundaries
+PARAMETER stop "<|im_start|>"
+PARAMETER stop "<|im_end|>"
+
+# Serving parameters (see deployment-plan.md §2.3)
+PARAMETER num_ctx 4096
+PARAMETER num_predict 2048
+PARAMETER temperature 0.2
+PARAMETER top_p 0.9
+
+SYSTEM """You are the RTPI code and tool-use model. You generate correct, idiomatic
+code, security tool templates, and well-formed tool calls for authorized red-team
+operations. Prefer deterministic, parseable output. When asked for a tool call,
+emit only a valid call against the provided schema."""

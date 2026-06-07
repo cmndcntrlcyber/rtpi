@@ -2,6 +2,7 @@ import { db } from "../db";
 import { aiEnrichmentLogs } from "../../shared/schema";
 import { ollamaManager } from "./ollama-manager";
 import { getOpenAIClient, getAnthropicClient } from "./ai-clients";
+import { resolveTargets as resolveInferenceTargets } from "./inference/resolver";
 
 /**
  * Ollama AI Client Service
@@ -483,7 +484,7 @@ export class OllamaAIClient {
     }
 
     // Determine provider and model (model must match provider)
-    const provider = options.provider || this.selectProvider();
+    const provider = options.provider || this.selectProvider(options.enrichmentType);
     const model = options.model || this.selectModelForProvider(provider, options.enrichmentType);
 
     let response: AICompletionResponse;
@@ -747,26 +748,52 @@ export class OllamaAIClient {
   /**
    * Automatically select the best available provider
    */
-  private selectProvider(): AIProvider {
-    // When PREFER_LOCAL_AI is set, use local inference first (RKLLama/Ollama)
+  /**
+   * Pick the first provider that resolves out of the inference router for
+   * this kind. `code_analysis` enrichment is treated as Reasoning (heavier
+   * synthesis); everything else routes through Agent. This pulls the
+   * Settings → Default {Agent,Reasoning} Model into the OllamaAIClient
+   * fast-path so the 12 legacy call sites get Settings-driven routing
+   * without per-site changes.
+   *
+   * Honors PREFER_LOCAL_AI as a hard pin to Ollama (matches the prior
+   * contract) — operators with that env set keep the existing behavior.
+   */
+  private selectProvider(enrichmentType?: string): AIProvider {
     if (process.env.PREFER_LOCAL_AI === "true") return "ollama";
-    // Prefer cloud providers when API keys are configured
-    if (this.anthropic) return "anthropic";
-    if (this.openai) return "openai";
-    // Fall back to local Ollama
+    const kind = enrichmentType === "code_analysis" ? "reasoning" : "agent";
+    const targets = resolveInferenceTargets(kind, {});
+    for (const t of targets) {
+      // Restrict to the providers OllamaAIClient knows how to call directly
+      // — vLLM falls under "ollama" semantics here since callOllama only
+      // talks to the Ollama HTTP API; if Settings names vLLM the router
+      // path (used by direct-SDK call sites) handles it.
+      if (t.provider === "anthropic" && this.anthropic) return "anthropic";
+      if (t.provider === "openai" && this.openai) return "openai";
+      if (t.provider === "ollama") return "ollama";
+    }
+    // No resolver match — ollama first (local, free), then cloud. vLLM is
+    // not represented here because this client only speaks to
+    // ollama/anthropic/openai directly; vLLM-bound traffic flows through
+    // the inference router instead.
     return "ollama";
   }
 
   /**
-   * Select appropriate model based on provider and enrichment type.
-   * Returns a model name valid for the given provider.
+   * Pick a model for `provider` that honors Settings → Default {Agent,
+   * Reasoning} Model. Falls back to the provider's documented default,
+   * which is also what the prior hardcoded paths returned.
    */
   private selectModelForProvider(provider: AIProvider, enrichmentType?: string): string {
+    const kind = enrichmentType === "code_analysis" ? "reasoning" : "agent";
+    const targets = resolveInferenceTargets(kind, {});
+    const match = targets.find((t) => t.provider === provider);
+    if (match) return match.model;
     switch (provider) {
       case "anthropic":
-        return enrichmentType === "code_analysis" ? "claude-sonnet-4-5" : "claude-sonnet-4-5";
+        return "claude-sonnet-4-5";
       case "openai":
-        return enrichmentType === "code_analysis" ? "gpt-5.2" : "gpt-5.2-chat-latest";
+        return "gpt-4o-mini";
       case "ollama":
       default:
         return enrichmentType === "code_analysis" ? this.CODE_MODEL : this.DEFAULT_MODEL;

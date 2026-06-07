@@ -147,6 +147,9 @@ SYSREPTOR_REDIS_PASSWORD="$(gen_alnum 32)"
 SYSREPTOR_SECRET_KEY="$(gen_b64 50)"
 SYSREPTOR_AES_KEY="$(gen_b64 32)"
 SYSREPTOR_KEY_ID="$(gen_uuid)"
+DOCMOST_DB_PASSWORD="$(gen_alnum 32)"
+DOCMOST_REDIS_PASSWORD="$(gen_alnum 32)"
+DOCMOST_APP_SECRET="$(gen_hex 32)"
 
 TIMESTAMP="$(date -u +%Y%m%d-%H%M%SZ)"
 
@@ -188,6 +191,9 @@ sub "$ENV_FILE" KASM_AGENT_ID              "$KASM_AGENT_ID"
 sub "$ENV_FILE" KASM_DB_PASSWORD           "$KASM_DB_PASSWORD"
 sub "$ENV_FILE" SYSREPTOR_DB_PASSWORD      "$SYSREPTOR_DB_PASSWORD"
 sub "$ENV_FILE" SYSREPTOR_REDIS_PASSWORD   "$SYSREPTOR_REDIS_PASSWORD"
+sub "$ENV_FILE" DOCMOST_DB_PASSWORD        "$DOCMOST_DB_PASSWORD"
+sub "$ENV_FILE" DOCMOST_REDIS_PASSWORD     "$DOCMOST_REDIS_PASSWORD"
+sub "$ENV_FILE" DOCMOST_APP_SECRET         "$DOCMOST_APP_SECRET"
 chmod 600 "$ENV_FILE"
 ok "Wrote $ENV_FILE"
 
@@ -212,16 +218,25 @@ chmod 600 "$SYSREPTOR_ENV"
 ok "Wrote $SYSREPTOR_ENV"
 
 # ─── Patch docker/postgres-init/01-init-databases.sql ──────────────────────
+# These passwords are only consumed on first boot against an empty postgres
+# data volume. After first boot, the source of truth shifts to .env — use
+# `npm run deploy:sync-pg` (scripts/sync-shared-postgres-roles.sh) to ALTER
+# the live roles on subsequent rotations without wiping the data volume.
 info "Patching $PG_INIT"
-# Replace whatever password is currently on the CREATE USER sysreptor line.
-# Escape for sed replacement
-escaped_db_pw=$(printf '%s' "$SYSREPTOR_DB_PASSWORD" | sed -e 's/[\\&|]/\\&/g')
-if grep -qE "CREATE USER sysreptor WITH PASSWORD '[^']+';" "$PG_INIT"; then
-  sed -i -E "s|(CREATE USER sysreptor WITH PASSWORD ')[^']+(';)|\1${escaped_db_pw}\2|g" "$PG_INIT"
-  ok "Patched $PG_INIT"
-else
-  warn "$PG_INIT has no matching CREATE USER sysreptor line; skipping"
-fi
+patch_init_password() {
+  # patch_init_password <role> <plaintext-password>
+  local role="$1" pw="$2"
+  local escaped
+  escaped=$(printf '%s' "$pw" | sed -e 's/[\\&|]/\\&/g')
+  if grep -qE "CREATE USER ${role} WITH PASSWORD '[^']+';" "$PG_INIT"; then
+    sed -i -E "s|(CREATE USER ${role} WITH PASSWORD ')[^']+(';)|\1${escaped}\2|g" "$PG_INIT"
+    ok "Patched $PG_INIT (role: ${role})"
+  else
+    warn "$PG_INIT has no matching CREATE USER ${role} line; skipping"
+  fi
+}
+patch_init_password sysreptor "$SYSREPTOR_DB_PASSWORD"
+patch_init_password docmost   "$DOCMOST_DB_PASSWORD"
 
 # ─── Credentials backup ────────────────────────────────────────────────────
 # Support running in a container where HOME might be /root
@@ -266,6 +281,9 @@ SYSREPTOR_REDIS_PASSWORD=${SYSREPTOR_REDIS_PASSWORD}
 SYSREPTOR_SECRET_KEY=${SYSREPTOR_SECRET_KEY}
 SYSREPTOR_AES_KEY=${SYSREPTOR_AES_KEY}
 SYSREPTOR_KEY_ID=${SYSREPTOR_KEY_ID}
+DOCMOST_DB_PASSWORD=${DOCMOST_DB_PASSWORD}
+DOCMOST_REDIS_PASSWORD=${DOCMOST_REDIS_PASSWORD}
+DOCMOST_APP_SECRET=${DOCMOST_APP_SECRET}
 EOF
 chmod 600 "$BACKUP_FILE"
 ln -sf "$BACKUP_FILE" "${BACKUP_DIR}/credentials.latest.env"
@@ -287,9 +305,13 @@ cat <<EOF
     username  admin
     password  ${DEFAULT_ADMIN_PASSWORD}
 
-  NOTE: if postgres data volume already exists from a previous run,
-  you must \`docker compose down -v\` before \`up\` so the postgres-init
-  script runs again with the new password. Existing sysreptor data
-  will be lost.
+  NOTE: the embedded passwords in docker/postgres-init/01-init-databases.sql
+  are only consumed on first boot against an empty postgres data volume.
+  If the rtpi-postgres volume already exists from a previous run, choose:
+    (a) preserve data — bring postgres up, then run:
+          npm run deploy:sync-pg
+        to ALTER the live roles to match the new .env passwords; OR
+    (b) reset data (DESTRUCTIVE) — re-run with --force --reset-volumes so
+        the init script runs again. Existing sysreptor / docmost data is lost.
 ─────────────────────────────────────────────────────────────────────
 EOF

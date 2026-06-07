@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useLocation } from "wouter";
-import { Plus, RotateCcw, CheckSquare } from "lucide-react";
+import { Plus, RotateCcw, CheckSquare, Target as TargetIcon } from "lucide-react";
 import { toast } from "sonner";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { DragEndEvent } from "@dnd-kit/core";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -379,66 +381,66 @@ export default function Targets() {
     vulnerable: filteredTargets.filter((t) => t.status === "vulnerable").length,
   };
 
+  const statCards = [
+    { label: "Total Targets", value: stats.total, color: "text-foreground" },
+    { label: "Active", value: stats.active, color: "text-success" },
+    { label: "Scanning", value: stats.scanning, color: "text-info" },
+    { label: "Vulnerable", value: stats.vulnerable, color: "text-destructive" },
+  ];
+
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Targets</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage target systems and infrastructure
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Select value={selectedOperation} onValueChange={setSelectedOperation}>
-            <SelectTrigger className="w-[220px]">
-              <SelectValue placeholder="Filter by operation" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Operations</SelectItem>
-              {operations
-                .filter((op) => op.status === "active")
-                .map((op) => (
-                  <SelectItem key={op.id} value={op.id}>
-                    {op.name}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-          <Button
-            variant={bulkMode ? "secondary" : "outline"}
-            onClick={toggleBulkMode}
-          >
-            <CheckSquare className="h-4 w-4 mr-2" />
-            {bulkMode ? "Exit Bulk Mode" : "Bulk Select"}
-          </Button>
-          <Button onClick={handleAddTarget}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Target
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        icon={TargetIcon}
+        title="Targets"
+        description="Manage target systems and infrastructure"
+        actions={
+          <>
+            <Select value={selectedOperation} onValueChange={setSelectedOperation}>
+              <SelectTrigger className="w-[220px]" aria-label="Filter by operation">
+                <SelectValue placeholder="Filter by operation" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Operations</SelectItem>
+                {operations
+                  .filter((op) => op.status === "active")
+                  .map((op) => (
+                    <SelectItem key={op.id} value={op.id}>
+                      {op.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant={bulkMode ? "secondary" : "outline"}
+              onClick={toggleBulkMode}
+            >
+              <CheckSquare aria-hidden="true" className="h-4 w-4 mr-2" />
+              {bulkMode ? "Exit Bulk Mode" : "Bulk Select"}
+            </Button>
+            <Button onClick={handleAddTarget}>
+              <Plus aria-hidden="true" className="h-4 w-4 mr-2" />
+              Add Target
+            </Button>
+          </>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">Total Targets</h3>
-          <p className="text-3xl font-bold text-foreground">{stats.total}</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">Active</h3>
-          <p className="text-3xl font-bold text-green-600">{stats.active}</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">Scanning</h3>
-          <p className="text-3xl font-bold text-blue-600">{stats.scanning}</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">Vulnerable</h3>
-          <p className="text-3xl font-bold text-red-600">{stats.vulnerable}</p>
-        </div>
+        {statCards.map((card) => (
+          <div
+            key={card.label}
+            className="bg-card p-6 rounded-lg shadow-sm border border-border"
+          >
+            <h3 className="text-sm font-medium text-muted-foreground mb-2">{card.label}</h3>
+            {loading ? (
+              <Skeleton className="h-9 w-16" />
+            ) : (
+              <p className={`text-3xl font-bold tabular-nums ${card.color}`}>{card.value}</p>
+            )}
+          </div>
+        ))}
       </div>
 
       {/* Targets List — grouped by operation */}
@@ -479,7 +481,7 @@ export default function Targets() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <RotateCcw className="h-5 w-5 text-blue-600" />
+              <RotateCcw aria-hidden="true" className="h-5 w-5 text-info" />
               Run Agent Loop
             </DialogTitle>
           </DialogHeader>
@@ -509,7 +511,7 @@ export default function Targets() {
                 </SelectContent>
               </Select>
               {agents.filter((a) => a.config?.loopEnabled).length === 0 && (
-                <p className="text-sm text-amber-600 mt-2">
+                <p className="text-sm text-warning mt-2">
                   No agents with loop configuration found. Please configure an agent first.
                 </p>
               )}

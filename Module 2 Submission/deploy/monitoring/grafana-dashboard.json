@@ -1,0 +1,71 @@
+{
+  "__comment": "Monitoring dashboard mockup for qwen14b-code-trainer-v6 (deployment-plan.md §5). Import into Grafana with a Prometheus data source.",
+  "title": "RTPI — qwen14b-code-trainer-v6 Inference",
+  "uid": "qwen-coder-m2",
+  "schemaVersion": 39,
+  "tags": ["rtpi", "llm", "inference", "module2"],
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "15s",
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Time-to-First-Token p50/p95/p99 (s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, rate(vllm:time_to_first_token_seconds_bucket[5m]))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, rate(vllm:time_to_first_token_seconds_bucket[5m]))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, rate(vllm:time_to_first_token_seconds_bucket[5m]))", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Decode Throughput (tokens/s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "rate(vllm:generation_tokens_total[1m])", "legendFormat": "gen tok/s" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Request Rate & Error Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "rate(vllm:request_success_total[1m])", "legendFormat": "success/s" },
+        { "expr": "rate(vllm:request_failure_total[1m])", "legendFormat": "errors/s" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "GPU Utilization & VRAM",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "DCGM_FI_DEV_GPU_UTIL", "legendFormat": "GPU util %" },
+        { "expr": "DCGM_FI_DEV_FB_USED / (DCGM_FI_DEV_FB_USED + DCGM_FI_DEV_FB_FREE) * 100", "legendFormat": "VRAM used %" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Token Usage per Request (prompt vs completion)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        { "expr": "rate(vllm:prompt_tokens_total[5m])", "legendFormat": "prompt tok/s" },
+        { "expr": "rate(vllm:generation_tokens_total[5m])", "legendFormat": "completion tok/s" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Backend Up (local availability SLO)",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        { "expr": "up{job=\"vllm\"}", "legendFormat": "vllm up" }
+      ]
+    }
+  ]
+}

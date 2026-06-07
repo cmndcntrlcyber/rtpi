@@ -832,6 +832,23 @@ class WorkflowEventHandlers extends EventEmitter {
       console.error('Failed to seed ops management agents:', error);
     }
 
+    // Bug-Hunter agents + autopilot (FF_BUG_HUNTER)
+    if (["true", "1", "yes", "on"].includes((process.env.FF_BUG_HUNTER ?? "").toLowerCase())) {
+      try {
+        const { initializeBugHunterAgents } = await import('./agents/bug-hunter');
+        await initializeBugHunterAgents();
+        console.log('Bug-Hunter agents initialized (FF_BUG_HUNTER)');
+      } catch (error) {
+        console.error('Failed to initialize Bug-Hunter agents:', error);
+      }
+      try {
+        const { bugHunterAutopilot } = await import('./bug-hunter/autopilot-scheduler');
+        bugHunterAutopilot.start();
+      } catch (error) {
+        console.error('Failed to start Bug-Hunter autopilot:', error);
+      }
+    }
+
     this.initialized = true;
     console.log('Agent System initialization complete');
     this.emit('agent_system_initialized');
@@ -863,6 +880,16 @@ class WorkflowEventHandlers extends EventEmitter {
       await vulnerabilityReporterAgent.stopPolling();
     } catch (error) {
       console.error('Error stopping Vulnerability Reporter Agent:', error);
+    }
+
+    // Bug-Hunter autopilot
+    if (["true", "1", "yes", "on"].includes((process.env.FF_BUG_HUNTER ?? "").toLowerCase())) {
+      try {
+        const { bugHunterAutopilot } = await import('./bug-hunter/autopilot-scheduler');
+        bugHunterAutopilot.shutdown();
+      } catch (error) {
+        console.error('Error stopping Bug-Hunter autopilot:', error);
+      }
     }
 
     this.initialized = false;

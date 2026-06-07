@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Microscope, Bot, Wrench, FolderOpen, FlaskConical, BookOpen, Target } from "lucide-react";
 import RDAgentsTab from "@/components/offsec-team/RDAgentsTab";
@@ -8,6 +9,16 @@ import KnowledgeBaseTab from "@/components/offsec-team/KnowledgeBaseTab";
 import TacticWorkflowsView from "@/components/offsec-team/TacticWorkflowsView";
 
 export default function OffSecTeam() {
+  const [tab, setTab] = useState("workflows");
+  // Cross-tab drill-down: a project card can jump to Experiments pre-filtered
+  // to that project (S5).
+  const [projectFilter, setProjectFilter] = useState<{ id: string; name: string } | null>(null);
+
+  const handleViewExperiments = (id: string, name: string) => {
+    setProjectFilter({ id, name });
+    setTab("experiments");
+  };
+
   return (
     <div className="p-8">
       <div className="flex items-center gap-3 mb-8">
@@ -22,7 +33,7 @@ export default function OffSecTeam() {
         </div>
       </div>
 
-      <Tabs defaultValue="workflows" className="w-full">
+      <Tabs value={tab} onValueChange={setTab} className="w-full">
         <TabsList className="grid w-full grid-cols-6 mb-8">
           <TabsTrigger value="agents" className="flex items-center gap-2">
             <Bot className="h-4 w-4" />
@@ -65,11 +76,14 @@ export default function OffSecTeam() {
         </TabsContent>
 
         <TabsContent value="projects" className="mt-0">
-          <ResearchProjectsTab />
+          <ResearchProjectsTab onViewExperiments={handleViewExperiments} />
         </TabsContent>
 
         <TabsContent value="experiments" className="mt-0">
-          <ExperimentsTab />
+          <ExperimentsTab
+            projectFilter={projectFilter}
+            onClearFilter={() => setProjectFilter(null)}
+          />
         </TabsContent>
 
         <TabsContent value="knowledge" className="mt-0">

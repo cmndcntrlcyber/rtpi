@@ -5,7 +5,6 @@ import { eq, and, desc, gte, lte, or } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import { z } from "zod";
 import { rdExperimentOrchestrator } from "../../services/rd-experiment-orchestrator";
-import { rdToolPromotion } from "../../services/rd-tool-promotion";
 
 const router = Router();
 
@@ -16,6 +15,7 @@ router.use(ensureAuthenticated);
 const experimentSchema = z.object({
   projectId: z.string().uuid("Project ID is required"),
   name: z.string().min(1, "Experiment name is required"),
+  type: z.enum(["vulnerability_research", "poc_development", "nuclei_template"]).optional(),
   description: z.string().optional(),
   hypothesis: z.string().optional(),
   methodology: z.string().optional(),
@@ -42,6 +42,7 @@ router.get("/", async (req, res) => {
         projectId: rdExperiments.projectId,
         projectName: researchProjects.name,
         name: rdExperiments.name,
+        type: rdExperiments.type,
         description: rdExperiments.description,
         hypothesis: rdExperiments.hypothesis,
         methodology: rdExperiments.methodology,
@@ -91,6 +92,7 @@ router.get("/:id", async (req, res) => {
         projectId: rdExperiments.projectId,
         projectName: researchProjects.name,
         name: rdExperiments.name,
+        type: rdExperiments.type,
         description: rdExperiments.description,
         hypothesis: rdExperiments.hypothesis,
         methodology: rdExperiments.methodology,
@@ -153,6 +155,7 @@ router.post("/", ensureRole("admin", "operator"), async (req, res) => {
       .values({
         projectId: validatedData.projectId,
         name: validatedData.name,
+        type: validatedData.type || "vulnerability_research",
         description: validatedData.description,
         hypothesis: validatedData.hypothesis,
         methodology: validatedData.methodology,
@@ -440,36 +443,10 @@ router.get("/:experimentId/artifacts", async (req, res) => {
   }
 });
 
-// POST /api/v1/offsec-rd/artifacts/:artifactId/promote - Promote artifact to Tool Registry
-router.post("/artifacts/:artifactId/promote", ensureRole("admin", "operator"), async (req, res) => {
-  const { artifactId } = req.params;
-  const { toolName, category } = req.body;
-  const user = req.user as any;
-
-  try {
-    const result = await rdToolPromotion.promoteToToolRegistry(artifactId, toolName, category);
-
-    await logAudit(
-      user.id,
-      "offsec_rd_artifact_promote",
-      `/offsec-rd/artifacts/${artifactId}/promote`,
-      artifactId,
-      result.success,
-      req
-    );
-
-    if (!result.success) {
-      return res.status(400).json({ error: result.error, metadata: result.metadata });
-    }
-
-    res.json(result);
-  } catch (error: any) {
-    res.status(500).json({
-      error: "Failed to promote artifact",
-      details: error.message,
-    });
-  }
-});
+// NOTE: Artifact promotion (POST /api/v1/offsec-rd/artifacts/:artifactId/promote)
+// lives in offsec-rd-artifacts.ts, mounted at /api/v1/offsec-rd/artifacts. It was
+// moved out of this router because this router is mounted at
+// /api/v1/offsec-rd/experiments, which made the promote path unreachable (404).
 
 // GET /api/v1/offsec-rd/experiments/:id/agent-log - Get agent communications during experiment execution
 router.get("/:id/agent-log", async (req, res) => {

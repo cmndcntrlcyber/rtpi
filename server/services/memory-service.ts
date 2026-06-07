@@ -7,7 +7,7 @@ import {
 } from "@shared/schema";
 import { eq, and, or, desc, ilike, sql, lt } from "drizzle-orm";
 import { mem0Config } from "../config/mem0-config";
-import { getOpenAIClient } from "./ai-clients";
+import { routeEmbedding, NoInferenceProviderAvailable } from "./inference/inference-router";
 
 // ============================================================================
 // Types
@@ -689,20 +689,18 @@ export class MemoryService {
   // --------------------------------------------------------------------------
 
   private async generateEmbedding(text: string): Promise<number[] | null> {
-    const openai = getOpenAIClient();
-    if (mem0Config.embedding.provider === "none" || !openai) {
+    if (mem0Config.embedding.provider === "none") {
       return null;
     }
-
     try {
-      const response = await openai.embeddings.create({
-        model: mem0Config.embedding.model,
-        input: text,
-      });
-
-      return response.data[0].embedding;
+      const result = await routeEmbedding({ input: text });
+      return result.response.vectors[0] ?? null;
     } catch (error) {
-      console.error("Memory service - embedding generation failed:", error);
+      if (error instanceof NoInferenceProviderAvailable) {
+        console.error("Memory service - embedding providers exhausted:", error.message);
+      } else {
+        console.error("Memory service - embedding generation failed:", error);
+      }
       return null;
     }
   }

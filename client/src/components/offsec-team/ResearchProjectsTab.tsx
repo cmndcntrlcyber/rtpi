@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, FolderOpen, Activity, Calendar, PlayCircle, Loader2 } from "lucide-react";
+import { Plus, FolderOpen, Activity, Calendar, PlayCircle, Loader2, FlaskConical } from "lucide-react";
 import { api } from "@/lib/api";
 
 interface ResearchProject {
@@ -20,12 +20,19 @@ interface ResearchProject {
   leadAgentName: string | null;
   objectives: string | null;
   artifacts: any[];
+  artifactCount: number;
+  leadAgentTactics?: Array<{ attackId: string; name: string }>;
   createdByUsername: string | null;
   createdAt: string;
   completedAt: string | null;
 }
 
-export default function ResearchProjectsTab() {
+interface ResearchProjectsTabProps {
+  /** Jump to the Experiments tab pre-filtered to a project (S5). */
+  onViewExperiments?: (projectId: string, projectName: string) => void;
+}
+
+export default function ResearchProjectsTab({ onViewExperiments }: ResearchProjectsTabProps = {}) {
   const [projects, setProjects] = useState<ResearchProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -175,7 +182,7 @@ export default function ResearchProjectsTab() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-purple-600">
-              {projects.reduce((sum, p) => sum + (p.artifacts?.length || 0), 0)}
+              {projects.reduce((sum, p) => sum + (p.artifactCount ?? 0), 0)}
             </div>
           </CardContent>
         </Card>
@@ -227,6 +234,17 @@ export default function ResearchProjectsTab() {
                   </div>
                 )}
 
+                {project.leadAgentTactics && project.leadAgentTactics.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1">
+                    <span className="text-xs text-muted-foreground mr-1">ATT&CK scope:</span>
+                    {project.leadAgentTactics.map((t) => (
+                      <Badge key={t.attackId} variant="outline" className="text-xs" title={t.attackId}>
+                        {t.name}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+
                 <div className="pt-3 border-t border-border">
                   <div className="flex items-center justify-between text-sm">
                     <div className="flex items-center gap-2">
@@ -235,9 +253,9 @@ export default function ResearchProjectsTab() {
                         {new Date(project.createdAt).toLocaleDateString()}
                       </span>
                     </div>
-                    {project.artifacts && project.artifacts.length > 0 && (
+                    {project.artifactCount > 0 && (
                       <Badge variant="outline">
-                        {project.artifacts.length} artifact{project.artifacts.length !== 1 ? 's' : ''}
+                        {project.artifactCount} artifact{project.artifactCount !== 1 ? 's' : ''}
                       </Badge>
                     )}
                   </div>
@@ -259,6 +277,18 @@ export default function ResearchProjectsTab() {
                           Execute All Experiments
                         </>
                       )}
+                    </Button>
+                  )}
+                  {onViewExperiments && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full mt-2"
+                      onClick={() => onViewExperiments(project.id, project.name)}
+                    >
+                      <FlaskConical className="h-4 w-4 mr-2" />
+                      View Experiments
+                      {project.artifactCount > 0 ? ` (${project.artifactCount} artifacts)` : ""}
                     </Button>
                   )}
                 </div>

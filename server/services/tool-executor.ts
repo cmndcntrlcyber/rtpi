@@ -17,6 +17,8 @@ import { outputParserManager } from './output-parser-manager';
 import { dockerExecutor } from './docker-executor';
 import { containerRuntime } from './runtime/container-runtime';
 import { ContainerError, classifyContainerError } from './runtime/error-classifier';
+import { loadSkillBody, loadSkillFileByRelativePath } from './skills/skill-loader';
+import { deriveToolConfigFromSkill } from './tool-config-deriver';
 
 // Maximum concurrent tool executions
 const MAX_CONCURRENT_EXECUTIONS = parseInt(
@@ -251,18 +253,50 @@ async function buildCommand(tool: any, parameters: any): Promise<string> {
     return command.trim();
   }
 
-  // Fallback path: registry row lacks a usable config. Build a minimal
-  // positional invocation using whatever target-like parameter the caller
-  // provided, then self-repair the registry row.
+  // Fallback path: registry row lacks a usable config. Try the SKILL.md
+  // deriver first — it turns the tool's manual into a structured template
+  // and caches the result back to tool_registry.config so the next run
+  // takes the happy path above. If derivation fails (no SKILL.md, no
+  // reasoning provider, garbage response), fall through to the legacy
+  // positional stub so the row is at least insertable.
+  console.warn(
+    `[ToolExecutor] tool_registry row '${tool.toolId}' (${tool.id}) has no baseCommand/parameters; attempting SKILL.md-driven derivation.`
+  );
+
+  const skillBody = await loadSkillForTool(tool);
+  if (skillBody) {
+    const derived = await deriveToolConfigFromSkill({
+      toolId: tool.toolId,
+      toolName: tool.name,
+      skillBody,
+      agentInputs: params,
+    });
+    if (derived) {
+      // Persist for next time (best-effort, never block execution).
+      void db
+        .update(toolRegistry)
+        .set({ config: derived, updatedAt: new Date() })
+        .where(eq(toolRegistry.id, tool.id))
+        .then(() =>
+          console.info(
+            `[ToolExecutor] cached derived config for '${tool.toolId}' (baseCommand='${derived.baseCommand}', params=${derived.parameters.length})`,
+          ),
+        )
+        .catch((e) =>
+          console.warn(`[ToolExecutor] cache derived config failed for '${tool.toolId}':`, e),
+        );
+      return buildCommandFromConfig(derived, params);
+    }
+  }
+
+  // Legacy positional stub — last resort when the deriver can't help. Better
+  // than emitting `--target "X"` (which is the bug we're fixing), but still
+  // likely to fail at the container level. The row remains insertable.
   const target = params.target ?? params.url ?? params.host ?? params.domain ?? params.ip;
   const fallbackCommand = target ? String(target) : '';
 
-  console.warn(
-    `[ToolExecutor] tool_registry row '${tool.toolId}' (${tool.id}) has no baseCommand/parameters; using positional fallback.`
-  );
-
-  // Self-repair: write a minimal config so next run hits the happy path.
-  // Fire-and-forget; do not block execution if the update fails.
+  // Cache a minimal positional config so the next attempt at least hits the
+  // happy path with the corrected formatParameter (no spurious `--target`).
   void (async () => {
     try {
       const repaired = {
@@ -273,7 +307,7 @@ async function buildCommand(tool: any, parameters: any): Promise<string> {
             name: 'target',
             type: 'string',
             required: false,
-            description: 'Target host/URL/IP (positional, auto-seeded by self-repair).',
+            description: 'Target host/URL/IP (positional, auto-seeded by legacy stub).',
             positional: true,
           },
         ],
@@ -282,16 +316,58 @@ async function buildCommand(tool: any, parameters: any): Promise<string> {
         .update(toolRegistry)
         .set({ config: repaired, updatedAt: new Date() })
         .where(eq(toolRegistry.id, tool.id));
-      console.info(`[ToolExecutor] Auto-patched tool_registry config for '${tool.toolId}'.`);
+      console.info(`[ToolExecutor] Auto-patched tool_registry config for '${tool.toolId}' (legacy stub).`);
     } catch (e: any) {
       console.warn(`[ToolExecutor] Auto-patch failed for '${tool.toolId}': ${e?.message || e}`);
     }
   })();
 
-  // Command must be non-empty for the NOT NULL DB column. Use target when available,
-  // otherwise fall back to the tool's own id so the row is still insertable and the
-  // execution will fail later with a clearer error from the container rather than SQL.
+  // Command must be non-empty for the NOT NULL DB column.
   return fallbackCommand || `# no-target-supplied for ${tool.toolId}`;
+}
+
+/**
+ * Renders a DerivedToolConfig into the same string shape that the happy
+ * path produces, so runCommand's split-on-space tokenizer gives the right
+ * argv. Extracted so the deriver-path and the cached-config-path agree.
+ */
+function buildCommandFromConfig(
+  config: { baseCommand: string; parameters: any[] },
+  params: Record<string, any>,
+): string {
+  let command = config.baseCommand || '';
+  for (const paramDef of config.parameters || []) {
+    const value = params[paramDef.name];
+    if (value === undefined || value === null) {
+      if (paramDef.required) {
+        throw new Error(`Required parameter '${paramDef.name}' is missing`);
+      }
+      continue;
+    }
+    validateParameter(paramDef, value);
+    const piece = formatParameter(paramDef, value);
+    command = command ? `${command} ${piece}` : piece;
+  }
+  return command.trim();
+}
+
+/**
+ * Loads the SKILL.md body for a tool. Prefers the explicit `skillPath`
+ * column populated by the skill generator; falls back to slug-based lookup
+ * under skills/tools/registry/ when the column is empty (covers older rows).
+ */
+async function loadSkillForTool(tool: any): Promise<string | null> {
+  if (tool.skillPath) {
+    const body = await loadSkillFileByRelativePath(tool.skillPath);
+    if (body) return body;
+  }
+  // Fallback: try the registry slug. May miss for tools whose skill was
+  // generated under the security/ subdir; the deriver-null path is handled.
+  try {
+    return await loadSkillBody('registry', tool.toolId);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -372,23 +448,41 @@ function validateParameter(paramDef: any, value: any): void {
 }
 
 /**
- * Format parameter for command line
+ * Format a single parameter into the shell-arg fragment that gets joined
+ * into the command string. The string is later split on whitespace by
+ * runCommand to build argv, so we deliberately emit values WITHOUT literal
+ * double-quotes — those used to be left in argv and were causing tools to
+ * receive `"traveler.marriott.com"` (quotes included) as the target.
+ *
+ * Switch precedence per parameter definition:
+ *   - `positional: true`  → just the value, no flag token
+ *   - explicit `flag`      → `<flag> <value>` (or just `<flag>` for booleans)
+ *   - neither              → `--<name> <value>` (legacy default; preserves
+ *                            backwards-compat with rows that don't supply
+ *                            `flag`/`positional`)
+ *
+ * Exported for unit testing — not meant to be called directly by other
+ * services. Use buildCommand() / buildCommandFromConfig() instead.
  */
-function formatParameter(paramDef: any, value: any): string {
-  const { name, type } = paramDef;
+export function formatParameter(paramDef: any, value: any): string {
+  const { name, type, flag, positional } = paramDef;
 
-  // Boolean flags
+  if (positional) {
+    if (type === 'array') return (value as any[]).map((v) => String(v)).join(' ');
+    return String(value);
+  }
+
+  const switchToken = (typeof flag === 'string' && flag.length > 0) ? flag : `--${name}`;
+
   if (type === 'boolean') {
-    return value ? `--${name}` : '';
+    return value ? switchToken : '';
   }
 
-  // Array parameters
   if (type === 'array') {
-    return value.map((v: any) => `--${name} "${v}"`).join(' ');
+    return (value as any[]).map((v) => `${switchToken} ${v}`).join(' ');
   }
 
-  // Regular parameters
-  return `--${name} "${value}"`;
+  return `${switchToken} ${value}`;
 }
 
 /**

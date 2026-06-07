@@ -25,6 +25,7 @@ import {
   probeVLLM,
   getVLLMBaseUrl,
   getVLLMDefaultModel,
+  getVLLMDefaultEmbedModel,
   vllmEmbed,
   type VLLMProbeResult,
 } from "./vllm-client";
@@ -72,12 +73,14 @@ export interface InferenceProvider {
   defaultModel(): string | undefined;
   probe(): Promise<ProbeResult>;
   /**
-   * Embed one or more inputs. Implementations should respect EMBEDDING_MODEL
-   * env when present and fall back to a sensible default. Throws on transport
-   * failure; returns null when this provider can't embed (e.g. Anthropic).
-   * v2.9.1 Phase 7.
+   * Embed one or more inputs. The `model` argument wins when supplied (the
+   * inference router passes the resolver-chosen model so cross-provider
+   * leaks can't happen). When `model` is undefined, implementations fall
+   * back to `EMBEDDING_MODEL` env and then to a provider-appropriate
+   * hard-coded default. Throws on transport failure; returns null when this
+   * provider can't embed (e.g. Anthropic).
    */
-  embed?(inputs: string[]): Promise<number[][] | null>;
+  embed?(inputs: string[], model?: string): Promise<number[][] | null>;
 }
 
 // ----------------------------------------------------------------------------
@@ -120,9 +123,9 @@ class VLLMProvider implements InferenceProvider {
       details: { baseUrl: r.baseUrl },
     };
   }
-  async embed(inputs: string[]): Promise<number[][]> {
-    const model = process.env.EMBEDDING_MODEL || getVLLMDefaultModel();
-    const result = await vllmEmbed({ input: inputs, model });
+  async embed(inputs: string[], model?: string): Promise<number[][]> {
+    const chosen = model || process.env.EMBEDDING_MODEL || getVLLMDefaultEmbedModel();
+    const result = await vllmEmbed({ input: inputs, model: chosen });
     return (result?.data ?? []).map((d: any) => d.embedding as number[]);
   }
 }
@@ -172,17 +175,18 @@ class OllamaProvider implements InferenceProvider {
   }
   /**
    * Ollama embed via /api/embed (newer) with /api/embeddings legacy fallback.
-   * Default model is EMBEDDING_MODEL or 'nomic-embed-text:latest'.
+   * Caller-supplied `model` wins; otherwise EMBEDDING_MODEL, then the
+   * `nomic-embed-text:latest` hard-coded default.
    */
-  async embed(inputs: string[]): Promise<number[][]> {
+  async embed(inputs: string[], model?: string): Promise<number[][]> {
     const host = (this.endpoint() || "http://localhost:11434").replace(/\/+$/, "");
-    const model = process.env.EMBEDDING_MODEL || "nomic-embed-text:latest";
+    const chosen = model || process.env.EMBEDDING_MODEL || "nomic-embed-text:latest";
     // Try /api/embed first (supports batch); fall back to /api/embeddings (single).
     try {
       const res = await fetch(`${host}/api/embed`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model, input: inputs }),
+        body: JSON.stringify({ model: chosen, input: inputs }),
         signal: AbortSignal.timeout(60_000),
       });
       if (res.ok) {
@@ -197,7 +201,7 @@ class OllamaProvider implements InferenceProvider {
       const res = await fetch(`${host}/api/embeddings`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model, prompt: input }),
+        body: JSON.stringify({ model: chosen, prompt: input }),
         signal: AbortSignal.timeout(60_000),
       });
       if (!res.ok) {
@@ -265,11 +269,11 @@ class OpenAIProvider implements InferenceProvider {
       };
     }
   }
-  async embed(inputs: string[]): Promise<number[][] | null> {
+  async embed(inputs: string[], model?: string): Promise<number[][] | null> {
     const client = getOpenAIClient();
     if (!client) return null;
-    const model = process.env.EMBEDDING_MODEL || "text-embedding-3-small";
-    const res = await client.embeddings.create({ model, input: inputs });
+    const chosen = model || process.env.EMBEDDING_MODEL || "text-embedding-3-small";
+    const res = await client.embeddings.create({ model: chosen, input: inputs });
     return res.data.map((d: any) => d.embedding as number[]);
   }
 }
@@ -326,7 +330,10 @@ class AnthropicProvider implements InferenceProvider {
 // Registry
 // ----------------------------------------------------------------------------
 
-const FALLBACK_ORDER: ProviderId[] = ["vllm", "ollama", "openai", "anthropic"];
+// Ollama first (local, free, reachable when configured), vLLM last
+// (requires a running container — bare `fetch failed` is common when it
+// isn't deployed). Cloud providers fill the middle slots.
+const FALLBACK_ORDER: ProviderId[] = ["ollama", "anthropic", "openai", "vllm"];
 
 class InferenceProviderRegistry {
   private providers: Map<ProviderId, InferenceProvider>;
@@ -352,8 +359,9 @@ class InferenceProviderRegistry {
   /**
    * Resolve the active provider per RTPI_INFERENCE_PROVIDER. `auto` walks the
    * fallback order and returns the first configured provider; if none is
-   * configured this returns `vllm` (so the UI can prompt the user to set it
-   * up). The actual reachability is the caller's job to verify via probe().
+   * configured this returns `ollama` (so the UI can prompt the user to set
+   * up a local model). The actual reachability is the caller's job to
+   * verify via probe().
    */
   resolveDefault(): InferenceProvider {
     const requested = (process.env.RTPI_INFERENCE_PROVIDER || "auto").toLowerCase();
@@ -364,7 +372,7 @@ class InferenceProviderRegistry {
       const p = this.providers.get(id);
       if (p && p.isConfigured()) return p;
     }
-    return this.providers.get("vllm")!;
+    return this.providers.get("ollama")!;
   }
 
   async probe(id: ProviderId): Promise<ProbeResult> {

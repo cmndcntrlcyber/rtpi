@@ -26,6 +26,7 @@ import {
   Pencil,
   Trash2,
   Activity,
+  Archive,
   Clock,
   RotateCcw,
   Zap,
@@ -53,6 +54,7 @@ interface AgentsTablePanelProps {
   searchQuery?: string;
   onNewAgent?: () => void;
   onImportAgent?: () => void;
+  onRestoreBackups?: () => void;
   onChatAgent?: (agent: Agent) => void;
   onEditAgent?: (agent: Agent) => void;
   onDeleteAgent?: (agentId: string) => void;
@@ -76,6 +78,7 @@ export function AgentsTablePanel({
   searchQuery = "",
   onNewAgent,
   onImportAgent,
+  onRestoreBackups,
   onChatAgent,
   onEditAgent,
   onDeleteAgent,
@@ -126,6 +129,12 @@ export function AgentsTablePanel({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {onRestoreBackups && (
+            <Button variant="outline" size="sm" onClick={onRestoreBackups} title="View backups & restore">
+              <Archive className="h-4 w-4 mr-2" />
+              Backups
+            </Button>
+          )}
           {onNewAgent && (
             <Button variant="outline" size="sm" onClick={onNewAgent}>
               <Plus className="h-4 w-4 mr-2" />

@@ -1,8 +1,19 @@
 import { useState, useEffect } from "react";
-import { GitCompare, FileText, Download, ChevronDown, AlertTriangle } from "lucide-react";
+import {
+  GitCompare,
+  FileText,
+  Download,
+  ChevronDown,
+  AlertTriangle,
+  Radar,
+  Inbox,
+} from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -104,9 +115,15 @@ export default function SurfaceAssessment() {
   if (loading) {
     return (
       <div className="p-8">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading...</p>
+        <PageHeader
+          icon={Radar}
+          title="Surface Assessment"
+          description="Centralized attack surface management dashboard"
+        />
+        <div className="space-y-6">
+          <Skeleton className="h-10 w-full max-w-2xl" />
+          <Skeleton className="h-64 rounded-lg" />
+          <Skeleton className="h-48 rounded-lg" />
         </div>
       </div>
     );
@@ -115,11 +132,16 @@ export default function SurfaceAssessment() {
   if (operations.length === 0) {
     return (
       <div className="p-8">
-        <h1 className="text-3xl font-bold text-foreground mb-4">Surface Assessment</h1>
-        <div className="text-center py-12">
-          <p className="text-muted-foreground text-lg">No operations found</p>
-          <p className="text-muted-foreground mt-2">Create an operation to start surface assessment</p>
-        </div>
+        <PageHeader
+          icon={Radar}
+          title="Surface Assessment"
+          description="Centralized attack surface management dashboard"
+        />
+        <EmptyState
+          icon={Inbox}
+          title="No operations found"
+          description="Create an operation to start surface assessment."
+        />
       </div>
     );
   }
@@ -127,9 +149,14 @@ export default function SurfaceAssessment() {
   if (!selectedOperation) {
     return (
       <div className="p-8">
-        <h1 className="text-3xl font-bold text-foreground mb-4">Surface Assessment</h1>
-        <div className="text-center py-12">
-          <p className="text-muted-foreground text-lg">Loading operation...</p>
+        <PageHeader
+          icon={Radar}
+          title="Surface Assessment"
+          description="Centralized attack surface management dashboard"
+        />
+        <div className="space-y-6">
+          <Skeleton className="h-10 w-full max-w-2xl" />
+          <Skeleton className="h-64 rounded-lg" />
         </div>
       </div>
     );
@@ -137,62 +164,64 @@ export default function SurfaceAssessment() {
 
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Surface Assessment</h1>
-          <p className="text-muted-foreground mt-1">
-            Centralized attack surface management dashboard
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            onClick={handleGenerateReport}
-            disabled={reportGenerating}
-          >
-            <FileText className="h-4 w-4 mr-2" />
-            {reportGenerating ? "Generating..." : "Generate Report"}
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" disabled={!selectedOperation || exporting}>
-                <Download className="h-4 w-4 mr-2" />
-                {exporting ? "Exporting..." : "Export"}
-                <ChevronDown className="h-4 w-4 ml-2" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => handleExport("csv")}>CSV</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExport("json")}>JSON</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExport("txt")}>TXT</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button
-            variant="outline"
-            onClick={() => setComparisonDialogOpen(true)}
-          >
-            <GitCompare className="h-4 w-4 mr-2" />
-            Compare Scans
-          </Button>
-          <Select value={selectedOperation} onValueChange={setSelectedOperation}>
-            <SelectTrigger className="w-64">
-              <SelectValue placeholder="Select operation" />
-            </SelectTrigger>
-            <SelectContent>
-              {operations.map((op) => (
-                <SelectItem key={op.id} value={op.id}>
-                  {op.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      <PageHeader
+        icon={Radar}
+        title="Surface Assessment"
+        description="Centralized attack surface management dashboard"
+        actions={
+          <>
+            <Button
+              variant="outline"
+              onClick={handleGenerateReport}
+              disabled={reportGenerating}
+            >
+              <FileText aria-hidden="true" className="h-4 w-4 mr-2" />
+              {reportGenerating ? "Generating..." : "Generate Report"}
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" disabled={!selectedOperation || exporting}>
+                  <Download aria-hidden="true" className="h-4 w-4 mr-2" />
+                  {exporting ? "Exporting..." : "Export"}
+                  <ChevronDown aria-hidden="true" className="h-4 w-4 ml-2" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => handleExport("csv")}>CSV</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExport("json")}>JSON</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExport("txt")}>TXT</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button
+              variant="outline"
+              onClick={() => setComparisonDialogOpen(true)}
+            >
+              <GitCompare aria-hidden="true" className="h-4 w-4 mr-2" />
+              Compare Scans
+            </Button>
+            <Select value={selectedOperation} onValueChange={setSelectedOperation}>
+              <SelectTrigger className="w-64" aria-label="Select operation">
+                <SelectValue placeholder="Select operation" />
+              </SelectTrigger>
+              <SelectContent>
+                {operations.map((op) => (
+                  <SelectItem key={op.id} value={op.id}>
+                    {op.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        }
+      />
 
-      <Alert className="mb-6 border-yellow-500/50 bg-yellow-500/10">
-        <AlertTriangle className="h-4 w-4 text-yellow-500" />
-        <h5 className="mb-1 font-medium leading-none tracking-tight text-yellow-500">OPSEC Warning: Loud Scans</h5>
-        <AlertDescription className="text-yellow-500/90">
+      <Alert
+        role="alert"
+        className="mb-6 border-warning/50 bg-warning/10 text-warning"
+      >
+        <AlertTriangle aria-hidden="true" className="h-4 w-4 text-warning" />
+        <h5 className="mb-1 font-medium leading-none tracking-tight">OPSEC Warning: Loud Scans</h5>
+        <AlertDescription className="text-warning/90">
           Automated scans initiated from this dashboard (including BBOT) have a loud network profile and will actively enumerate targets. Ensure you have proper authorization before proceeding.
         </AlertDescription>
       </Alert>

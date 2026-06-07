@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ShieldCheck, List, ClipboardCheck } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
 import CISControlsTable from "@/components/cis/CISControlsTable";
 import CISAssessment from "@/components/cis/CISAssessment";
 
@@ -45,44 +48,37 @@ export default function CISFramework() {
 
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-3">
-          <ShieldCheck className="h-8 w-8 text-emerald-600" />
-          <div>
-            <h1 className="text-3xl font-bold">CIS Controls v8</h1>
-            <p className="text-muted-foreground mt-1">
-              Center for Internet Security Critical Security Controls
-            </p>
-          </div>
-        </div>
-        {stats.controls === 0 && (
-          <button
-            onClick={handleImport}
-            disabled={loading}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
-          >
-            {loading ? "Importing..." : "Import CIS Controls v8"}
-          </button>
-        )}
-      </div>
+      <PageHeader
+        icon={ShieldCheck}
+        title="CIS Controls v8"
+        description="Center for Internet Security Critical Security Controls"
+        actions={
+          stats.controls === 0 ? (
+            <Button onClick={handleImport} disabled={loading}>
+              {loading ? "Importing..." : "Import CIS Controls v8"}
+            </Button>
+          ) : undefined
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <List className="h-5 w-5 text-emerald-600" />
-            <h3 className="text-sm font-medium text-muted-foreground">Controls</h3>
+        {[
+          { label: "Controls", value: stats.controls, icon: List, iconColor: "text-success" },
+          { label: "Safeguards", value: stats.safeguards, icon: ClipboardCheck, iconColor: "text-info" },
+        ].map(({ label, value, icon: Icon, iconColor }) => (
+          <div key={label} className="bg-card p-6 rounded-lg shadow-sm border border-border">
+            <div className="flex items-center gap-2 mb-2">
+              <Icon aria-hidden="true" className={`h-5 w-5 ${iconColor}`} />
+              <h3 className="text-sm font-medium text-muted-foreground">{label}</h3>
+            </div>
+            {loading ? (
+              <Skeleton className="h-9 w-16" />
+            ) : (
+              <p className="text-3xl font-bold tabular-nums">{value}</p>
+            )}
           </div>
-          <p className="text-3xl font-bold">{loading ? "..." : stats.controls}</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <ClipboardCheck className="h-5 w-5 text-blue-600" />
-            <h3 className="text-sm font-medium text-muted-foreground">Safeguards</h3>
-          </div>
-          <p className="text-3xl font-bold">{loading ? "..." : stats.safeguards}</p>
-        </div>
+        ))}
       </div>
 
       <Tabs defaultValue="controls" className="space-y-6">

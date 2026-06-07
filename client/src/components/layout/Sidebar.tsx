@@ -72,7 +72,9 @@ export default function Sidebar({ isOpen, isCollapsed, onToggleCollapse, onClose
 
       {/* Sidebar */}
       <aside
-        className={`bg-background border-r border-border fixed left-0 top-16 bottom-0 overflow-y-auto z-30 transition-all duration-300
+        role="navigation"
+        aria-label="Primary"
+        className={`bg-background border-r border-border fixed left-0 top-[var(--header-h)] bottom-0 overflow-y-auto z-30 transition-[width,transform] duration-300
           ${isCollapsed ? "w-20" : "w-64"}
           ${isOpen ? "translate-x-0" : "-translate-x-full"}
           lg:translate-x-0
@@ -101,12 +103,14 @@ export default function Sidebar({ isOpen, isCollapsed, onToggleCollapse, onClose
           onClick={onToggleCollapse}
           className="w-full justify-center"
           title={isCollapsed ? "Expand sidebar (Ctrl+B)" : "Collapse sidebar (Ctrl+B)"}
+          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!isCollapsed}
         >
           {isCollapsed ? (
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight aria-hidden="true" className="h-4 w-4" />
           ) : (
             <>
-              <ChevronLeft className="h-4 w-4 mr-2" />
+              <ChevronLeft aria-hidden="true" className="h-4 w-4 mr-2" />
               <span className="text-xs">Collapse</span>
             </>
           )}
@@ -122,52 +126,68 @@ export default function Sidebar({ isOpen, isCollapsed, onToggleCollapse, onClose
           return (
             <div key={group.label || `group-${groupIndex}`}>
               {group.label && !isCollapsed && (
-                <div
-                  className={`pt-4 pb-2 px-4 flex items-center justify-between ${
-                    group.collapsible ? "cursor-pointer hover:bg-secondary/50 rounded-md -mx-1 px-5" : ""
-                  }`}
-                  onClick={group.collapsible ? () => toggleGroup(group.label) : undefined}
-                >
-                  <p className={`text-xs font-semibold uppercase tracking-wider ${
-                    hasActiveItem ? "text-primary" : "text-muted-foreground"
-                  }`}>
-                    {group.label}
-                  </p>
-                  {group.collapsible && (
+                group.collapsible ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.label)}
+                    aria-expanded={!isGroupCollapsed}
+                    aria-controls={`nav-group-${groupIndex}`}
+                    className="w-full pt-4 pb-2 px-4 flex items-center justify-between rounded-md hover:bg-secondary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 transition-colors"
+                  >
+                    <span className={`text-xs font-semibold uppercase tracking-wider ${
+                      hasActiveItem ? "text-primary" : "text-muted-foreground"
+                    }`}>
+                      {group.label}
+                    </span>
                     <ChevronDown
+                      aria-hidden="true"
                       className={`h-3 w-3 text-muted-foreground transition-transform duration-200 ${
                         isGroupCollapsed ? "-rotate-90" : ""
                       }`}
                     />
-                  )}
-                </div>
+                  </button>
+                ) : (
+                  <div className="pt-4 pb-2 px-4">
+                    <p className={`text-xs font-semibold uppercase tracking-wider ${
+                      hasActiveItem ? "text-primary" : "text-muted-foreground"
+                    }`}>
+                      {group.label}
+                    </p>
+                  </div>
+                )
               )}
               {isCollapsed && group.label && (
                 <div className="pt-2 pb-1 flex justify-center">
                   <div className="w-6 border-t border-border" />
                 </div>
               )}
-              {(!isGroupCollapsed || isCollapsed) && group.items.map((item) => {
-                const Icon = item.icon;
-                const isActive = location === item.path;
+              {(!isGroupCollapsed || isCollapsed) && (
+                <div id={`nav-group-${groupIndex}`}>
+                  {group.items.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = location === item.path;
 
-                return (
-                  <Link
-                    key={item.path}
-                    href={item.path}
-                    onClick={onClose}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                      isActive
-                        ? "bg-primary/10 text-primary font-medium"
-                        : "text-foreground hover:bg-secondary"
-                    } ${isCollapsed ? "justify-center" : ""}`}
-                    title={isCollapsed ? item.label : undefined}
-                  >
-                    <Icon className="w-5 h-5 flex-shrink-0" />
-                    {!isCollapsed && <span>{item.label}</span>}
-                  </Link>
-                );
-              })}
+                    return (
+                      <Link
+                        key={item.path}
+                        href={item.path}
+                        onClick={onClose}
+                        aria-current={isActive ? "page" : undefined}
+                        aria-label={isCollapsed ? item.label : undefined}
+                        title={isCollapsed ? item.label : undefined}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                          isActive
+                            ? "bg-primary/10 text-primary font-medium"
+                            : "text-foreground hover:bg-secondary"
+                        } ${isCollapsed ? "justify-center" : ""}`}
+                      >
+                        <Icon aria-hidden="true" className="w-5 h-5 flex-shrink-0" />
+                        {!isCollapsed && <span>{item.label}</span>}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           );
         })}
@@ -194,14 +214,16 @@ export default function Sidebar({ isOpen, isCollapsed, onToggleCollapse, onClose
                   key={item.path}
                   href={item.path}
                   onClick={onClose}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                  aria-current={isActive ? "page" : undefined}
+                  aria-label={isCollapsed ? item.label : undefined}
+                  title={isCollapsed ? item.label : undefined}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
                     isActive
                       ? "bg-primary/10 text-primary font-medium"
                       : "text-foreground hover:bg-secondary"
                   } ${isCollapsed ? "justify-center" : ""}`}
-                  title={isCollapsed ? item.label : undefined}
                 >
-                  <Icon className="w-5 h-5 flex-shrink-0" />
+                  <Icon aria-hidden="true" className="w-5 h-5 flex-shrink-0" />
                   {!isCollapsed && <span>{item.label}</span>}
                 </Link>
               );

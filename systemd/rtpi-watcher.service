@@ -1,0 +1,74 @@
+# rtpi-watcher.service — self-healing daemon for the RTPI stack.
+#
+# Drop this file into one of:
+#   /etc/systemd/system/rtpi-watcher.service           (system-wide)
+#   ~/.config/systemd/user/rtpi-watcher.service        (per-user)
+#
+# Edit the User=/Group=/WorkingDirectory= and the script path to match your
+# install. Then enable + start:
+#
+#   sudo install -m 0644 systemd/rtpi-watcher.service /etc/systemd/system/
+#   sudo install -m 0644 systemd/rtpi-watcher.env.example /etc/default/rtpi-watcher
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now rtpi-watcher.service
+#
+# Inspect:
+#   systemctl status rtpi-watcher.service
+#   journalctl -u rtpi-watcher.service -f
+#   journalctl -u rtpi-watcher.service --since '15 minutes ago'
+
+[Unit]
+Description=RTPI self-healing watcher (docker + API + Postgres health)
+Documentation=file:///home/cmndcntrl/code/rtpi/docs/operations/rtpi-watcher.md
+# Don't fight the system at boot — wait for docker, but don't depend on the
+# rtpi compose project. The watcher's whole point is that it heals what's
+# already supposed to be up.
+After=docker.service network-online.target
+Wants=docker.service network-online.target
+# If docker is permanently broken, restart-on-failure won't help; let systemd
+# treat the watcher itself as a unit that should always be running.
+StartLimitIntervalSec=600
+StartLimitBurst=10
+
+[Service]
+Type=simple
+# Adjust these three to your deployment. The user must be able to talk to
+# the docker socket — either add them to the `docker` group, or run as root.
+User=cmndcntrl
+Group=cmndcntrl
+WorkingDirectory=/home/cmndcntrl/code/rtpi
+
+# Production knobs live in /etc/default/rtpi-watcher. The `-` prefix means
+# it's optional; if missing, the script uses its built-in defaults.
+EnvironmentFile=-/etc/default/rtpi-watcher
+
+ExecStart=/home/cmndcntrl/code/rtpi/scripts/rtpi-watcher.sh
+
+# Logging — let systemd journal capture stdout/stderr.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rtpi-watcher
+
+# Restart policy — the watcher is itself supervised. If it dies, give it
+# 10s breathing room and bring it back. Hitting StartLimitBurst means
+# something is fundamentally wrong (docker missing, script syntax error).
+Restart=always
+RestartSec=10
+
+# Sandboxing — modest hardening; nothing that prevents docker socket access.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+# Resource caps — the watcher is tiny; bound it so a regression can't take
+# the box down.
+MemoryMax=128M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

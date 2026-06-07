@@ -1,9 +1,24 @@
-import { getOpenAIClient, getAnthropicClient } from "./ai-clients";
+import { routeReasoning, NoInferenceProviderAvailable } from "./inference/inference-router";
+
+export interface ToolSkillSummary {
+  registry: "mcp" | "registry" | "security";
+  id: string;
+  name: string;
+  summary: string;
+  skillPath: string;
+}
 
 interface GeneratePromptParams {
   description: string;
   toolContainers: string[];
   agentType: "openai" | "anthropic";
+  /**
+   * FF_TOOL_SKILL_GENERATION — per-tool skill summaries loaded from
+   * /skills/tools/{registry}/<id>.md. Injected into both the LLM
+   * meta-prompt and the template fallback so the agent's system prompt
+   * always includes operational guidance for the tools it's attached to.
+   */
+  toolSkills?: ToolSkillSummary[];
 }
 
 interface GeneratePromptResult {
@@ -17,7 +32,16 @@ interface GeneratePromptResult {
 export async function generateAgentPrompt(
   params: GeneratePromptParams
 ): Promise<GeneratePromptResult> {
-  const { description, toolContainers, agentType } = params;
+  const { description, toolContainers, agentType, toolSkills = [] } = params;
+
+  const toolSkillsBlock = toolSkills.length > 0
+    ? `\n\n**Tool Skill Summaries (load-bearing — agent must read these):**\n${toolSkills
+        .map(
+          (s) =>
+            `### ${s.name} (${s.registry}/${s.id})\n${s.summary}\n_Full manual: \`${s.skillPath}\`_`,
+        )
+        .join('\n\n')}`
+    : '';
 
   const metaPrompt = `You are an expert at creating system prompts for AI agents.
 
@@ -29,7 +53,7 @@ ${description}
 **Available Tool Containers (in execution priority order):**
 ${toolContainers.length > 0
   ? toolContainers.map((t, i) => `${i + 1}. ${t}`).join('\n')
-  : 'No specific tool containers assigned'}
+  : 'No specific tool containers assigned'}${toolSkillsBlock}
 
 **Requirements for the prompt:**
 1. Be specific about the agent's role and capabilities
@@ -42,59 +66,36 @@ ${toolContainers.length > 0
 
 Generate ONLY the system prompt text, without any additional explanation or formatting.`;
 
-  // Try Anthropic first if available and agent type is anthropic
-  const anthropic = getAnthropicClient();
-  const openai = getOpenAIClient();
-  if (anthropic && (agentType === "anthropic" || !openai)) {
-    try {
-      const response = await anthropic.messages.create({
-        model: "claude-sonnet-4-5",
-        max_tokens: 2000,
-        messages: [
-          {
-            role: "user",
-            content: metaPrompt,
-          },
-        ],
-      });
-
-      const textContent = response.content.find(block => block.type === "text");
-      if (textContent && textContent.type === "text") {
-        return {
-          prompt: textContent.text.trim(),
-          generatedBy: "anthropic",
-        };
+  // Route through the inference router so Settings → Default Reasoning Model
+  // is honored. The `agentType` parameter is preserved as a soft hint but
+  // doesn't override Settings — operators choose providers via Settings now.
+  // Falls back to the deterministic template only when every provider fails.
+  try {
+    const result = await routeReasoning({
+      messages: [{ role: "user", content: metaPrompt }],
+      maxTokens: 2000,
+    });
+    const text = result.response.text.trim();
+    if (text.length > 0) {
+      const generatedBy: GeneratePromptResult["generatedBy"] =
+        result.provider === "anthropic" ? "anthropic"
+          : result.provider === "openai" ? "openai"
+          : "template";
+      // agentType is kept for API back-compat (UI passes it) — log when the
+      // router's choice diverges from the caller's hint so we can spot
+      // operators with stale assumptions.
+      if (agentType && agentType !== generatedBy && (generatedBy === "anthropic" || generatedBy === "openai")) {
+        console.log(
+          `[agent-prompt-generator] agentType hint=${agentType} but router served=${result.provider}/${result.model}`,
+        );
       }
-    } catch (error) {
-      console.error("Anthropic prompt generation failed:", error);
-      // Fall through to OpenAI or template
+      return { prompt: text, generatedBy };
     }
-  }
-
-  // Try OpenAI if available
-  if (openai) {
-    try {
-      const response = await openai.chat.completions.create({
-        model: "gpt-5.2-chat-latest",
-        messages: [
-          {
-            role: "user",
-            content: metaPrompt,
-          },
-        ],
-        max_tokens: 2000,
-      });
-
-      const content = response.choices[0]?.message?.content;
-      if (content) {
-        return {
-          prompt: content.trim(),
-          generatedBy: "openai",
-        };
-      }
-    } catch (error) {
-      console.error("OpenAI prompt generation failed:", error);
-      // Fall through to template
+  } catch (error) {
+    if (error instanceof NoInferenceProviderAvailable) {
+      console.error("Agent prompt generation: all providers exhausted, using template:", error.message);
+    } else {
+      console.error("Agent prompt generation router failed:", error);
     }
   }
 
@@ -109,7 +110,7 @@ Generate ONLY the system prompt text, without any additional explanation or form
  * Generates a template-based prompt when AI services are unavailable
  */
 function generateTemplatePrompt(params: GeneratePromptParams): string {
-  const { description, toolContainers } = params;
+  const { description, toolContainers, toolSkills = [] } = params;
 
   const toolSection = toolContainers.length > 0
     ? `## Available Tool Containers
@@ -122,6 +123,15 @@ When executing tasks, prefer tools from earlier containers unless the situation 
 
 You will be provided with various security and reconnaissance tools. Use them systematically to achieve your objectives while maintaining operational security.`;
 
+  const skillsSection = toolSkills.length > 0
+    ? `\n\n## Tool Skills\n\n${toolSkills
+        .map(
+          (s) =>
+            `### ${s.name}\n\n${s.summary}\n\n_Full manual: \`${s.skillPath}\` — fetch it via the filesystem MCP tool if you need parameter details, example workflows, or pitfalls beyond this summary._`,
+        )
+        .join('\n\n')}`
+    : '';
+
   return `# Agent Role
 
 You are an AI agent specialized in ${description}.
@@ -133,7 +143,7 @@ You are an AI agent specialized in ${description}.
 3. **Adaptation**: Adjust your approach based on discovered information
 4. **Reporting**: Provide clear, actionable findings and recommendations
 
-${toolSection}
+${toolSection}${skillsSection}
 
 ## Operational Guidelines
 

@@ -1,7 +1,10 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Shield, Target, Users, Wrench, ShieldCheck, Database } from "lucide-react";
+import { Shield, Target, Users, Wrench, ShieldCheck, Database, AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
 import TechniquesTable from "@/components/attack/TechniquesTable";
 import TacticsGrid from "@/components/attack/TacticsGrid";
 import StixImportDialog from "@/components/attack/StixImportDialog";
@@ -95,23 +98,31 @@ export default function AttackFramework() {
   if (error) {
     return (
       <div className="p-8">
-        <div className="bg-destructive/10 border border-destructive text-destructive-foreground rounded-lg p-6">
+        <PageHeader
+          icon={Shield}
+          title="MITRE ATT&CK Framework"
+          description="Adversary tactics, techniques, and knowledge base"
+        />
+        <div
+          role="alert"
+          className="rounded-lg border border-destructive/30 bg-destructive/10 text-destructive p-6"
+        >
           <div className="flex items-center gap-3 mb-2">
-            <Shield className="h-6 w-6" />
+            <AlertCircle aria-hidden="true" className="h-6 w-6" />
             <h2 className="text-xl font-semibold">Failed to Load ATT&CK Framework</h2>
           </div>
           <p className="text-sm mb-4">{error}</p>
-          <button
+          <Button
+            variant="destructive"
             onClick={() => {
               setError(null);
               setLoading(true);
               fetchStats();
               fetchOperations();
             }}
-            className="px-4 py-2 bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90 transition-colors"
           >
             Retry
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -119,105 +130,91 @@ export default function AttackFramework() {
 
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-3">
-          <Shield className="h-8 w-8 text-primary" />
-          <div>
-            <h1 className="text-3xl font-bold">MITRE ATT&CK Framework</h1>
-            <p className="text-muted-foreground mt-1">
-              Adversary tactics, techniques, and knowledge base
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          {operations.length > 0 && (
-            <Select value={selectedOperation} onValueChange={setSelectedOperation}>
-              <SelectTrigger className="w-64">
-                <SelectValue placeholder="Select operation" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Operations</SelectItem>
-                {operations.map((op) => (
-                  <SelectItem key={op.id} value={op.id}>
-                    {op.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          <StixImportDialog />
-        </div>
-      </div>
+      <PageHeader
+        icon={Shield}
+        title="MITRE ATT&CK Framework"
+        description="Adversary tactics, techniques, and knowledge base"
+        actions={
+          <>
+            {operations.length > 0 && (
+              <Select value={selectedOperation} onValueChange={setSelectedOperation}>
+                <SelectTrigger className="w-64" aria-label="Select operation">
+                  <SelectValue placeholder="Select operation" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Operations</SelectItem>
+                  {operations.map((op) => (
+                    <SelectItem key={op.id} value={op.id}>
+                      {op.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <StixImportDialog />
+          </>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6 mb-8">
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <Target className="h-5 w-5 text-blue-600" />
-            <h3 className="text-sm font-medium text-muted-foreground">Techniques</h3>
+        {[
+          {
+            label: "Techniques",
+            value: loading ? null : totalTechniques.toLocaleString(),
+            icon: Target,
+            iconColor: "text-info",
+            footnote: `${stats.techniques} base + ${stats.subtechniques} sub`,
+          },
+          {
+            label: "Tactics",
+            value: loading ? null : stats.tactics.toString(),
+            icon: Shield,
+            iconColor: "text-primary",
+            footnote: "Kill chain phases",
+          },
+          {
+            label: "Groups",
+            value: loading ? null : stats.groups.toString(),
+            icon: Users,
+            iconColor: "text-destructive",
+            footnote: "Threat actors",
+          },
+          {
+            label: "Software",
+            value: loading ? null : stats.software.toString(),
+            icon: Wrench,
+            iconColor: "text-warning",
+            footnote: "Malware & tools",
+          },
+          {
+            label: "Mitigations",
+            value: loading ? null : stats.mitigations.toString(),
+            icon: ShieldCheck,
+            iconColor: "text-success",
+            footnote: "Countermeasures",
+          },
+          {
+            label: "Data Sources",
+            value: loading ? null : stats.dataSources.toString(),
+            icon: Database,
+            iconColor: "text-muted-foreground",
+            footnote: "Detection sources",
+          },
+        ].map(({ label, value, icon: Icon, iconColor, footnote }) => (
+          <div key={label} className="bg-card p-6 rounded-lg shadow-sm border border-border">
+            <div className="flex items-center gap-2 mb-2">
+              <Icon aria-hidden="true" className={`h-5 w-5 ${iconColor}`} />
+              <h3 className="text-sm font-medium text-muted-foreground">{label}</h3>
+            </div>
+            {value === null ? (
+              <Skeleton className="h-9 w-20" />
+            ) : (
+              <p className="text-3xl font-bold text-foreground tabular-nums">{value}</p>
+            )}
+            <p className="text-xs text-muted-foreground mt-1">{footnote}</p>
           </div>
-          <p className="text-3xl font-bold text-foreground">
-            {loading ? "..." : totalTechniques.toLocaleString()}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            {stats.techniques} base + {stats.subtechniques} sub
-          </p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <Shield className="h-5 w-5 text-purple-600" />
-            <h3 className="text-sm font-medium text-muted-foreground">Tactics</h3>
-          </div>
-          <p className="text-3xl font-bold text-foreground">
-            {loading ? "..." : stats.tactics}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">Kill chain phases</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <Users className="h-5 w-5 text-red-600" />
-            <h3 className="text-sm font-medium text-muted-foreground">Groups</h3>
-          </div>
-          <p className="text-3xl font-bold text-foreground">
-            {loading ? "..." : stats.groups}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">Threat actors</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <Wrench className="h-5 w-5 text-orange-600" />
-            <h3 className="text-sm font-medium text-muted-foreground">Software</h3>
-          </div>
-          <p className="text-3xl font-bold text-foreground">
-            {loading ? "..." : stats.software}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">Malware & tools</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <ShieldCheck className="h-5 w-5 text-green-600" />
-            <h3 className="text-sm font-medium text-muted-foreground">Mitigations</h3>
-          </div>
-          <p className="text-3xl font-bold text-foreground">
-            {loading ? "..." : stats.mitigations}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">Countermeasures</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <Database className="h-5 w-5 text-indigo-600" />
-            <h3 className="text-sm font-medium text-muted-foreground">Data Sources</h3>
-          </div>
-          <p className="text-3xl font-bold text-foreground">
-            {loading ? "..." : stats.dataSources}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">Detection sources</p>
-        </div>
+        ))}
       </div>
 
       {/* ATT&CK Tabs */}

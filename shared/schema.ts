@@ -4,6 +4,7 @@ import {
   timestamp,
   uuid,
   integer,
+  bigint,
   boolean,
   json,
   pgEnum,
@@ -13,11 +14,12 @@ import {
   customType,
   foreignKey,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // Custom pgvector column type for embedding storage
 const vector = customType<{ data: number[]; dpiData: string }>({
   dataType() {
-    return "vector(1536)";
+    return "vector(2560)";
   },
   toDriver(value: number[]): string {
     return `[${value.join(",")}]`;
@@ -27,6 +29,16 @@ const vector = customType<{ data: number[]; dpiData: string }>({
       return JSON.parse(value.replace("(", "[").replace(")", "]"));
     }
     return value as number[];
+  },
+});
+
+// Postgres full-text tsvector. Declared so drizzle-kit sees generated FTS
+// columns (e.g. knowledge_base.search_vector) as already-present — without it,
+// `db:push` proposes to DROP them, which is destructive (the column carries the
+// search index for every row).
+const tsvector = customType<{ data: string }>({
+  dataType() {
+    return "tsvector";
   },
 });
 
@@ -134,6 +146,7 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "task_failed",
   "workflow_completed",
   "workflow_failed",
+  "harness_evaluation_ready",
 ]);
 
 // ============================================================================
@@ -439,6 +452,13 @@ export const mcpServers = pgTable("mcp_servers", {
   // treats NULLs as distinct, so a plain unique index permits unlimited
   // user rows while constraining the managed catalog to one row per key.
   seedKey: text("seed_key"),
+  // Tool-skill generation (FF_TOOL_SKILL_GENERATION). Populated by
+  // skill-generator when a Tavily-researched SKILL.md is written for the
+  // server. skillSourceHash short-circuits regen when nothing meaningful
+  // about the row has changed.
+  skillPath: text("skill_path"),
+  skillGeneratedAt: timestamp("skill_generated_at"),
+  skillSourceHash: text("skill_source_hash"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => [
@@ -457,6 +477,37 @@ export const certificates = pgTable("certificates", {
   isRevoked: boolean("is_revoked").notNull().default(false),
   revokedAt: timestamp("revoked_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+/**
+ * Operator-uploaded TLS certificates (migration 0047). Distinct from the
+ * device-discovered `certificates` table above:
+ *  - cert_type 'origin' = admin-only, org-wide TLS terminator cert
+ *  - cert_type 'client' = mTLS / client-auth certs, per-user scoping
+ * Private keys are AES-256-GCM encrypted via server/utils/encryption.ts;
+ * GET endpoints return metadata only and never the decrypted key.
+ */
+export const infrastructureCertificates = pgTable("infrastructure_certificates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  certType: text("cert_type").notNull(), // 'origin' | 'client'
+  ownerUserId: uuid("owner_user_id").references(() => users.id, { onDelete: "set null" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  certPem: text("cert_pem").notNull(),
+  keyPemEncrypted: text("key_pem_encrypted"),
+  chainPem: text("chain_pem"),
+  subject: text("subject"),
+  issuer: text("issuer"),
+  serialNumber: text("serial_number"),
+  fingerprintSha256: text("fingerprint_sha256").notNull(),
+  validFrom: timestamp("valid_from", { withTimezone: true }).notNull(),
+  validTo: timestamp("valid_to", { withTimezone: true }).notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  revokedBy: uuid("revoked_by").references(() => users.id, { onDelete: "set null" }),
+  uploadedBy: uuid("uploaded_by").references(() => users.id, { onDelete: "set null" }),
+  uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const serverLogs = pgTable("server_logs", {
@@ -565,7 +616,26 @@ export const pdfJobs = pgTable("pdf_jobs", {
 export const toolStatusEnum = pgEnum("tool_status", ["available", "running", "stopped", "error"]);
 export const workflowStatusEnum = pgEnum("workflow_status", ["pending", "running", "completed", "failed", "cancelled"]);
 export const taskStatusEnum = pgEnum("task_status", ["pending", "in_progress", "completed", "failed", "skipped"]);
-export const taskTypeEnum = pgEnum("task_type", ["analyze", "exploit", "report", "execute_tools", "custom"]);
+// Harness optimization evaluator (DMAIC/Lean) — runs after every terminal
+// workflow. The row doubles as a durable queue (cf. pdf_jobs).
+export const harnessEvaluationStatusEnum = pgEnum("harness_evaluation_status", ["queued", "running", "completed", "failed"]);
+export const taskTypeEnum = pgEnum("task_type", [
+  "analyze",
+  "exploit",
+  "report",
+  "execute_tools",
+  "autonomous_tools",
+  "custom",
+  // Bug-hunter phase task types (FF_BUG_HUNTER). DB enum extended in
+  // migrations/0048_extend_task_type_for_bug_hunter.sql.
+  "bug_hunter_scope",
+  "bug_hunter_recon",
+  "bug_hunter_hunt",
+  "bug_hunter_chain",
+  "bug_hunter_validate",
+  "bug_hunter_capture",
+  "bug_hunter_report",
+]);
 
 export const securityTools = pgTable("security_tools", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -581,6 +651,10 @@ export const securityTools = pgTable("security_tools", {
   lastUsed: timestamp("last_used"),
   usageCount: integer("usage_count").notNull().default(0),
   metadata: json("metadata"),
+  // Tool-skill generation (FF_TOOL_SKILL_GENERATION)
+  skillPath: text("skill_path"),
+  skillGeneratedAt: timestamp("skill_generated_at"),
+  skillSourceHash: text("skill_source_hash"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -686,6 +760,33 @@ export const workflowLogs = pgTable("workflow_logs", {
   message: text("message").notNull(),
   context: json("context").default({}),
   timestamp: timestamp("timestamp").notNull().defaultNow(),
+});
+
+// Harness Optimization Evaluations — a native, data-driven port of the
+// `harness-optimization-evaluator` agent. One row is enqueued after every
+// terminal workflow (completed or failed) and processed by
+// server/services/harness-optimization-evaluator.ts. The row doubles as the
+// durable job queue: status flows queued → running → completed/failed and is
+// recoverable across restarts (cf. pdf_jobs).
+export const harnessEvaluations = pgTable("harness_evaluations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workflowId: uuid("workflow_id").notNull().references(() => agentWorkflows.id, { onDelete: "cascade" }),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "set null" }),
+  workflowFinalStatus: text("workflow_final_status").notNull(), // the terminal state the workflow ended in
+  status: harnessEvaluationStatusEnum("status").notNull().default("queued"),
+  verdict: text("verdict"), // 'effective' | 'partial' | 'ineffective'
+  effectivenessScore: integer("effectiveness_score"), // 0-100
+  summary: text("summary"), // executive summary
+  metrics: json("metrics"), // deterministic CTQ baselines (the KPI normalizer)
+  analysis: json("analysis"), // objectiveVerification[], wasteAnalysis, rootCauses[], roadmap[], controlPlan, retrospective
+  filePath: text("file_path"), // markdown export path (relative to UPLOAD_DIR)
+  fileSize: integer("file_size"),
+  generatedBy: text("generated_by"), // inference provider, or 'template' for the fallback
+  model: text("model"),
+  error: text("error"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
 });
 
 // ============================================================================
@@ -931,6 +1032,11 @@ export const toolRegistry = pgTable("tool_registry", {
 
   // R&D artifact link (when tool was promoted from R&D)
   rdArtifactId: uuid("rd_artifact_id"),
+
+  // Tool-skill generation (FF_TOOL_SKILL_GENERATION)
+  skillPath: text("skill_path"),
+  skillGeneratedAt: timestamp("skill_generated_at"),
+  skillSourceHash: text("skill_source_hash"),
 
   // Timestamps
   installedAt: timestamp("installed_at"),
@@ -1903,7 +2009,7 @@ export const ollamaModels = pgTable("ollama_models", {
   id: uuid("id").primaryKey().defaultRandom(),
   modelName: text("model_name").notNull().unique(),
   modelTag: text("model_tag").default("latest"),
-  modelSize: integer("model_size"), // Size in bytes (using integer for now)
+  modelSize: bigint("model_size", { mode: "number" }), // Size in bytes (>2GB requires bigint)
   parameterSize: text("parameter_size"), // e.g., "8b", "7b"
   quantization: text("quantization"), // e.g., "q4_0", "q8_0"
   downloadedAt: timestamp("downloaded_at").defaultNow(),
@@ -2077,6 +2183,10 @@ export const rdExperiments = pgTable("rd_experiments", {
   name: text("name").notNull(),
   description: text("description"),
 
+  // Dispatch type — drives which sub-agent the orchestrator runs. Explicit field
+  // replaces brittle name-keyword matching. 'vulnerability_research' | 'poc_development' | 'nuclei_template'
+  type: text("type").notNull().default("vulnerability_research"),
+
   // Experiment Details
   hypothesis: text("hypothesis"),
   methodology: text("methodology"),
@@ -2133,6 +2243,66 @@ export const toolLibrary = pgTable("tool_library", {
   researchNotes: text("research_notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Knowledge base table — R&D knowledge repository with full-text search and
+// pgvector embeddings (2560-dim, matches qwen3-embedding:4b). Table was
+// created in migrations/0045_add_knowledge_base.sql; this Drizzle definition
+// catches up so callers get typed inserts/queries.
+//
+// Tag conventions used by the bug-hunter skill importer (FF_BUG_HUNTER):
+//   phase:{scope,recon,hunt,chain,validate,capture,report}
+//   vuln:{sqli,xss,idor,ssrf,rce,jwt,oauth,saml,...}
+//   platform:{m365,okta,aws,gcp,vmware,sharepoint,...}
+//   discipline:{web,web3,red-team,wapt,evidence,mindset}
+//   mode:{redteam,wapt}
+//   chunk:{section,summary,meta}
+//   skill:<filename>
+export const knowledgeBase = pgTable("knowledge_base", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  summary: text("summary"),
+
+  // Classification
+  category: text("category").notNull(),
+  tags: text("tags").array().default([]),
+
+  // Source & Attribution
+  sourceUrl: text("source_url"),
+  author: text("author"),
+  publishedDate: timestamp("published_date", { mode: "date" }),
+
+  // Content Type — DB CHECK constrains to: article|tutorial|paper|poc|tool_doc|technique
+  contentType: text("content_type").default("article"),
+
+  // MITRE ATT&CK Mapping
+  attackTactics: text("attack_tactics").array().default([]),
+  attackTechniques: text("attack_techniques").array().default([]),
+
+  // RAG/Embedding Support — 2560-dim, qwen3-embedding:4b output
+  embedding: vector("embedding"),
+  embeddingModel: text("embedding_model"),
+
+  // Metrics
+  viewCount: integer("view_count").default(0),
+  usefulnessScore: real("usefulness_score").default(0.0),
+
+  // Relationships
+  relatedProjectId: uuid("related_project_id").references(() => researchProjects.id, { onDelete: "set null" }),
+  relatedArticles: uuid("related_articles").array().default([]),
+
+  // Metadata
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+
+  // Full-text search — GENERATED ALWAYS column (created in
+  // 0045_add_knowledge_base.sql). Modeled here ONLY so drizzle-kit doesn't try
+  // to drop it; the expression must mirror the migration exactly.
+  searchVector: tsvector("search_vector").generatedAlwaysAs(
+    sql`setweight(to_tsvector('english', COALESCE(title, '')), 'A') || setweight(to_tsvector('english', COALESCE(summary, '')), 'B') || setweight(to_tsvector('english', COALESCE(content, '')), 'C')`,
+  ),
 });
 
 // ============================================================================
@@ -2667,7 +2837,7 @@ export const ctiItems = pgTable("cti_items", {
   rawJson: json("raw_json"),
   // Hash of normalized content used for dedup; new ingest with same hash is a no-op.
   contentHash: text("content_hash"),
-  // Optional embedding (vector(1536)). NULL when no embedding provider available.
+  // Optional embedding (vector(2560)). NULL when no embedding provider available.
   embedding: vector("embedding"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

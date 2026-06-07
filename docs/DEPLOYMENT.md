@@ -199,20 +199,37 @@ docker compose --profile bootstrap run --rm rtpi-bootstrap
 
 This will:
 
-- Generate every secret the stack needs (encryption key, session/JWT secrets, admin password, Empire/Workbench/Kasm passwords, Redis password, SysReptor SECRET_KEY + AES ENCRYPTION_KEYS, SysReptor DB/Redis passwords).
+- Generate every secret the stack needs (encryption key, session/JWT secrets, admin password, Empire/Workbench/Kasm passwords, Redis password, SysReptor SECRET_KEY + AES ENCRYPTION_KEYS, SysReptor DB/Redis passwords, Docmost DB/Redis passwords + APP_SECRET).
 - Write them to `.env` and `configs/rtpi-sysreptor/app.env` (derived from the `.example` templates).
-- Patch `docker/postgres-init/01-init-databases.sql` with the generated SysReptor DB password so the first-boot init creates the user correctly.
+- Patch `docker/postgres-init/01-init-databases.sql` with the generated SysReptor and Docmost DB passwords so the first-boot init creates the users correctly.
 - Save a mode-600 backup copy to `~/.rtpi/credentials-<timestamp>.env` with a convenience symlink at `~/.rtpi/credentials.latest.env`.
 - Refuse to overwrite an existing `.env` unless you pass `--force`.
 
 Your default admin password is printed once at the end of the run and stored in the backup file.
 
-**Regenerate everything:**
+**First-boot vs. ALTER USER (important for shared `rtpi-postgres`):** the
+passwords embedded in `docker/postgres-init/01-init-databases.sql` are only
+consumed the first time the postgres data volume is initialized. After that
+volume exists, rotating `SYSREPTOR_DB_PASSWORD` / `DOCMOST_DB_PASSWORD` in
+`.env` does **not** propagate — the init script never re-runs, so the
+`sysreptor` and `docmost` Postgres roles keep their old passwords and the
+dependent containers crash-loop with `password authentication failed`. Use
+the sync step below to bring the live roles in line without destroying data.
+
+**Regenerate without losing data (recommended):**
 
 ```bash
-npm run bootstrap -- --force
-docker compose down -v   # wipe volumes so postgres-init re-runs with the new password
-docker compose up -d
+npm run bootstrap -- --force                          # rotate secrets in .env
+docker compose up -d postgres                         # ensure rtpi-postgres is up
+npm run deploy:sync-pg                                # ALTER USER to match .env
+docker compose --profile <profile> up -d              # bring up dependents
+```
+
+**Regenerate and wipe data (destructive — only when state is disposable):**
+
+```bash
+npm run bootstrap -- --force --reset-volumes  # rotate + drop shared DB volumes
+docker compose up -d                                  # first-boot init runs again
 ```
 
 #### Option B — Manual
@@ -227,7 +244,7 @@ openssl rand -base64 32     # SysReptor AES key (goes inside ENCRYPTION_KEYS JSO
 cat /proc/sys/kernel/random/uuid  # SysReptor ENCRYPTION_KEYS key id + DEFAULT_ENCRYPTION_KEY_ID
 ```
 
-Remember that `SYSREPTOR_DB_PASSWORD` in `.env` must match `DATABASE_PASSWORD` in `configs/rtpi-sysreptor/app.env` **and** the `CREATE USER sysreptor WITH PASSWORD` value in `docker/postgres-init/01-init-databases.sql`. Using Option A avoids these cross-file sync errors.
+Remember that `SYSREPTOR_DB_PASSWORD` in `.env` must match `DATABASE_PASSWORD` in `configs/rtpi-sysreptor/app.env` **and** the `CREATE USER sysreptor WITH PASSWORD` value in `docker/postgres-init/01-init-databases.sql`. The same cross-file rule applies to `DOCMOST_DB_PASSWORD` (used by Docmost's `DATABASE_URL`) and its `CREATE USER docmost WITH PASSWORD` line. Using Option A avoids these cross-file sync errors; on existing volumes, run `npm run deploy:sync-pg` to ALTER the live roles to match `.env`.
 
 ---
 
@@ -1922,10 +1939,23 @@ they exit 0.
 
 ```bash
 npm run deploy:check                    # environment / port / .env validation
-docker compose --profile <p> up -d      # start the stack
+docker compose up -d postgres           # bring up the shared rtpi-postgres
+npm run deploy:sync-pg                  # ALTER USER for sysreptor/docmost
+                                        # (idempotent; no-op on first boot — the
+                                        # postgres-init script seeded them, this
+                                        # syncs them to .env on rotation)
+docker compose --profile <p> up -d      # start the rest of the stack
 npm run deploy:verify                   # gate — exits non-zero on failure
 # [migrations / smoke tests / etc.]
 ```
+
+`deploy:sync-pg` runs [scripts/sync-shared-postgres-roles.sh](../scripts/sync-shared-postgres-roles.sh) — it
+reads `.env`, and for each role/database listed in the `MANAGED` array
+(currently `sysreptor` and `docmost`) it `CREATE`s the role/database if
+missing or `ALTER`s the role's password if it already exists, then ensures
+schema ownership and required extensions. Safe to re-run on every deploy.
+Add a new tuple to `MANAGED` when you add another service that lives in
+`rtpi-postgres`.
 
 In CI/CD, treat a non-zero exit from `deploy:verify` as a blocker. The
 diagnostic output is sufficient to identify the failing container without
@@ -2053,6 +2083,8 @@ For security vulnerabilities, please follow responsible disclosure:
 ### Deployment
 - [ ] Pre-deployment environment check passed: `npm run deploy:check`
 - [ ] Application built: `docker compose -f docker-compose.prod.yml build`
+- [ ] Postgres up first: `docker compose -f docker-compose.prod.yml up -d postgres`
+- [ ] **Shared Postgres roles synced to `.env`: `npm run deploy:sync-pg`** (idempotent CREATE-or-ALTER for `sysreptor`/`docmost`; required on volume-preserving redeploys after rotating `*_DB_PASSWORD` — the `postgres-init` SQL only runs on first boot)
 - [ ] Services started: `docker compose -f docker-compose.prod.yml up -d`
 - [ ] **Post-deploy verification gate passed: `npm run deploy:verify`** (fails the deploy if any container is in a restart loop, exited unexpectedly, or stays unhealthy past the stability window — see `## Post-Deploy Verification` below)
 - [ ] Database migrations applied: `docker compose -f docker-compose.prod.yml exec app npm run db:push`

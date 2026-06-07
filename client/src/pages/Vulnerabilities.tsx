@@ -1,8 +1,20 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { toast } from "sonner";
-import { Plus, CheckSquare, Search, Crosshair, Loader2, FileCode, Copy, Terminal } from "lucide-react";
+import {
+  Plus,
+  CheckSquare,
+  Crosshair,
+  Loader2,
+  FileCode,
+  Copy,
+  Terminal,
+  ShieldAlert,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { arrayMove } from "@dnd-kit/sortable";
@@ -225,7 +237,7 @@ export default function Vulnerabilities() {
     toast.success("R&D Project created! View it in OffSec Team.", {
       action: {
         label: "View",
-        onClick: () => setLocation("/offsec-team"),
+        onClick: () => setLocation("/offsec-rd"),
       },
     });
   };
@@ -380,73 +392,67 @@ export default function Vulnerabilities() {
     validated: filteredVulnerabilities.filter((v) => v.investigationStatus === "validated").length,
   };
 
+  const statCards = [
+    { label: "Total Vulnerabilities", value: stats.total, color: "text-foreground" },
+    { label: "Critical", value: stats.critical, color: "text-severity-critical" },
+    { label: "High", value: stats.high, color: "text-severity-high" },
+    { label: "Investigating", value: stats.investigating, color: "text-info" },
+    { label: "Validated", value: stats.validated, color: "text-success" },
+  ];
+
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Vulnerabilities</h1>
-          <p className="text-muted-foreground mt-1">
-            Track and manage security vulnerabilities
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Select value={selectedOperation} onValueChange={setSelectedOperation}>
-            <SelectTrigger className="w-[220px]">
-              <SelectValue placeholder="Filter by operation" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Operations</SelectItem>
-              {operations
-                .filter((op) => op.status === "active")
-                .map((op) => (
-                  <SelectItem key={op.id} value={op.id}>
-                    {op.name}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-          <Button
-            variant={bulkMode ? "secondary" : "outline"}
-            onClick={toggleBulkMode}
-          >
-            <CheckSquare className="h-4 w-4 mr-2" />
-            {bulkMode ? "Exit Bulk Mode" : "Bulk Select"}
-          </Button>
-          <Button onClick={handleAddVulnerability}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Vulnerability
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        icon={ShieldAlert}
+        title="Vulnerabilities"
+        description="Track and manage security vulnerabilities"
+        actions={
+          <>
+            <Select value={selectedOperation} onValueChange={setSelectedOperation}>
+              <SelectTrigger className="w-[220px]" aria-label="Filter by operation">
+                <SelectValue placeholder="Filter by operation" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Operations</SelectItem>
+                {operations
+                  .filter((op) => op.status === "active")
+                  .map((op) => (
+                    <SelectItem key={op.id} value={op.id}>
+                      {op.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant={bulkMode ? "secondary" : "outline"}
+              onClick={toggleBulkMode}
+            >
+              <CheckSquare aria-hidden="true" className="h-4 w-4 mr-2" />
+              {bulkMode ? "Exit Bulk Mode" : "Bulk Select"}
+            </Button>
+            <Button onClick={handleAddVulnerability}>
+              <Plus aria-hidden="true" className="h-4 w-4 mr-2" />
+              Add Vulnerability
+            </Button>
+          </>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">
-            Total Vulnerabilities
-          </h3>
-          <p className="text-3xl font-bold text-foreground">{stats.total}</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">Critical</h3>
-          <p className="text-3xl font-bold text-red-600">{stats.critical}</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">High</h3>
-          <p className="text-3xl font-bold text-orange-600">{stats.high}</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">Investigating</h3>
-          <p className="text-3xl font-bold text-blue-600">{stats.investigating}</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">Validated</h3>
-          <p className="text-3xl font-bold text-green-600">{stats.validated}</p>
-        </div>
+        {statCards.map((card) => (
+          <div
+            key={card.label}
+            className="bg-card p-6 rounded-lg shadow-sm border border-border"
+          >
+            <h3 className="text-sm font-medium text-muted-foreground mb-2">{card.label}</h3>
+            {loading ? (
+              <Skeleton className="h-9 w-16" />
+            ) : (
+              <p className={`text-3xl font-bold tabular-nums ${card.color}`}>{card.value}</p>
+            )}
+          </div>
+        ))}
       </div>
 
       {/* Vulnerabilities List — grouped by operation */}
@@ -514,7 +520,7 @@ export default function Vulnerabilities() {
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Crosshair className="h-5 w-5 text-green-600" />
+              <Crosshair aria-hidden="true" className="h-5 w-5 text-success" />
               Execute R&D Exploit
             </DialogTitle>
             {exploitVuln && (
@@ -525,15 +531,18 @@ export default function Vulnerabilities() {
           </DialogHeader>
 
           {exploitLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-green-600 mr-2" />
-              <span className="text-muted-foreground">Loading R&D artifacts...</span>
+            <div className="space-y-3 py-2" aria-busy="true" aria-live="polite">
+              <Skeleton className="h-16 rounded-lg" />
+              <Skeleton className="h-16 rounded-lg" />
+              <Skeleton className="h-16 rounded-lg" />
             </div>
           ) : exploitArtifacts.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <FileCode className="h-10 w-10 mx-auto mb-2 opacity-50" />
-              <p>No exploitable artifacts found for this vulnerability</p>
-            </div>
+            <EmptyState
+              icon={FileCode}
+              title="No exploitable artifacts"
+              description="No R&D artifacts were generated for this vulnerability."
+              className="border-0 bg-transparent"
+            />
           ) : (
             <div className="space-y-3">
               <p className="text-sm text-muted-foreground">
@@ -546,10 +555,11 @@ export default function Vulnerabilities() {
                 >
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <Badge
+                      variant="secondary"
                       className={
                         artifact.artifactType === "poc_code"
-                          ? "bg-purple-100 text-purple-800"
-                          : "bg-orange-100 text-orange-800"
+                          ? "bg-info/10 text-info border-info/20"
+                          : "bg-warning/10 text-warning border-warning/20"
                       }
                     >
                       {artifact.artifactType === "poc_code" ? "POC Code" : "Nuclei Template"}
@@ -567,23 +577,23 @@ export default function Vulnerabilities() {
                     <Button
                       size="sm"
                       variant="outline"
+                      aria-label="Copy artifact to clipboard"
                       onClick={() => {
                         navigator.clipboard.writeText(artifact.content || "");
                         toast.success("Copied to clipboard");
                       }}
                     >
-                      <Copy className="h-3 w-3" />
+                      <Copy aria-hidden="true" className="h-3 w-3" />
                     </Button>
                     <Button
                       size="sm"
                       onClick={() => handleRunExploit(artifact.id)}
                       disabled={executing}
-                      className="bg-green-600 hover:bg-green-700 text-white"
                     >
                       {executing ? (
-                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        <Loader2 aria-hidden="true" className="h-4 w-4 mr-1 animate-spin" />
                       ) : (
-                        <Crosshair className="h-4 w-4 mr-1" />
+                        <Crosshair aria-hidden="true" className="h-4 w-4 mr-1" />
                       )}
                       Execute
                     </Button>
@@ -597,13 +607,14 @@ export default function Vulnerabilities() {
           {executionResult && (
             <div className="mt-4 border-t pt-4">
               <div className="flex items-center gap-2 mb-2">
-                <Terminal className="h-4 w-4" />
+                <Terminal aria-hidden="true" className="h-4 w-4" />
                 <span className="font-medium text-sm">Execution Result</span>
                 <Badge
+                  variant="secondary"
                   className={
                     executionResult.success
-                      ? "bg-green-100 text-green-800"
-                      : "bg-red-100 text-red-800"
+                      ? "bg-success/10 text-success border-success/20"
+                      : "bg-destructive/10 text-destructive border-destructive/20"
                   }
                 >
                   {executionResult.success ? "Success" : `Exit ${executionResult.exitCode}`}

@@ -1,0 +1,21 @@
+scenario,component,unit,rate_usd,usage_per_month,monthly_usd,notes
+Self-hosted (owned hardware),GPU node amortized,RTX 4090 over 36 mo,1800.00,1/36 month,50.00,One-time capex spread over 3 years
+Self-hosted (owned hardware),Power,kWh,0.15,~87 kWh (350W x 8h x 31d),13.00,Active-hours estimate
+Self-hosted (owned hardware),Storage & networking,flat,2.00,1,2.00,On-prem
+Self-hosted (owned hardware),TOTAL,,,,65.00,Primary deployment
+Self-hosted (owned hardware),Cost per 1000 requests (full util ~150k/mo),per 1k,,,0.43,Drops below 0.05 at saturation
+Cloud on-demand (Tier C burst),GPU L4/A10G,hour,1.00,248 h (8h x 31d),248.00,e.g. AWS g5.xlarge list
+Cloud on-demand (Tier C burst),Block storage,50 GB-month,0.10,50,5.00,
+Cloud on-demand (Tier C burst),Egress,GB,0.09,~20 GB,2.00,Minimal/private
+Cloud on-demand (Tier C burst),TOTAL,,,,255.00,
+Cloud on-demand (Tier C burst),Cost per 1000 requests (~58k/mo),per 1k,,,4.25,
+Cloud spot (cost-optimized burst),GPU L4/A10G spot,hour,0.34,248 h,84.00,~65% cheaper interruptible
+Cloud spot (cost-optimized burst),Storage,50 GB-month,0.10,50,5.00,
+Cloud spot (cost-optimized burst),TOTAL,,,,89.00,
+Cloud spot (cost-optimized burst),Cost per 1000 requests (~58k/mo),per 1k,,,1.40,
+Managed endpoint (comparison),Hosted inference,hour,2.50,248 h,620.00,Recurring + egress of sensitive prompts; rejected on data-sensitivity
+Throughput assumption,Single-stream decode,tok/s,,,40,Q4_K_M RTX 4090-class
+Throughput assumption,vLLM batched aggregate,tok/s,,,300,~6-8x via continuous batching
+Throughput assumption,Avg request size,tokens,,,1000,~400 in + ~600 out
+Throughput assumption,Single-stream capacity,req/hour,,,240,~15s/request
+Throughput assumption,vLLM batched capacity,req/hour,,,1750,

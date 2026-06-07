@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFeatureFlag } from "@/lib/feature-flags";
 import { api } from "@/lib/api";
+import CertificatesSection from "./CertificatesSection";
 
 type DeploymentState =
   | "down"
@@ -181,6 +182,8 @@ export default function DeploymentsPanel() {
           </div>
         </div>
       )}
+
+      <CertificatesSection />
     </div>
   );
 }

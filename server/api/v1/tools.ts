@@ -48,6 +48,7 @@ import {
 import { multiContainerExecutor } from "../../services/agents/multi-container-executor";
 import { OllamaAIClient } from "../../services/ollama-ai-client";
 import { TOOL_HELP_CONFIG, DEFAULT_HELP_CONFIG } from "../../services/tool-tester";
+import { enqueueSkillGeneration } from "../../services/skill-generator";
 import type { ToolConfiguration } from "../../../shared/types/tool-config";
 import { frameworkBindingService } from "../../services/frameworks/framework-binding-service";
 import { ContainerError } from "../../services/runtime/error-classifier";
@@ -208,6 +209,9 @@ router.post("/", ensureRole("admin"), async (req, res) => {
       .returning();
 
     await logAudit(user.id, "add_tool", "/tools", tool[0].id, true, req);
+
+    // FF_TOOL_SKILL_GENERATION — fire-and-forget Tavily research + SKILL.md
+    enqueueSkillGeneration("security", tool[0].id);
 
     res.status(201).json({ tool: tool[0] });
   } catch (error: any) {

@@ -352,13 +352,6 @@ async function initializeServer() {
         .catch((err) => console.warn(`⚠️  Inference model cache warm failed:`, err?.message ?? err));
     }, 2000);
 
-    // Auto-seed the bug-hunter skill corpus into knowledge_base (FF_BUG_HUNTER).
-    // Self-gated + count-gated + delayed; fully detached so it never blocks or
-    // crashes boot. See services/knowledge/skill-seed-startup.ts (B10).
-    import("./services/knowledge/skill-seed-startup")
-      .then(({ scheduleBugHunterSkillSeed }) => scheduleBugHunterSkillSeed())
-      .catch((err) => console.warn(`⚠️  Skill seed scheduling failed:`, err?.message ?? err));
-
     // Start the Agent-MCP connector: live tool discovery + rehydrate the
     // in-memory agent→MCP attachment map from agents.config so assignments
     // survive restarts (was never started before, so the map began empty every

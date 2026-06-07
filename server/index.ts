@@ -27,6 +27,8 @@ import healthChecksRoutes from "./api/v1/health-checks";
 import reportsRoutes from "./api/v1/reports";
 import toolsRoutes from "./api/v1/tools";
 import skillImportRoutes from "./api/v1/skill-import";
+import toolSkillsRoutes from "./api/v1/tool-skills";
+import skillsCatalogRoutes from "./api/v1/skills-catalog";
 import settingsRoutes from "./api/v1/settings";
 import agentLoopsRoutes from "./api/v1/agent-loops";
 import agentMcpRoutes from "./api/v1/agent-mcp";
@@ -54,6 +56,7 @@ import notificationsRoutes from "./api/v1/notifications";
 import filterPresetsRoutes from "./api/v1/filter-presets";
 import offsecRdProjectsRoutes from "./api/v1/offsec-rd-projects";
 import offsecRdExperimentsRoutes from "./api/v1/offsec-rd-experiments";
+import offsecRdArtifactsRoutes from "./api/v1/offsec-rd-artifacts";
 import offsecRdKnowledgeRoutes from "./api/v1/offsec-rd-knowledge";
 import offsecRdToolsRoutes from "./api/v1/offsec-rd-tools";
 import vulnerabilityRdRoutes from "./api/v1/vulnerability-rd";
@@ -76,6 +79,10 @@ import scanImportRoutes from "./api/v1/scan-import";
 import vulnerabilityInvestigationRoutes from "./api/v1/vulnerability-investigation";
 import bugBountyImportRoutes from "./api/v1/bug-bounty-import";
 import agentChatRoutes from "./api/v1/agent-chat";
+import bugHunterAdminRoutes from "./api/v1/bug-hunter/admin";
+import bugHunterWorkflowsRoutes from "./api/v1/bug-hunter/workflows";
+import bugHunterQueriesRoutes from "./api/v1/bug-hunter/queries";
+import bugHunterMemoryRoutes from "./api/v1/bug-hunter/memory";
 import c2WarroomRoutes from "./api/v1/c2-warroom";
 import sysreptorRoutes from "./api/v1/sysreptor";
 import inferenceRoutes from "./api/v1/inference";
@@ -84,6 +91,7 @@ import knowledgeRoutes from "./api/v1/knowledge";
 import stixRoutes from "./api/v1/stix";
 import docmostRoutes from "./api/v1/docmost";
 import frameworkDeployRoutes from "./api/v1/framework-deploy";
+import infrastructureCertificatesRoutes from "./api/v1/infrastructure-certificates";
 import "./services/rd-feedback-loop"; // Activate R&D tool testing feedback loop
 import { initializeDefaultAdmin } from "./services/admin-initialization";
 import { opsManagerScheduler } from "./services/ops-manager-scheduler";
@@ -140,6 +148,8 @@ app.use("/api/v1/health-checks", healthChecksRoutes);
 app.use("/api/v1/reports", reportsRoutes);
 app.use("/api/v1/tools", toolsRoutes);
 app.use("/api/v1/skills", skillImportRoutes);
+app.use("/api/v1/tool-skills", toolSkillsRoutes);
+app.use("/api/v1/skills", skillsCatalogRoutes);
 app.use("/api/v1/settings", settingsRoutes);
 app.use("/api/v1/agent-loops", agentLoopsRoutes);
 app.use("/api/v1/agents", agentMcpRoutes);
@@ -156,6 +166,7 @@ app.use("/api/v1/knowledge", knowledgeRoutes);
 app.use("/api/v1/stix", stixRoutes);
 app.use("/api/v1/docmost", docmostRoutes);
 app.use("/api/v1/deployments", frameworkDeployRoutes);
+app.use("/api/v1/infrastructure/certificates", infrastructureCertificatesRoutes);
 app.use("/api/v1/attack", attackRoutes);
 app.use("/api/v1/attack-flows", attackFlowsRoutes);
 app.use("/api/v1/workbench", workbenchRoutes);
@@ -175,6 +186,7 @@ app.use("/api/v1/notifications", notificationsRoutes);
 app.use("/api/v1/filter-presets", filterPresetsRoutes);
 app.use("/api/v1/offsec-rd/projects", offsecRdProjectsRoutes);
 app.use("/api/v1/offsec-rd/experiments", offsecRdExperimentsRoutes);
+app.use("/api/v1/offsec-rd/artifacts", offsecRdArtifactsRoutes);
 app.use("/api/v1/offsec-rd/knowledge", offsecRdKnowledgeRoutes);
 app.use("/api/v1/offsec-rd/tools", offsecRdToolsRoutes);
 app.use("/api/v1/vulnerability-rd", vulnerabilityRdRoutes);
@@ -198,6 +210,23 @@ app.use("/api/v1/vulnerability-investigation", vulnerabilityInvestigationRoutes)
 app.use("/api/v1/bug-bounty-import", bugBountyImportRoutes);
 app.use("/api/v1/agent-chat", agentChatRoutes);
 
+// Bug-hunter admin/introspection routes (FF_BUG_HUNTER). Workflow + query
+// endpoints land in subsequent PRs (workflows.ts, queries.ts, memory.ts).
+// The route file itself enforces the flag, but we still gate the mount to
+// avoid a stray import path if disabled.
+if (
+  ["true", "1", "yes", "on"].includes(
+    (process.env.FF_BUG_HUNTER ?? "").toLowerCase(),
+  )
+) {
+  app.use("/api/v1/bug-hunter/admin", bugHunterAdminRoutes);
+  // Specific sub-paths mounted first so they win over the catch-all workflows
+  // router that owns top-level verbs like /hunt, /recon, /report, etc.
+  app.use("/api/v1/bug-hunter", bugHunterQueriesRoutes);
+  app.use("/api/v1/bug-hunter", bugHunterMemoryRoutes);
+  app.use("/api/v1/bug-hunter", bugHunterWorkflowsRoutes);
+}
+
 // Root endpoint
 app.get("/api/v1", (_req, res) => {
   res.json({
@@ -216,6 +245,7 @@ app.get("/api/v1", (_req, res) => {
       healthChecks: "/api/v1/health-checks",
       reports: "/api/v1/reports",
       tools: "/api/v1/tools",
+      toolSkills: "/api/v1/tool-skills",
       settings: "/api/v1/settings",
       agentLoops: "/api/v1/agent-loops",
       agentWorkflows: "/api/v1/agent-workflows",
@@ -310,6 +340,34 @@ async function initializeServer() {
     // Start Scan Scheduler
     await scanScheduler.start();
     console.log(`⏰ Scan Scheduler started for scheduled security scans`);
+
+    // Warm the inference model cache so the router can validate Settings-
+    // chosen models against actual provider availability on the first call.
+    // Fire-and-forget — failure here just means router falls back to
+    // "trust the name" until the first manual refresh.
+    setTimeout(() => {
+      import("./services/inference/model-cache")
+        .then(({ modelCache }) => modelCache.refresh())
+        .then(() => console.log(`🤖 Inference model cache warmed`))
+        .catch((err) => console.warn(`⚠️  Inference model cache warm failed:`, err?.message ?? err));
+    }, 2000);
+
+    // Auto-seed the bug-hunter skill corpus into knowledge_base (FF_BUG_HUNTER).
+    // Self-gated + count-gated + delayed; fully detached so it never blocks or
+    // crashes boot. See services/knowledge/skill-seed-startup.ts (B10).
+    import("./services/knowledge/skill-seed-startup")
+      .then(({ scheduleBugHunterSkillSeed }) => scheduleBugHunterSkillSeed())
+      .catch((err) => console.warn(`⚠️  Skill seed scheduling failed:`, err?.message ?? err));
+
+    // Start the Agent-MCP connector: live tool discovery + rehydrate the
+    // in-memory agent→MCP attachment map from agents.config so assignments
+    // survive restarts (was never started before, so the map began empty every
+    // boot). Delayed + detached; non-fatal. See agent-mcp-connector.ts.
+    setTimeout(() => {
+      import("./services/agent-mcp-connector")
+        .then(({ agentMCPConnector }) => agentMCPConnector.start())
+        .catch((err) => console.warn(`⚠️  Agent-MCP connector start failed:`, err?.message ?? err));
+    }, 6000);
 
     // Initialize v2.1 Autonomous Agent System
     if (process.env.AGENT_AUTO_INITIALIZE !== "false") {

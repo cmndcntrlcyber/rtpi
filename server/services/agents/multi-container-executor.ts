@@ -28,6 +28,11 @@ export interface ToolInfo {
   containerUser: string;
   category: string;
   version: string | null;
+  /** Optional human description (used when presenting the tool to the model). */
+  description?: string;
+  /** JSON Schema of named arguments — present for MCP tools, whose `tools/call`
+   *  takes a named-argument object rather than positional CLI args. */
+  inputSchema?: any;
 }
 
 /**

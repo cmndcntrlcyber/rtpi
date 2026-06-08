@@ -12,7 +12,7 @@ import {
   agentBundles,
   agentDownloadTokens,
 } from "@shared/schema";
-import { eq, and, desc, sql, inArray, isNull, gt } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, isNull, gt, gte } from "drizzle-orm";
 import { rustNexusController } from "../../services/rust-nexus-controller";
 import { taskDistributor } from "../../services/rust-nexus-task-distributor";
 import { distributedWorkflowOrchestrator, KillSwitchReason } from "../../services/distributed-workflow-orchestrator";
@@ -408,7 +408,9 @@ router.get("/implants/:implantId/telemetry", async (req, res) => {
     if (since) {
       whereClause = and(
         whereClause,
-        sql`${rustNexusTelemetry.collectedAt} >= ${new Date(since as string)}`
+        // Typed gte() so drizzle maps the Date → string; a raw Date in sql``
+        // bypasses column mapping and crashes postgres-js's wire encoder.
+        gte(rustNexusTelemetry.collectedAt, new Date(since as string))
       );
     }
 

@@ -43,6 +43,7 @@ toolTestEvents.on('test_complete', async ({ toolId, allPassed, results }) => {
     await db.insert(rdExperiments).values({
       projectId: artifact.projectId,
       name: `Refinement: ${tool.name} test failures`,
+      type: 'poc_development',
       description: `Auto-generated refinement for R&D tool "${tool.name}" that failed testing.`,
       methodology: `Fix failing tests: ${failures}`,
       status: 'planned',

@@ -1,0 +1,8 @@
+# Client dependencies for the Module 2 serving stack.
+# client.py runs on the Python stdlib alone; these are optional conveniences
+# and for the OpenAI-SDK request path. Pinned for reproducibility (RT rubric).
+
+openai==1.51.0            # optional: OpenAI-compatible SDK client path
+requests==2.32.3          # optional: simpler HTTP than urllib
+huggingface-hub==0.25.2   # for `huggingface-cli download` in deploy_ollama.sh
+pyyaml==6.0.2             # parse config.yaml

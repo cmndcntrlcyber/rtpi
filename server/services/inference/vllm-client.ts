@@ -34,13 +34,24 @@ export interface VLLMProbeResult {
 
 const DEFAULT_BASE_URL = "http://rtpi-vllm:8000";
 const DEFAULT_MODEL = "Qwen/Qwen3.5-9B";
+const DEFAULT_EMBED_MODEL = "embeddinggemma";
 
 export function getVLLMBaseUrl(): string {
   return (process.env.VLLM_BASE_URL || DEFAULT_BASE_URL).replace(/\/$/, "");
 }
 
+/** Default CHAT model. Don't use for embeddings — Qwen3.5-9B is a chat model. */
 export function getVLLMDefaultModel(): string {
   return process.env.VLLM_MODEL || DEFAULT_MODEL;
+}
+
+/**
+ * Default EMBEDDING model when EMBEDDING_MODEL is unset. Distinct from the
+ * chat default so the embed path doesn't accidentally pick a chat model
+ * (which would 400 with "no pooler" on vLLM).
+ */
+export function getVLLMDefaultEmbedModel(): string {
+  return process.env.VLLM_EMBED_MODEL || DEFAULT_EMBED_MODEL;
 }
 
 /**

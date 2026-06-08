@@ -78,7 +78,13 @@ export default function MainLayout({ children }: MainLayoutProps) {
 
   return (
     <AgentChatProvider>
-      <div className="min-h-screen bg-background">
+      <div className="min-h-dvh bg-background">
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[1000] focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          Skip to main content
+        </a>
         <Header onMenuClick={handleMenuClick} onSearchClick={() => setCommandPaletteOpen(true)} />
       <Sidebar
         isOpen={sidebarOpen}
@@ -87,7 +93,9 @@ export default function MainLayout({ children }: MainLayoutProps) {
         onClose={handleSidebarClose}
       />
       <main
-        className={`pt-16 px-2 sm:px-4 lg:px-6 transition-all duration-300 ${getSidebarWidth()}`}
+        id="main"
+        tabIndex={-1}
+        className={`pt-[var(--header-h)] px-2 sm:px-4 lg:px-6 transition-[margin] duration-300 focus:outline-none ${getSidebarWidth()}`}
       >
         {children}
       </main>

@@ -4,11 +4,168 @@ import { agents, agentCapabilities, agentTactics, attackTactics, workflowTemplat
 import { eq, and } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import { frameworkBindingService } from "../../services/frameworks/framework-binding-service";
+import * as agentBackupService from "../../services/agent-backup-service";
+import { loadSkillSummary } from "../../services/skills/skill-loader";
+import type { ToolSkillSummary } from "../../services/agent-prompt-generator";
+import { syncAgentPromptForToolset } from "../../services/agents/tool-skill-prompt-sync";
 
 const router = Router();
 
+/**
+ * FF_TOOL_SKILL_GENERATION — fan out skill loads across the MCP servers an
+ * operator selected when previewing a prompt. Servers without a generated
+ * SKILL.md simply get skipped (loadSkillSummary returns null).
+ */
+async function loadSkillsForMcpServers(mcpServerIds: string[]): Promise<ToolSkillSummary[]> {
+  const summaries = await Promise.all(
+    mcpServerIds.map((id) => loadSkillSummary("mcp", id)),
+  );
+  return summaries
+    .filter((s): s is NonNullable<typeof s> => s !== null)
+    .map((s) => ({
+      registry: "mcp" as const,
+      id: s.toolId,
+      name: s.name,
+      summary: s.summary,
+      skillPath: s.skillPath,
+    }));
+}
+
 // Apply authentication to all routes
 router.use(ensureAuthenticated);
+
+// POST /api/v1/agents/admin/reseed — Force-rerun initializeAgentSystem() to
+// re-create default agents (Operations Manager, Page Reporters, Web Hacker,
+// Surface Assessment, Tool Connector, Vulnerability Reporter, Research,
+// Maldev). Useful after a DB truncate when restarting the backend would be
+// disruptive. Must be defined before /:id-style routes.
+router.post("/admin/reseed", ensureRole("admin"), async (req, res) => {
+  const user = req.user as any;
+  try {
+    const { workflowEventHandlers } = await import("../../services/workflow-event-handlers");
+    // Reset the in-process guard so the seeding routine actually runs again.
+    (workflowEventHandlers as any).initialized = false;
+    await workflowEventHandlers.initializeAgentSystem();
+
+    const allAgents = await db.select().from(agents);
+    await logAudit(user.id, "admin_reseed_agents", "/agents/admin/reseed", `${allAgents.length} agents`, true, req);
+    res.json({
+      success: true,
+      count: allAgents.length,
+      names: allAgents.map((a) => a.name),
+    });
+  } catch (error: any) {
+    console.error("[agents] admin reseed failed:", error);
+    await logAudit(user.id, "admin_reseed_agents", "/agents/admin/reseed", error?.message || "failed", false, req);
+    res.status(500).json({ error: "Reseed failed", details: error?.message });
+  }
+});
+
+// GET /api/v1/agents/admin/backups — List available snapshots for every agent,
+// or filter to a single agent with ?name=<agentName>.
+router.get("/admin/backups", ensureRole("admin"), async (req, res) => {
+  const user = req.user as any;
+  const filterName = typeof req.query.name === "string" ? req.query.name : undefined;
+  try {
+    const entries = await agentBackupService.listAgentNames();
+    const filtered = filterName
+      ? entries.filter((e) => e.agentName === filterName)
+      : entries;
+
+    const result: agentBackupService.AgentBackupListEntry[] = [];
+    for (const { agentName, slug } of filtered) {
+      const snapshots = await agentBackupService.listSnapshots(slug);
+      result.push({
+        agentName,
+        slug,
+        latestSnapshotTime: snapshots[0]?.snapshotTime || null,
+        snapshots,
+      });
+    }
+    await logAudit(user.id, "admin_backup_list", "/agents/admin/backups", `${result.length} agents`, true, req);
+    res.json(result);
+  } catch (error: any) {
+    console.error("[agents] admin backups list failed:", error);
+    res.status(500).json({ error: "Failed to list backups", details: error?.message });
+  }
+});
+
+// GET /api/v1/agents/admin/backups/:slug/:snapshotId — Preview one snapshot's
+// JSON payload (used by the UI before applying a restore).
+router.get("/admin/backups/:slug/:snapshotId", ensureRole("admin"), async (req, res) => {
+  const user = req.user as any;
+  const { slug, snapshotId } = req.params;
+  try {
+    const payload = await agentBackupService.readSnapshot(slug, snapshotId);
+    if (!payload) {
+      return res.status(404).json({ error: "Snapshot not found" });
+    }
+    await logAudit(user.id, "admin_backup_get", `/agents/admin/backups/${slug}/${snapshotId}`, slug, true, req);
+    res.json(payload);
+  } catch (error: any) {
+    console.error("[agents] admin backup get failed:", error);
+    res.status(500).json({ error: "Failed to read snapshot", details: error?.message });
+  }
+});
+
+// POST /api/v1/agents/admin/restore — Restore one agent from a snapshot.
+// Body: { agentName: string, snapshotId?: string }. snapshotId defaults to
+// the most recent snapshot for that agent.
+router.post("/admin/restore", ensureRole("admin"), async (req, res) => {
+  const user = req.user as any;
+  const { agentName, snapshotId } = req.body || {};
+  if (!agentName || typeof agentName !== "string") {
+    return res.status(400).json({ error: "agentName is required" });
+  }
+  try {
+    const slug = agentBackupService.slugify(agentName);
+    const result = await agentBackupService.restoreAgent(slug, snapshotId);
+    await logAudit(
+      user.id,
+      "admin_restore_agent",
+      "/agents/admin/restore",
+      `${agentName} ← ${result.snapshotId} (${result.action})`,
+      result.action !== "skipped",
+      req
+    );
+    if (result.action === "skipped") {
+      return res.status(404).json(result);
+    }
+    res.json(result);
+  } catch (error: any) {
+    console.error("[agents] admin restore failed:", error);
+    await logAudit(user.id, "admin_restore_agent", "/agents/admin/restore", agentName, false, req);
+    res.status(500).json({ error: "Restore failed", details: error?.message });
+  }
+});
+
+// POST /api/v1/agents/admin/restore-all — Restore every agent that has at
+// least one snapshot. Body (optional): { snapshotIds: { <agentName>: <id> } }
+// — missing entries use the latest snapshot. Continues past per-agent errors.
+router.post("/admin/restore-all", ensureRole("admin"), async (req, res) => {
+  const user = req.user as any;
+  const snapshotIds = (req.body && req.body.snapshotIds) || {};
+  if (typeof snapshotIds !== "object" || Array.isArray(snapshotIds)) {
+    return res.status(400).json({ error: "snapshotIds must be an object map" });
+  }
+  try {
+    const results = await agentBackupService.restoreAll(snapshotIds);
+    const okCount = results.filter((r) => r.action !== "skipped" && r.errors.length === 0).length;
+    await logAudit(
+      user.id,
+      "admin_restore_all",
+      "/agents/admin/restore-all",
+      `${okCount}/${results.length} restored cleanly`,
+      true,
+      req
+    );
+    res.json({ results });
+  } catch (error: any) {
+    console.error("[agents] admin restore-all failed:", error);
+    await logAudit(user.id, "admin_restore_all", "/agents/admin/restore-all", error?.message || "failed", false, req);
+    res.status(500).json({ error: "Restore-all failed", details: error?.message });
+  }
+});
 
 // GET /api/v1/agents/:id/frameworks (v2.9.1 Phase 4 reverse lookup)
 // Returns every framework element this agent is bound to.
@@ -57,7 +214,7 @@ router.get("/", async (_req, res) => {
 
     res.json({ agents: enrichedAgents });
   } catch (error: any) {
-    // Error logged for debugging
+    console.error("[agents] GET / failed:", error);
     res.status(500).json({ error: "Failed to list agents", details: error?.message || "Internal server error" });
   }
 });
@@ -242,6 +399,7 @@ router.post("/", ensureRole("admin", "operator"), async (req, res) => {
       .returning();
 
     await logAudit(user.id, "create_agent", "/agents", agent[0].id, true, req);
+    void agentBackupService.snapshotAgent(agent[0].id, "create");
 
     res.status(201).json({ agent: agent[0] });
   } catch (error: any) {
@@ -257,6 +415,7 @@ router.put("/:id", ensureRole("admin", "operator"), async (req, res) => {
   const user = req.user as any;
 
   try {
+    const [prior] = await db.select().from(agents).where(eq(agents.id, id));
     const result = await db
       .update(agents)
       .set({
@@ -271,6 +430,17 @@ router.put("/:id", ensureRole("admin", "operator"), async (req, res) => {
     }
 
     await logAudit(user.id, "update_agent", "/agents", id, true, req);
+    void agentBackupService.snapshotAgent(id, "edit");
+
+    // FF_TOOL_SKILL_GENERATION — if the toolset-affecting fields changed,
+    // rewrite the system prompt so its `## Tool Skills` section reflects the
+    // new set. Fire-and-forget — does not block the API response, and a
+    // failure inside the sync only logs (the PUT itself stays a 200).
+    if (toolsetChanged(prior?.config, result[0]?.config)) {
+      void syncAgentPromptForToolset(id, { reason: "toolset_updated" }).catch((err) => {
+        console.error(`[agents.PUT] tool-skill sync failed for ${id}:`, err);
+      });
+    }
 
     res.json({ agent: result[0] });
   } catch (error: any) {
@@ -280,9 +450,45 @@ router.put("/:id", ensureRole("admin", "operator"), async (req, res) => {
   }
 });
 
+/**
+ * Returns true when the agent's toolset (MCP servers or enabled tools)
+ * differs between `prior` and `next` configs. Used to skip the prompt-sync
+ * fire-and-forget when an edit only touched non-toolset fields.
+ */
+function toolsetChanged(prior: unknown, next: unknown): boolean {
+  const a = (prior ?? {}) as { mcpServerIds?: unknown; mcpServerId?: unknown; enabledTools?: unknown };
+  const b = (next ?? {}) as { mcpServerIds?: unknown; mcpServerId?: unknown; enabledTools?: unknown };
+  const normalize = (cfg: typeof a) => ({
+    mcpServerIds: Array.isArray(cfg.mcpServerIds)
+      ? [...cfg.mcpServerIds].sort()
+      : typeof cfg.mcpServerId === "string"
+        ? [cfg.mcpServerId]
+        : [],
+    enabledTools: Array.isArray(cfg.enabledTools) ? [...cfg.enabledTools].sort() : [],
+  });
+  return JSON.stringify(normalize(a)) !== JSON.stringify(normalize(b));
+}
+
+// POST /api/v1/agents/:id/sync-skills - Manually trigger tool-skill prompt sync.
+// Useful after a one-off skill regeneration or to force a refresh when the
+// auto-trigger missed an edit. Returns the SyncResult so operators can see
+// exactly what changed.
+router.post("/:id/sync-skills", ensureRole("admin", "operator"), async (req, res) => {
+  const { id } = req.params;
+  const user = req.user as any;
+  try {
+    const result = await syncAgentPromptForToolset(id, { reason: "manual_endpoint" });
+    await logAudit(user.id, "sync_agent_skills", "/agents/sync-skills", id, true, req);
+    res.json(result);
+  } catch (error: any) {
+    await logAudit(user.id, "sync_agent_skills", "/agents/sync-skills", id, false, req);
+    res.status(500).json({ error: "Failed to sync agent skills", details: error?.message });
+  }
+});
+
 // POST /api/v1/agents/generate-prompt - Generate agent system prompt using AI
 router.post("/generate-prompt", ensureRole("admin", "operator"), async (req, res) => {
-  const { description, toolContainers, agentType } = req.body;
+  const { description, toolContainers, agentType, mcpServerIds } = req.body;
   const user = req.user as any;
 
   if (!description) {
@@ -292,10 +498,19 @@ router.post("/generate-prompt", ensureRole("admin", "operator"), async (req, res
   try {
     const { generateAgentPrompt } = await import("../../services/agent-prompt-generator");
 
+    // FF_TOOL_SKILL_GENERATION — load per-tool SKILL.md summaries for any
+    // MCP servers the operator chose to wire to this agent. Falls back to []
+    // when no servers are passed or none have generated skills yet.
+    let toolSkills: Awaited<ReturnType<typeof loadSkillsForMcpServers>> = [];
+    if (Array.isArray(mcpServerIds) && mcpServerIds.length > 0) {
+      toolSkills = await loadSkillsForMcpServers(mcpServerIds);
+    }
+
     const result = await generateAgentPrompt({
       description,
       toolContainers: toolContainers || [],
       agentType: agentType || "anthropic",
+      toolSkills,
     });
 
     await logAudit(user.id, "generate_agent_prompt", "/agents/generate-prompt", null, true, req);
@@ -428,6 +643,7 @@ router.put("/:agentId/tactic", ensureRole("admin", "operator"), async (req, res)
       .limit(1);
 
     await logAudit(user.id, "set_agent_tactic", "/agents/tactic", agentId, true, req);
+    void agentBackupService.snapshotAgent(agentId, "tactic");
     res.json({ success: true, tactic: result });
   } catch (error: any) {
     await logAudit(user.id, "set_agent_tactic", "/agents/tactic", agentId, false, req);
@@ -443,6 +659,7 @@ router.delete("/:agentId/tactic", ensureRole("admin", "operator"), async (req, r
   try {
     await db.delete(agentTactics).where(eq(agentTactics.agentId, agentId));
     await logAudit(user.id, "remove_agent_tactic", "/agents/tactic", agentId, true, req);
+    void agentBackupService.snapshotAgent(agentId, "tactic");
     res.json({ success: true });
   } catch (error: any) {
     await logAudit(user.id, "remove_agent_tactic", "/agents/tactic", agentId, false, req);
@@ -518,6 +735,7 @@ router.post("/:agentId/tactics", ensureRole("admin", "operator"), async (req, re
       .where(eq(agentTactics.agentId, agentId));
 
     await logAudit(user.id, "add_agent_tactics", "/agents/tactics", agentId, true, req);
+    void agentBackupService.snapshotAgent(agentId, "tactic");
     res.json({ success: true, tactics: results, added: newAssignments.length });
   } catch (error: any) {
     await logAudit(user.id, "add_agent_tactics", "/agents/tactics", agentId, false, req);
@@ -536,6 +754,7 @@ router.delete("/:agentId/tactics/:tacticId", ensureRole("admin", "operator"), as
       .where(and(eq(agentTactics.agentId, agentId), eq(agentTactics.tacticId, tacticId)));
 
     await logAudit(user.id, "remove_agent_from_tactic", "/agents/tactics", agentId, true, req);
+    void agentBackupService.snapshotAgent(agentId, "tactic");
     res.json({ success: true });
   } catch (error: any) {
     await logAudit(user.id, "remove_agent_from_tactic", "/agents/tactics", agentId, false, req);
@@ -570,6 +789,7 @@ router.post("/:agentId/mcp/attach", ensureRole("admin", "operator"), async (req,
     }
 
     await logAudit(user.id, "attach_agent_mcp", "/agents/mcp/attach", agentId, true, req);
+    void agentBackupService.snapshotAgent(agentId, "mcp");
 
     res.json({ message: "Agent attached to MCP server", agentId, mcpServerId });
   } catch (error: any) {
@@ -593,6 +813,7 @@ router.delete("/:agentId/mcp/:mcpServerId", ensureRole("admin", "operator"), asy
     }
 
     await logAudit(user.id, "detach_agent_mcp", "/agents/mcp/detach", agentId, true, req);
+    void agentBackupService.snapshotAgent(agentId, "mcp");
 
     res.json({ message: "Agent detached from MCP server" });
   } catch (error: any) {

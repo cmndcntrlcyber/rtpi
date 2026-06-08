@@ -6,6 +6,7 @@ import fs from "fs";
 import path from "path";
 import { invalidateAIClients } from "../../services/ai-clients";
 import { readFeatureFlags } from "../../../shared/feature-flags";
+import { modelCache } from "../../services/inference/model-cache";
 
 const router = Router();
 
@@ -134,10 +135,18 @@ function applyKeyUpdates(body: {
 
   if (Object.keys(envUpdates).length > 0) {
     persistEnvKeys(envUpdates);
+    // Invalidate the model-cache entries for any provider whose endpoint or
+    // key changed. The next router call will re-probe lazily; the operator
+    // can also force an immediate re-probe via POST /llm/refresh-models.
+    if (envUpdates.OPENAI_API_KEY) modelCache.invalidate("openai");
+    if (envUpdates.ANTHROPIC_API_KEY) modelCache.invalidate("anthropic");
+    if (envUpdates.OLLAMA_HOST) modelCache.invalidate("ollama");
   }
 }
 
-// GET /api/v1/settings/llm - Get LLM settings
+// GET /api/v1/settings/llm - Get LLM settings + cached available models per
+// provider so the Settings UI can render an accurate dropdown without
+// needing a separate roundtrip.
 router.get("/llm", async (_req, res) => {
   try {
     // Mask API keys for security (show only last 4 characters)
@@ -158,9 +167,22 @@ router.get("/llm", async (_req, res) => {
       ollamaHost: llmSettings.ollamaHost,
     };
 
-    res.json({ settings: maskedSettings });
+    res.json({ settings: maskedSettings, availableModels: modelCache.snapshot() });
   } catch (error: any) {
     res.status(500).json({ error: "Failed to get settings", details: error?.message || "Internal server error" });
+  }
+});
+
+// POST /api/v1/settings/llm/refresh-models - Re-probe all four providers and
+// return the refreshed cache snapshot. Used by the Settings UI "Refresh
+// models" button so the operator's dropdown reflects current Ollama / vLLM
+// model lists alongside the cloud catalogs.
+router.post("/llm/refresh-models", async (_req, res) => {
+  try {
+    await modelCache.refresh();
+    res.json({ availableModels: modelCache.snapshot() });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to refresh models", details: error?.message || "Internal server error" });
   }
 });
 

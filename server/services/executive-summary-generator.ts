@@ -10,7 +10,7 @@
  * - Support for multiple AI providers (Anthropic, OpenAI)
  */
 
-import { getOpenAIClient, getAnthropicClient } from "./ai-clients";
+import { routeReasoning, NoInferenceProviderAvailable } from "./inference/inference-router";
 
 // ============================================================================
 // Types
@@ -76,14 +76,6 @@ export class ExecutiveSummaryGenerator {
     this.provider = provider;
   }
 
-  private get anthropicClient() {
-    return getAnthropicClient();
-  }
-
-  private get openaiClient() {
-    return getOpenAIClient();
-  }
-
   /**
    * Generate an executive summary from report data
    */
@@ -110,19 +102,27 @@ export class ExecutiveSummaryGenerator {
       focusAreas,
     });
 
-    // Generate summary using selected AI provider
-    let response: string;
-    if (this.provider === "anthropic" && this.anthropicClient) {
-      response = await this.generateWithAnthropic(prompt);
-    } else if (this.provider === "openai" && this.openaiClient) {
-      response = await this.generateWithOpenAI(prompt);
-    } else {
-      // Fallback to template-based generation
-      return this.generateFallbackSummary(reportData, options);
+    // Route through the inference router so the operator's Settings →
+    // Default Reasoning Model is honored, with full provider fallback. The
+    // `provider` constructor arg is preserved as a soft hint for back-compat
+    // but does not override Settings.
+    try {
+      const result = await routeReasoning({
+        messages: [
+          { role: "system", content: "You are a cybersecurity expert specializing in executive report writing." },
+          { role: "user", content: prompt },
+        ],
+        maxTokens: 4096,
+        temperature: 0.7,
+      });
+      return this.parseResponse(result.response.text, reportData, includeRiskScore);
+    } catch (err) {
+      if (err instanceof NoInferenceProviderAvailable) {
+        console.error("[executive-summary-generator] all providers exhausted, using template:", err.message);
+        return this.generateFallbackSummary(reportData, options);
+      }
+      throw err;
     }
-
-    // Parse the AI response into structured format
-    return this.parseResponse(response, reportData, includeRiskScore);
   }
 
   /**
@@ -205,60 +205,6 @@ Return the response as JSON with the following structure:
 Ensure the JSON is valid and parseable.`;
 
     return prompt;
-  }
-
-  /**
-   * Generate summary using Anthropic Claude
-   */
-  private async generateWithAnthropic(prompt: string): Promise<string> {
-    if (!this.anthropicClient) {
-      throw new Error("Anthropic client not initialized");
-    }
-
-    const response = await this.anthropicClient.messages.create({
-      model: "claude-sonnet-4-5",
-      max_tokens: 4096,
-      messages: [
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-    });
-
-    const content = response.content[0];
-    if (content.type !== "text") {
-      throw new Error("Unexpected response type from Anthropic");
-    }
-
-    return content.text;
-  }
-
-  /**
-   * Generate summary using OpenAI GPT
-   */
-  private async generateWithOpenAI(prompt: string): Promise<string> {
-    if (!this.openaiClient) {
-      throw new Error("OpenAI client not initialized");
-    }
-
-    const response = await this.openaiClient.chat.completions.create({
-      model: "gpt-5.2-chat-latest",
-      messages: [
-        {
-          role: "system",
-          content: "You are a cybersecurity expert specializing in executive report writing.",
-        },
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-      temperature: 0.7,
-      max_tokens: 4096,
-    });
-
-    return response.choices[0].message.content || "";
   }
 
   /**

@@ -18,6 +18,7 @@ import {
   DefaultMcpEntry,
   MCP_FS_ROOT_PLACEHOLDER,
 } from "./default-servers-catalog";
+import { enqueueSkillGeneration } from "../skill-generator";
 
 export interface CatalogSyncResult {
   inserted: number;
@@ -80,6 +81,9 @@ export async function syncDefaultCatalog(): Promise<CatalogSyncResult> {
 
     if (result.length > 0) {
       inserted += 1;
+      // FF_TOOL_SKILL_GENERATION — kick off SKILL.md generation for newly
+      // seeded defaults. Guarded inside enqueueSkillGeneration.
+      enqueueSkillGeneration("mcp", result[0].id);
     } else {
       alreadyPresent += 1;
     }

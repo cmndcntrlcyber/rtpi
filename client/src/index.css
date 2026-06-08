@@ -24,6 +24,24 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 222.2 84% 4.9%;
     --radius: 0.5rem;
+
+    /* v3.0 — semantic state tokens */
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 20 14% 10%;
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+
+    /* v3.0 — severity scale (used by SeverityBadge + charts) */
+    --sev-critical: 0 84% 50%;
+    --sev-high: 16 95% 48%;
+    --sev-medium: 38 92% 45%;
+    --sev-low: 199 89% 42%;
+    --sev-info: 215 16% 47%;
+
+    /* v3.0 — layout shell */
+    --header-h: 4rem;
   }
 
   .dark {
@@ -46,6 +64,55 @@
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
+
+    --success: 142 70% 45%;
+    --success-foreground: 144 80% 10%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 20 14% 4%;
+    --info: 199 89% 55%;
+    --info-foreground: 200 80% 10%;
+
+    --sev-critical: 0 84% 60%;
+    --sev-high: 16 95% 55%;
+    --sev-medium: 38 92% 50%;
+    --sev-low: 199 89% 48%;
+    --sev-info: 215 16% 55%;
+  }
+
+  /* v3.0 — graphite (operator default, gated by FF_UI_V3_GRAPHITE) */
+  .graphite {
+    --background: 220 13% 10%;
+    --foreground: 210 20% 92%;
+    --card: 220 13% 13%;
+    --card-foreground: 210 20% 92%;
+    --popover: 220 13% 13%;
+    --popover-foreground: 210 20% 92%;
+    --primary: 0 72% 51%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 13% 18%;
+    --secondary-foreground: 210 20% 92%;
+    --muted: 220 13% 18%;
+    --muted-foreground: 215 15% 65%;
+    --accent: 220 13% 20%;
+    --accent-foreground: 210 20% 92%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 22%;
+    --input: 220 13% 22%;
+    --ring: 0 72% 51%;
+
+    --success: 142 70% 48%;
+    --success-foreground: 144 80% 10%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 20 14% 4%;
+    --info: 199 89% 55%;
+    --info-foreground: 200 80% 10%;
+
+    --sev-critical: 0 84% 60%;
+    --sev-high: 16 95% 55%;
+    --sev-medium: 38 92% 50%;
+    --sev-low: 199 89% 48%;
+    --sev-info: 215 16% 55%;
   }
 }
 
@@ -64,5 +131,32 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: "Fira Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  code,
+  kbd,
+  pre,
+  samp,
+  .font-mono {
+    font-family: "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+}
+
+@layer utilities {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* v3.0 — respect prefers-reduced-motion globally */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
   }
 }

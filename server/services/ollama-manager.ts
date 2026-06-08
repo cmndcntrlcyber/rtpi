@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { ollamaModels } from "../../shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 
 /**
  * Ollama Model Management Service
@@ -13,6 +13,56 @@ import { eq, sql } from "drizzle-orm";
  * - Auto-unload logic (30 min timeout)
  * - Database tracking and metadata
  */
+
+// ============================================================================
+// TRANSIENT DB-ERROR DETECTION
+// ============================================================================
+
+/**
+ * Postgres / postgres-js / drizzle wrap the underlying socket error differently
+ * depending on path (prepared-statement cache vs raw query, pre-connect vs
+ * mid-write). The shapes we observe in production:
+ *   - `err.code = "CONNECTION_ENDED"`               (raw write on closed socket)
+ *   - `err.cause.code = "CONNECTION_ENDED"`         (DrizzleQueryError wrap)
+ *   - `err.cause.cause.code = "CONNECTION_ENDED"`   (some nested cases)
+ *   - `err.errno = "CONNECTION_ENDED"`              (older postgres-js)
+ *   - `err.message` contains the code string         (rare fallback)
+ *
+ * This helper checks all of them so the per-call retry actually fires for the
+ * shape Drizzle hands us today, instead of falling through to the noisy
+ * `console.error` path that the operator was seeing every 5 minutes.
+ */
+const TRANSIENT_DB_CODES = new Set<string>([
+  "CONNECTION_ENDED",
+  "CONNECTION_CLOSED",
+  "CONNECTION_DESTROYED",
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "EPIPE",
+  "EAI_AGAIN",
+]);
+
+export function isTransientDbError(err: unknown): boolean {
+  if (!err) return false;
+  const visited = new Set<unknown>();
+  const stack: unknown[] = [err];
+  while (stack.length > 0) {
+    const cur = stack.pop();
+    if (!cur || visited.has(cur)) continue;
+    visited.add(cur);
+    const obj = cur as { code?: unknown; errno?: unknown; message?: unknown; cause?: unknown };
+    if (typeof obj.code === "string" && TRANSIENT_DB_CODES.has(obj.code)) return true;
+    if (typeof obj.errno === "string" && TRANSIENT_DB_CODES.has(obj.errno)) return true;
+    if (typeof obj.message === "string") {
+      for (const c of TRANSIENT_DB_CODES) {
+        if (obj.message.includes(c)) return true;
+      }
+    }
+    if (obj.cause) stack.push(obj.cause);
+  }
+  return false;
+}
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -484,15 +534,24 @@ export class OllamaManager {
    * Check for inactive models and unload them
    */
   async checkAndUnloadInactiveModels(): Promise<number> {
-    try {
+    const runOnce = async (): Promise<number> => {
       const cutoffTime = new Date(Date.now() - this.AUTO_UNLOAD_TIMEOUT);
 
-      // Find loaded models that haven't been used recently
+      // Find loaded models that haven't been used recently.
+      // Important: use typed operators (lt/isNull) here, NOT a raw sql``
+      // template. Drizzle's postgres-js driver replaces the driver's Date
+      // serializers with identity functions and only converts Date → string
+      // via the column mapping that typed operators go through; a raw Date
+      // interpolated into sql`` reaches the wire encoder unserialized and
+      // throws ERR_INVALID_ARG_TYPE (Buffer.byteLength on a Date).
       const inactiveModels = await db
         .select()
         .from(ollamaModels)
         .where(
-          sql`${ollamaModels.status} = 'loaded' AND (${ollamaModels.lastUsed} IS NULL OR ${ollamaModels.lastUsed} < ${cutoffTime.toISOString()})`
+          and(
+            eq(ollamaModels.status, "loaded"),
+            or(isNull(ollamaModels.lastUsed), lt(ollamaModels.lastUsed, cutoffTime))
+          )
         );
 
       if (inactiveModels.length === 0) {
@@ -502,18 +561,39 @@ export class OllamaManager {
       console.log(`[OllamaManager] Found ${inactiveModels.length} inactive models to unload`);
 
       let unloadedCount = 0;
-
       for (const model of inactiveModels) {
         const fullName = `${model.modelName}:${model.modelTag}`;
         const result = await this.unloadModel(fullName);
-        if (result.success) {
-          unloadedCount++;
-        }
+        if (result.success) unloadedCount++;
       }
-
       console.log(`[OllamaManager] Unloaded ${unloadedCount} inactive models`);
       return unloadedCount;
-    } catch (error) {
+    };
+
+    try {
+      return await runOnce();
+    } catch (error: unknown) {
+      if (isTransientDbError(error)) {
+        // Wait a beat so postgres-js drops the stale socket from its pool,
+        // then try once more on a fresh connection. Most CONNECTION_ENDED /
+        // ECONNRESET drops recover on the very next call.
+        console.warn(
+          "[OllamaManager] Transient DB drop in checkAndUnloadInactiveModels — retrying once on a fresh connection",
+        );
+        await new Promise((r) => setTimeout(r, 500));
+        try {
+          return await runOnce();
+        } catch (retryErr: unknown) {
+          if (isTransientDbError(retryErr)) {
+            console.warn(
+              "[OllamaManager] Retry also failed (transient); the watcher / next tick will recover. No action taken this cycle.",
+            );
+            return 0;
+          }
+          console.error("[OllamaManager] Retry failed with non-transient error:", retryErr);
+          return 0;
+        }
+      }
       console.error("[OllamaManager] Error checking inactive models:", error);
       return 0;
     }

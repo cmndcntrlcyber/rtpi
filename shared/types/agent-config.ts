@@ -12,8 +12,9 @@ export interface AgentAIConfig {
    * AI provider to use for this agent
    * - "ollama": Use local Ollama models
    * - "openai": Use OpenAI API
-   * - "anthropic": Use Anthropic API (default)
-   * - "auto": Automatically select best available
+   * - "anthropic": Use Anthropic API
+   * - "auto": Defer to inference router — Settings defaults then provider fallback
+   *   chain. This is the default and the recommended value.
    */
   provider?: AIProvider;
 
@@ -83,6 +84,16 @@ export interface AgentConfig {
   enabledTools?: string[];
 
   /**
+   * Enabled skills for this agent. Values are namespaced IDs from the
+   * /api/v1/skills/available catalog so tool skills and bug-hunter
+   * knowledge_base skills coexist cleanly:
+   *   - `tool:<registry>:<rowId>` — per-tool SKILL.md file
+   *   - `bh:skill:<skill-slug>`   — full bug-hunter skill (grouped form)
+   *   - `bh:<knowledge_base.id>`  — individual chunk (un-grouped form)
+   */
+  enabledSkills?: string[];
+
+  /**
    * Primary MCP server ID for this agent (legacy single-server field).
    * Kept in sync with `mcpServerIds[0]` so single-server consumers continue to
    * work; new code should prefer `mcpServerIds`.
@@ -104,10 +115,12 @@ export interface AgentConfig {
 }
 
 /**
- * Default AI configuration
+ * Default AI configuration. Provider/model are intentionally unset so the
+ * inference router consults Settings (DEFAULT_MODEL / DEFAULT_AGENT_MODEL /
+ * DEFAULT_REASONING_MODEL) before falling back to provider defaults.
  */
 export const DEFAULT_AI_CONFIG: AgentAIConfig = {
-  provider: "anthropic",
+  provider: "auto",
   temperature: 0.7,
   maxTokens: 2048,
   useCache: true,

@@ -4,7 +4,7 @@ import {
   rustNexusTasks,
   rustNexusTaskResults,
 } from "@shared/schema";
-import { eq, and, inArray, or, sql, desc, asc } from "drizzle-orm";
+import { eq, and, inArray, lt, or, sql, desc, asc } from "drizzle-orm";
 
 /**
  * Advanced Task Distribution System for rust-nexus Implants
@@ -355,7 +355,9 @@ class RustNexusTaskDistributor {
     const waitingTasks = await db.query.rustNexusTasks.findMany({
       where: and(
         eq(rustNexusTasks.status, "queued"),
-        sql`${rustNexusTasks.createdAt} < ${thresholdTime}`
+        // Typed lt() so drizzle maps the Date → string; a raw Date in sql``
+        // bypasses column mapping and crashes postgres-js's wire encoder.
+        lt(rustNexusTasks.createdAt, thresholdTime)
       ),
     });
 

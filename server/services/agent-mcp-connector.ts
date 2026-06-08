@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import { db } from "../db";
 import { agents, mcpServers } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { mcpInvoker } from "./agents/mcp-invoker";
 
 /**
  * MCP Tool Schema - describes a tool available from an MCP server
@@ -101,6 +102,13 @@ class AgentMCPConnector extends EventEmitter {
     // Initial discovery
     await this.discoverAllServerCapabilities();
 
+    // Rebuild the in-memory attachment map from persisted agent configs. The
+    // map is otherwise only populated by attachAgentToMCP(), so without this a
+    // server restart silently forgets every agent→MCP assignment until each is
+    // re-attached via the API. agents.config.toolContainers[] is the durable
+    // source of truth written at attach time.
+    await this.rehydrateAttachments();
+
     // Periodic rediscovery every 5 minutes
     this.discoveryInterval = setInterval(async () => {
       await this.discoverAllServerCapabilities();
@@ -108,6 +116,47 @@ class AgentMCPConnector extends EventEmitter {
 
     this.emit("started");
     console.log("[AgentMCPConnector] Service started");
+  }
+
+  /**
+   * Rebuild `agentAttachments` from each agent's persisted
+   * `config.toolContainers[]`. Idempotent — safe to call on every start.
+   * Tool documentation is left empty here and regenerated lazily on demand;
+   * the load-bearing fields (mcpServerId, enabledTools, priority) come straight
+   * from the same shape attachAgentToMCP() writes.
+   */
+  private async rehydrateAttachments(): Promise<void> {
+    try {
+      const rows = await db.select().from(agents);
+      let restored = 0;
+      for (const agent of rows) {
+        const cfg = (agent.config as any) || {};
+        const containers: any[] = Array.isArray(cfg.toolContainers) ? cfg.toolContainers : [];
+        if (containers.length === 0) continue;
+
+        const attachments: AgentMCPAttachment[] = containers
+          .filter((c) => c && typeof c.serverId === "string")
+          .map((c) => ({
+            agentId: agent.id,
+            mcpServerId: c.serverId,
+            priority: typeof c.order === "number" ? c.order : 0,
+            enabledTools: Array.isArray(c.enabledTools) ? c.enabledTools : [],
+            toolDocumentation: {},
+            attachedAt: new Date(),
+          }))
+          .sort((a, b) => a.priority - b.priority);
+
+        if (attachments.length > 0) {
+          this.agentAttachments.set(agent.id, attachments);
+          restored += attachments.length;
+        }
+      }
+      console.log(
+        `[AgentMCPConnector] Rehydrated ${restored} attachment(s) across ${this.agentAttachments.size} agent(s) from agents.config`,
+      );
+    } catch (err) {
+      console.error("[AgentMCPConnector] Attachment rehydration failed (non-fatal):", err);
+    }
   }
 
   /**
@@ -308,9 +357,14 @@ class AgentMCPConnector extends EventEmitter {
 
     console.log(`[AgentMCPConnector] Discovering capabilities from ${server.name}...`);
 
-    // In a real implementation, this would query the MCP server via stdio/WebSocket
-    // For now, we'll generate capabilities based on known MCP server patterns
-    const tools = this.inferToolsFromServerConfig(server);
+    // Prefer LIVE discovery: query the running server's actual tools/list over
+    // JSON-RPC. Static `inferToolsFromServerConfig` is only a fallback for
+    // servers that aren't running or fail the round-trip — otherwise agents get
+    // offered tools the server doesn't have (and miss tools it does).
+    let tools = await this.discoverLiveTools(server);
+    if (tools.length === 0) {
+      tools = this.inferToolsFromServerConfig(server);
+    }
 
     const capabilities: MCPServerCapabilities = {
       serverId,
@@ -325,6 +379,40 @@ class AgentMCPConnector extends EventEmitter {
     this.emit("server_discovered", { serverId, capabilities });
 
     return capabilities;
+  }
+
+  /**
+   * Live tool discovery via JSON-RPC `tools/list` against a running server.
+   * Returns [] (so the caller falls back to static inference) when the server
+   * isn't running or the round-trip fails. Result is cached 60s inside
+   * mcpInvoker, so repeated discovery sweeps are cheap.
+   */
+  private async discoverLiveTools(
+    server: typeof mcpServers.$inferSelect,
+  ): Promise<MCPToolSchema[]> {
+    if (server.status !== "running") return [];
+    try {
+      const live = await mcpInvoker.listTools(server.id);
+      return live.map((t) => {
+        const schema = (t.inputSchema && typeof t.inputSchema === "object" ? t.inputSchema : {}) as any;
+        return {
+          name: t.name,
+          description: t.description ?? "",
+          category: "mcp",
+          inputSchema: {
+            type: schema.type ?? "object",
+            properties: schema.properties ?? {},
+            required: Array.isArray(schema.required) ? schema.required : undefined,
+          },
+        };
+      });
+    } catch (err) {
+      console.warn(
+        `[AgentMCPConnector] Live tools/list failed for ${server.name}; falling back to static inference:`,
+        err instanceof Error ? err.message : err,
+      );
+      return [];
+    }
   }
 
   /**
@@ -503,6 +591,54 @@ class AgentMCPConnector extends EventEmitter {
       await this.discoverServerCapabilities(serverId);
     }
     return this.serverCapabilities.get(serverId) || null;
+  }
+
+  /**
+   * Return the raw attachment list for an agent (used by the backup service
+   * to snapshot the in-memory MCP wiring to disk).
+   */
+  getAgentAttachments(agentId: string): AgentMCPAttachment[] {
+    return [...(this.agentAttachments.get(agentId) || [])];
+  }
+
+  /**
+   * FF_TOOL_SKILL_GENERATION — return per-tool SKILL.md summaries for every
+   * MCP server attached to an agent. Used by agent-prompt-generator callers
+   * to inject operational guidance into the agent's system prompt.
+   *
+   * Returns [] when no MCP servers are attached, or when none of the attached
+   * servers have generated SKILL.md files yet (e.g. flag was off at install
+   * time). Never throws — file-not-found is the common path.
+   */
+  async getAgentToolSkills(agentId: string): Promise<Array<{
+    registry: "mcp" | "registry" | "security";
+    id: string;
+    name: string;
+    summary: string;
+    skillPath: string;
+  }>> {
+    const { loadSkillSummary } = await import("./skills/skill-loader");
+    const attachments = this.agentAttachments.get(agentId) || [];
+    const summaries: Array<{
+      registry: "mcp" | "registry" | "security";
+      id: string;
+      name: string;
+      summary: string;
+      skillPath: string;
+    }> = [];
+    for (const attachment of attachments) {
+      const summary = await loadSkillSummary("mcp", attachment.mcpServerId);
+      if (summary) {
+        summaries.push({
+          registry: "mcp",
+          id: attachment.mcpServerId,
+          name: summary.name,
+          summary: summary.summary,
+          skillPath: summary.skillPath,
+        });
+      }
+    }
+    return summaries;
   }
 
   /**

@@ -16,7 +16,7 @@ import { agentLoopService, LoopExecution } from "./agent-tool-connector";
 import { memoryService } from "./memory-service";
 import { agentMessageBus } from "./agent-message-bus";
 import { agentConfig } from "../config/agent-config";
-import { getOpenAIClient, getAnthropicClient } from "./ai-clients";
+import { routeAgent, NoInferenceProviderAvailable } from "./inference/inference-router";
 
 interface QuestionWithReporter {
   question: typeof reporterQuestions.$inferSelect;
@@ -527,35 +527,22 @@ Provide:
 
     try {
       const aiConfig = agentConfig.operationsManager.aiModel;
-      const anthropic = getAnthropicClient();
-      const openai = getOpenAIClient();
-
-      if (aiConfig.provider === "anthropic" && anthropic) {
-        const response = await anthropic.messages.create({
-          model: aiConfig.model,
-          max_tokens: aiConfig.maxTokens,
-          temperature: aiConfig.temperature,
-          messages: [{ role: "user", content: prompt }],
-        });
-        const block = response.content[0];
-        summary = block.type === "text" ? block.text : "";
-      } else if (openai) {
-        const response = await openai.chat.completions.create({
-          model: "gpt-5.2-chat-latest",
-          max_tokens: aiConfig.maxTokens,
-          temperature: aiConfig.temperature,
-          messages: [{ role: "user", content: prompt }],
-        });
-        summary = response.choices[0]?.message?.content || "";
-      } else {
-        summary = `Synthesis of ${reports.length} reports: ${reportSummaries.substring(0, 300)}`;
-      }
-
+      const result = await routeAgent({
+        messages: [{ role: "user", content: prompt }],
+        maxTokens: aiConfig.maxTokens,
+        temperature: aiConfig.temperature,
+        explicitModel: aiConfig.model?.trim() || undefined,
+      });
+      summary = result.response.text;
       // Extract insights from summary
       const insightLines = summary.split("\n").filter((l) => l.trim().startsWith("-") || l.trim().startsWith("*"));
       insights = insightLines.map((l) => l.trim().replace(/^[-*]\s*/, ""));
     } catch (error) {
-      console.error("[OpsManager] AI synthesis failed:", error);
+      if (error instanceof NoInferenceProviderAvailable) {
+        console.error("[OpsManager] AI synthesis — providers exhausted:", error.message);
+      } else {
+        console.error("[OpsManager] AI synthesis failed:", error);
+      }
       summary = `Synthesis of ${reports.length} reports from ${[...new Set(reports.map((r) => r.agentPageRole))].join(", ")}`;
     }
 
@@ -689,27 +676,19 @@ Generate a single, clear question that helps clarify what action to take.`;
     let questionText = `Please clarify: ${params.triggerEvent}`;
 
     try {
-      const aiConfig = agentConfig.operationsManager.aiModel;
-      const anthropic = getAnthropicClient();
-      const openai = getOpenAIClient();
-      if (aiConfig.provider === "anthropic" && anthropic) {
-        const response = await anthropic.messages.create({
-          model: aiConfig.model,
-          max_tokens: 256,
-          messages: [{ role: "user", content: prompt }],
-        });
-        const block = response.content[0];
-        questionText = block.type === "text" ? block.text : questionText;
-      } else if (openai) {
-        const response = await openai.chat.completions.create({
-          model: "gpt-5.2-chat-latest",
-          max_tokens: 256,
-          messages: [{ role: "user", content: prompt }],
-        });
-        questionText = response.choices[0]?.message?.content || questionText;
+      const result = await routeAgent({
+        messages: [{ role: "user", content: prompt }],
+        maxTokens: 256,
+      });
+      if (result.response.text.trim().length > 0) {
+        questionText = result.response.text;
       }
     } catch (error) {
-      console.error("[OpsManager] AI question generation failed:", error);
+      if (error instanceof NoInferenceProviderAvailable) {
+        console.error("[OpsManager] AI question — providers exhausted:", error.message);
+      } else {
+        console.error("[OpsManager] AI question generation failed:", error);
+      }
     }
 
     // Get relevant memories for context

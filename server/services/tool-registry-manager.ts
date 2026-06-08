@@ -25,6 +25,7 @@ import {
   validateToolConfiguration,
   validateUpdateToolRegistry,
 } from '../validation/tool-config-schema';
+import { enqueueSkillGeneration } from './skill-generator';
 
 /**
  * Register a new tool in the registry
@@ -102,6 +103,9 @@ export async function registerTool(config: ToolConfiguration, _userId?: string):
     }
 
     console.log(`Tool '${config.name}' registered successfully with ID: ${tool.id}`);
+    // FF_TOOL_SKILL_GENERATION — fire-and-forget Tavily research + SKILL.md
+    // synthesis. Guarded inside enqueueSkillGeneration; never blocks.
+    enqueueSkillGeneration('registry', tool.id);
     return tool.id;
   } catch (error: any) {
     console.error('Failed to register tool:', error);

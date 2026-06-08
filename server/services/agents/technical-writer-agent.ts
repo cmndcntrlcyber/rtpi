@@ -1,7 +1,7 @@
 import { BaseTaskAgent, TaskDefinition, TaskResult } from "./base-task-agent";
 import { memoryService } from "../memory-service";
 import { agentConfig } from "../../config/agent-config";
-import { getOpenAIClient, getAnthropicClient } from "../ai-clients";
+import { routeReasoning, NoInferenceProviderAvailable } from "../inference/inference-router";
 import { sysReptorClient } from "../sysreptor-client";
 import { db } from "../../db";
 import { vulnerabilities, operations } from "@shared/schema";
@@ -106,29 +106,25 @@ Format the output as a professional penetration test report with:
 4. Recommendations
 5. Conclusion`;
 
+    // Settings → Default Reasoning Model wins; agent-config values become the
+    // fallback expressed via `explicitModel` only when the operator left
+    // Settings blank. The router walks every configured provider before
+    // returning the template message below.
     const config = agentConfig.taskAgent.aiModel;
-    const anthropic = getAnthropicClient();
-    const openai = getOpenAIClient();
-
-    if (config.provider === "anthropic" && anthropic) {
-      const response = await anthropic.messages.create({
-        model: config.model,
-        max_tokens: config.maxTokens,
-        temperature: config.temperature,
+    try {
+      const result = await routeReasoning({
         messages: [{ role: "user", content: prompt }],
-      });
-      const block = response.content[0];
-      return block.type === "text" ? block.text : "";
-    }
-
-    if (openai) {
-      const response = await openai.chat.completions.create({
-        model: config.model === "claude-sonnet-4-5" ? "gpt-5.2-chat-latest" : config.model,
-        max_tokens: config.maxTokens,
+        maxTokens: config.maxTokens,
         temperature: config.temperature,
-        messages: [{ role: "user", content: prompt }],
+        explicitModel: config.model?.trim() || undefined,
       });
-      return response.choices[0]?.message?.content || "";
+      return result.response.text;
+    } catch (err) {
+      if (err instanceof NoInferenceProviderAvailable) {
+        console.error("[technical-writer-agent] all providers exhausted:", err.message);
+      } else {
+        console.error("[technical-writer-agent] router failed:", err);
+      }
     }
 
     return `# Report Generated (No AI Provider Available)\n\n## Findings\n${findingsSummary}`;

@@ -13,6 +13,7 @@
 import { EventEmitter } from 'events';
 import { db } from '../db';
 import { rdExperiments, rdArtifacts, researchProjects, vulnerabilities } from '@shared/schema';
+import { createKnowledgeArticle } from './knowledge/knowledge-base-writer';
 import { eq, and } from 'drizzle-orm';
 import { researchAgent } from './agents/research-agent';
 import { pocDevelopmentAgent } from './agents/poc-development-agent';
@@ -114,6 +115,26 @@ class RDExperimentOrchestrator extends EventEmitter {
   private activeExecutions: Map<string, AbortController> = new Map();
 
   /**
+   * Resolve the dispatch type for an experiment. Prefers the explicit `type`
+   * column; for legacy rows (or unrecognized values) falls back to inferring
+   * from the experiment name so older experiments keep working.
+   */
+  private resolveExperimentType(experiment: { type?: string | null; name: string }): string {
+    const known = ['vulnerability_research', 'poc_development', 'nuclei_template'];
+    if (experiment.type && known.includes(experiment.type)) {
+      return experiment.type;
+    }
+
+    const name = experiment.name.toLowerCase();
+    if (name.includes('research') || name.includes('cve')) return 'vulnerability_research';
+    if (name.includes('poc') || name.includes('exploit')) return 'poc_development';
+    if (name.includes('nuclei') || name.includes('template')) return 'nuclei_template';
+
+    // Default to research rather than failing — matches the new column default.
+    return 'vulnerability_research';
+  }
+
+  /**
    * Execute a complete R&D experiment (all phases)
    */
   async executeExperiment(
@@ -157,21 +178,42 @@ class RDExperimentOrchestrator extends EventEmitter {
         throw new Error(`Experiment ${experimentId} not found`);
       }
 
-      // Determine experiment type based on name pattern
-      const experimentName = experiment.name.toLowerCase();
+      // Determine experiment type. Prefer the explicit `type` column; fall back to
+      // name-keyword inference only for legacy rows created before the column existed.
+      const experimentType = this.resolveExperimentType(experiment);
+      executionLog.push(`Resolved experiment type: ${experimentType}`);
       let artifact: Artifact | null = null;
 
-      if (experimentName.includes('research') || experimentName.includes('cve')) {
+      // Guard the empty-vulnerabilityId case BEFORE any phase runs. All three
+      // phases fetch `vulnerabilities` by id; with an empty string the query
+      // becomes `WHERE id = ''`, which Postgres rejects as an invalid UUID cast
+      // and throws an opaque DB error. A project created in the UI has no
+      // sourceVulnerabilityId by default, so this is the common failure path —
+      // fail it early with an actionable message instead.
+      if (!context.vulnerabilityId || context.vulnerabilityId.trim() === '') {
+        throw new Error(
+          'This research project has no source vulnerability. Set a source vulnerability ' +
+            'on the project before executing experiments (research requires a target CVE/service).'
+        );
+      }
+
+      const signal = abortController.signal;
+      if (experimentType === 'vulnerability_research') {
         executionLog.push('Executing Research Phase...');
-        artifact = await this.executeResearchPhase(experiment, context, executionLog);
-      } else if (experimentName.includes('poc') || experimentName.includes('exploit')) {
+        artifact = await this.executeResearchPhase(experiment, context, executionLog, signal);
+      } else if (experimentType === 'poc_development') {
         executionLog.push('Executing POC Development Phase...');
-        artifact = await this.executePOCPhase(experiment, context, executionLog);
-      } else if (experimentName.includes('nuclei') || experimentName.includes('template')) {
+        artifact = await this.executePOCPhase(experiment, context, executionLog, signal);
+      } else if (experimentType === 'nuclei_template') {
         executionLog.push('Executing Nuclei Template Phase...');
-        artifact = await this.executeNucleiPhase(experiment, context, executionLog);
+        artifact = await this.executeNucleiPhase(experiment, context, executionLog, signal);
       } else {
-        throw new Error(`Unknown experiment type: ${experiment.name}`);
+        throw new Error(`Unknown experiment type: ${experimentType}`);
+      }
+
+      // If cancelled while the phase was running, stop before persisting results.
+      if (signal.aborted) {
+        throw new Error('Experiment cancelled');
       }
 
       if (artifact) {
@@ -216,18 +258,23 @@ class RDExperimentOrchestrator extends EventEmitter {
       errors.push(errorMsg);
       executionLog.push(`[ERROR] ${errorMsg}`);
 
-      // Update experiment status to failed
+      // If this experiment was cancelled, cancelExperiment() already set the row to
+      // 'cancelled'. Don't overwrite that with 'failed' — just record the log/errors.
+      const wasCancelled = abortController.signal.aborted;
       await db
         .update(rdExperiments)
         .set({
-          status: 'failed',
+          status: wasCancelled ? 'cancelled' : 'failed',
           completedAt: new Date(),
           errorMessage: errorMsg,
           results: { executionLog, errors },
         })
         .where(eq(rdExperiments.id, experimentId));
 
-      this.emit('experiment_failed', { experimentId, error: errorMsg });
+      this.emit(wasCancelled ? 'experiment_cancelled' : 'experiment_failed', {
+        experimentId,
+        error: errorMsg,
+      });
 
       return {
         experimentId,
@@ -250,7 +297,8 @@ class RDExperimentOrchestrator extends EventEmitter {
   private async executeResearchPhase(
     experiment: any,
     context: ExperimentExecutionContext,
-    log: string[]
+    log: string[],
+    signal?: AbortSignal
   ): Promise<ResearchArtifact> {
     log.push('Delegating to Research Agent for vulnerability analysis...');
 
@@ -275,6 +323,7 @@ class RDExperimentOrchestrator extends EventEmitter {
       taskName: `Deep Research: ${vuln.title}`,
       description: experiment.description,
       operationId: context.operationId,
+      signal,
       parameters: {
         vulnerabilityId: context.vulnerabilityId,
         cveId: vuln.cveId,
@@ -291,6 +340,21 @@ class RDExperimentOrchestrator extends EventEmitter {
 
     // Transform agent result into ResearchArtifact
     const researchPackage = result.data?.researchPackage;
+
+    // Output-quality gate: if the research produced no CVEs and no exploits, the
+    // resulting artifact would be effectively blank (a common symptom of a missing
+    // TAVILY_API_KEY). Fail the experiment instead of persisting an empty artifact
+    // as a successful result.
+    const cveCount = researchPackage?.cves?.length || 0;
+    const exploitCount = researchPackage?.exploits?.length || 0;
+    if (cveCount === 0 && exploitCount === 0) {
+      const reason =
+        'Research phase produced no CVEs or exploits — empty research package. ' +
+        'Verify TAVILY_API_KEY is configured and the target service/CVE is resolvable.';
+      log.push(`[ERROR] ${reason}`);
+      throw new Error(reason);
+    }
+
     const artifact: ResearchArtifact = {
       type: 'research_document',
       title: `Vulnerability Research: ${vuln.title}`,
@@ -317,7 +381,8 @@ class RDExperimentOrchestrator extends EventEmitter {
   private async executePOCPhase(
     experiment: any,
     context: ExperimentExecutionContext,
-    log: string[]
+    log: string[],
+    signal?: AbortSignal
   ): Promise<POCArtifact> {
     log.push('Delegating to POC Development Agent...');
 
@@ -361,6 +426,7 @@ class RDExperimentOrchestrator extends EventEmitter {
       taskName: experiment.name,
       description: experiment.description,
       operationId: context.operationId,
+      signal,
       parameters: {
         researchPackage,
         vulnerabilityId: context.vulnerabilityId,
@@ -399,7 +465,8 @@ class RDExperimentOrchestrator extends EventEmitter {
   private async executeNucleiPhase(
     experiment: any,
     context: ExperimentExecutionContext,
-    log: string[]
+    log: string[],
+    signal?: AbortSignal
   ): Promise<NucleiTemplateArtifact> {
     log.push('Delegating to Nuclei Template Agent...');
 
@@ -423,6 +490,7 @@ class RDExperimentOrchestrator extends EventEmitter {
       taskName: experiment.name,
       description: experiment.description,
       operationId: context.operationId,
+      signal,
       parameters: {
         vulnerabilityId: context.vulnerabilityId,
         cveId: vuln.cveId,
@@ -495,6 +563,32 @@ class RDExperimentOrchestrator extends EventEmitter {
       metadata: artifact.metadata,
     }).returning();
 
+    // S1 — auto-index research findings into the Knowledge Base so they become
+    // searchable context for future experiments (instead of a dead JSON blob in
+    // rd_artifacts). Best-effort + idempotent (deduped by `artifact:<id>`);
+    // never let a KB failure break artifact persistence.
+    if (artifact.type === 'research_document') {
+      try {
+        const cves = artifact.metadata?.cveAnalysis;
+        await createKnowledgeArticle({
+          title: artifact.title,
+          content: artifact.content,
+          summary: cves ? `Research findings — CVEs: ${cves}` : 'Automated R&D research findings',
+          category: 'research_finding',
+          contentType: 'technique',
+          tags: [
+            'source:rd-research',
+            `experiment:${experimentId}`,
+            ...(artifact.metadata?.attackSurface ?? []).map((s) => `surface:${s}`),
+          ],
+          relatedProjectId: projectId,
+          dedupeTag: `artifact:${inserted.id}`,
+        });
+      } catch (err) {
+        console.warn('[orchestrator] S1 KB indexing failed (non-fatal):', err);
+      }
+    }
+
     return inserted.id;
   }
 
@@ -559,8 +653,11 @@ class RDExperimentOrchestrator extends EventEmitter {
       }
     }
 
-    // Update project status
-    const allComplete = completed + failed === experiments.length;
+    // Update project status. Guard the zero-experiment case: with no
+    // experiments the loop runs zero times, so `0 + 0 === 0` would otherwise
+    // mark a brand-new empty project 'completed' the instant "Execute All" is
+    // clicked (N5). Only conclude a project that actually had experiments.
+    const allComplete = experiments.length > 0 && completed + failed === experiments.length;
     if (allComplete) {
       await db
         .update(researchProjects)

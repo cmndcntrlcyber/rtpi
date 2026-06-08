@@ -2,6 +2,9 @@ import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Lock, AlertTriangle, Shield } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import VulnerabilitiesTable from "@/components/owasp-llm/VulnerabilitiesTable";
 import AttackVectorsTable from "@/components/owasp-llm/AttackVectorsTable";
@@ -61,67 +64,53 @@ export default function OWASPLLMFramework() {
 
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-3">
-          <Lock className="h-8 w-8 text-red-600" />
-          <div>
-            <h1 className="text-3xl font-bold">OWASP LLM Top 10</h1>
-            <p className="text-muted-foreground mt-1">
-              Top 10 Critical Vulnerabilities for LLM Applications
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <Select value={selectedOperation} onValueChange={setSelectedOperation}>
-            <SelectTrigger className="w-[220px]">
-              <SelectValue placeholder="Filter by operation" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Operations</SelectItem>
-              {operations.map((op) => (
-                <SelectItem key={op.id} value={op.id}>
-                  {op.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        {stats.vulnerabilities === 0 && (
-          <button
-            onClick={handleImport}
-            disabled={loading}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
-          >
-            {loading ? "Importing..." : "Import OWASP LLM Top 10"}
-          </button>
-        )}
-      </div>
+      <PageHeader
+        icon={Lock}
+        title="OWASP LLM Top 10"
+        description="Top 10 Critical Vulnerabilities for LLM Applications"
+        actions={
+          <>
+            <Select value={selectedOperation} onValueChange={setSelectedOperation}>
+              <SelectTrigger className="w-[220px]" aria-label="Filter by operation">
+                <SelectValue placeholder="Filter by operation" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Operations</SelectItem>
+                {operations.map((op) => (
+                  <SelectItem key={op.id} value={op.id}>
+                    {op.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {stats.vulnerabilities === 0 && (
+              <Button onClick={handleImport} disabled={loading}>
+                {loading ? "Importing..." : "Import OWASP LLM Top 10"}
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle className="h-5 w-5 text-red-600" />
-            <h3 className="text-sm font-medium text-muted-foreground">Vulnerabilities</h3>
+        {[
+          { label: "Vulnerabilities", value: stats.vulnerabilities, icon: AlertTriangle, iconColor: "text-destructive" },
+          { label: "Attack Vectors", value: stats.attackVectors, icon: Lock, iconColor: "text-warning" },
+          { label: "Mitigations", value: stats.mitigations, icon: Shield, iconColor: "text-success" },
+        ].map(({ label, value, icon: Icon, iconColor }) => (
+          <div key={label} className="bg-card p-6 rounded-lg shadow-sm border border-border">
+            <div className="flex items-center gap-2 mb-2">
+              <Icon aria-hidden="true" className={`h-5 w-5 ${iconColor}`} />
+              <h3 className="text-sm font-medium text-muted-foreground">{label}</h3>
+            </div>
+            {loading ? (
+              <Skeleton className="h-9 w-16" />
+            ) : (
+              <p className="text-3xl font-bold tabular-nums">{value}</p>
+            )}
           </div>
-          <p className="text-3xl font-bold">{loading ? "..." : stats.vulnerabilities}</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <Lock className="h-5 w-5 text-orange-600" />
-            <h3 className="text-sm font-medium text-muted-foreground">Attack Vectors</h3>
-          </div>
-          <p className="text-3xl font-bold">{loading ? "..." : stats.attackVectors}</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <Shield className="h-5 w-5 text-green-600" />
-            <h3 className="text-sm font-medium text-muted-foreground">Mitigations</h3>
-          </div>
-          <p className="text-3xl font-bold">{loading ? "..." : stats.mitigations}</p>
-        </div>
+        ))}
       </div>
 
       <Tabs defaultValue="top10" className="space-y-6">

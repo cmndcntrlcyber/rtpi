@@ -82,7 +82,8 @@ const DEFAULT_CONFIG: WebHackerConfig = {
   customTemplatesPath: '/home/rtpi-tools/nuclei-templates/custom',
   maxConcurrentScans: 5,
   aiProvider: 'anthropic',
-  aiModel: 'claude-sonnet-4-5',
+  // Empty => defer to inference router (Settings → provider defaults).
+  aiModel: '',
   scanTimeout: 300000, // 5 minutes per scan
   enableCustomTemplateGeneration: true,
   templateGenerationPrompt: `You are a security researcher generating Nuclei templates.
@@ -695,20 +696,20 @@ export class WebHackerAgent extends EventEmitter {
   }
 
   /**
-   * Call AI provider for template generation
+   * Call AI provider for template generation. Routes through the inference
+   * router so Settings (DEFAULT_AGENT_MODEL → DEFAULT_MODEL) drives selection;
+   * an explicit `config.aiModel` still wins via `explicitModel`.
    */
   private async callAI(prompt: string): Promise<string> {
     try {
-      const { AgentWorkflowOrchestrator } = await import('../agent-workflow-orchestrator');
-      const orchestrator = new AgentWorkflowOrchestrator();
-
-      const result = await orchestrator.callAgentAI(this.config.aiProvider, prompt, {
-        model: this.config.aiModel,
+      const { routeAgent } = await import('../inference/inference-router');
+      const result = await routeAgent({
+        messages: [{ role: 'user', content: prompt }],
         maxTokens: 2000,
         temperature: 0.3, // Lower temperature for more consistent YAML output
+        explicitModel: this.config.aiModel?.trim() || undefined,
       });
-
-      return result?.content || '';
+      return result.response.text;
     } catch (error) {
       console.error('AI call failed:', error);
       return '';

@@ -735,7 +735,11 @@ export const agentWorkflows = pgTable("agent_workflows", {
 
 export const workflowTasks = pgTable("workflow_tasks", {
   id: uuid("id").primaryKey().defaultRandom(),
-  workflowId: uuid("workflow_id").notNull().references(() => agentWorkflows.id, { onDelete: "cascade" }),
+  // Polymorphic parent: references agent_workflows.id (agent/ops/distributed
+  // orchestrators) OR workflow_instances.id (dynamic orchestrator). Postgres
+  // cannot express a polymorphic FK, so this is a soft reference with no FK
+  // constraint. See migration 0051. Cleanup is handled at the application layer.
+  workflowId: uuid("workflow_id").notNull(),
   agentId: uuid("agent_id").notNull().references(() => agents.id),
   taskType: taskTypeEnum("task_type").notNull(),
   taskName: text("task_name").notNull(),
@@ -754,7 +758,11 @@ export const workflowTasks = pgTable("workflow_tasks", {
 
 export const workflowLogs = pgTable("workflow_logs", {
   id: uuid("id").primaryKey().defaultRandom(),
-  workflowId: uuid("workflow_id").notNull().references(() => agentWorkflows.id, { onDelete: "cascade" }),
+  // Polymorphic parent: references agent_workflows.id (agent/ops/distributed
+  // orchestrators) OR workflow_instances.id (dynamic orchestrator). Postgres
+  // cannot express a polymorphic FK, so this is a soft reference with no FK
+  // constraint. See migration 0051. Cleanup is handled at the application layer.
+  workflowId: uuid("workflow_id").notNull(),
   taskId: uuid("task_id").references(() => workflowTasks.id, { onDelete: "cascade" }),
   level: text("level").notNull(), // 'info', 'warning', 'error', 'debug'
   message: text("message").notNull(),

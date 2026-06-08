@@ -29,6 +29,8 @@ import toolsRoutes from "./api/v1/tools";
 import skillImportRoutes from "./api/v1/skill-import";
 import toolSkillsRoutes from "./api/v1/tool-skills";
 import skillsCatalogRoutes from "./api/v1/skills-catalog";
+import skillsRoutes from "./api/v1/skills";
+import orchestratorRoutes from "./api/v1/orchestrator";
 import settingsRoutes from "./api/v1/settings";
 import agentLoopsRoutes from "./api/v1/agent-loops";
 import agentMcpRoutes from "./api/v1/agent-mcp";
@@ -150,6 +152,11 @@ app.use("/api/v1/tools", toolsRoutes);
 app.use("/api/v1/skills", skillImportRoutes);
 app.use("/api/v1/tool-skills", toolSkillsRoutes);
 app.use("/api/v1/skills", skillsCatalogRoutes);
+// LangGraph skill search/cache proxy. Mounted AFTER the import/catalog routers
+// so its catch-all GET /:skillName only handles paths they don't claim.
+app.use("/api/v1/skills", skillsRoutes);
+// LangGraph orchestrator proxy (rtpi-orchestrator service, ORCHESTRATOR_URL).
+app.use("/api/v1/orchestrator", orchestratorRoutes);
 app.use("/api/v1/settings", settingsRoutes);
 app.use("/api/v1/agent-loops", agentLoopsRoutes);
 app.use("/api/v1/agents", agentMcpRoutes);

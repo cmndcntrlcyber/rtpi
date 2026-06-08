@@ -87,6 +87,8 @@ async function getFrameworkStatus(fw: C2Framework): Promise<{
   containerStatus: "running" | "stopped" | "not_found";
   activated: boolean;
   healthy: boolean;
+  uiPort: number;
+  uiUrl: string | null;
 }> {
   let containerStatus: "running" | "stopped" | "not_found" = "not_found";
   let activated = false;
@@ -127,6 +129,11 @@ async function getFrameworkStatus(fw: C2Framework): Promise<{
     containerStatus,
     activated,
     healthy,
+    // Port the framework's UI/MCP listens on. The client opens
+    // http://<browser-host>:<uiPort> in a new tab, or uses uiUrl when an
+    // operator has set C2_<ID>_UI_URL to override (e.g. a reverse-proxied path).
+    uiPort: fw.mcpPort,
+    uiUrl: process.env[`C2_${fw.id.toUpperCase()}_UI_URL`] || null,
   };
 }
 

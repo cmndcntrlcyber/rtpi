@@ -4,29 +4,12 @@ import { agents, mcpServers } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import { mcpInvoker, MCPInvokerError } from "../../services/agents/mcp-invoker";
+import { resolveAgentMcpServerIds } from "../../services/agents/mcp-resolve";
 
 const router = Router();
 
 // Apply authentication to all routes
 router.use(ensureAuthenticated);
-
-/**
- * v2.9.3 — resolve the list of MCP server IDs attached to an agent. Prefers
- * the new multi-select array `config.mcpServerIds`; falls back to the legacy
- * single-server `config.mcpServerId`. Returns an empty array when neither is
- * set, so the caller can decide whether that's a 400 or an empty list.
- */
-function resolveAgentMcpServerIds(config: unknown): string[] {
-  const cfg = (config ?? {}) as { mcpServerIds?: unknown; mcpServerId?: unknown };
-  if (Array.isArray(cfg.mcpServerIds)) {
-    const ids = cfg.mcpServerIds.filter((id): id is string => typeof id === "string" && id.length > 0);
-    if (ids.length > 0) return ids;
-  }
-  if (typeof cfg.mcpServerId === "string" && cfg.mcpServerId.length > 0) {
-    return [cfg.mcpServerId];
-  }
-  return [];
-}
 
 // POST /api/v1/agents/:agentId/mcp-call - Call MCP server tool from agent
 // v2.9.1 Phase 5: replaced the mock stub with a real JSON-RPC 2.0 invocation

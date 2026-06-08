@@ -1,10 +1,12 @@
 import { db } from "../db";
-import { agents, targets, securityTools, mcpServers } from "@shared/schema";
+import { agents, targets, mcpServers } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { dockerExecutor } from "./docker-executor";
-import { getToolById } from "./tool-registry-manager";
 import { executeTool } from "./tool-executor";
 import { mcpGrpcBridge } from "./mcp-grpc-bridge";
+import { mcpInvoker } from "./agents/mcp-invoker";
+import { resolveAgentMcpServerIds } from "./agents/mcp-resolve";
+import { resolveTool, type AgentToolResult } from "./agents/tool-resolve";
 import type { ToolConfiguration } from "../../shared/types/tool-config";
 
 /**
@@ -13,14 +15,21 @@ import type { ToolConfiguration } from "../../shared/types/tool-config";
  */
 export class AgentToolConnector {
   /**
-   * Execute a tool using an AI agent's guidance
+   * Execute a tool using an AI agent's guidance.
+   *
+   * Returns the canonical {@link AgentToolResult} — structured fields for
+   * programmatic callers AND a `formatted` summary for string consumers. Tool
+   * resolution goes through the single `resolveTool` (tool_registry →
+   * security_tools), and dispatch picks the one real executor for the tool:
+   * installed registry tool → tool-executor; rtpi-tools container → docker;
+   * MCP-attached agent → mcpInvoker. No path fabricates output.
    */
   async execute(
     agentId: string,
     toolId: string,
     targetId: string,
     input: string
-  ): Promise<string> {
+  ): Promise<AgentToolResult> {
     // Get agent configuration
     const agent = await db
       .select()
@@ -33,23 +42,11 @@ export class AgentToolConnector {
       throw new Error(`Agent ${agentId} not found`);
     }
 
-    // Try new tool registry first, fallback to legacy securityTools
-    let tool: any = await getToolById(toolId);
-    const isNewFramework = !!tool;
-
-    if (!tool) {
-      // Fallback to legacy security tools table
-      tool = await db
-        .select()
-        .from(securityTools)
-        .where(eq(securityTools.id, toolId))
-        .limit(1)
-        .then((rows) => rows[0]);
-    }
-
-    if (!tool) {
+    const resolved = await resolveTool(toolId);
+    if (!resolved) {
       throw new Error(`Tool ${toolId} not found`);
     }
+    const tool = resolved.tool;
 
     // Get target information
     const target = await db
@@ -63,12 +60,11 @@ export class AgentToolConnector {
       throw new Error(`Target ${targetId} not found`);
     }
 
-    // Execute based on whether using new framework or legacy
-    if (isNewFramework && tool.installStatus === 'installed') {
+    // Dispatch to the single real executor for this tool.
+    if (resolved.source === "registry" && resolved.installed) {
       return await this.executeWithNewFramework(agent, tool, target, input);
-    } else {
-      return await this.executeAgentWithTool(agent, tool, target, input);
     }
+    return await this.executeAgentWithTool(agent, tool, target, input);
   }
 
   /**
@@ -225,10 +221,9 @@ export class AgentToolConnector {
     tool: any,
     target: any,
     input: string
-  ): Promise<string> {
+  ): Promise<AgentToolResult> {
+    const config = tool.config as ToolConfiguration;
     try {
-      const config = tool.config as ToolConfiguration;
-
       // Parse input parameters
       const parameters = this.parseInputParameters(input, {});
 
@@ -237,7 +232,8 @@ export class AgentToolConnector {
         parameters.target = target.value;
       }
 
-      // Execute tool using tool-executor service
+      // Execute tool using tool-executor service (writes its own toolExecutions
+      // record — telemetry for this path is already centralized there).
       const result = await executeTool({
         toolId: config.toolId,
         parameters,
@@ -249,10 +245,23 @@ export class AgentToolConnector {
         parseOutput: true,
       });
 
-      // Format response for agent
-      return this.formatNewFrameworkResponse(agent, config, target, result);
+      return {
+        success: result.status === 'completed',
+        exitCode: typeof result.exitCode === 'number' ? result.exitCode : null,
+        stdout: result.stdout ?? '',
+        stderr: result.stderr ?? '',
+        durationMs: result.duration ?? 0,
+        formatted: this.formatNewFrameworkResponse(agent, config, target, result),
+      };
     } catch (error: any) {
-      return `[Agent: ${agent.name}]\n[Tool: ${tool.name}]\n[Target: ${target.value}]\n\nError: ${error.message}`;
+      return {
+        success: false,
+        exitCode: null,
+        stdout: '',
+        stderr: error?.message ?? String(error),
+        durationMs: 0,
+        formatted: `[Agent: ${agent.name}]\n[Tool: ${tool.name}]\n[Target: ${target.value}]\n\nError: ${error?.message ?? String(error)}`,
+      };
     }
   }
 
@@ -308,7 +317,7 @@ export class AgentToolConnector {
     tool: any,
     target: any,
     input: string
-  ): Promise<string> {
+  ): Promise<AgentToolResult> {
     // Build context for AI agent
     const context = {
       tool: {
@@ -331,24 +340,23 @@ export class AgentToolConnector {
       return await this.executeToolInDocker(agent, tool, target, context);
     }
 
-    // Otherwise, use agent-specific execution
-    switch (agent.type) {
-      case "openai":
-        return await this.executeOpenAI(agent, context);
-      case "anthropic":
-        return await this.executeAnthropic(agent, context);
-      case "ollama":
-        // Ollama uses the unified AI client via agent-workflow-orchestrator;
-        // for tool-connector invocations, treat identically to custom so
-        // callers get a consistent AI-driven response path.
-        return await this.executeCustom(agent, context);
-      case "mcp_server":
-        return await this.executeMCP(agent, context);
-      case "custom":
-        return await this.executeCustom(agent, context);
-      default:
-        throw new Error(`Unsupported agent type: ${agent.type}`);
+    // Non-containerized tool: the only real execution backend left is MCP.
+    // Tool execution is a function of the TOOL, not the agent's LLM provider —
+    // so we route by capability, not by agent.type. The previous
+    // executeOpenAI/executeAnthropic/executeCustom branches returned hard-coded
+    // fictional "success" strings (architectural hallucination); they are gone.
+    // An MCP-attached agent invokes the tool over JSON-RPC; anything else fails
+    // honestly so a caller never mistakes a fabricated string for a real run.
+    const mcpServerIds = resolveAgentMcpServerIds(agent.config);
+    if (agent.type === "mcp_server" || mcpServerIds.length > 0) {
+      return await this.executeMCP(agent, tool, target, context);
     }
+
+    throw new Error(
+      `Tool "${tool.name}" has no executable backend for agent "${agent.name}" ` +
+        `(type "${agent.type}"). Use a containerized (rtpi-tools) tool, or attach ` +
+        `the agent to an MCP server that provides this tool.`,
+    );
   }
 
   /**
@@ -359,11 +367,11 @@ export class AgentToolConnector {
     tool: any,
     target: any,
     context: any
-  ): Promise<string> {
+  ): Promise<AgentToolResult> {
     try {
       // Build command from tool metadata and target
       const command = this.buildCommand(tool, target, context.input);
-      
+
       console.log(`[Agent: ${agent.name}] Executing tool: ${tool.name}`);
       console.log(`[Command] ${command.join(" ")}`);
 
@@ -375,18 +383,27 @@ export class AgentToolConnector {
       // Parse output based on tool's output parser
       const parsedOutput = this.parseToolOutput(tool, result);
 
-      // Format result for agent
-      return this.formatAgentResponse(agent, tool, target, parsedOutput);
+      return {
+        success: parsedOutput.success,
+        exitCode: typeof parsedOutput.exitCode === 'number' ? parsedOutput.exitCode : null,
+        stdout: parsedOutput.stdout ?? '',
+        stderr: parsedOutput.stderr ?? '',
+        durationMs: result.duration ?? 0,
+        formatted: this.formatAgentResponse(agent, tool, target, parsedOutput),
+      };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error(`[Agent: ${agent.name}] Tool execution failed:`, errorMsg);
-      
-      return this.formatAgentResponse(agent, tool, target, {
+
+      const failOutput = { success: false, error: errorMsg, stdout: "", stderr: errorMsg };
+      return {
         success: false,
-        error: errorMsg,
-        stdout: "",
+        exitCode: null,
+        stdout: '',
         stderr: errorMsg,
-      });
+        durationMs: 0,
+        formatted: this.formatAgentResponse(agent, tool, target, failOutput),
+      };
     }
   }
 
@@ -546,51 +563,77 @@ export class AgentToolConnector {
     return lines.join('\n');
   }
 
-  private async executeOpenAI(agent: any, context: any): Promise<string> {
-    // Placeholder - integrate with OpenAI API
-    
-    return `[OpenAI Agent: ${agent.name}]\n\nTool: ${context.tool.name}\nTarget: ${context.target.value}\n\nAnalysis: Automated vulnerability assessment initiated.\nRecommendation: Continue with payload development.`;
-  }
-
-  private async executeAnthropic(agent: any, context: any): Promise<string> {
-    // Placeholder - integrate with Anthropic API
-    
-    return `[Anthropic Agent: ${agent.name}]\n\nTool: ${context.tool.name}\nTarget: ${context.target.value}\n\nDeep analysis: Security posture evaluated.\nNext steps: Exploit chain development.`;
-  }
-
-  private async executeMCP(agent: any, context: any): Promise<string> {
-    // Get MCP server ID from agent config
-    const config = agent.config as any;
-    const mcpServerId = config?.mcpServerId;
-
-    if (!mcpServerId) {
-      return `[MCP Agent: ${agent.name}]\n\nError: No MCP server configured for this agent.`;
+  /**
+   * Execute a tool over MCP (JSON-RPC 2.0 via the spawned server's stdio).
+   * Resolves the agent's attached MCP servers, finds the running one that owns
+   * the tool, and invokes it. Throws on any failure — never fabricates output.
+   * Mirrors the resolution in `agent-mcp.ts POST /agents/:id/mcp-call`.
+   */
+  private async executeMCP(agent: any, tool: any, target: any, context: any): Promise<AgentToolResult> {
+    const startedAt = Date.now();
+    const serverIds = resolveAgentMcpServerIds(agent.config);
+    if (serverIds.length === 0) {
+      throw new Error(`Agent "${agent.name}" has no MCP servers configured.`);
     }
 
-    // Get MCP server details
-    const mcpServer = await db
-      .select()
-      .from(mcpServers)
-      .where(eq(mcpServers.id, mcpServerId))
-      .limit(1)
-      .then((rows) => rows[0]);
-
-    if (!mcpServer) {
-      return `[MCP Agent: ${agent.name}]\n\nError: MCP server not found.`;
+    const rows = await Promise.all(
+      serverIds.map((id) =>
+        db.select().from(mcpServers).where(eq(mcpServers.id, id)).limit(1).then((r) => r[0]),
+      ),
+    );
+    const running = rows.filter(
+      (s): s is NonNullable<typeof s> => Boolean(s) && s.status === "running",
+    );
+    if (running.length === 0) {
+      throw new Error(`No running MCP server attached to agent "${agent.name}".`);
     }
 
-    if (mcpServer.status !== "running") {
-      return `[MCP Agent: ${agent.name}]\n\nError: MCP server is not running.`;
+    const toolName: string = tool.name;
+    let server: (typeof running)[number] | null = null;
+    for (const candidate of running) {
+      try {
+        const tools = await mcpInvoker.listTools(candidate.id);
+        if (tools.some((t) => t.name === toolName)) {
+          server = candidate;
+          break;
+        }
+      } catch {
+        // Server may have crashed mid-loop; try the next attached one.
+      }
+    }
+    if (!server) {
+      throw new Error(
+        `Tool "${toolName}" not found on any attached MCP server for agent "${agent.name}".`,
+      );
     }
 
-    // TODO: Integrate with actual MCP server
-    // For now, return formatted response
-    return `[MCP Agent: ${agent.name}]\n\nMCP Server: ${mcpServer.name}\nTool: ${context.tool.name}\nTarget: ${context.target.value}\n\nMCP server processing complete.\nResults: Tool execution successful.`;
-  }
+    // Merge parsed input params with the target value so the MCP tool receives
+    // the same arguments a containerized tool would.
+    const args = this.parseInputParameters(context.input, {});
+    if (!args.target && target?.value) args.target = target.value;
 
-  private async executeCustom(agent: any, context: any): Promise<string> {
-    // Placeholder - custom agent logic
-    return `[Custom Agent: ${agent.name}]\n\nTool: ${context.tool.name}\nTarget: ${context.target.value}\n\nCustom processing complete.`;
+    const result = await mcpInvoker.callTool(server.id, toolName, args);
+    const blocks = Array.isArray((result as any).content) ? (result as any).content : [];
+    const text = blocks
+      .map((b: any) => (typeof b?.text === "string" ? b.text : JSON.stringify(b)))
+      .join("\n");
+    const isError = Boolean((result as any).isError);
+
+    return {
+      success: !isError,
+      exitCode: isError ? 1 : 0,
+      stdout: text,
+      stderr: isError ? text : "",
+      durationMs: Date.now() - startedAt,
+      formatted: [
+        `[Agent: ${agent.name}]`,
+        `[MCP Tool: ${toolName}]`,
+        `[Server: ${server.name}]`,
+        `[Status: ${isError ? "FAILED" : "SUCCESS"}]`,
+        "",
+        text,
+      ].join("\n"),
+    };
   }
 }
 
@@ -714,13 +757,15 @@ class AgentLoopService {
       }
 
       try {
-        // Execute current agent with target context
-        const output = await agentToolConnector.execute(
+        // Execute current agent with target context. execute() now returns a
+        // structured AgentToolResult; this legacy loop works in plain text, so
+        // take the formatted view.
+        const output = (await agentToolConnector.execute(
           currentAgentId,
           "", // No specific tool for general analysis
           loop.targetId,
           currentInput
-        );
+        )).formatted;
 
         // Circuit breaker: check for stagnant outputs
         const outputHash = this.hashOutput(output);

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Activity, Shield, Terminal, AlertTriangle, CheckCircle, Clock, Wifi, WifiOff } from "lucide-react";
 import { api } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,21 +44,40 @@ export default function EngagementDashboard() {
     }
   }, [selectedOperation, subscribe]);
 
-  // Load workflows for selected operation
+  // Load workflows for the selected operation. The GET /agent-workflows
+  // endpoint returns { workflows, count } — not a bare array — so unwrap it.
+  const loadWorkflows = useCallback(async () => {
+    if (!selectedOperation) return;
+    try {
+      const res = await api.get<{ workflows: any[]; count: number }>(
+        `/agent-workflows?operationId=${selectedOperation}`,
+      );
+      setWorkflows(res.workflows ?? []);
+    } catch {
+      setWorkflows([]);
+    }
+  }, [selectedOperation]);
+
+  // Initial load on selection. While the WebSocket is live we refresh from
+  // workflow_update events (effect below) instead of blind polling; only fall
+  // back to a 10s poll when the socket is disconnected.
   useEffect(() => {
     if (!selectedOperation) return;
-    const loadWorkflows = async () => {
-      try {
-        const res = await api.get<any[]>(`/agent-workflows?operationId=${selectedOperation}`);
-        setWorkflows(Array.isArray(res) ? res : []);
-      } catch {
-        setWorkflows([]);
-      }
-    };
     loadWorkflows();
+    if (connected) return;
     const interval = setInterval(loadWorkflows, 10000);
     return () => clearInterval(interval);
-  }, [selectedOperation]);
+  }, [selectedOperation, connected, loadWorkflows]);
+
+  // WS-driven refresh: re-fetch the workflow list when a workflow_update
+  // event arrives, so the list stays current without periodic polling.
+  useEffect(() => {
+    if (!connected || !selectedOperation) return;
+    const latest = events[events.length - 1];
+    if (latest?.type === "workflow_update") {
+      loadWorkflows();
+    }
+  }, [events, connected, selectedOperation, loadWorkflows]);
 
   // Filter events for selected operation
   const operationEvents = events.filter(

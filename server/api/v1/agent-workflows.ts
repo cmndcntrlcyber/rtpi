@@ -256,18 +256,22 @@ router.post("/execute-tools", ensureRole("admin", "operator"), async (req, res) 
  */
 router.get("/", async (req, res) => {
   try {
-    const { status, targetId, limit = 50 } = req.query;
+    const { status, targetId, operationId, limit = 50 } = req.query;
 
     // Build query with filters
     let workflows;
     const conditions = [];
-    
+
     if (status) {
       conditions.push(eq(agentWorkflows.status, status as any));
     }
-    
+
     if (targetId) {
       conditions.push(eq(agentWorkflows.targetId, targetId as string));
+    }
+
+    if (operationId) {
+      conditions.push(eq(agentWorkflows.operationId, operationId as string));
     }
 
     if (conditions.length > 0) {

@@ -91,7 +91,7 @@ describe('Agents API', () => {
   describe('GET /api/v1/agents/:id', () => {
     it('should return agent by id', async () => {
       const mockAgent = {
-        id: '123',
+        id: '11111111-1111-1111-1111-111111111111',
         name: 'empire',
         type: 'c2',
         status: 'running',
@@ -105,8 +105,10 @@ describe('Agents API', () => {
         }),
       } as any);
 
+      // UUID-format id: GET /:id guards non-UUID ids (e.g. /workflows) with
+      // next(), so the route only reaches this handler for real UUIDs.
       const response = await request(app)
-        .get('/api/v1/agents/123');
+        .get('/api/v1/agents/11111111-1111-1111-1111-111111111111');
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('agent');
@@ -123,7 +125,7 @@ describe('Agents API', () => {
       } as any);
 
       const response = await request(app)
-        .get('/api/v1/agents/999');
+        .get('/api/v1/agents/99999999-9999-9999-9999-999999999999');
 
       expect(response.status).toBe(404);
       expect(response.body).toHaveProperty('error', 'Agent not found');

@@ -43,6 +43,7 @@ services" list is mostly false (8/10 sampled are imported).**
 | `6ef5e83` | P2-4 undocumented env vars | 90+ vars documented in `.env.example` with code-true defaults |
 | `d3137e7` | P1-3 + SYN-1 polling/N+1 waste | Batch `/tasks-bulk` endpoint + WS emissions + reduced fallback poll |
 | `7631af3` | P1-2 follow-up | Test ids → UUID format; verified zero net new test failures |
+| `e451245` | P1-1 regression | Mounting `orchestrator.ts` surfaced a `logAudit`-as-middleware boot crash; fixed to the real 6-arg signature; boot-verified |
 
 ---
 
@@ -80,6 +81,12 @@ Neither was mounted, yet the `rtpi-orchestrator` service **is** in
 **Decision (grep-driven):** mount, not delete. `skills.ts` mounts after the existing
 skill routers (no collision: its catch-all `GET /:skillName` only handles paths they
 don't claim); `orchestrator.ts` on a fresh prefix. `ORCHESTRATOR_URL` documented.
+**Regression caught at boot (`e451245`):** mounting `orchestrator.ts` exposed a latent
+bug — it used `logAudit("…")` in middleware position, but `logAudit` is an immediately-
+executing 6-arg async fn, so Express crashed at route registration. Fixed to the real
+in-handler signature; the server now boots cleanly through full startup. **Lesson: tsc
++ import resolution are not enough for newly-mounted routers — boot the server, since
+route-registration errors only surface at runtime.**
 
 ### P1-2 — `/agents/:id` shadowed `/workflows` and `/capabilities`
 `GET /:id` (line 370) had no UUID guard, so `GET /agents/workflows` (1056) and

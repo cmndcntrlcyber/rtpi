@@ -9,6 +9,7 @@
   },
   "scripts": {
     "test": "vitest",
+    "check": "tsc --noEmit",
     "bootstrap": "bash scripts/bootstrap-secrets.sh",
     "deploy:check": "bash scripts/pre-deployment-check.sh",
     "deploy:sync-pg": "bash scripts/sync-shared-postgres-roles.sh",

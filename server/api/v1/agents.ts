@@ -367,8 +367,14 @@ router.post("/workflow-templates", ensureRole("admin", "operator"), async (req, 
 // ============================================================================
 
 // GET /api/v1/agents/:id - Get agent details
-router.get("/:id", async (req, res) => {
+router.get("/:id", async (req, res, next) => {
   const { id } = req.params;
+
+  // Skip if this is not a UUID — let later single-segment routes such as
+  // /workflows and /capabilities handle it instead of 404-ing here.
+  if (!id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+    return next();
+  }
 
   try {
     const result = await db

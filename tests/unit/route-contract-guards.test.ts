@@ -38,6 +38,14 @@ describe("agent-workflows.ts list contract (P0-1)", () => {
   it("filters the list by operationId", () => {
     expect(src).toMatch(/agentWorkflows\.operationId/);
   });
+
+  it("exposes /tasks-bulk before /:id so it isn't shadowed (P1-3 N+1 fix)", () => {
+    const bulkIdx = src.indexOf('router.get("/tasks-bulk"');
+    const idIdx = src.indexOf('router.get("/:id"');
+    expect(bulkIdx).toBeGreaterThan(-1);
+    expect(idIdx).toBeGreaterThan(-1);
+    expect(bulkIdx).toBeLessThan(idIdx);
+  });
 });
 
 describe("EngagementDashboard unwraps the workflows response (P0-1)", () => {

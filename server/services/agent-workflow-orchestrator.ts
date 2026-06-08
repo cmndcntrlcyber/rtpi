@@ -740,6 +740,15 @@ export class AgentWorkflowOrchestrator {
    * Process workflow - execute tasks in sequence
    */
   private async processWorkflow(workflowId: string): Promise<void> {
+    // operationId is used to scope workflow_update events to subscribed clients.
+    const wfRow = await db
+      .select({ operationId: agentWorkflows.operationId })
+      .from(agentWorkflows)
+      .where(eq(agentWorkflows.id, workflowId))
+      .limit(1)
+      .then((r) => r[0]);
+    const operationId = wfRow?.operationId ?? undefined;
+
     try {
       // Update workflow status to running
       await db
@@ -750,6 +759,7 @@ export class AgentWorkflowOrchestrator {
           progress: 0,
         })
         .where(eq(agentWorkflows.id, workflowId));
+      agentWebSocketManager?.emitWorkflowUpdate({ workflowId, operationId, status: "running", progress: 0 });
 
       // Get all tasks in order
       const tasks = await db
@@ -773,14 +783,16 @@ export class AgentWorkflowOrchestrator {
             .where(eq(workflowTasks.id, task.id));
 
           // Update workflow current task
+          const taskProgress = Math.round((task.sequenceOrder / tasks.length) * 100);
           await db
             .update(agentWorkflows)
             .set({
               currentTaskId: task.id,
               currentAgentId: task.agentId,
-              progress: Math.round((task.sequenceOrder / tasks.length) * 100),
+              progress: taskProgress,
             })
             .where(eq(agentWorkflows.id, workflowId));
+          agentWebSocketManager?.emitWorkflowUpdate({ workflowId, operationId, status: "running", progress: taskProgress });
 
           await this.log(
             workflowId,
@@ -935,6 +947,7 @@ export class AgentWorkflowOrchestrator {
           completedAt: new Date(),
         })
         .where(eq(agentWorkflows.id, workflowId));
+      agentWebSocketManager?.emitWorkflowUpdate({ workflowId, operationId, status: "completed", progress: 100, action: "completed" });
 
       // Aggregate evidence across all tool-execution tasks so the KPI normalizer
       // can compute a real success rate from BOTH completion paths (this generic
@@ -978,6 +991,7 @@ export class AgentWorkflowOrchestrator {
           completedAt: new Date(),
         })
         .where(eq(agentWorkflows.id, workflowId));
+      agentWebSocketManager?.emitWorkflowUpdate({ workflowId, operationId, status: "failed", action: "failed" });
 
       await this.log(workflowId, null, "error", "Workflow failed", {
         error: errorMsg,

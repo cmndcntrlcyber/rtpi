@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "../../db";
 import { agentWorkflows, workflowTasks, workflowLogs, targets, operations, workflowTemplates } from "@shared/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, inArray } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import { agentWorkflowOrchestrator } from "../../services/agent-workflow-orchestrator";
 
@@ -333,6 +333,37 @@ router.get("/target/:targetId/latest", async (req, res) => {
   } catch (error: any) {
     // Error logged for debugging
     res.status(500).json({ error: "Failed to get latest workflow", details: error?.message || "Internal server error" });
+  }
+});
+
+/**
+ * GET /api/v1/agent-workflows/tasks-bulk?ids=id1,id2,...
+ * Batch-fetch tasks for many workflows in one query, returning a map keyed by
+ * workflowId. Replaces the Dashboard's N+1 loop of per-workflow /:id/tasks
+ * calls. Declared before /:id so it isn't captured as an id.
+ */
+router.get("/tasks-bulk", async (req, res) => {
+  try {
+    const idsParam = String(req.query.ids ?? "").trim();
+    const ids = idsParam ? idsParam.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    if (ids.length === 0) {
+      return res.json({ tasks: {} });
+    }
+
+    const rows = await db
+      .select()
+      .from(workflowTasks)
+      .where(inArray(workflowTasks.workflowId, ids));
+
+    const tasks: Record<string, typeof rows> = {};
+    for (const id of ids) tasks[id] = [];
+    for (const row of rows) {
+      (tasks[row.workflowId] ??= []).push(row);
+    }
+
+    res.json({ tasks });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to bulk-fetch workflow tasks", details: error?.message || "Internal server error" });
   }
 });
 

@@ -256,6 +256,33 @@ export class AgentWebSocketManager {
     });
   }
 
+  /**
+   * Broadcast a workflow lifecycle change (status transition or progress tick).
+   * Lets dashboards refresh from a push instead of polling. Clients subscribed
+   * to "*" or to the workflow's operationId receive it.
+   */
+  emitWorkflowUpdate(params: {
+    workflowId: string;
+    operationId?: string;
+    status?: string;
+    progress?: number;
+    action?: string;
+  }): void {
+    this.broadcastEvent({
+      type: "workflow_update",
+      eventId: randomUUID(),
+      workflowId: params.workflowId,
+      operationId: params.operationId,
+      data: {
+        workflowId: params.workflowId,
+        status: params.status,
+        progress: params.progress,
+        action: params.action ?? "progress",
+      },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   // --------------------------------------------------------------------------
   // Approval flow
   // --------------------------------------------------------------------------

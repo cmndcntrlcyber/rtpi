@@ -59,6 +59,7 @@ import offsecRdExperimentsRoutes from "./api/v1/offsec-rd-experiments";
 import offsecRdArtifactsRoutes from "./api/v1/offsec-rd-artifacts";
 import offsecRdKnowledgeRoutes from "./api/v1/offsec-rd-knowledge";
 import offsecRdToolsRoutes from "./api/v1/offsec-rd-tools";
+import offsecRdArtifactsRoutes from "./api/v1/offsec-rd-artifacts";
 import vulnerabilityRdRoutes from "./api/v1/vulnerability-rd";
 import operationsManagementRoutes from "./api/v1/operations-management";
 import scanSchedulesRoutes from "./api/v1/scan-schedules";
@@ -189,6 +190,10 @@ app.use("/api/v1/offsec-rd/experiments", offsecRdExperimentsRoutes);
 app.use("/api/v1/offsec-rd/artifacts", offsecRdArtifactsRoutes);
 app.use("/api/v1/offsec-rd/knowledge", offsecRdKnowledgeRoutes);
 app.use("/api/v1/offsec-rd/tools", offsecRdToolsRoutes);
+// B1: artifact promote/deploy routes mounted at /api/v1/offsec-rd/artifacts to
+// match the frontend URL (was defined under the experiments router, so the real
+// path was …/experiments/artifacts and the frontend POST always 404'd).
+app.use("/api/v1/offsec-rd/artifacts", offsecRdArtifactsRoutes);
 app.use("/api/v1/vulnerability-rd", vulnerabilityRdRoutes);
 app.use("/api/v1/operations-management", operationsManagementRoutes);
 app.use("/api/v1/scan-schedules", scanSchedulesRoutes);
@@ -341,6 +346,12 @@ async function initializeServer() {
     await scanScheduler.start();
     console.log(`⏰ Scan Scheduler started for scheduled security scans`);
 
+    // B10: auto-seed the bug-hunter skill corpus into knowledge_base
+    // (FF_BUG_HUNTER). Self-gated + count-gated + delayed; fully detached so it
+    // never blocks or crashes boot. See services/knowledge/skill-seed-startup.ts.
+    import("./services/knowledge/skill-seed-startup")
+      .then(({ scheduleBugHunterSkillSeed }) => scheduleBugHunterSkillSeed())
+      .catch((err) => console.warn(`⚠️  Skill seed scheduling failed:`, err?.message ?? err));
     // Warm the inference model cache so the router can validate Settings-
     // chosen models against actual provider availability on the first call.
     // Fire-and-forget — failure here just means router falls back to

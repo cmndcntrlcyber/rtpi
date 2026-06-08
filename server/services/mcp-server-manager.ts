@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { syncDefaultCatalog } from './mcp/catalog-sync';
 import { preflightServer, formatPreflightError } from './mcp/preflight';
 import { repairKnownBadCatalogEntries } from './mcp/repair-known-bad';
+import { enqueueSkillGeneration } from './skill-generator';
 
 // Spawn timeout in milliseconds (30 seconds)
 const SPAWN_TIMEOUT_MS = 30000;
@@ -229,6 +230,11 @@ class MCPServerManager {
         .where(eq(mcpServers.id, serverId));
 
       console.log(`Server ${serverId} started successfully with PID ${childProcess.pid}`);
+      // FF_TOOL_SKILL_GENERATION — confirm the row has a SKILL.md once the
+      // server actually starts. enqueueSkillGeneration() short-circuits when
+      // the source hash matches an existing skill, so this is cheap on every
+      // restart and only spends Tavily / LLM budget on truly new servers.
+      enqueueSkillGeneration('mcp', serverId);
       return true;
     } catch (error) {
       console.error(`Failed to start server ${serverId}:`, error);

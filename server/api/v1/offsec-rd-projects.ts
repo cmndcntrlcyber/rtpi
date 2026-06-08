@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "../../db";
-import { researchProjects, agents, users } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { researchProjects, agents, users, rdArtifacts, agentTactics, attackTactics } from "@shared/schema";
+import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import { z } from "zod";
 
@@ -66,7 +66,46 @@ router.get("/", async (_req, res) => {
       .leftJoin(users, eq(researchProjects.createdBy, users.id))
       .orderBy(desc(researchProjects.createdAt));
 
-    res.json({ projects });
+    // Real artifact counts come from the rd_artifacts table (where the
+    // orchestrator writes), NOT research_projects.artifacts (a manual JSONB
+    // registration field that the orchestrator never touches) — see N4.
+    const counts = await db
+      .select({
+        projectId: rdArtifacts.projectId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(rdArtifacts)
+      .groupBy(rdArtifacts.projectId);
+    const countByProject = new Map(counts.map((c) => [c.projectId, c.count]));
+
+    // S3 — surface each lead agent's ATT&CK tactic assignments so the project's
+    // tactic scope is visible and available as experiment-creation context.
+    const leadAgentIds = [...new Set(projects.map((p) => p.leadAgentId).filter(Boolean))] as string[];
+    const tacticsByAgent = new Map<string, Array<{ attackId: string; name: string }>>();
+    if (leadAgentIds.length > 0) {
+      const rows = await db
+        .select({
+          agentId: agentTactics.agentId,
+          attackId: attackTactics.attackId,
+          name: attackTactics.name,
+        })
+        .from(agentTactics)
+        .innerJoin(attackTactics, eq(agentTactics.tacticId, attackTactics.id))
+        .where(inArray(agentTactics.agentId, leadAgentIds));
+      for (const r of rows) {
+        const list = tacticsByAgent.get(r.agentId) ?? [];
+        list.push({ attackId: r.attackId, name: r.name });
+        tacticsByAgent.set(r.agentId, list);
+      }
+    }
+
+    const enriched = projects.map((p) => ({
+      ...p,
+      artifactCount: countByProject.get(p.id) ?? 0,
+      leadAgentTactics: p.leadAgentId ? tacticsByAgent.get(p.leadAgentId) ?? [] : [],
+    }));
+
+    res.json({ projects: enriched });
   } catch (error: any) {
     res.status(500).json({
       error: "Failed to retrieve research projects",

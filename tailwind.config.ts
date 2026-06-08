@@ -42,11 +42,46 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
+        info: {
+          DEFAULT: "hsl(var(--info))",
+          foreground: "hsl(var(--info-foreground))",
+        },
+        severity: {
+          critical: "hsl(var(--sev-critical))",
+          high: "hsl(var(--sev-high))",
+          medium: "hsl(var(--sev-medium))",
+          low: "hsl(var(--sev-low))",
+          info: "hsl(var(--sev-info))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+      },
+      fontFamily: {
+        sans: ['"Fira Sans"', "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ['"Fira Code"', "ui-monospace", "SFMono-Regular", "monospace"],
+      },
+      spacing: {
+        "header-h": "var(--header-h)",
+      },
+      keyframes: {
+        shimmer: {
+          "0%": { backgroundPosition: "200% 0" },
+          "100%": { backgroundPosition: "-200% 0" },
+        },
+      },
+      animation: {
+        shimmer: "shimmer 1.6s linear infinite",
       },
     },
   },

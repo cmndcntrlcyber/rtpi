@@ -5,7 +5,7 @@ import * as fs from "fs/promises";
 import { db } from "../db";
 import { agentToolBuilds, mcpServers, containers, agents } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { getOpenAIClient, getAnthropicClient } from "./ai-clients";
+import { routeReasoning, NoInferenceProviderAvailable } from "./inference/inference-router";
 import { agentMCPConnector } from "./agent-mcp-connector";
 
 const execAsync = promisify(exec);
@@ -555,41 +555,24 @@ ${exampleDockerfile}
 Generate ONLY the RUN instructions, no explanation or markdown fences.`;
     }
 
-    // Try Anthropic first
-    const anthropic = getAnthropicClient();
-    if (anthropic) {
-      try {
-        const response = await anthropic.messages.create({
-          model: "claude-sonnet-4-5",
-          max_tokens: 4000,
-          messages: [{ role: "user", content: prompt }],
-        });
-
-        const textContent = response.content.find((block) => block.type === "text");
-        if (textContent && textContent.type === "text") {
-          const text = AgentToolBuilder.stripMarkdownFences(textContent.text);
-          if (mode === "install") return text;
-          return text;
-        }
-      } catch (error) {
-        console.error("[AgentToolBuilder] Anthropic Dockerfile generation failed:", error);
+    // Settings → Default Reasoning Model first; router walks every provider.
+    try {
+      const result = await routeReasoning({
+        messages: [{ role: "user", content: prompt }],
+        maxTokens: 4000,
+      });
+      const text = AgentToolBuilder.stripMarkdownFences(result.response.text);
+      if (text.trim().length > 0) {
+        // `mode` is captured by the closure; both branches return the same text
+        // — preserved comment shape for diff legibility.
+        if (mode === "install") return text;
+        return text;
       }
-    }
-
-    // Try OpenAI
-    const openai = getOpenAIClient();
-    if (openai) {
-      try {
-        const response = await openai.chat.completions.create({
-          model: "gpt-5.2-chat-latest",
-          messages: [{ role: "user", content: prompt }],
-          max_tokens: 4000,
-        });
-
-        const content = response.choices[0]?.message?.content;
-        if (content) return AgentToolBuilder.stripMarkdownFences(content);
-      } catch (error) {
-        console.error("[AgentToolBuilder] OpenAI Dockerfile generation failed:", error);
+    } catch (error) {
+      if (error instanceof NoInferenceProviderAvailable) {
+        console.error("[AgentToolBuilder] Dockerfile generation — providers exhausted:", error.message);
+      } else {
+        console.error("[AgentToolBuilder] Dockerfile generation router failed:", error);
       }
     }
 
@@ -647,37 +630,19 @@ ${dockerfile}
 
 Generate ONLY the fixed Dockerfile content, no explanation or markdown fences.`;
 
-    // Try Anthropic
-    const anthropic = getAnthropicClient();
-    if (anthropic) {
-      try {
-        const response = await anthropic.messages.create({
-          model: "claude-sonnet-4-5",
-          max_tokens: 4000,
-          messages: [{ role: "user", content: prompt }],
-        });
-        const textContent = response.content.find((block) => block.type === "text");
-        if (textContent && textContent.type === "text") {
-          return AgentToolBuilder.stripMarkdownFences(textContent.text);
-        }
-      } catch (error) {
-        console.error("[AgentToolBuilder] Anthropic repair failed:", error);
-      }
-    }
-
-    // Try OpenAI
-    const openai = getOpenAIClient();
-    if (openai) {
-      try {
-        const response = await openai.chat.completions.create({
-          model: "gpt-5.2-chat-latest",
-          messages: [{ role: "user", content: prompt }],
-          max_tokens: 4000,
-        });
-        const content = response.choices[0]?.message?.content;
-        if (content) return AgentToolBuilder.stripMarkdownFences(content);
-      } catch (error) {
-        console.error("[AgentToolBuilder] OpenAI repair failed:", error);
+    // Route through the inference router. Repair is reasoning-heavy synthesis.
+    try {
+      const result = await routeReasoning({
+        messages: [{ role: "user", content: prompt }],
+        maxTokens: 4000,
+      });
+      const text = AgentToolBuilder.stripMarkdownFences(result.response.text);
+      if (text.trim().length > 0) return text;
+    } catch (error) {
+      if (error instanceof NoInferenceProviderAvailable) {
+        console.error("[AgentToolBuilder] Repair providers exhausted:", error.message);
+      } else {
+        console.error("[AgentToolBuilder] Repair router failed:", error);
       }
     }
 

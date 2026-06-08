@@ -17,10 +17,18 @@ export const FEATURE_FLAGS = {
   ctiVector: "FF_CTI_VECTOR",
   kasmHardened: "FF_KASM_HARDENED",
   defaultMcp: "FF_DEFAULT_MCP_SERVERS",
+  offsecManagedMcp: "FF_OFFSEC_MANAGED_MCP",
   nexusMesh: "FF_NEXUS_MESH",
   matrixA2a: "FF_MATRIX_A2A",
   gmlTelemetry: "FF_GML_TELEMETRY",
   a2aCapabilityGate: "FF_A2A_CAPABILITY_GATE",
+  toolSkillGeneration: "FF_TOOL_SKILL_GENERATION",
+  bugHunter: "FF_BUG_HUNTER",
+  agentScopedAttackTree: "FF_AGENT_SCOPED_ATTACK_TREE",
+  uiV3Tokens: "FF_UI_V3_TOKENS",
+  uiV3Graphite: "FF_UI_V3_GRAPHITE",
+  uiV3DensityToggle: "FF_UI_V3_DENSITY_TOGGLE",
+  uiV3LazyRoutes: "FF_UI_V3_LAZY_ROUTES",
 } as const;
 
 export type FeatureFlagKey = keyof typeof FEATURE_FLAGS;

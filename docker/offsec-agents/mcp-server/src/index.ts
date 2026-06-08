@@ -130,6 +130,116 @@ async function executeTool(
 }
 
 /**
+ * Build the MCP tool list (real tools + meta tools).
+ *
+ * Shared by the stdio ListTools handler and the one-shot `--list-tools` CLI mode
+ * so both surfaces always report an identical tool set.
+ */
+async function buildToolList(): Promise<Tool[]> {
+  const tools = await refreshToolsCache();
+
+  const mcpTools: Tool[] = tools.map((tool) => {
+    const schema = toMCPSchema(tool);
+    return {
+      name: schema.name,
+      description: `[${tool.category}] ${schema.description}`,
+      inputSchema: schema.inputSchema,
+    };
+  });
+
+  // Meta tools
+  mcpTools.push({
+    name: 'list_categories',
+    description: 'List all available tool categories',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+  });
+  mcpTools.push({
+    name: 'get_tool_help',
+    description: 'Get detailed help for a specific tool',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tool_name: { type: 'string', description: 'Name of the tool to get help for' },
+      },
+      required: ['tool_name'],
+    },
+  });
+  mcpTools.push({
+    name: 'search_tools',
+    description: 'Search for tools by keyword',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query' },
+      },
+      required: ['query'],
+    },
+  });
+
+  return mcpTools;
+}
+
+/**
+ * One-shot CLI mode used by the RTPI backend tool bridge (offsec-agents.ts),
+ * which invokes this script via `docker exec ... node /mcp/dist/index.js`.
+ *
+ *   --list-tools                         -> prints a JSON array of tools to stdout
+ *   --execute-tool <name> --args <json>  -> runs the tool, prints a JSON result
+ *
+ * All diagnostic logging goes to stderr (console.error) so stdout stays clean
+ * JSON for the caller's JSON.parse(). Returns true if a CLI command was handled.
+ */
+async function runCli(argv: string[]): Promise<boolean> {
+  if (argv.includes('--list-tools')) {
+    const tools = await buildToolList();
+    process.stdout.write(JSON.stringify(tools));
+    return true;
+  }
+
+  const execIdx = argv.indexOf('--execute-tool');
+  if (execIdx !== -1) {
+    const toolName = argv[execIdx + 1];
+    const argsIdx = argv.indexOf('--args');
+    let args: Record<string, any> = {};
+    if (argsIdx !== -1 && argv[argsIdx + 1]) {
+      try {
+        args = JSON.parse(argv[argsIdx + 1]);
+      } catch {
+        process.stdout.write(JSON.stringify({ error: 'Invalid --args JSON' }));
+        return true;
+      }
+    }
+
+    if (!toolName) {
+      process.stdout.write(JSON.stringify({ error: 'Missing tool name for --execute-tool' }));
+      return true;
+    }
+
+    try {
+      const result = await executeTool(toolName, args);
+      process.stdout.write(
+        JSON.stringify({
+          tool: toolName,
+          exitCode: result.exitCode,
+          stdout: result.stdout,
+          stderr: result.stderr,
+        })
+      );
+    } catch (error) {
+      process.stdout.write(
+        JSON.stringify({
+          tool: toolName,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        })
+      );
+    }
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Get documentation content
  */
 async function getDocumentation(): Promise<string> {
@@ -145,6 +255,16 @@ async function getDocumentation(): Promise<string> {
  * Main server initialization
  */
 async function main() {
+  // One-shot CLI mode (used by the RTPI backend tool bridge). If a CLI command
+  // is present, handle it and exit without starting the long-lived stdio server.
+  const cliArgs = process.argv.slice(2);
+  if (cliArgs.length > 0) {
+    const handled = await runCli(cliArgs);
+    if (handled) {
+      process.exit(0);
+    }
+  }
+
   console.error(`Starting OffSec Agent MCP Server (${AGENT_TYPE})...`);
 
   // Initial tool discovery
@@ -167,59 +287,7 @@ async function main() {
 
   // Handle list tools request
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    const tools = await refreshToolsCache();
-
-    const mcpTools: Tool[] = tools.map((tool) => {
-      const schema = toMCPSchema(tool);
-      return {
-        name: schema.name,
-        description: `[${tool.category}] ${schema.description}`,
-        inputSchema: schema.inputSchema,
-      };
-    });
-
-    // Add meta tools
-    mcpTools.push({
-      name: 'list_categories',
-      description: 'List all available tool categories',
-      inputSchema: {
-        type: 'object',
-        properties: {},
-        required: [],
-      },
-    });
-
-    mcpTools.push({
-      name: 'get_tool_help',
-      description: 'Get detailed help for a specific tool',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          tool_name: {
-            type: 'string',
-            description: 'Name of the tool to get help for',
-          },
-        },
-        required: ['tool_name'],
-      },
-    });
-
-    mcpTools.push({
-      name: 'search_tools',
-      description: 'Search for tools by keyword',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          query: {
-            type: 'string',
-            description: 'Search query',
-          },
-        },
-        required: ['query'],
-      },
-    });
-
-    return { tools: mcpTools };
+    return { tools: await buildToolList() };
   });
 
   // Handle call tool request

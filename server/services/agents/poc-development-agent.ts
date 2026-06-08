@@ -14,6 +14,7 @@ import { db } from '../../db';
 import { rdArtifacts } from '@shared/schema';
 import { maldevAgent } from './maldev-agent';
 import { ollamaAIClient } from '../ollama-ai-client';
+import { searchKnowledge } from '../knowledge/knowledge-base-reader';
 import type { ResearchArtifact, POCArtifact } from '../rd-experiment-orchestrator';
 
 // ============================================================================
@@ -126,6 +127,26 @@ class PocDevelopmentAgent extends BaseTaskAgent {
     });
   }
 
+  /**
+   * S2 — pull prior POC code / tool docs from the Knowledge Base for this
+   * vulnerability and render them as a compact reference block for the model.
+   * Returns '' on no match or any error (never blocks generation).
+   */
+  private async consultKbForReference(title?: string): Promise<string> {
+    if (!title) return '';
+    try {
+      const hits = await searchKnowledge({ query: title, topK: 3 });
+      if (hits.length === 0) return '';
+      const blocks = hits.map(
+        (h) => `- ${h.title} [${h.category}]: ${(h.summary || h.content).slice(0, 300)}`,
+      );
+      return `Reference patterns from prior R&D (adapt, don't copy verbatim):\n${blocks.join('\n')}`;
+    } catch (error) {
+      console.warn('[POC Agent] KB consultation failed (non-fatal):', error);
+      return '';
+    }
+  }
+
   private async generateStandalonePoc(
     language: 'python' | 'bash',
     researchArtifact?: ResearchArtifact,
@@ -151,6 +172,11 @@ Generate a complete, runnable Bash script. Requirements:
 - Include proper quoting and error handling
 - Output ONLY the Bash code, no markdown fences or explanations`;
 
+    // S2 — consult the Knowledge Base for prior POC code / promoted-tool docs
+    // matching this vulnerability, and feed the best matches to the model as
+    // reference patterns. Best-effort; a KB miss just yields no reference block.
+    const priorReference = await this.consultKbForReference(researchArtifact?.title);
+
     const context = [
       findings?.exploitationVectors?.length ? `Exploitation Vectors: ${findings.exploitationVectors.join('; ')}` : null,
       findings?.prerequisites?.length ? `Prerequisites: ${findings.prerequisites.join('; ')}` : null,
@@ -158,6 +184,7 @@ Generate a complete, runnable Bash script. Requirements:
       methodology?.attackVector ? `Attack Vector: ${methodology.attackVector}` : null,
       methodology?.steps?.length ? `Steps: ${methodology.steps.join('; ')}` : null,
       methodology?.payloadType ? `Payload Type: ${methodology.payloadType}` : null,
+      priorReference || null,
     ].filter(Boolean).join('\n');
 
     const userPrompt = `Generate a ${language} proof-of-concept exploit script for the following vulnerability:

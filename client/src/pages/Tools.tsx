@@ -7,6 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Wrench, ExternalLink, Terminal, Globe, RefreshCw } from "lucide-react";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useTools, useUploadToolFile, useDeleteTool, useRefreshTools } from "@/hooks/useTools";
 import ToolCard from "@/components/tools/ToolCard";
 import MetasploitCard from "@/components/tools/MetasploitCard";
@@ -93,36 +96,48 @@ export default function Tools() {
     }
   };
 
+  const statCards = [
+    { label: "Total Tools", value: stats.total, color: "text-foreground" },
+    { label: "Running", value: stats.running, color: "text-success" },
+    { label: "Available", value: stats.available, color: "text-info" },
+  ];
+
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-3xl font-bold">Security Tools</h1>
-        <Button
-          onClick={handleRefreshRegistry}
-          disabled={refreshing}
-          variant="outline"
-        >
-          <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-          {refreshing ? 'Refreshing...' : 'Refresh Registry'}
-        </Button>
-      </div>
+      <PageHeader
+        icon={Wrench}
+        title="Security Tools"
+        description="Manage and launch security tooling, frameworks, and workspaces."
+        actions={
+          <Button
+            onClick={handleRefreshRegistry}
+            disabled={refreshing}
+            variant="outline"
+          >
+            <RefreshCw
+              aria-hidden="true"
+              className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`}
+            />
+            {refreshing ? 'Refreshing...' : 'Refresh Registry'}
+          </Button>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">Total Tools</h3>
-          <p className="text-3xl font-bold text-foreground">{stats.total}</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">Running</h3>
-          <p className="text-3xl font-bold text-green-600">{stats.running}</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">Available</h3>
-          <p className="text-3xl font-bold text-blue-600">{stats.available}</p>
-        </div>
+        {statCards.map((card) => (
+          <div
+            key={card.label}
+            className="bg-card p-6 rounded-lg shadow-sm border border-border"
+          >
+            <h3 className="text-sm font-medium text-muted-foreground mb-2">{card.label}</h3>
+            {loading ? (
+              <Skeleton className="h-9 w-16" />
+            ) : (
+              <p className={`text-3xl font-bold tabular-nums ${card.color}`}>{card.value}</p>
+            )}
+          </div>
+        ))}
       </div>
 
       {/* Featured Tools */}
@@ -132,11 +147,11 @@ export default function Tools() {
           <h2 className="text-xl font-semibold">Featured Tools</h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card className="border-l-4 border-l-blue-500 shadow-lg hover:shadow-xl transition-shadow bg-gradient-to-br from-blue-50/50 to-card">
+          <Card className="border-l-4 border-l-info shadow-sm hover:shadow-lg transition-shadow bg-card">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-blue-100 text-blue-600">
-                  <Globe className="h-6 w-6" />
+                <div className="p-2 rounded-lg bg-info/10 text-info">
+                  <Globe aria-hidden="true" className="h-6 w-6" />
                 </div>
                 <div>
                   <div className="font-bold">Kasm Workspaces</div>
@@ -154,17 +169,17 @@ export default function Tools() {
                 onClick={() => window.open("https://kasm.local", "_blank")}
                 className="w-full"
               >
-                <ExternalLink className="h-4 w-4 mr-2" />
+                <ExternalLink aria-hidden="true" className="h-4 w-4 mr-2" />
                 Launch Kasm
               </Button>
             </CardContent>
           </Card>
 
-          <Card className="border-l-4 border-l-purple-500 shadow-lg hover:shadow-xl transition-shadow bg-gradient-to-br from-purple-50/50 to-card">
+          <Card className="border-l-4 border-l-warning shadow-sm hover:shadow-lg transition-shadow bg-card">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-purple-100 text-purple-600">
-                  <Terminal className="h-6 w-6" />
+                <div className="p-2 rounded-lg bg-warning/10 text-warning">
+                  <Terminal aria-hidden="true" className="h-6 w-6" />
                 </div>
                 <div>
                   <div className="font-bold">PowerShell Empire</div>
@@ -182,7 +197,7 @@ export default function Tools() {
                 onClick={() => window.open("http://localhost:1337", "_blank")}
                 className="w-full"
               >
-                <ExternalLink className="h-4 w-4 mr-2" />
+                <ExternalLink aria-hidden="true" className="h-4 w-4 mr-2" />
                 Open Console
               </Button>
             </CardContent>
@@ -199,13 +214,20 @@ export default function Tools() {
 
         <TabsContent value="catalog" className="space-y-4">
           {loading ? (
-            <p className="text-muted-foreground">Loading tools...</p>
-          ) : validTools.length === 0 ? (
-            <div className="text-center py-12 bg-card rounded-lg border border-border">
-              <Wrench className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">No tools configured</p>
-              <p className="text-sm text-muted-foreground">Contact administrator to add security tools</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" aria-busy="true" aria-live="polite">
+              <Skeleton className="h-40 rounded-lg" />
+              <Skeleton className="h-40 rounded-lg" />
+              <Skeleton className="h-40 rounded-lg" />
+              <Skeleton className="h-40 rounded-lg" />
+              <Skeleton className="h-40 rounded-lg" />
+              <Skeleton className="h-40 rounded-lg" />
             </div>
+          ) : validTools.length === 0 ? (
+            <EmptyState
+              icon={Wrench}
+              title="No tools configured"
+              description="Contact an administrator to add security tools to the registry."
+            />
           ) : (
             <>
               {/* Metasploit tools get special treatment */}
@@ -272,7 +294,7 @@ export default function Tools() {
               </p>
             </div>
             {uploading && (
-              <p className="text-sm text-blue-600">Uploading... Please wait.</p>
+              <p className="text-sm text-info">Uploading... Please wait.</p>
             )}
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={() => {

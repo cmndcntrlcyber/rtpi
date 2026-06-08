@@ -16,6 +16,7 @@
 
 import { BaseTaskAgent, TaskDefinition, TaskResult } from './base-task-agent';
 import { agentMessageBus } from '../agent-message-bus';
+import { searchKnowledge, extractCvesFromHits } from '../knowledge/knowledge-base-reader';
 
 // ============================================================================
 // Types
@@ -72,6 +73,14 @@ export interface VulnerabilityResearchPackage {
     riskLevel: string;
     evasionNotes: string[];
   };
+
+  // Prior knowledge consulted from the KB before external queries (S2)
+  priorKnowledge?: Array<{
+    title: string;
+    summary: string | null;
+    category: string;
+    similarity: number | null;
+  }>;
 
   // Metadata
   service: string;
@@ -173,13 +182,47 @@ export class ResearchAgent extends BaseTaskAgent {
       totalSources: 0,
     };
 
+    // Phase 0 (S2): consult the Knowledge Base for prior findings BEFORE any
+    // external query. This makes the harness learn across runs — prior research
+    // and promoted-tool docs seed the analysis, and known CVEs surface even when
+    // Tavily is unavailable. Best-effort; never blocks the pipeline.
+    if (task.signal?.aborted) throw new Error('Research cancelled');
+    await this.reportProgress(task.id || 'research', 10, 'Phase 0: Knowledge Base consultation');
+    const priorHits = await this.consultKnowledgeBase(service, version, cveId);
+    const priorCves = extractCvesFromHits(priorHits);
+    if (priorHits.length > 0) {
+      researchPackage.priorKnowledge = priorHits.map((h) => ({
+        title: h.title,
+        summary: h.summary,
+        category: h.category,
+        similarity: h.similarity,
+      }));
+      console.log(
+        `[Research Agent] KB consultation found ${priorHits.length} prior article(s), ${priorCves.length} known CVE(s)`
+      );
+    }
+
     // Phase 1: CVE Discovery
+    if (task.signal?.aborted) throw new Error('Research cancelled');
     await this.reportProgress(task.id || 'research', 15, 'Phase 1: CVE Discovery');
     const cveResults = await this.discoverCVEs(service, version, cveId);
     researchPackage.cves = cveResults.cves;
     allQueries.push(...cveResults.queries);
 
+    // Merge CVEs already known from prior KB research (dedup by id).
+    for (const cve of priorCves) {
+      if (!researchPackage.cves.find((c) => c.id === cve)) {
+        researchPackage.cves.push({
+          id: cve,
+          description: 'Known from prior R&D knowledge-base research',
+          severity: 'medium',
+          affectedProducts: [],
+        });
+      }
+    }
+
     // Phase 2: Exploit Intelligence
+    if (task.signal?.aborted) throw new Error('Research cancelled');
     await this.reportProgress(task.id || 'research', 45, 'Phase 2: Exploit Intelligence');
     const exploitResults = await this.gatherExploitIntel(
       service, version, researchPackage.cves.map(c => c.id)
@@ -188,6 +231,7 @@ export class ResearchAgent extends BaseTaskAgent {
     allQueries.push(...exploitResults.queries);
 
     // Phase 3: Attack Methodology
+    if (task.signal?.aborted) throw new Error('Research cancelled');
     await this.reportProgress(task.id || 'research', 75, 'Phase 3: Attack Methodology');
     researchPackage.methodology = this.synthesizeMethodology(
       researchPackage.cves,
@@ -255,30 +299,39 @@ export class ResearchAgent extends BaseTaskAgent {
       }
     }
 
-    // Execute Tavily searches
-    for (const query of queries.slice(0, 4)) {
-      try {
-        const response = await this.tavilySearch(query, 'advanced', 8);
-        if (!response) continue;
+    // Execute Tavily searches concurrently — the queries are independent, so
+    // fanning them out cuts phase latency from sum-of-calls to slowest-call.
+    // Per-query failures are isolated (caught → null) so one bad search can't
+    // sink the batch. Result parsing stays sequential below to keep the CVE
+    // dedup deterministic.
+    const selectedQueries = queries.slice(0, 4);
+    const responses = await Promise.all(
+      selectedQueries.map((query) =>
+        this.tavilySearch(query, 'advanced', 8).catch((error) => {
+          console.error(`[Research Agent] CVE discovery search failed for: ${query}`, error);
+          return null;
+        })
+      )
+    );
 
-        // Parse CVEs from results
-        for (const result of response.results) {
-          const cveMatches = (result.content || '').match(/CVE-\d{4}-\d{4,}/g);
-          if (cveMatches) {
-            for (const cveMatch of [...new Set(cveMatches)]) {
-              if (!cves.find(c => c.id === cveMatch)) {
-                cves.push({
-                  id: cveMatch,
-                  description: this.extractCVEDescription(result.content, cveMatch),
-                  severity: this.inferSeverity(result.content),
-                  affectedProducts: this.extractAffectedProducts(result.content),
-                });
-              }
+    for (const response of responses) {
+      if (!response) continue;
+
+      // Parse CVEs from results
+      for (const result of response.results) {
+        const cveMatches = (result.content || '').match(/CVE-\d{4}-\d{4,}/g);
+        if (cveMatches) {
+          for (const cveMatch of [...new Set(cveMatches)]) {
+            if (!cves.find(c => c.id === cveMatch)) {
+              cves.push({
+                id: cveMatch,
+                description: this.extractCVEDescription(result.content, cveMatch),
+                severity: this.inferSeverity(result.content),
+                affectedProducts: this.extractAffectedProducts(result.content),
+              });
             }
           }
         }
-      } catch (error) {
-        console.error(`[Research Agent] CVE discovery search failed for: ${query}`, error);
       }
     }
 
@@ -318,19 +371,26 @@ export class ResearchAgent extends BaseTaskAgent {
       queries.push(`${sv} exploit payload remote shell`);
     }
 
-    for (const query of queries.slice(0, 5)) {
-      try {
-        const response = await this.tavilySearch(query, 'advanced', 5);
-        if (!response) continue;
+    // Concurrent fan-out (same rationale as discoverCVEs); classification runs
+    // sequentially afterward so exploit ordering stays stable.
+    const selectedQueries = queries.slice(0, 5);
+    const responses = await Promise.all(
+      selectedQueries.map((query) =>
+        this.tavilySearch(query, 'advanced', 5).catch((error) => {
+          console.error(`[Research Agent] Exploit intel search failed for: ${query}`, error);
+          return null;
+        })
+      )
+    );
 
-        for (const result of response.results) {
-          const exploit = this.classifyExploitSource(result);
-          if (exploit) {
-            exploits.push(exploit);
-          }
+    for (const response of responses) {
+      if (!response) continue;
+
+      for (const result of response.results) {
+        const exploit = this.classifyExploitSource(result);
+        if (exploit) {
+          exploits.push(exploit);
         }
-      } catch (error) {
-        console.error(`[Research Agent] Exploit intel search failed for: ${query}`, error);
       }
     }
 
@@ -457,6 +517,34 @@ export class ResearchAgent extends BaseTaskAgent {
       console.log(`[Research Agent] Routed research package to maldev-agent for ${pkg.service}`);
     } catch (error) {
       console.error('[Research Agent] Failed to route to maldev-agent:', error);
+    }
+  }
+
+  // ==========================================================================
+  // Knowledge Base Consultation (S2)
+  // ==========================================================================
+
+  /**
+   * Query the Knowledge Base for prior research/tool docs relevant to this
+   * target before spending external (Tavily) calls. Returns [] on any error —
+   * a KB miss must never block research.
+   */
+  private async consultKnowledgeBase(
+    service?: string,
+    version?: string,
+    cveId?: string
+  ): Promise<Awaited<ReturnType<typeof searchKnowledge>>> {
+    const query = cveId
+      ? cveId
+      : service
+        ? `${service} ${version || ''}`.trim()
+        : '';
+    if (!query) return [];
+    try {
+      return await searchKnowledge({ query, topK: 5 });
+    } catch (error) {
+      console.warn('[Research Agent] KB consultation failed (non-fatal):', error);
+      return [];
     }
   }
 

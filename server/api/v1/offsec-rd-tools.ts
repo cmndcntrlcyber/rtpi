@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { db } from "../../db";
-import { toolLibrary, securityTools } from "@shared/schema";
-import { eq, desc, and, like } from "drizzle-orm";
+import { toolLibrary, securityTools, toolRegistry } from "@shared/schema";
+import { eq, desc, and, like, ilike } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
+import { runAllTests } from "../../services/tool-tester";
 import { z } from "zod";
 
 const router = Router();
@@ -284,42 +285,102 @@ router.put("/:id", ensureRole("admin", "operator"), async (req, res) => {
   }
 });
 
-// POST /api/v1/offsec-rd/tools/:id/test - Execute tool test
+// POST /api/v1/offsec-rd/tools/:id/test - Execute real container-based tests
+//
+// Closes B2 (dead "Test Tool" button) and B12 (orphaned feedback loop): the
+// R&D library entry is resolved to its operational tool_registry row, and the
+// shared tool-tester runs syntax/health/config tests inside the tool's
+// container. runAllTests() emits `toolTestEvents` on completion, which
+// rd-feedback-loop.ts consumes — so a failing R&D-promoted tool (one whose
+// tool_registry row carries rd_artifact_id) automatically spawns a refinement
+// experiment. We then mirror the verdict back onto the library entry's
+// testingStatus so the Tool Lab UI reflects reality.
 router.post("/:id/test", ensureRole("admin", "operator"), async (req, res) => {
   const { id } = req.params;
   const user = req.user as any;
 
   try {
-    const tool = await db
+    const [tool] = await db
       .select({
         id: toolLibrary.id,
         securityToolId: toolLibrary.securityToolId,
         toolName: securityTools.name,
-        toolCommand: securityTools.command,
-        dockerImage: securityTools.dockerImage,
       })
       .from(toolLibrary)
       .leftJoin(securityTools, eq(toolLibrary.securityToolId, securityTools.id))
       .where(eq(toolLibrary.id, id))
       .limit(1);
 
-    if (!tool || tool.length === 0) {
+    if (!tool) {
       return res.status(404).json({ error: "Tool not found in R&D library" });
     }
 
-    // TODO: Implement actual tool testing via docker-executor or tool-executor
-    // For now, just update testing status and timestamp
+    // Resolve the operational registry row by name — that's the only link
+    // between the research library (security_tools) and the executable
+    // registry (tool_registry, which tool-tester operates on).
+    let registryRow: { id: string } | undefined;
+    if (tool.toolName) {
+      [registryRow] = await db
+        .select({ id: toolRegistry.id })
+        .from(toolRegistry)
+        .where(ilike(toolRegistry.name, tool.toolName))
+        .limit(1);
+    }
+
+    if (!registryRow) {
+      // No installed registry counterpart — we can't run real tests. Be honest
+      // rather than fabricating a "success", and leave status untouched.
+      await logAudit(user.id, "offsec_rd_tool_test", `/offsec-rd/tools/${id}/test`, id, false, req);
+      return res.status(409).json({
+        error: "not_installed",
+        message:
+          `No installed tool_registry entry matches "${tool.toolName ?? "this tool"}". ` +
+          `Install/register the tool before testing.`,
+      });
+    }
+
+    // Mark in-progress so the UI shows movement during the container run.
+    await db
+      .update(toolLibrary)
+      .set({ testingStatus: "testing", lastTestedAt: new Date(), updatedAt: new Date() })
+      .where(eq(toolLibrary.id, id));
+
+    // Run the real tests. This emits toolTestEvents('test_complete') →
+    // rd-feedback-loop.ts. Errors here mean the container was unreachable.
+    let results;
+    let allPassed = false;
+    try {
+      results = await runAllTests(registryRow.id, user.id);
+      allPassed = results.length > 0 && results.every((r) => r.passed);
+    } catch (err: any) {
+      const failResult = {
+        testDate: new Date().toISOString(),
+        status: "error",
+        message: `Test execution failed: ${err?.message ?? String(err)}`,
+      };
+      const [erroredTool] = await db
+        .update(toolLibrary)
+        .set({ testingStatus: "untested", testResults: failResult, updatedAt: new Date() })
+        .where(eq(toolLibrary.id, id))
+        .returning();
+      await logAudit(user.id, "offsec_rd_tool_test", `/offsec-rd/tools/${id}/test`, id, false, req);
+      return res.status(502).json({
+        tool: erroredTool,
+        error: "test_execution_failed",
+        message: failResult.message,
+      });
+    }
 
     const testResult = {
       testDate: new Date().toISOString(),
-      status: "success",
-      message: "Tool test execution not yet implemented",
+      status: allPassed ? "validated" : "failed",
+      results,
     };
 
     const [updatedTool] = await db
       .update(toolLibrary)
       .set({
-        testingStatus: "testing",
+        testingStatus: allPassed ? "validated" : "deprecated",
         lastTestedAt: new Date(),
         testResults: testResult,
         updatedAt: new Date(),
@@ -327,25 +388,20 @@ router.post("/:id/test", ensureRole("admin", "operator"), async (req, res) => {
       .where(eq(toolLibrary.id, id))
       .returning();
 
-    // Audit log
-    await logAudit(
-      user.id,
-      "offsec_rd_tool_test",
-      `/offsec-rd/tools/${id}/test`,
-      id,
-      true,
-      req
-    );
+    await logAudit(user.id, "offsec_rd_tool_test", `/offsec-rd/tools/${id}/test`, id, true, req);
 
     res.json({
       tool: updatedTool,
-      testResult,
-      message: "Tool test initiated (full testing integration pending)"
+      allPassed,
+      results,
+      message: allPassed
+        ? "All tests passed — tool validated"
+        : "One or more tests failed — a refinement experiment is queued for R&D-promoted tools",
     });
   } catch (error: any) {
     res.status(500).json({
       error: "Failed to test tool",
-      details: error.message
+      details: error.message,
     });
   }
 });

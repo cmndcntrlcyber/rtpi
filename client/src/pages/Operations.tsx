@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useLocation, useSearchParams } from "wouter";
-import { Plus, CheckSquare, Download } from "lucide-react";
+import { Plus, CheckSquare, Download, Crosshair } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
 import OperationList from "@/components/operations/OperationList";
 import OperationForm from "@/components/operations/OperationForm";
 import OpsManagerFloatingChat from "@/components/operations/OpsManagerFloatingChat";
@@ -255,34 +257,33 @@ export default function Operations() {
 
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Operations</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage red team operations and track progress
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button
-            variant={bulkMode ? "secondary" : "outline"}
-            onClick={toggleBulkMode}
-          >
-            <CheckSquare className="h-4 w-4 mr-2" />
-            {bulkMode ? "Exit Bulk Mode" : "Bulk Select"}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => setBugBountyImportOpen(!bugBountyImportOpen)}
-          >
-            <Download className="h-4 w-4 mr-2" />
-            Import Bug Bounty
-          </Button>
-          <Button onClick={() => setFormOpen(true)} disabled={creating}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Operation
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        icon={Crosshair}
+        title="Operations"
+        description="Manage red team operations and track progress"
+        actions={
+          <>
+            <Button
+              variant={bulkMode ? "secondary" : "outline"}
+              onClick={toggleBulkMode}
+            >
+              <CheckSquare aria-hidden="true" className="h-4 w-4 mr-2" />
+              {bulkMode ? "Exit Bulk Mode" : "Bulk Select"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setBugBountyImportOpen(!bugBountyImportOpen)}
+            >
+              <Download aria-hidden="true" className="h-4 w-4 mr-2" />
+              Import Bug Bounty
+            </Button>
+            <Button onClick={() => setFormOpen(true)} disabled={creating}>
+              <Plus aria-hidden="true" className="h-4 w-4 mr-2" />
+              New Operation
+            </Button>
+          </>
+        }
+      />
 
       {/* Bug Bounty Import Card */}
       {bugBountyImportOpen && (
@@ -302,25 +303,34 @@ export default function Operations() {
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
         {([
           { key: null, label: "Total Operations", value: stats.total, color: "text-foreground" },
-          { key: "active", label: "Active", value: stats.active, color: "text-green-600" },
-          { key: "planning", label: "Planning", value: stats.planning, color: "text-blue-600" },
-          { key: "paused", label: "Paused", value: stats.paused, color: "text-yellow-600" },
+          { key: "active", label: "Active", value: stats.active, color: "text-success" },
+          { key: "planning", label: "Planning", value: stats.planning, color: "text-info" },
+          { key: "paused", label: "Paused", value: stats.paused, color: "text-warning" },
           { key: "completed", label: "Completed", value: stats.completed, color: "text-muted-foreground" },
-          { key: "cancelled", label: "Cancelled", value: stats.cancelled, color: "text-red-600" },
-        ] as const).map((card) => (
-          <div
-            key={card.label}
-            onClick={() => handleStatusFilterClick(card.key)}
-            className={`bg-card p-5 rounded-lg shadow-sm border cursor-pointer hover:shadow-md transition-all ${
-              statusFilter === card.key
-                ? "ring-2 ring-primary ring-offset-2 border-primary"
-                : "border-border"
-            }`}
-          >
-            <h3 className="text-sm font-medium text-muted-foreground mb-2">{card.label}</h3>
-            <p className={`text-3xl font-bold ${card.color}`}>{card.value}</p>
-          </div>
-        ))}
+          { key: "cancelled", label: "Cancelled", value: stats.cancelled, color: "text-destructive" },
+        ] as const).map((card) => {
+          const isActive = statusFilter === card.key;
+          return (
+            <button
+              key={card.label}
+              type="button"
+              aria-pressed={isActive}
+              onClick={() => handleStatusFilterClick(card.key)}
+              className={`text-left bg-card p-5 rounded-lg shadow-sm border transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                isActive
+                  ? "ring-2 ring-primary ring-offset-2 border-primary"
+                  : "border-border"
+              }`}
+            >
+              <h3 className="text-sm font-medium text-muted-foreground mb-2">{card.label}</h3>
+              {loading ? (
+                <Skeleton className="h-9 w-16" />
+              ) : (
+                <p className={`text-3xl font-bold tabular-nums ${card.color}`}>{card.value}</p>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* Operations List */}

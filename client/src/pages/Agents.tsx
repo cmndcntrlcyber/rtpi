@@ -10,7 +10,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Bot, Server, Activity, Clock, Plus, RotateCcw, Pause, Target, CheckCircle, AlertTriangle, Zap, GripVertical, ArrowRight, X, Import, Workflow, ChevronDown, ChevronRight, Pencil, Trash2, Search, MoveRight, Ban, MessageSquare, RefreshCw, Loader2 } from "lucide-react";
+import { Bot, Server, Activity, Clock, Plus, RotateCcw, Pause, Target, CheckCircle, AlertTriangle, Zap, GripVertical, ArrowRight, X, Import, Workflow, ChevronDown, ChevronRight, Pencil, Trash2, Search, MoveRight, Ban, MessageSquare, RefreshCw, Loader2, Cpu } from "lucide-react";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useAgents } from "@/hooks/useAgents";
@@ -24,10 +26,12 @@ import { api } from "@/lib/api";
 import WorkflowProgressCard from "@/components/agents/WorkflowProgressCard";
 import WorkflowDetailsDialog from "@/components/agents/WorkflowDetailsDialog";
 import ImportAgentDialog from "@/components/agents/ImportAgentDialog";
+import { RestoreBackupsDialog } from "@/components/agents/RestoreBackupsDialog";
 import WorkflowBuilder from "@/components/agents/WorkflowBuilder";
 import WorkflowEditDialog from "@/components/agents/WorkflowEditDialog";
 import { AgentsTablePanel } from "@/components/agents/AgentsTablePanel";
 import { DefaultServersPanel } from "@/components/mcp/DefaultServersPanel";
+import { DualListbox } from "@/components/ui/DualListbox";
 import { useAgentChatManager } from "@/contexts/AgentChatContext";
 import {
   DndContext,
@@ -275,6 +279,7 @@ export default function Agents() {
   const [editServerDialogOpen, setEditServerDialogOpen] = useState(false);
   const [editingServer, setEditingServer] = useState<any>(null);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [backupsDialogOpen, setBackupsDialogOpen] = useState(false);
   const [workflowBuilderOpen, setWorkflowBuilderOpen] = useState(false);
   const [workflowEditOpen, setWorkflowEditOpen] = useState(false);
   const [editingWorkflowTemplate, setEditingWorkflowTemplate] = useState<WorkflowTemplate | null>(null);
@@ -303,6 +308,7 @@ export default function Agents() {
       loopExitCondition: "functional_poc",
       flowOrder: 0,
       enabledTools: [] as string[],
+      enabledSkills: [] as string[],
       // v2.9.3 — `mcpServerIds` is the multi-select source of truth; the
       // legacy `mcpServerId` is the first entry, kept in sync on every save
       // so single-server consumers (current dispatch fallback) keep working.
@@ -332,6 +338,41 @@ export default function Agents() {
   const [ollamaModels, setOllamaModels] = useState<{ name: string; size?: number }[]>([]);
   const [ollamaModelsLoading, setOllamaModelsLoading] = useState(false);
   const [ollamaModelsError, setOllamaModelsError] = useState<string | null>(null);
+
+  // Skills catalog — tool SKILL.md files plus bug-hunter knowledge_base
+  // entries, served by /api/v1/skills/available. Loaded when the Edit AI
+  // Agent dialog opens so the dual listbox has its pool of items.
+  type CatalogSkill = {
+    id: string;
+    kind: "tool" | "bug_hunter";
+    displayName: string;
+    summary: string;
+    source: string;
+    tags: string[];
+  };
+  const [catalogSkills, setCatalogSkills] = useState<CatalogSkill[]>([]);
+  const [catalogSkillsLoading, setCatalogSkillsLoading] = useState(false);
+  const [catalogSkillsError, setCatalogSkillsError] = useState<string | null>(null);
+
+  const loadCatalogSkills = useCallback(async () => {
+    try {
+      setCatalogSkillsLoading(true);
+      setCatalogSkillsError(null);
+      const res = await fetch("/api/v1/skills/available?grouped=true", { credentials: "include" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCatalogSkills([]);
+        setCatalogSkillsError(data.error || data.details || `HTTP ${res.status}`);
+        return;
+      }
+      setCatalogSkills(Array.isArray(data.skills) ? data.skills : []);
+    } catch (err) {
+      setCatalogSkills([]);
+      setCatalogSkillsError(err instanceof Error ? err.message : "load failed");
+    } finally {
+      setCatalogSkillsLoading(false);
+    }
+  }, []);
 
   const loadOllamaModels = useCallback(async () => {
     try {
@@ -423,6 +464,7 @@ export default function Agents() {
         loopExitCondition: config.loopExitCondition || "functional_poc",
         flowOrder: config.flowOrder || 0,
         enabledTools: config.enabledTools || [],
+        enabledSkills: config.enabledSkills || [],
         mcpServerIds: incomingMcpIds,
         mcpServerId: incomingMcpIds[0] ?? "",
       },
@@ -460,6 +502,7 @@ export default function Agents() {
           loopExitCondition: "functional_poc",
           flowOrder: 0,
           enabledTools: [],
+          enabledSkills: [],
           mcpServerIds: [],
           mcpServerId: "",
         },
@@ -936,44 +979,47 @@ export default function Agents() {
     connected: mcpServers.filter((s) => s.status === "running").length,
   };
 
+  const statCards = [
+    { label: "AI Agents", value: stats.aiAgents, color: "text-foreground" },
+    { label: "Active Agents", value: stats.active, color: "text-success" },
+    { label: "MCP Servers", value: stats.mcpServers, color: "text-foreground" },
+    { label: "Connected", value: stats.connected, color: "text-info" },
+  ];
+
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-3xl font-bold">AI Agents & MCP Servers</h1>
-      </div>
+      <PageHeader
+        icon={Cpu}
+        title="AI Agents & MCP Servers"
+        description="Manage AI agents, MCP server connections, and multi-agent workflows."
+      />
 
       {/* Stats Cards + Agent Workflows tile */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-6">
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">AI Agents</h3>
-          <p className="text-3xl font-bold text-foreground">{stats.aiAgents}</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">Active Agents</h3>
-          <p className="text-3xl font-bold text-green-600">{stats.active}</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">MCP Servers</h3>
-          <p className="text-3xl font-bold text-foreground">{stats.mcpServers}</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">Connected</h3>
-          <p className="text-3xl font-bold text-blue-600">{stats.connected}</p>
-        </div>
+        {statCards.map((card) => (
+          <div
+            key={card.label}
+            className="bg-card p-6 rounded-lg shadow-sm border border-border"
+          >
+            <h3 className="text-sm font-medium text-muted-foreground mb-2">{card.label}</h3>
+            {agentsLoading || serversLoading ? (
+              <Skeleton className="h-9 w-16" />
+            ) : (
+              <p className={`text-3xl font-bold tabular-nums ${card.color}`}>{card.value}</p>
+            )}
+          </div>
+        ))}
 
         <div className="bg-card p-6 rounded-lg shadow-sm border border-border flex flex-col justify-between">
           <div>
             <h3 className="text-sm font-medium text-muted-foreground mb-1 flex items-center gap-2">
-              <Workflow className="h-4 w-4 text-indigo-600" />
+              <Workflow aria-hidden="true" className="h-4 w-4 text-info" />
               Agent Workflows
             </h3>
             <p className="text-xs text-muted-foreground">Orchestrate multi-agent workflows</p>
           </div>
           <Button size="sm" className="mt-3 w-full" onClick={() => setWorkflowBuilderOpen(true)}>
-            <Plus className="h-3 w-3 mr-1" />
+            <Plus aria-hidden="true" className="h-3 w-3 mr-1" />
             Create Workflow
           </Button>
         </div>
@@ -1268,6 +1314,7 @@ export default function Agents() {
               searchQuery={agentMcpSearch}
               onNewAgent={() => setAgentDialogOpen(true)}
               onImportAgent={() => setImportDialogOpen(true)}
+              onRestoreBackups={() => setBackupsDialogOpen(true)}
               onChatAgent={(agent) => openAgentChat(agent.id, agent.name, agent.config?.role || agent.type)}
               onEditAgent={handleEditAgent}
               onDeleteAgent={handleDeleteAgent}
@@ -1404,6 +1451,10 @@ export default function Agents() {
           // Pre-fetch live Ollama models so the Model dropdown is ready
           // if the operator switches Agent Type to Ollama.
           loadOllamaModels();
+          // Pre-fetch the unified skills catalog (tool skills + bug-hunter
+          // knowledge_base) so the Skills Enabled dual listbox is populated
+          // when the operator scrolls down to it.
+          loadCatalogSkills();
         } else {
           setEditingAgent(null);
           setToolSearch("");
@@ -1705,6 +1756,99 @@ export default function Agents() {
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Skills Enabled Section — dual listbox over the unified skills
+                catalog. Tool SKILL.md files and bug-hunter knowledge_base
+                rows live in the same pool; the namespaced ID
+                (`tool:<registry>:<rowId>` vs `bh:skill:<slug>`) lets the
+                backend route the content into the agent's prompt at run time. */}
+            <div className="border-t border-border pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-emerald-600" />
+                  <h3 className="text-lg font-semibold">Skills Enabled</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={loadCatalogSkills}
+                  disabled={catalogSkillsLoading}
+                  className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 disabled:opacity-50"
+                  title="Re-fetch the skills catalog"
+                >
+                  {catalogSkillsLoading ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3 w-3" />
+                  )}
+                  Refresh
+                </button>
+              </div>
+
+              {catalogSkillsError && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mb-2">
+                  Couldn&apos;t load skills catalog: {catalogSkillsError}
+                </p>
+              )}
+
+              {!catalogSkillsLoading && !catalogSkillsError && catalogSkills.length === 0 && (
+                <p className="text-xs text-muted-foreground mb-2">
+                  No skills found. Tool skills come from <code>FF_TOOL_SKILL_GENERATION</code>; bug-hunter skills come from{" "}
+                  <code>npm run bug-hunter:import-skills</code> after enabling <code>FF_BUG_HUNTER</code>.
+                </p>
+              )}
+
+              <DualListbox<CatalogSkill>
+                items={catalogSkills}
+                selectedIds={newAgent.config.enabledSkills}
+                onChange={(ids) =>
+                  setNewAgent({
+                    ...newAgent,
+                    config: { ...newAgent.config, enabledSkills: ids },
+                  })
+                }
+                getSearchText={(s) =>
+                  `${s.displayName} ${s.kind} ${s.source} ${s.summary} ${s.tags.join(" ")}`
+                }
+                availableLabel="Available skills"
+                selectedLabel="Enabled skills"
+                helpText="Tip: click to highlight, ⌘/Ctrl-click for multi-select, double-click to move. Filters apply to each pane independently."
+                renderItem={(s) => (
+                  <div className="flex items-start gap-2">
+                    <Badge
+                      variant="secondary"
+                      className={`shrink-0 text-[10px] py-0 px-1.5 ${
+                        s.kind === "tool"
+                          ? "bg-indigo-500/10 text-indigo-600"
+                          : "bg-emerald-500/10 text-emerald-600"
+                      }`}
+                    >
+                      {s.kind === "tool" ? "tool" : "bh"}
+                    </Badge>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-foreground truncate">
+                        {s.displayName}
+                      </div>
+                      {s.summary && (
+                        <div className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5">
+                          {s.summary}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              />
+              <p className="text-xs text-muted-foreground mt-2">
+                Selected: {newAgent.config.enabledSkills.length} skill{newAgent.config.enabledSkills.length === 1 ? "" : "s"}
+                {catalogSkills.length > 0 && (
+                  <>
+                    {" · "}
+                    <span className="text-muted-foreground/80">
+                      Pool: {catalogSkills.filter((s) => s.kind === "tool").length} tool / {catalogSkills.filter((s) => s.kind === "bug_hunter").length} bug-hunter
+                    </span>
+                  </>
+                )}
+              </p>
             </div>
 
             {/* MCP Server Integration Section */}
@@ -2010,6 +2154,13 @@ export default function Agents() {
         onOpenChange={setImportDialogOpen}
         mcpServers={mcpServers || []}
         onAgentCreated={refetchAgents}
+      />
+
+      {/* Restore Backups Dialog */}
+      <RestoreBackupsDialog
+        open={backupsDialogOpen}
+        onOpenChange={setBackupsDialogOpen}
+        onRestored={refetchAgents}
       />
 
       {/* Workflow Builder Dialog */}

@@ -5,9 +5,18 @@
 # Version: 1.0.0
 #
 # Usage:
-#   sudo ./build.sh                                         # Standard (no SSL)
-#   sudo ./build.sh --slug myorg --enable-ssl               # SSL + Cloudflare DNS
+#   sudo ./build.sh                                                 # Standard (no SSL)
+#   sudo ./build.sh --slug myorg --enable-ssl                       # Let's Encrypt + Cloudflare DNS-01
+#   sudo ./build.sh --slug myorg --enable-ssl --origin-ca           # Cloudflare Origin CA (15-yr, Full Strict)
 #   sudo ./build.sh --slug myorg --enable-ssl --server-ip 1.2.3.4
+#
+# Cert source modes:
+#   default      — Let's Encrypt (DNS-01) via setup/cert_manager.sh.
+#                  Requires CF_API_TOKEN (Zone:DNS:Edit) + CF_EMAIL.
+#   --origin-ca  — Cloudflare Origin CA via setup/origin_cert_manager.sh.
+#                  Requires CLOUDFLARE_API_USER_SERVICE_KEY (Origin CA Key,
+#                  format `v1.0-...`). One POST, no ACME, 15-year cert by
+#                  default. Cloudflare SSL/TLS mode MUST be Full (Strict).
 #
 # SSL-enabled domains (example slug 'myorg', CF_DOMAIN='example.com'):
 #   myorg.example.com          — RTPI main dashboard
@@ -18,6 +27,7 @@
 #
 # Prerequisites:
 #   - .env configured with CF_API_TOKEN, CF_ZONE_ID, CF_DOMAIN, CF_EMAIL
+#     (plus CLOUDFLARE_API_USER_SERVICE_KEY for --origin-ca)
 #   - Docker 20.10+ with Docker Compose v2
 #   - Root access for SSL certificate generation
 
@@ -26,6 +36,7 @@ set -e
 # ─── Configuration ──────────────────────────────────────────────────────────
 # Parent domain comes from .env's CF_DOMAIN (loaded in preflight_checks).
 CERT_MANAGER="./setup/cert_manager.sh"
+ORIGIN_CERT_MANAGER="./setup/origin_cert_manager.sh"
 DNS_MANAGER="./setup/cloudflare_dns_manager.sh"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MANIFEST_PATH="${PROJECT_ROOT}/setup/services.manifest"
@@ -50,6 +61,7 @@ section() { echo -e "\n${CYAN}════════════════�
 # ─── Argument Parsing ────────────────────────────────────────────────────────
 SLUG=""
 ENABLE_SSL=false
+ORIGIN_CA=false
 SERVER_IP=""
 PROFILES="sysreptor management"  # Always start these
 
@@ -57,6 +69,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --slug)       SLUG="$2";       shift 2 ;;
         --enable-ssl) ENABLE_SSL=true; shift   ;;
+        --origin-ca)  ORIGIN_CA=true;  shift   ;;
         --server-ip)  SERVER_IP="$2";  shift 2 ;;
         --profiles)   PROFILES="$2";   shift 2 ;;
         --help|-h)
@@ -103,6 +116,11 @@ preflight_checks() {
         [ -z "$CF_DOMAIN" ]      && { error "CF_DOMAIN not set in .env";     exit 1; }
         [ -z "$CF_EMAIL" ]       && { error "CF_EMAIL not set in .env";      exit 1; }
         [ "$EUID" -ne 0 ]        && { error "SSL setup requires root"; exit 1; }
+        if [ "$ORIGIN_CA" = "true" ] && [ -z "$CLOUDFLARE_API_USER_SERVICE_KEY" ]; then
+            error "CLOUDFLARE_API_USER_SERVICE_KEY not set in .env (required for --origin-ca)"
+            error "  Get it from: Cloudflare dashboard → My Profile → API Tokens → Origin CA Key"
+            exit 1
+        fi
 
         # Detect server IP if not provided
         if [ -z "$SERVER_IP" ]; then
@@ -140,17 +158,28 @@ setup_ssl() {
     local server_ip=$2
 
     log "Setting up SSL for slug: $slug (IP: $server_ip)"
+    log "Cert source: $([ "$ORIGIN_CA" = "true" ] && echo "Cloudflare Origin CA" || echo "Let's Encrypt (DNS-01)")"
 
     # Create DNS A records (only for subdomains whose profile is active)
     log "Creating Cloudflare DNS A records..."
     "$DNS_MANAGER" create-records "$slug" "$server_ip" "$PROFILES"
 
-    # Wait for DNS propagation
+    # Wait for DNS propagation (skippable for Origin CA — it doesn't use ACME,
+    # but downstream nginx/curl checks still need DNS to resolve)
     log "Waiting 60s for DNS propagation..."
     sleep 60
 
-    # Generate and deploy certificates (manifest-filtered by active profiles)
-    "$CERT_MANAGER" full-setup "$slug" "$PROFILES"
+    # Generate and deploy certificates (manifest-filtered by active profiles).
+    # Both paths write to /opt/rtpi/certs/$SLUG/{nginx.crt,nginx.key,...} so
+    # downstream nginx config + sysreptor wiring is identical.
+    if [ "$ORIGIN_CA" = "true" ]; then
+        "$ORIGIN_CERT_MANAGER" full-setup "$slug" "$PROFILES"
+        # Origin CA path reuses cert_manager.sh's manifest-driven nginx config
+        # writer and sysreptor app.env updater (no cert work done in this step).
+        "$CERT_MANAGER" configure "$slug" "$PROFILES"
+    else
+        "$CERT_MANAGER" full-setup "$slug" "$PROFILES"
+    fi
 
     log "✅ SSL setup complete"
     info "Domains:"
@@ -220,8 +249,15 @@ print_summary() {
         echo "  1. Install nginx SSL config:"
         echo "     sudo cp docker/nginx-ssl.conf /etc/nginx/conf.d/rtpi-ssl.conf"
         echo "     sudo nginx -t && sudo systemctl reload nginx"
-        echo "  2. Set up auto-renewal:"
-        echo "     sudo ./setup/cert_renewal.sh setup-cron"
+        if [ "$ORIGIN_CA" = "true" ]; then
+            echo "  2. Cloudflare dashboard → SSL/TLS → Overview → set mode to 'Full (Strict)'"
+            echo "     (Origin CA certs are only trusted by the Cloudflare edge)"
+            echo "  3. Renewal: not required — 15-year validity. Cert id + expiry stored in"
+            echo "     /opt/rtpi/certs/$SLUG/origin-ca/origin.{id,expires}"
+        else
+            echo "  2. Set up auto-renewal:"
+            echo "     sudo ./setup/cert_renewal.sh setup-cron"
+        fi
     else
         echo -e "${GREEN}Local Service URLs:${NC}"
         printf "  %-25s %s\n" "RTPI Dashboard:"  "http://localhost:5000"
@@ -253,6 +289,7 @@ main() {
     section "RTPI Production Build"
     info "Slug:       ${SLUG:-none}"
     info "SSL:        $ENABLE_SSL"
+    info "Cert mode:  $([ "$ORIGIN_CA" = "true" ] && echo "Cloudflare Origin CA (15yr)" || echo "Let's Encrypt")"
     info "Server IP:  ${SERVER_IP:-auto-detect}"
     info "Profiles:   $PROFILES"
 

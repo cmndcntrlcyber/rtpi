@@ -1,7 +1,10 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Brain, Target, ShieldCheck, BookOpen, Link2 } from "lucide-react";
+import { Brain, Target, ShieldCheck, BookOpen, Link2, AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
 import AtlasTacticsGrid from "@/components/atlas/AtlasTacticsGrid";
 import AtlasTechniquesTable from "@/components/atlas/AtlasTechniquesTable";
 import AtlasNavigator from "@/components/atlas/AtlasNavigator";
@@ -88,23 +91,31 @@ export default function ATLASFramework() {
   if (error) {
     return (
       <div className="p-8">
-        <div className="bg-destructive/10 border border-destructive text-destructive-foreground rounded-lg p-6">
+        <PageHeader
+          icon={Brain}
+          title="MITRE ATLAS"
+          description="Adversarial Threat Landscape for AI Systems"
+        />
+        <div
+          role="alert"
+          className="rounded-lg border border-destructive/30 bg-destructive/10 text-destructive p-6"
+        >
           <div className="flex items-center gap-3 mb-2">
-            <Brain className="h-6 w-6" />
+            <AlertCircle aria-hidden="true" className="h-6 w-6" />
             <h2 className="text-xl font-semibold">Failed to Load ATLAS Framework</h2>
           </div>
           <p className="text-sm mb-4">{error}</p>
-          <button
+          <Button
+            variant="destructive"
             onClick={() => {
               setError(null);
               setLoading(true);
               fetchStats();
               fetchOperations();
             }}
-            className="px-4 py-2 bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90 transition-colors"
           >
             Retry
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -112,94 +123,84 @@ export default function ATLASFramework() {
 
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-3">
-          <Brain className="h-8 w-8 text-purple-600" />
-          <div>
-            <h1 className="text-3xl font-bold">MITRE ATLAS</h1>
-            <p className="text-muted-foreground mt-1">
-              Adversarial Threat Landscape for AI Systems
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          {operations.length > 0 && (
-            <Select value={selectedOperation} onValueChange={setSelectedOperation}>
-              <SelectTrigger className="w-64">
-                <SelectValue placeholder="Select operation" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Operations</SelectItem>
-                {operations.map((op) => (
-                  <SelectItem key={op.id} value={op.id}>
-                    {op.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          <AtlasStixImportDialog />
-        </div>
-      </div>
+      <PageHeader
+        icon={Brain}
+        title="MITRE ATLAS"
+        description="Adversarial Threat Landscape for AI Systems"
+        actions={
+          <>
+            {operations.length > 0 && (
+              <Select value={selectedOperation} onValueChange={setSelectedOperation}>
+                <SelectTrigger className="w-64" aria-label="Select operation">
+                  <SelectValue placeholder="Select operation" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Operations</SelectItem>
+                  {operations.map((op) => (
+                    <SelectItem key={op.id} value={op.id}>
+                      {op.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <AtlasStixImportDialog />
+          </>
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6 mb-8">
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <Target className="h-5 w-5 text-purple-600" />
-            <h3 className="text-sm font-medium text-muted-foreground">Techniques</h3>
+        {[
+          {
+            label: "Techniques",
+            value: loading ? null : totalTechniques.toLocaleString(),
+            icon: Target,
+            iconColor: "text-info",
+            footnote: `${stats.techniques} base + ${stats.subtechniques} sub`,
+          },
+          {
+            label: "Tactics",
+            value: loading ? null : stats.tactics.toString(),
+            icon: Brain,
+            iconColor: "text-primary",
+            footnote: "AI/ML kill chain phases",
+          },
+          {
+            label: "Mitigations",
+            value: loading ? null : stats.mitigations.toString(),
+            icon: ShieldCheck,
+            iconColor: "text-success",
+            footnote: "Countermeasures",
+          },
+          {
+            label: "Case Studies",
+            value: loading ? null : stats.caseStudies.toString(),
+            icon: BookOpen,
+            iconColor: "text-warning",
+            footnote: "Real-world AI attacks",
+          },
+          {
+            label: "Relationships",
+            value: loading ? null : stats.relationships.toString(),
+            icon: Link2,
+            iconColor: "text-muted-foreground",
+            footnote: "Object linkages",
+          },
+        ].map(({ label, value, icon: Icon, iconColor, footnote }) => (
+          <div key={label} className="bg-card p-6 rounded-lg shadow-sm border border-border">
+            <div className="flex items-center gap-2 mb-2">
+              <Icon aria-hidden="true" className={`h-5 w-5 ${iconColor}`} />
+              <h3 className="text-sm font-medium text-muted-foreground">{label}</h3>
+            </div>
+            {value === null ? (
+              <Skeleton className="h-9 w-20" />
+            ) : (
+              <p className="text-3xl font-bold text-foreground tabular-nums">{value}</p>
+            )}
+            <p className="text-xs text-muted-foreground mt-1">{footnote}</p>
           </div>
-          <p className="text-3xl font-bold text-foreground">
-            {loading ? "..." : totalTechniques.toLocaleString()}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            {stats.techniques} base + {stats.subtechniques} sub
-          </p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <Brain className="h-5 w-5 text-blue-600" />
-            <h3 className="text-sm font-medium text-muted-foreground">Tactics</h3>
-          </div>
-          <p className="text-3xl font-bold text-foreground">
-            {loading ? "..." : stats.tactics}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">AI/ML kill chain phases</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <ShieldCheck className="h-5 w-5 text-green-600" />
-            <h3 className="text-sm font-medium text-muted-foreground">Mitigations</h3>
-          </div>
-          <p className="text-3xl font-bold text-foreground">
-            {loading ? "..." : stats.mitigations}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">Countermeasures</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <BookOpen className="h-5 w-5 text-orange-600" />
-            <h3 className="text-sm font-medium text-muted-foreground">Case Studies</h3>
-          </div>
-          <p className="text-3xl font-bold text-foreground">
-            {loading ? "..." : stats.caseStudies}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">Real-world AI attacks</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <Link2 className="h-5 w-5 text-indigo-600" />
-            <h3 className="text-sm font-medium text-muted-foreground">Relationships</h3>
-          </div>
-          <p className="text-3xl font-bold text-foreground">
-            {loading ? "..." : stats.relationships}
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">Object linkages</p>
-        </div>
+        ))}
       </div>
 
       {/* ATLAS Tabs */}

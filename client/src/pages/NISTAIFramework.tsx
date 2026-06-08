@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileCheck, Layers, ListChecks } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
 import NISTFunctionsAccordion from "@/components/nist-ai/NISTFunctionsAccordion";
 import NISTCategoriesTable from "@/components/nist-ai/NISTCategoriesTable";
 import NISTImplementationGuide from "@/components/nist-ai/NISTImplementationGuide";
@@ -47,52 +50,38 @@ export default function NISTAIFramework() {
 
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-3">
-          <FileCheck className="h-8 w-8 text-blue-600" />
-          <div>
-            <h1 className="text-3xl font-bold">NIST AI RMF</h1>
-            <p className="text-muted-foreground mt-1">
-              AI Risk Management Framework (AI 100-1)
-            </p>
-          </div>
-        </div>
-        {stats.functions === 0 && (
-          <button
-            onClick={handleImport}
-            disabled={loading}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
-          >
-            {loading ? "Importing..." : "Import NIST AI RMF"}
-          </button>
-        )}
-      </div>
+      <PageHeader
+        icon={FileCheck}
+        title="NIST AI RMF"
+        description="AI Risk Management Framework (AI 100-1)"
+        actions={
+          stats.functions === 0 ? (
+            <Button onClick={handleImport} disabled={loading}>
+              {loading ? "Importing..." : "Import NIST AI RMF"}
+            </Button>
+          ) : undefined
+        }
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <Layers className="h-5 w-5 text-blue-600" />
-            <h3 className="text-sm font-medium text-muted-foreground">Functions</h3>
+        {[
+          { label: "Functions", value: stats.functions, icon: Layers, iconColor: "text-info" },
+          { label: "Categories", value: stats.categories, icon: FileCheck, iconColor: "text-primary" },
+          { label: "Subcategories", value: stats.subcategories, icon: ListChecks, iconColor: "text-success" },
+        ].map(({ label, value, icon: Icon, iconColor }) => (
+          <div key={label} className="bg-card p-6 rounded-lg shadow-sm border border-border">
+            <div className="flex items-center gap-2 mb-2">
+              <Icon aria-hidden="true" className={`h-5 w-5 ${iconColor}`} />
+              <h3 className="text-sm font-medium text-muted-foreground">{label}</h3>
+            </div>
+            {loading ? (
+              <Skeleton className="h-9 w-16" />
+            ) : (
+              <p className="text-3xl font-bold tabular-nums">{value}</p>
+            )}
           </div>
-          <p className="text-3xl font-bold">{loading ? "..." : stats.functions}</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <FileCheck className="h-5 w-5 text-purple-600" />
-            <h3 className="text-sm font-medium text-muted-foreground">Categories</h3>
-          </div>
-          <p className="text-3xl font-bold">{loading ? "..." : stats.categories}</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <div className="flex items-center gap-2 mb-2">
-            <ListChecks className="h-5 w-5 text-green-600" />
-            <h3 className="text-sm font-medium text-muted-foreground">Subcategories</h3>
-          </div>
-          <p className="text-3xl font-bold">{loading ? "..." : stats.subcategories}</p>
-        </div>
+        ))}
       </div>
 
       <Tabs defaultValue="functions" className="space-y-6">

@@ -46,7 +46,7 @@ export const mem0Config: Mem0Config = {
         | "none") || "openai",
     model: process.env.MEMORY_EMBEDDING_MODEL || "text-embedding-ada-002",
     dimensions: parseInt(
-      process.env.MEMORY_EMBEDDING_DIMENSIONS || "1536",
+      process.env.MEMORY_EMBEDDING_DIMENSIONS || "2560",
       10,
     ),
   },

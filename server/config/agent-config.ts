@@ -71,7 +71,9 @@ export const agentConfig: AgentSystemConfig = {
     memorySynthesisIntervalMs: parseInt(process.env.OPS_MANAGER_SYNTHESIS_INTERVAL || "300000", 10),
     aiModel: {
       provider: (process.env.OPS_MANAGER_AI_PROVIDER as "openai" | "anthropic") || "anthropic",
-      model: process.env.OPS_MANAGER_AI_MODEL || "claude-sonnet-4-5",
+      // Empty string => defer to inference router (Settings → provider defaults).
+      // Set OPS_MANAGER_AI_MODEL to force a specific model here.
+      model: process.env.OPS_MANAGER_AI_MODEL || "",
       temperature: parseFloat(process.env.OPS_MANAGER_AI_TEMP || "0.7"),
       maxTokens: parseInt(process.env.OPS_MANAGER_AI_MAX_TOKENS || "4096", 10),
     },
@@ -102,7 +104,9 @@ export const agentConfig: AgentSystemConfig = {
     memoryEnabled: process.env.TASK_AGENT_MEMORY_ENABLED !== "false",
     aiModel: {
       provider: (process.env.TASK_AGENT_AI_PROVIDER as "openai" | "anthropic") || "anthropic",
-      model: process.env.TASK_AGENT_AI_MODEL || "claude-sonnet-4-5",
+      // Empty string => defer to inference router (Settings → provider defaults).
+      // Set TASK_AGENT_AI_MODEL to force a specific model here.
+      model: process.env.TASK_AGENT_AI_MODEL || "",
       temperature: parseFloat(process.env.TASK_AGENT_AI_TEMP || "0.3"),
       maxTokens: parseInt(process.env.TASK_AGENT_AI_MAX_TOKENS || "8192", 10),
     },

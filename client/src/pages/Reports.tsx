@@ -9,6 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FileText, Download, Plus, Calendar, Trash2, Edit, ChevronDown, ChevronRight, Folder, Upload } from "lucide-react";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useReports, useReportTemplates, useCreateReport, useCreateTemplate, useDeleteReport } from "@/hooks/useReports";
 import { useOperations } from "@/hooks/useOperations";
 import { reportsService } from "@/services/reports";
@@ -246,26 +249,32 @@ export default function Reports() {
     templates: templates.length,
   };
 
+  const statCards = [
+    { label: "Total Reports", value: stats.total, color: "text-foreground" },
+    { label: "Completed", value: stats.completed, color: "text-success" },
+    { label: "Drafts", value: stats.draft, color: "text-info" },
+    { label: "Templates", value: stats.templates, color: "text-muted-foreground" },
+  ];
+
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Reports</h1>
-          <p className="text-muted-foreground mt-1">
-            Generate and manage security assessment reports
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button onClick={() => setTemplateDialogOpen(true)} variant="outline">
-            <Plus className="h-4 w-4 mr-2" />
-            New Template
-          </Button>
-          <Button onClick={() => setReportDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Generate Report
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        icon={FileText}
+        title="Reports"
+        description="Generate and manage security assessment reports"
+        actions={
+          <>
+            <Button onClick={() => setTemplateDialogOpen(true)} variant="outline">
+              <Plus aria-hidden="true" className="h-4 w-4 mr-2" />
+              New Template
+            </Button>
+            <Button onClick={() => setReportDialogOpen(true)}>
+              <Plus aria-hidden="true" className="h-4 w-4 mr-2" />
+              Generate Report
+            </Button>
+          </>
+        }
+      />
 
       {/* Sysreptor health banner */}
       <SysReptorHealthBanner />
@@ -275,86 +284,91 @@ export default function Reports() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">Total Reports</h3>
-          <p className="text-3xl font-bold text-foreground">{stats.total}</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">Completed</h3>
-          <p className="text-3xl font-bold text-green-600">{stats.completed}</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">Drafts</h3>
-          <p className="text-3xl font-bold text-blue-600">{stats.draft}</p>
-        </div>
-
-        <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-          <h3 className="text-sm font-medium text-muted-foreground mb-2">Templates</h3>
-          <p className="text-3xl font-bold text-muted-foreground">{stats.templates}</p>
-        </div>
+        {statCards.map((card) => (
+          <div
+            key={card.label}
+            className="bg-card p-6 rounded-lg shadow-sm border border-border"
+          >
+            <h3 className="text-sm font-medium text-muted-foreground mb-2">{card.label}</h3>
+            {reportsLoading || templatesLoading ? (
+              <Skeleton className="h-9 w-16" />
+            ) : (
+              <p className={`text-3xl font-bold tabular-nums ${card.color}`}>{card.value}</p>
+            )}
+          </div>
+        ))}
       </div>
 
       {/* Reports — grouped by operation */}
       <div className="space-y-3">
         {reportsLoading ? (
-          <div className="space-y-2">
+          <div className="space-y-2" aria-busy="true" aria-live="polite">
             {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="flex items-center gap-3 px-4 py-3 rounded-lg border border-border animate-pulse">
-                <div className="w-10 h-10 bg-muted rounded" />
+              <div key={i} className="flex items-center gap-3 px-4 py-3 rounded-lg border border-border">
+                <Skeleton className="w-10 h-10" />
                 <div className="flex-1 space-y-2">
-                  <div className="h-4 bg-muted rounded w-1/3" />
-                  <div className="h-3 bg-muted rounded w-1/2" />
+                  <Skeleton className="h-4 w-1/3" />
+                  <Skeleton className="h-3 w-1/2" />
                 </div>
                 <div className="flex gap-2">
-                  <div className="h-8 w-20 bg-muted rounded" />
-                  <div className="h-8 w-16 bg-muted rounded" />
+                  <Skeleton className="h-8 w-20" />
+                  <Skeleton className="h-8 w-16" />
                 </div>
               </div>
             ))}
           </div>
         ) : reports.length === 0 ? (
-          <div className="text-center py-12 bg-card rounded-lg border border-border">
-            <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">No reports found</p>
-            <p className="text-sm text-muted-foreground mb-4">Get started by generating your first report</p>
-            <Button onClick={() => setReportDialogOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Generate Report
-            </Button>
-          </div>
+          <EmptyState
+            icon={FileText}
+            title="No reports found"
+            description="Get started by generating your first report."
+            action={
+              <Button onClick={() => setReportDialogOpen(true)}>
+                <Plus aria-hidden="true" className="h-4 w-4 mr-2" />
+                Generate Report
+              </Button>
+            }
+          />
         ) : (
           reportGroups.map((group) => (
             <div key={group.key} className="border border-border rounded-lg overflow-hidden">
               {/* Group header */}
               <button
+                type="button"
                 onClick={() => handleToggleGroup(group.key)}
-                className="w-full flex items-center gap-3 px-4 py-3 bg-muted/50 hover:bg-muted transition-colors text-left"
+                aria-expanded={expandedGroups.has(group.key)}
+                className="w-full flex items-center gap-3 px-4 py-3 bg-muted/50 hover:bg-muted transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 {expandedGroups.has(group.key) ? (
-                  <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                  <ChevronDown aria-hidden="true" className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                 ) : (
-                  <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                  <ChevronRight aria-hidden="true" className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                 )}
-                <Folder className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                <Folder aria-hidden="true" className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                 <span className="font-semibold text-sm text-foreground">{group.label}</span>
                 <Badge variant="secondary" className="text-xs ml-auto mr-2">
                   {group.reports.length} report{group.reports.length !== 1 ? "s" : ""}
                 </Badge>
                 {group.key !== "__unassigned__" && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 px-2 text-xs"
+                  <span
+                    role="button"
+                    tabIndex={0}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleExportToSysReptor(group.key);
                     }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleExportToSysReptor(group.key);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 h-6 px-2 text-xs rounded-md hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
-                    <Upload className="h-3 w-3 mr-1" />
+                    <Upload aria-hidden="true" className="h-3 w-3" />
                     SysReptor
-                  </Button>
+                  </span>
                 )}
               </button>
 
@@ -365,8 +379,8 @@ export default function Reports() {
                     {group.reports.map((report: any) => (
                       <div key={report.id} className="flex items-center justify-between px-4 py-3 hover:bg-accent/50 transition-colors">
                         <div className="flex items-center flex-1 min-w-0">
-                          <div className="w-10 h-10 rounded bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center mr-4 flex-shrink-0">
-                            <FileText className="h-5 w-5 text-blue-600" />
+                          <div className="w-10 h-10 rounded bg-info/10 flex items-center justify-center mr-4 flex-shrink-0">
+                            <FileText aria-hidden="true" className="h-5 w-5 text-info" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <h3 className="font-semibold text-sm text-foreground truncate">{report.name}</h3>
@@ -377,14 +391,14 @@ export default function Reports() {
                               {report.fileSize && (
                                 <>
                                   <span className="text-xs text-muted-foreground">&bull;</span>
-                                  <span className="text-xs text-muted-foreground">
+                                  <span className="text-xs text-muted-foreground tabular-nums">
                                     {(report.fileSize / 1024 / 1024).toFixed(2)} MB
                                   </span>
                                 </>
                               )}
                               <span className="text-xs text-muted-foreground">&bull;</span>
                               <div className="flex items-center text-xs text-muted-foreground">
-                                <Calendar className="h-3 w-3 mr-1" />
+                                <Calendar aria-hidden="true" className="h-3 w-3 mr-1" />
                                 {new Date(report.generatedAt).toLocaleDateString()}
                               </div>
                             </div>
@@ -395,8 +409,8 @@ export default function Reports() {
                             variant="secondary"
                             className={`text-xs ${
                               report.status === "completed"
-                                ? "bg-green-500/10 text-green-600"
-                                : "bg-secondary/10 text-muted-foreground"
+                                ? "bg-success/10 text-success border-success/20"
+                                : "bg-secondary text-muted-foreground"
                             }`}
                           >
                             {report.status}
@@ -408,7 +422,7 @@ export default function Reports() {
                               className="h-7 px-2"
                               onClick={() => handleEditReport(report)}
                             >
-                              <Edit className="h-3 w-3 mr-1" />
+                              <Edit aria-hidden="true" className="h-3 w-3 mr-1" />
                               Edit
                             </Button>
                           )}
@@ -420,17 +434,17 @@ export default function Reports() {
                             className="h-7 px-2"
                             onClick={() => handleDownload(report)}
                           >
-                            <Download className="h-3 w-3 mr-1" />
+                            <Download aria-hidden="true" className="h-3 w-3 mr-1" />
                             Download
                           </Button>
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
                             onClick={() => handleDeleteReport(report.id)}
                             disabled={deleting}
                           >
-                            <Trash2 className="h-3 w-3 mr-1" />
+                            <Trash2 aria-hidden="true" className="h-3 w-3 mr-1" />
                             Delete
                           </Button>
                         </div>
@@ -448,7 +462,11 @@ export default function Reports() {
       <div className="mt-8">
         <h2 className="text-xl font-semibold mb-4">Report Templates</h2>
         {templatesLoading ? (
-          <p className="text-muted-foreground">Loading templates...</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" aria-busy="true" aria-live="polite">
+            <Skeleton className="h-20 rounded-lg" />
+            <Skeleton className="h-20 rounded-lg" />
+            <Skeleton className="h-20 rounded-lg" />
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {templates.map((template) => (
@@ -456,7 +474,7 @@ export default function Reports() {
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center flex-1">
-                      <FileText className="h-5 w-5 text-muted-foreground mr-2" />
+                      <FileText aria-hidden="true" className="h-5 w-5 text-muted-foreground mr-2" />
                       <div className="flex-1">
                         <span className="text-sm font-medium text-foreground">{template.name}</span>
                         {template.description && (
@@ -475,9 +493,10 @@ export default function Reports() {
                         <Button
                           size="sm"
                           variant="ghost"
+                          aria-label={`Delete template ${template.name}`}
                           onClick={() => handleDeleteTemplate(template.id)}
                         >
-                          <Trash2 className="h-4 w-4 text-red-500" />
+                          <Trash2 aria-hidden="true" className="h-4 w-4 text-destructive" />
                         </Button>
                       )}
                     </div>

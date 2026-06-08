@@ -12,9 +12,18 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   FlaskConical,
+  Plus,
   Activity,
   PlayCircle,
   XCircle,
@@ -41,6 +50,7 @@ import { api } from "@/lib/api";
 interface Experiment {
   id: string;
   name: string;
+  type: string | null;
   projectId: string;
   projectName: string | null;
   status: string;
@@ -97,7 +107,14 @@ interface AgentLogData {
 // Component
 // ============================================================================
 
-export default function ExperimentsTab() {
+interface ExperimentsTabProps {
+  /** When set, the list is scoped to one project (drill-down from a project
+   *  card, S5). */
+  projectFilter?: { id: string; name: string } | null;
+  onClearFilter?: () => void;
+}
+
+export default function ExperimentsTab({ projectFilter, onClearFilter }: ExperimentsTabProps = {}) {
   const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -118,14 +135,68 @@ export default function ExperimentsTab() {
   const [agentLogData, setAgentLogData] = useState<AgentLogData | null>(null);
   const [agentLogLoading, setAgentLogLoading] = useState(false);
 
+  // Create experiment dialog
+  const [createOpen, setCreateOpen] = useState(false);
+  const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
+  const [creating, setCreating] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    projectId: "",
+    name: "",
+    type: "vulnerability_research",
+    hypothesis: "",
+    methodology: "",
+  });
+
   useEffect(() => {
     fetchExperiments();
-  }, []);
+    fetchProjects();
+    // Re-fetch when the project drill-down filter changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectFilter?.id]);
+
+  const fetchProjects = async () => {
+    try {
+      const res = await api.get<{ projects: Array<{ id: string; name: string }> }>(
+        "/offsec-rd/projects",
+      );
+      setProjects(res.projects || []);
+    } catch {
+      // Non-fatal — the create dialog will just show no projects to pick.
+      setProjects([]);
+    }
+  };
+
+  const handleCreate = async () => {
+    if (!createForm.projectId || !createForm.name.trim()) {
+      toast.error("Project and experiment name are required");
+      return;
+    }
+    try {
+      setCreating(true);
+      await api.post("/offsec-rd/experiments", {
+        projectId: createForm.projectId,
+        name: createForm.name.trim(),
+        type: createForm.type,
+        hypothesis: createForm.hypothesis || undefined,
+        methodology: createForm.methodology || undefined,
+      });
+      toast.success(`Experiment "${createForm.name.trim()}" created`);
+      setCreateOpen(false);
+      setCreateForm({ projectId: "", name: "", type: "vulnerability_research", hypothesis: "", methodology: "" });
+      fetchExperiments();
+    } catch (error: any) {
+      toast.error(error?.data?.message || error?.message || "Failed to create experiment");
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const fetchExperiments = async () => {
     try {
       setLoading(true);
-      const response = await api.get<{ experiments: Experiment[] }>("/offsec-rd/experiments");
+      const response = await api.get<{ experiments: Experiment[] }>("/offsec-rd/experiments", {
+        params: projectFilter?.id ? { projectId: projectFilter.id } : undefined,
+      });
       setExperiments(response.experiments);
     } catch (error: any) {
       toast.error("Failed to load experiments");
@@ -209,6 +280,26 @@ export default function ExperimentsTab() {
     }
   };
 
+  const [deployingId, setDeployingId] = useState<string | null>(null);
+  const handleDeployNuclei = async (artifact: Artifact) => {
+    setDeployingId(artifact.id);
+    try {
+      const res = await api.post<{ templateId?: string; alreadyExists?: boolean }>(
+        `/offsec-rd/artifacts/${artifact.id}/deploy-nuclei`,
+        {},
+      );
+      toast.success(
+        res.alreadyExists
+          ? `Template "${res.templateId}" already registered`
+          : `Nuclei template "${res.templateId}" deployed to registry`,
+      );
+    } catch (error: any) {
+      toast.error(error?.data?.error || error?.message || "Failed to deploy template");
+    } finally {
+      setDeployingId(null);
+    }
+  };
+
   const handleViewAgentLog = async (experimentId: string) => {
     try {
       setAgentLogLoading(true);
@@ -285,6 +376,30 @@ export default function ExperimentsTab() {
 
   return (
     <div>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          {projectFilter && (
+            <Badge variant="secondary" className="flex items-center gap-2 w-fit py-1.5 px-3">
+              <span>Project: {projectFilter.name}</span>
+              {onClearFilter && (
+                <button
+                  onClick={onClearFilter}
+                  className="hover:text-foreground"
+                  aria-label="Clear project filter"
+                >
+                  <XCircle className="h-4 w-4" />
+                </button>
+              )}
+            </Badge>
+          )}
+        </div>
+        <Button onClick={() => setCreateOpen(true)} disabled={projects.length === 0}>
+          <Plus className="h-4 w-4 mr-2" />
+          New Experiment
+        </Button>
+      </div>
+
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
         <Card>
@@ -357,6 +472,11 @@ export default function ExperimentsTab() {
                         <Badge className={getStatusColor(experiment.status)}>
                           {experiment.status}
                         </Badge>
+                        {experiment.type && (
+                          <Badge variant="outline" className="capitalize">
+                            {experiment.type.replace(/_/g, " ")}
+                          </Badge>
+                        )}
                       </div>
                       {experiment.projectName && (
                         <p className="text-sm text-muted-foreground mb-1">
@@ -492,6 +612,22 @@ export default function ExperimentsTab() {
                                   Promote
                                 </Button>
                               )}
+                              {artifact.artifactType === "nuclei_template" && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleDeployNuclei(artifact)}
+                                  disabled={deployingId === artifact.id}
+                                  title="Deploy to Nuclei template registry"
+                                >
+                                  {deployingId === artifact.id ? (
+                                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                                  ) : (
+                                    <Package className="h-4 w-4 mr-1" />
+                                  )}
+                                  Deploy
+                                </Button>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -522,10 +658,120 @@ export default function ExperimentsTab() {
           <FlaskConical className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
           <p className="text-muted-foreground">No experiments yet</p>
           <p className="text-sm text-muted-foreground mt-2">
-            Create a research project first, then add experiments to it
+            {projects.length === 0
+              ? "Create a research project first, then add experiments to it"
+              : "Create your first experiment to start the research pipeline"}
           </p>
+          {projects.length > 0 && (
+            <Button className="mt-4" onClick={() => setCreateOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              New Experiment
+            </Button>
+          )}
         </div>
       )}
+
+      {/* Create Experiment Dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FlaskConical className="h-5 w-5" />
+              New Experiment
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="exp-project">Research Project *</Label>
+              <Select
+                value={createForm.projectId}
+                onValueChange={(value) => setCreateForm({ ...createForm, projectId: value })}
+              >
+                <SelectTrigger id="exp-project">
+                  <SelectValue placeholder="Select a project" />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="exp-name">Experiment Name *</Label>
+              <Input
+                id="exp-name"
+                value={createForm.name}
+                onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+                placeholder="e.g., CVE-2024-1234 RCE chain"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="exp-type">Type *</Label>
+              <Select
+                value={createForm.type}
+                onValueChange={(value) => setCreateForm({ ...createForm, type: value })}
+              >
+                <SelectTrigger id="exp-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="vulnerability_research">Vulnerability Research</SelectItem>
+                  <SelectItem value="poc_development">POC Development</SelectItem>
+                  <SelectItem value="nuclei_template">Nuclei Template</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Determines which agent phase runs on execute.
+              </p>
+            </div>
+
+            <div>
+              <Label htmlFor="exp-hypothesis">Hypothesis</Label>
+              <Textarea
+                id="exp-hypothesis"
+                value={createForm.hypothesis}
+                onChange={(e) => setCreateForm({ ...createForm, hypothesis: e.target.value })}
+                placeholder="What this experiment expects to find or produce..."
+                rows={2}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="exp-methodology">Methodology</Label>
+              <Textarea
+                id="exp-methodology"
+                value={createForm.methodology}
+                onChange={(e) => setCreateForm({ ...createForm, methodology: e.target.value })}
+                placeholder="Approach / steps..."
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreate} disabled={creating || !createForm.projectId || !createForm.name.trim()}>
+              {creating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Experiment
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Artifact Preview Dialog */}
       <Dialog open={!!previewArtifact} onOpenChange={() => setPreviewArtifact(null)}>

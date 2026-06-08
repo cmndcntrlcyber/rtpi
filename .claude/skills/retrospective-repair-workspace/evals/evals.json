@@ -1,0 +1,29 @@
+{
+  "skill_name": "retrospective-repair",
+  "evals": [
+    {
+      "id": 0,
+      "name": "p0-repair-main-flow",
+      "prompt": "Process last night's retrospective and implement the fixes.",
+      "fixture": "fixture-1",
+      "expected_output": "Implements backlog #1 (KPI counting fix, check-kpi exits 0) and #2 (.env flag with rollback doc + .env.example), recognizes #3 as already applied, does NOT touch #4 (P1), writes ledger entries, one commit per item with [retro 2026-06-05 #N] format, ends with summary table.",
+      "files": []
+    },
+    {
+      "id": 1,
+      "name": "no-open-p0s-top-item-and-unrecorded-fix",
+      "prompt": "ship the kaizen backlog from the latest retro",
+      "fixture": "fixture-2",
+      "expected_output": "Detects #1 and #3 applied (ledger+code), detects #2 applied in code but unrecorded and writes a ledger entry WITHOUT redoing it, then implements only the top unapplied item #4 (P1 token logging), verifies, commits, summary table.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "casual-phrasing-same-flow",
+      "prompt": "fix the p0s from last nights retro pls",
+      "fixture": "fixture-1",
+      "expected_output": "Same as eval 0 — casual phrasing should produce the same disciplined flow: items 1+2 applied and verified, 3 skipped, 4 untouched, rollback doc, ledger, commits, summary.",
+      "files": []
+    }
+  ]
+}

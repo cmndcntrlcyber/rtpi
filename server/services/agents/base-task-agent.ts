@@ -20,6 +20,12 @@ export interface TaskDefinition {
   targetId?: string;
   parameters: Record<string, any>;
   priority?: number;
+  /**
+   * Optional cancellation signal. When the caller (e.g. the R&D experiment
+   * orchestrator) aborts, long-running agents should check `signal.aborted` at
+   * await boundaries and stop early instead of running to completion.
+   */
+  signal?: AbortSignal;
 }
 
 export interface TaskResult {
@@ -70,7 +76,6 @@ export abstract class BaseTaskAgent extends EventEmitter {
           name: this.agentName,
           type: "custom",
           status: "idle",
-          description: `${this.agentName} - ${this.agentRole}`,
           capabilities: this.capabilities,
           config: { agentRole: this.agentRole },
         })

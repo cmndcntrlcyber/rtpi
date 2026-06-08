@@ -6,6 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import EmpireTab from "@/components/empire/EmpireTab";
 import { api } from "@/lib/api";
 
@@ -105,33 +108,27 @@ export default function Empire() {
 
   const getStatusBadge = (fw: C2Framework) => {
     if (fw.containerStatus === "not_found") {
-      return <Badge variant="outline" className="text-gray-500">Not Deployed</Badge>;
+      return <Badge variant="outline" className="text-muted-foreground">Not Deployed</Badge>;
     }
     if (fw.containerStatus === "stopped") {
-      return <Badge variant="outline" className="text-red-500">Stopped</Badge>;
+      return <Badge variant="outline" className="text-destructive border-destructive/30">Stopped</Badge>;
     }
     if (fw.activated && fw.healthy) {
-      return <Badge className="bg-green-100 text-green-800">Active</Badge>;
+      return <Badge variant="secondary" className="bg-success/10 text-success border-success/20">Active</Badge>;
     }
     if (fw.activated) {
-      return <Badge className="bg-yellow-100 text-yellow-800">Activating</Badge>;
+      return <Badge variant="secondary" className="bg-warning/10 text-warning border-warning/20">Activating</Badge>;
     }
-    return <Badge className="bg-gray-100 text-gray-800">Dormant</Badge>;
+    return <Badge variant="secondary">Dormant</Badge>;
   };
 
   return (
     <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-3">
-          <Crown className="h-8 w-8 text-purple-600" />
-          <div>
-            <h1 className="text-3xl font-bold">C2 Warroom</h1>
-            <p className="text-muted-foreground mt-1">
-              Multi-framework Command and Control orchestration
-            </p>
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        icon={Crown}
+        title="C2 Warroom"
+        description="Multi-framework Command and Control orchestration"
+      />
 
       <Tabs defaultValue="empire" className="space-y-6">
         <TabsList>
@@ -150,15 +147,19 @@ export default function Empire() {
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-semibold">C2 Frameworks</h2>
             <Button variant="outline" size="sm" onClick={fetchFrameworks} disabled={frameworksLoading}>
-              <RefreshCw className={`h-4 w-4 mr-2 ${frameworksLoading ? "animate-spin" : ""}`} />
+              <RefreshCw
+                aria-hidden="true"
+                className={`h-4 w-4 mr-2 ${frameworksLoading ? "animate-spin" : ""}`}
+              />
               Refresh
             </Button>
           </div>
 
           {frameworksLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin mr-2" />
-              <span className="text-muted-foreground">Checking framework status...</span>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" aria-busy="true" aria-live="polite">
+              <Skeleton className="h-56 rounded-lg" />
+              <Skeleton className="h-56 rounded-lg" />
+              <Skeleton className="h-56 rounded-lg" />
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -167,8 +168,8 @@ export default function Empire() {
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="bg-purple-100 dark:bg-purple-900 p-2 rounded-lg">
-                          <Shield className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                        <div className="bg-info/10 p-2 rounded-lg">
+                          <Shield aria-hidden="true" className="h-5 w-5 text-info" />
                         </div>
                         <div>
                           <CardTitle className="text-lg">{fw.name}</CardTitle>
@@ -185,10 +186,10 @@ export default function Empire() {
                         href={fw.source}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-1 hover:text-foreground transition-colors"
+                        className="flex items-center gap-1 hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <ExternalLink className="h-3 w-3" />
+                        <ExternalLink aria-hidden="true" className="h-3 w-3" />
                         Source
                       </a>
                     </div>
@@ -201,11 +202,11 @@ export default function Empire() {
                         disabled={toggling.has(fw.id) || fw.containerStatus === "stopped"}
                       >
                         {toggling.has(fw.id) ? (
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          <Loader2 aria-hidden="true" className="h-4 w-4 mr-2 animate-spin" />
                         ) : fw.activated ? (
-                          <PowerOff className="h-4 w-4 mr-2" />
+                          <PowerOff aria-hidden="true" className="h-4 w-4 mr-2" />
                         ) : (
-                          <Power className="h-4 w-4 mr-2" />
+                          <Power aria-hidden="true" className="h-4 w-4 mr-2" />
                         )}
                         {fw.activated ? "Deactivate" : "Activate"}
                       </Button>
@@ -243,9 +244,9 @@ export default function Empire() {
               />
               <Button onClick={handleSearch} disabled={searching || !searchQuery.trim()}>
                 {searching ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  <Loader2 aria-hidden="true" className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
-                  <Search className="h-4 w-4 mr-2" />
+                  <Search aria-hidden="true" className="h-4 w-4 mr-2" />
                 )}
                 Research
               </Button>
@@ -256,7 +257,7 @@ export default function Empire() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <Crown className="h-4 w-4 text-purple-500" />
+                    <Crown aria-hidden="true" className="h-4 w-4 text-info" />
                     AI Summary
                   </CardTitle>
                 </CardHeader>
@@ -273,7 +274,7 @@ export default function Empire() {
                   Sources ({researchResults.length})
                 </h3>
                 {researchResults.map((result, i) => (
-                  <Card key={i} className="hover:shadow transition-shadow">
+                  <Card key={i} className="hover:shadow-sm transition-shadow">
                     <CardContent className="pt-4">
                       <div className="flex items-start justify-between">
                         <div className="flex-1 min-w-0">
@@ -281,17 +282,17 @@ export default function Empire() {
                             href={result.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="font-medium text-sm text-blue-600 hover:underline flex items-center gap-1"
+                            className="font-medium text-sm text-info hover:underline flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm"
                           >
                             {result.title}
-                            <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                            <ExternalLink aria-hidden="true" className="h-3 w-3 flex-shrink-0" />
                           </a>
                           <p className="text-xs text-muted-foreground mt-1 line-clamp-3">
                             {result.content}
                           </p>
                         </div>
                         {result.score && (
-                          <Badge variant="outline" className="ml-2 flex-shrink-0 text-xs">
+                          <Badge variant="outline" className="ml-2 flex-shrink-0 text-xs tabular-nums">
                             {(result.score * 100).toFixed(0)}%
                           </Badge>
                         )}
@@ -303,10 +304,12 @@ export default function Empire() {
             )}
 
             {!searching && researchResults.length === 0 && !researchAnswer && (
-              <div className="text-center py-12 text-muted-foreground">
-                <Search className="h-10 w-10 mx-auto mb-3 opacity-50" />
-                <p>Enter a search query to research C2 techniques and tradecraft</p>
-              </div>
+              <EmptyState
+                icon={Search}
+                title="Search for C2 intelligence"
+                description="Enter a search query to research C2 techniques and tradecraft."
+                className="border-0 bg-transparent"
+              />
             )}
           </div>
         </TabsContent>

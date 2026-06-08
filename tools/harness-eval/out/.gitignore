@@ -1,0 +1,4 @@
+# Generated KPI extracts — keep the dir, ignore the artifacts.
+*
+!.gitkeep
+!.gitignore

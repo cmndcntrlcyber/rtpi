@@ -23,12 +23,17 @@ import { metasploitExecutor } from "./metasploit-executor";
 import { empireExecutor } from "./empire-executor";
 import { generateMarkdownReport } from "./report-generator";
 import { ollamaAIClient } from "./ollama-ai-client";
+import { routeAgent, routeReasoning, NoInferenceProviderAvailable } from "./inference/inference-router";
+import type { ChatMessage } from "./inference/executor";
+import { loadSkillFileByRelativePath } from "./skills/skill-loader";
 import type { AgentConfig, AgentAIConfig } from "../../shared/types/agent-config";
 import { mergeAgentAIConfig } from "../../shared/types/agent-config";
 import { getAnthropicClient } from "./ai-clients";
 import { executeTool as executeRegisteredTool } from "./tool-executor";
+import { assessToolEvidence } from "./tool-evidence";
 import { multiContainerExecutor } from "./agents/multi-container-executor";
-import { ToolExecutionLoop, LoopConstraints } from "./agents/tool-execution-loop";
+import { ToolExecutionLoop, LoopConstraints, AgentToolScope, ATTACK_SYNTHETIC_TOOLS } from "./agents/tool-execution-loop";
+import { readFeatureFlags } from "@shared/feature-flags";
 import { agentWebSocketManager } from "./agent-websocket-manager";
 import { randomUUID } from "crypto";
 
@@ -92,8 +97,93 @@ interface AttackTreeState {
 // GENERIC TOOL EXECUTION TYPES — Sequential tool workflow for any agent
 // ============================================================================
 
+/** Structured failure detail surfaced when status === "failed". */
+interface ToolExecutionFailureDetail {
+  message: string;
+  /** Stderr from the container, if the underlying error exposed it. */
+  stderr: string | null;
+  /** The exact argv (or command string) we attempted, when known. */
+  attemptedCommand: string | null;
+  /** Exit code from the container, if propagated. */
+  exitCode: number | null;
+}
+
+/**
+ * Build the AI summarization prompt for a batch of sequential tool runs.
+ * Exported so the rendering logic can be unit-tested in isolation. When a
+ * tool has a generated SKILL.md (loaded into result.skillBody at fetch
+ * time) the manual is inlined above the tool's output so the model can
+ * interpret stdout against the documented patterns; skill blocks are
+ * capped at 2 KB. Failed tools render their structured `failureDetail`
+ * (stderr, attempted command, exit code) instead of opaque "Unknown error".
+ */
+export function renderToolSummaryPrompt(
+  agentName: string,
+  targetValue: string,
+  toolResults: ToolExecutionStepResult[],
+): string {
+  const completedResults = toolResults.filter(r => r.status === "completed" && r.execution);
+
+  let resultsSection = "";
+  for (const result of completedResults) {
+    const stdout = result.execution!.stdout;
+    const trimmedOutput = stdout.length > 5000
+      ? stdout.substring(0, 5000) + "\n... [trimmed for summarization]"
+      : stdout;
+
+    const skillBlock = result.skillBody
+      ? `\n**Tool Manual (SKILL.md — use to interpret the output below):**\n\`\`\`md\n${result.skillBody.slice(0, 2000)}\n\`\`\`\n`
+      : "";
+
+    resultsSection += `
+### ${result.toolName} (${result.toolStringId})
+- Category: ${result.category}
+- Exit Code: ${result.execution!.exitCode}
+- Duration: ${result.execution!.duration}ms
+- Command: ${result.execution!.command}
+${skillBlock}
+**Output:**
+\`\`\`
+${trimmedOutput}
+\`\`\`
+
+`;
+  }
+
+  const failedResults = toolResults.filter(r => r.status === "failed");
+  let failedSection = "";
+  if (failedResults.length > 0) {
+    failedSection = `
+### Failed Tools
+${failedResults.map(r => {
+  const d = r.failureDetail;
+  const lines: string[] = [`- ${r.toolName}: ${r.error || "Unknown error"}`];
+  if (d?.exitCode != null) lines.push(`    Exit code: ${d.exitCode}`);
+  if (d?.attemptedCommand) lines.push(`    Command attempted: \`${d.attemptedCommand}\``);
+  if (d?.stderr) lines.push(`    Stderr: \`${d.stderr.slice(0, 500).trim()}\``);
+  return lines.join("\n");
+}).join("\n")}
+`;
+  }
+
+  return `You are the "${agentName}" agent. You just ran ${toolResults.length} security tools against target "${targetValue}".
+
+Analyze the results below and provide a concise summary covering:
+1. Key findings from each tool
+2. Notable vulnerabilities or exposures discovered
+3. Recommended next steps based on the combined results
+4. Overall risk assessment
+
+## Tool Execution Results
+
+${resultsSection}
+${failedSection}
+
+Provide a structured summary with clear headings. Focus on actionable findings.`;
+}
+
 /** Result of executing a single tool in the sequential workflow */
-interface ToolExecutionStepResult {
+export interface ToolExecutionStepResult {
   toolId: string;         // UUID from toolRegistry
   toolStringId: string;   // Short ID (e.g., "nmap")
   toolName: string;
@@ -112,6 +202,12 @@ interface ToolExecutionStepResult {
   } | null;
   error: string | null;
   status: "completed" | "failed" | "skipped";
+  /** Repo-relative path from tool_registry.skill_path; null when no SKILL.md exists. */
+  skillPath: string | null;
+  /** Full SKILL.md body loaded at fetch time; null when missing. */
+  skillBody: string | null;
+  /** Populated only for failures so the summary prompt can render stderr / exit code. */
+  failureDetail: ToolExecutionFailureDetail | null;
 }
 
 /** Output of the entire sequential tool execution workflow */
@@ -152,13 +248,19 @@ export class AgentWorkflowOrchestrator {
   }
 
   /**
-   * Call AI model using agent's configuration
-   * Uses OllamaAIClient which handles provider selection and fallback
+   * Call AI model using agent's configuration. Routes through the inference
+   * router (`routeAgent` / `routeReasoning`) so the operator's Settings
+   * defaults (DEFAULT_MODEL, DEFAULT_AGENT_MODEL, DEFAULT_REASONING_MODEL)
+   * drive selection. Per-agent overrides on `agents.inferenceProviderId` /
+   * `agents.config.model` still win.
+   *
+   * `kind` distinguishes "what should I do next" (reasoning) from
+   * "summarize/write/present" (agent). Defaults to `agent`.
    */
   private async callAgentAI(
     agent: any,
     messages: Array<{ role: string; content: string }>,
-    options?: Partial<AgentAIConfig>,
+    options?: Partial<AgentAIConfig> & { kind?: "agent" | "reasoning" },
     logContext?: {
       workflowId: string;
       taskId: string | null;
@@ -167,78 +269,84 @@ export class AgentWorkflowOrchestrator {
   ): Promise<string> {
     const aiConfig = this.getAgentAIConfig(agent);
     const mergedConfig = { ...aiConfig, ...options };
+    const kind: "agent" | "reasoning" = options?.kind ?? "agent";
 
-    // Determine provider — default to Anthropic for reliable cloud inference
-    let provider: "ollama" | "openai" | "anthropic" | undefined;
-    if (mergedConfig.provider === "auto" || !mergedConfig.provider) {
-      // Auto-select: prefer Anthropic, then OpenAI, then Ollama
-      provider = "anthropic";
-    } else {
-      provider = mergedConfig.provider as any;
-    }
-
-    // Ensure model matches the selected provider (prevent Ollama model names going to cloud APIs)
-    // Also set a default model when none is configured
-    let model = mergedConfig.model;
-    if (provider === "anthropic") {
-      if (!model || model.includes(":") || model.startsWith("gpt-") || model.startsWith("llama")) {
-        model = "claude-sonnet-4-5";
-      }
-    } else if (provider === "openai") {
-      if (!model || model.includes(":") || model.startsWith("claude-") || model.startsWith("llama")) {
-        model = "gpt-5.2-chat-latest";
+    // Split system prompt from user/assistant turns — the router accepts
+    // `system` as a dedicated field on every provider.
+    let system: string | undefined;
+    const chatMessages: ChatMessage[] = [];
+    for (const m of messages) {
+      if (m.role === "system") {
+        system = system ? `${system}\n\n${m.content}` : m.content;
+      } else if (m.role === "user" || m.role === "assistant") {
+        chatMessages.push({ role: m.role, content: m.content });
       }
     }
 
-    console.log(`[WorkflowOrchestrator] Calling AI: provider=${provider || "auto"}, model=${model || "default"}`);
-
+    const explicitModel = mergedConfig.model?.trim() || undefined;
     const startTime = Date.now();
 
-    // Call AI
-    const response = await ollamaAIClient.complete(messages as any, {
-      provider,
-      model,
-      temperature: mergedConfig.temperature,
-      maxTokens: mergedConfig.maxTokens,
-      useCache: mergedConfig.useCache,
-    });
+    try {
+      const result =
+        kind === "reasoning"
+          ? await routeReasoning({
+              messages: chatMessages,
+              system,
+              maxTokens: mergedConfig.maxTokens,
+              temperature: mergedConfig.temperature,
+              explicitModel,
+            })
+          : await routeAgent({
+              agentId: agent?.id,
+              messages: chatMessages,
+              system,
+              maxTokens: mergedConfig.maxTokens,
+              temperature: mergedConfig.temperature,
+              explicitModel,
+            });
 
-    if (!response.success) {
-      // Log failed AI calls
+      const text = result.response.text;
+      console.log(
+        `[WorkflowOrchestrator] AI call: kind=${kind} provider=${result.provider} model=${result.model} source=${result.source}`,
+      );
+
+      if (logContext) {
+        await this.log(logContext.workflowId, logContext.taskId, "ai_call",
+          `AI Call: ${logContext.phase}`, {
+            type: "ai_call",
+            phase: logContext.phase,
+            kind,
+            provider: result.provider,
+            model: result.model,
+            source: result.source,
+            prompt: messages,
+            response: text,
+            durationMs: Date.now() - startTime,
+            promptCharCount: messages.reduce((sum, m) => sum + m.content.length, 0),
+            responseCharCount: text.length,
+          });
+      }
+
+      return text;
+    } catch (err: any) {
+      const message = err?.message || String(err);
+      const attempts = err instanceof NoInferenceProviderAvailable ? err.attempts : undefined;
       if (logContext) {
         await this.log(logContext.workflowId, logContext.taskId, "ai_call",
           `AI Call Failed: ${logContext.phase}`, {
             type: "ai_call",
             phase: logContext.phase,
-            provider: provider || "auto",
-            model: model || "default",
+            kind,
             prompt: messages,
             response: null,
-            error: response.error,
+            error: message,
+            attempts,
             durationMs: Date.now() - startTime,
             promptCharCount: messages.reduce((sum, m) => sum + m.content.length, 0),
           });
       }
-      throw new Error(`AI completion failed: ${response.error}`);
+      throw new Error(`AI completion failed: ${message}`);
     }
-
-    // Log successful AI call
-    if (logContext) {
-      await this.log(logContext.workflowId, logContext.taskId, "ai_call",
-        `AI Call: ${logContext.phase}`, {
-          type: "ai_call",
-          phase: logContext.phase,
-          provider: provider || "auto",
-          model: model || "default",
-          prompt: messages,
-          response: response.content,
-          durationMs: Date.now() - startTime,
-          promptCharCount: messages.reduce((sum, m) => sum + m.content.length, 0),
-          responseCharCount: response.content.length,
-        });
-    }
-
-    return response.content;
   }
 
   /**
@@ -524,7 +632,8 @@ export class AgentWorkflowOrchestrator {
             capabilities,
             config: {
               systemPrompt,
-              ai: { provider: "anthropic", model: "claude-sonnet-4-5" },
+              // Provider/model unset => inference router consults Settings.
+              ai: { provider: "auto" },
             },
           })
           .returning();
@@ -759,6 +868,15 @@ export class AgentWorkflowOrchestrator {
                 throw new Error(`Unhandled custom task for workflow type: ${currentWorkflow?.workflowType}`);
               }
               break;
+            case "bug_hunter_scope":
+            case "bug_hunter_recon":
+            case "bug_hunter_hunt":
+            case "bug_hunter_chain":
+            case "bug_hunter_validate":
+            case "bug_hunter_capture":
+            case "bug_hunter_report":
+              output = await this.executeBugHunterPhase(task.taskType, agent, taskInput, workflowId, task.id);
+              break;
             default:
               throw new Error(`Unknown task type: ${task.taskType}`);
           }
@@ -818,7 +936,20 @@ export class AgentWorkflowOrchestrator {
         })
         .where(eq(agentWorkflows.id, workflowId));
 
-      await this.log(workflowId, null, "info", "Workflow completed successfully");
+      // Aggregate evidence across all tool-execution tasks so the KPI normalizer
+      // can compute a real success rate from BOTH completion paths (this generic
+      // path previously logged no payload, reading as 0/0 in tools/harness-eval).
+      const wfTasks = await db.select().from(workflowTasks).where(eq(workflowTasks.workflowId, workflowId));
+      const toolOutputs = wfTasks
+        .map(t => t.outputData as any)
+        .filter(o => o?.type === "tool_execution");
+      const realFindingsCount = toolOutputs.reduce((n, o) => n + (o.summary?.completed || 0), 0);
+      await this.log(workflowId, null, "info", "Workflow completed successfully", {
+        type: "workflow_outcome",
+        overallSuccess: realFindingsCount > 0,
+        toolResultsCount: toolOutputs.reduce((n, o) => n + (o.toolResults?.length || 0), 0),
+        realFindingsCount,
+      });
 
       // Trigger automated report generation if the workflow has an operation
       const completedWorkflow = await db.select().from(agentWorkflows)
@@ -834,9 +965,12 @@ export class AgentWorkflowOrchestrator {
           console.warn(`[WorkflowOrchestrator] Could not trigger auto-report:`, err);
         }
       }
+
+      // Queue a harness optimization evaluation for the completed run.
+      await this.queueHarnessEvaluation(workflowId);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      
+
       await db
         .update(agentWorkflows)
         .set({
@@ -849,7 +983,25 @@ export class AgentWorkflowOrchestrator {
         error: errorMsg,
       });
 
+      // Queue a harness evaluation for the failed run too — failures yield the
+      // richest root-cause/Pareto analysis.
+      await this.queueHarnessEvaluation(workflowId);
+
       throw error;
+    }
+  }
+
+  /**
+   * Fire-and-forget enqueue of a post-workflow harness optimization evaluation.
+   * Best-effort and fully isolated: it must never affect workflow control flow.
+   */
+  private async queueHarnessEvaluation(workflowId: string): Promise<void> {
+    try {
+      const { harnessOptimizationEvaluator } = await import("./harness-optimization-evaluator");
+      await harnessOptimizationEvaluator.enqueue(workflowId);
+      await this.log(workflowId, null, "info", "Harness optimization evaluation queued");
+    } catch (err) {
+      console.warn(`[WorkflowOrchestrator] Could not queue harness evaluation:`, err);
     }
   }
 
@@ -911,19 +1063,19 @@ export class AgentWorkflowOrchestrator {
             targetId,
             `query="${query}"`
           );
-          
-          searchResults += `\n\n=== SearchSploit: ${query} ===\n${result}`;
+
+          searchResults += `\n\n=== SearchSploit: ${query} ===\n${result.formatted}`;
 
           await this.log(
             workflowId,
             taskId,
             "info",
             `SearchSploit completed for: "${query}"`,
-            { 
+            {
               tool: "SearchSploit",
               query,
-              resultLength: result.length,
-              hasResults: result.length > 100
+              resultLength: result.formatted.length,
+              hasResults: result.formatted.length > 100
             }
           );
         } catch (error) {
@@ -1022,7 +1174,7 @@ export class AgentWorkflowOrchestrator {
           "You are an experienced penetration tester creating attack plans.",
       },
       { role: "user", content: prompt },
-    ], undefined, {
+    ], { kind: "reasoning" }, {
       workflowId,
       taskId,
       phase: "Operation Lead: Execution Planning",
@@ -1102,6 +1254,17 @@ export class AgentWorkflowOrchestrator {
 
     if (!metasploitTool) {
       throw new Error("Metasploit Framework tool not found");
+    }
+
+    // --- ENGINE CONVERGENCE (FF_AGENT_SCOPED_ATTACK_TREE) ---
+    // When enabled, drive the pentest through the per-agent-scoped
+    // ToolExecutionLoop (agent's enabledTools + systemPrompt + ## Tool Skills,
+    // with MSF/Empire as AI-callable tools behind the approval gate) instead of
+    // the Metasploit-only bespoke tree below. Flag off = legacy tree verbatim.
+    if (readFeatureFlags(process.env).agentScopedAttackTree) {
+      return await this.runScopedAttackTree(
+        agent, input, workflowId, taskId, target, metasploitTool, executionPlan,
+      );
     }
 
     // --- ATTACK TREE INITIALIZATION ---
@@ -1203,6 +1366,208 @@ export class AgentWorkflowOrchestrator {
       attackTree: treeState.roots,
       treeStats,
       empireResults,
+      targetId: target.id,
+      targetValue: target.value,
+    };
+  }
+
+  /**
+   * Scoped attack-tree engine (FF_AGENT_SCOPED_ATTACK_TREE).
+   *
+   * Drives the pentest through the per-agent ToolExecutionLoop: the catalog is
+   * the agent's enabledTools, the system prompt is the agent's own (carrying its
+   * `## Tool Skills`), and Metasploit/Empire are exposed as AI-callable synthetic
+   * tools behind the approval gate. Loop output is mapped back into the legacy
+   * `exploitation_results` shape so reporting / vulnerability creation are unchanged.
+   */
+  private async runScopedAttackTree(
+    agent: any,
+    input: any,
+    workflowId: string,
+    taskId: string,
+    target: any,
+    metasploitTool: any,
+    executionPlan: any,
+  ): Promise<any> {
+    const config = (agent.config ?? {}) as AgentConfig;
+    const enabledToolIds: string[] = Array.isArray(config.enabledTools) ? config.enabledTools : [];
+
+    // Empire is only offered as a synthetic tool when a server is actually bound,
+    // so the AI isn't handed a tool that always fails.
+    const empireServerId: string | undefined =
+      input.previousOutput?.empireInfo?.servers?.[0]?.id;
+    const syntheticTools = ATTACK_SYNTHETIC_TOOLS.filter(
+      (t) => t.toolId !== "empire_task" || !!empireServerId,
+    );
+
+    const scope: AgentToolScope = {
+      enabledToolIds,
+      agentSystemPrompt: config.systemPrompt,
+      targetValue: target.value,
+      msfToolId: metasploitTool.id,
+      empireServerId,
+      empireUserId: "system",
+      syntheticTools,
+    };
+
+    const aiConfig = this.getAgentAIConfig(agent);
+    const constraints: Partial<LoopConstraints> = {
+      // Exploit path gets a larger budget than the autonomous default (the
+      // bespoke tree allowed up to 50 module executions).
+      maxIterations: input.maxIterations || 25,
+      maxDurationMs: input.maxDurationMs || 60 * 60 * 1000,
+      autonomyLevel: input.autonomyLevel || 5,
+      aiProvider: (aiConfig.provider as any) || "anthropic",
+      aiModel: aiConfig.model,
+      // requireApprovalForCategories left at default [exploitation, post-exploitation, c2].
+    };
+
+    const objective =
+      input.objective ||
+      executionPlan?.objective ||
+      `Assess and exploit ${target.value} using the assigned toolset`;
+
+    const loop = new ToolExecutionLoop(
+      agent.id, agent.name, workflowId, target.id || workflowId, objective, constraints, scope,
+    );
+
+    if (agentWebSocketManager) {
+      loop.setApprovalCallback((request) => agentWebSocketManager!.requestApproval(request));
+    }
+
+    // Phase-aware nudge: steer recon -> exploit -> post ordering without
+    // hardcoding the kill chain.
+    loop.setPrePromptHook(async (ctx) => {
+      const phase =
+        ctx.discoveredFindings.length === 0
+          ? "RECON — enumerate services/versions before attempting exploitation."
+          : ctx.previousIterations.some((it) => it.toolUsed === "msf_run")
+            ? "POST-EXPLOITATION — consolidate access, gather evidence, and pivot."
+            : "EXPLOITATION — use msf_search on a discovered service, then msf_run the best-fit module.";
+      return `KILL-CHAIN PHASE: ${phase}`;
+    });
+
+    loop.on("tool_start", async (data: any) => {
+      await this.log(workflowId, taskId, "info",
+        `[Iter ${data.iteration}] ${data.tool} ${(data.args || []).join(" ")}`);
+    });
+    loop.on("tool_complete", async (data: any) => {
+      await this.log(workflowId, taskId, data.exitCode === 0 ? "info" : "warn",
+        `[Iter ${data.iteration}] ${data.tool} exit=${data.exitCode} (${data.outputLength} bytes)`);
+    });
+
+    const result = await loop.run();
+
+    // --- Map LoopResult -> legacy exploitation_results shape ---
+    const nodes: AttackTreeNode[] = [];
+    const attempts: Array<{
+      module: string; depth: number; parentModule: string | null; success: boolean;
+      isDiscovery: boolean; isExploitSuccess: boolean; discoveredInfo: string[];
+      output: string; timestamp: string; childCount: number;
+    }> = [];
+
+    let prevModule: string | null = null;
+    let idx = 0;
+    for (const it of result.iterations) {
+      if (!it.toolUsed) continue; // skip pure complete/approval iterations
+      const stdout = it.parsedOutput ?? it.executionResult?.stdout ?? "";
+      const exitOk = (it.executionResult?.exitCode ?? 1) === 0;
+      const findings = it.findings ?? [];
+      const isDiscovery = findings.length > 0;
+      // module label: for msf_run, prefer the module path arg.
+      const moduleLabel = it.toolUsed === "msf_run" ? (it.args[1] || "msf_run") : it.toolUsed;
+      // Exploitation success only for an evidence-bearing msf_run.
+      const evidence = assessToolEvidence(
+        `${it.toolUsed} ${it.args.join(" ")}`, target.value, stdout, null,
+      );
+      const isExploitSuccess = it.toolUsed === "msf_run" && exitOk && evidence.hasEvidence;
+
+      attempts.push({
+        module: moduleLabel,
+        depth: idx,
+        parentModule: prevModule,
+        success: exitOk,
+        isDiscovery,
+        isExploitSuccess,
+        discoveredInfo: findings.map((f) => f.value),
+        output: stdout,
+        timestamp: new Date().toISOString(),
+        childCount: 0,
+      });
+
+      const node: AttackTreeNode = {
+        id: randomUUID(),
+        parentId: nodes.length ? nodes[nodes.length - 1].id : null,
+        depth: idx,
+        module: {
+          type: it.toolUsed === "msf_run" ? (it.args[0] || "exploit") : "tool",
+          path: moduleLabel,
+          parameters: {},
+          reasoning: it.reasoning,
+        },
+        execution: it.executionResult
+          ? {
+              success: exitOk,
+              output: stdout,
+              stderr: it.executionResult.stderr || "",
+              exitCode: it.executionResult.exitCode ?? -1,
+              duration: it.durationMs,
+              timestamp: new Date().toISOString(),
+            }
+          : null,
+        analysis: {
+          isAuxiliaryDiscovery: isDiscovery,
+          isExploitSuccess,
+          discoveredInfo: findings.map((f) => f.value),
+          searchQueries: [],
+          reasoning: it.reasoning,
+        },
+        children: [],
+        status: "analyzed",
+      };
+      if (nodes.length) nodes[nodes.length - 1].children.push(node);
+      nodes.push(node);
+      prevModule = moduleLabel;
+      idx++;
+    }
+
+    const successfulExploit = attempts.some((a) => a.isExploitSuccess);
+    const treeStats = {
+      totalExecutions: attempts.length,
+      maxDepthReached: attempts.length > 0 ? attempts.length - 1 : 0,
+      uniqueModules: new Set(attempts.map((a) => a.module)).size,
+      branches: 0,
+      auxiliaryDiscoveries: attempts.filter((a) => a.isDiscovery).length,
+    };
+
+    await this.log(workflowId, taskId, "info", `Attack tree execution completed`, {
+      ...treeStats,
+      successfulExploits: attempts.filter((a) => a.isExploitSuccess).length,
+      overallSuccess: successfulExploit,
+      engine: "agent_scoped_loop",
+      loopStatus: result.status,
+    });
+
+    // Evidence-gate compat: don't cascade a zero-evidence run downstream.
+    const producedEvidence = attempts.some((a) => a.isExploitSuccess || a.isDiscovery);
+    if (
+      readFeatureFlags(process.env).requireToolEvidence &&
+      attempts.length > 0 &&
+      !producedEvidence
+    ) {
+      throw new Error(
+        `Scoped attack tree produced no real evidence for "${agent.name}" (target ${target.value}). ` +
+        `Refusing to cascade fabricated context downstream. Loop status: ${result.status}.`,
+      );
+    }
+
+    return {
+      type: "exploitation_results",
+      success: successfulExploit,
+      attempts,
+      attackTree: nodes.length ? [nodes[0]] : [],
+      treeStats,
+      empireResults: { success: false, tasks: [], credentials: [] },
       targetId: target.id,
       targetValue: target.value,
     };
@@ -1453,7 +1818,7 @@ Respond with your analysis.`;
     const response = await this.callAgentAI(agent, [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
-    ], undefined, {
+    ], { kind: "reasoning" }, {
       workflowId,
       taskId,
       phase: `${agent.name}: Template-Driven Execution`,
@@ -1544,6 +1909,20 @@ Respond with your analysis.`;
     // Index by UUID for ordered iteration
     const toolMap = new Map(registryTools.map(t => [t.id, t]));
 
+    // Batch-load SKILL.md bodies in parallel so buildToolSummaryPrompt can
+    // render them inline. Missing files (skill not generated, FF off) yield
+    // null and the prompt falls back to raw stdout only.
+    const skillBodyMap = new Map<string, string | null>();
+    await Promise.all(
+      registryTools.map(async (t) => {
+        if (!t.skillPath) {
+          skillBodyMap.set(t.id, null);
+          return;
+        }
+        skillBodyMap.set(t.id, await loadSkillFileByRelativePath(t.skillPath));
+      }),
+    );
+
     await this.log(workflowId, taskId, "info",
       `Fetched ${registryTools.length}/${enabledToolIds.length} tools from registry`,
       { found: registryTools.map(t => t.toolId), missing: enabledToolIds.filter(id => !toolMap.has(id)) }
@@ -1577,6 +1956,9 @@ Respond with your analysis.`;
           execution: null,
           error: `Tool UUID ${toolId} not found in registry`,
           status: "skipped",
+          skillPath: null,
+          skillBody: null,
+          failureDetail: null,
         });
         await this.log(workflowId, taskId, "warn",
           `Skipping tool UUID ${toolId}: not found in registry`,
@@ -1597,6 +1979,9 @@ Respond with your analysis.`;
           execution: null,
           error: `Tool not installed (status: ${tool.installStatus})`,
           status: "skipped",
+          skillPath: tool.skillPath ?? null,
+          skillBody: skillBodyMap.get(tool.id) ?? null,
+          failureDetail: null,
         });
         await this.log(workflowId, taskId, "warn",
           `Skipping "${tool.name}": not installed (${tool.installStatus})`,
@@ -1615,6 +2000,9 @@ Respond with your analysis.`;
           execution: null,
           error: `Container "${containerName}" is unavailable`,
           status: "skipped",
+          skillPath: tool.skillPath ?? null,
+          skillBody: skillBodyMap.get(tool.id) ?? null,
+          failureDetail: null,
         });
         await this.log(workflowId, taskId, "warn",
           `Skipping "${tool.name}": container "${containerName}" unavailable`,
@@ -1643,6 +2031,26 @@ Respond with your analysis.`;
           ? result.stdout.substring(0, 50000) + "\n... [truncated at 50KB]"
           : result.stdout;
 
+        // EVIDENCE GATE: exit 0 is necessary but not sufficient. A REPL launched
+        // with no script (e.g. `msfconsole <target>`) exits 0 with only a banner.
+        // Treat exit-0-without-evidence as a failure, not a fabricated success.
+        const evidence = assessToolEvidence(
+          result.command, target.value, truncatedStdout, result.parsedOutput,
+        );
+        const realSuccess = result.exitCode === 0 && evidence.hasEvidence;
+
+        const failureDetail: ToolExecutionFailureDetail | null =
+          realSuccess
+            ? null
+            : {
+                message: result.exitCode === 0
+                  ? `Tool exited 0 but produced no evidence — ${evidence.reason}`
+                  : `Tool exited ${result.exitCode}${(result.stderr || "").trim() ? ` — ${(result.stderr || "").slice(0, 200).trim()}` : ""}`,
+                stderr: result.stderr || null,
+                attemptedCommand: result.command || null,
+                exitCode: result.exitCode ?? null,
+              };
+
         toolResults.push({
           toolId: tool.id,
           toolStringId: tool.toolId,
@@ -1650,7 +2058,7 @@ Respond with your analysis.`;
           category: tool.category,
           containerName,
           execution: {
-            success: result.exitCode === 0,
+            success: realSuccess,
             exitCode: result.exitCode ?? -1,
             stdout: truncatedStdout || "",
             stderr: result.stderr || "",
@@ -1660,15 +2068,30 @@ Respond with your analysis.`;
             executionId: result.executionId,
             command: result.command || "",
           },
-          error: null,
-          status: result.exitCode === 0 ? "completed" : "failed",
+          error: realSuccess ? null : failureDetail!.message,
+          status: realSuccess ? "completed" : "failed",
+          skillPath: tool.skillPath ?? null,
+          skillBody: skillBodyMap.get(tool.id) ?? null,
+          failureDetail,
         });
 
-        await this.log(workflowId, taskId, result.exitCode === 0 ? "info" : "warn",
-          `"${tool.name}" finished: exit=${result.exitCode}, duration=${result.duration}ms`,
-          { executionId: result.executionId, exitCode: result.exitCode }
+        await this.log(workflowId, taskId, realSuccess ? "info" : "warn",
+          `"${tool.name}" finished: exit=${result.exitCode}, evidence=${evidence.hasEvidence} (${evidence.reason}), duration=${result.duration}ms`,
+          { executionId: result.executionId, exitCode: result.exitCode, hasEvidence: evidence.hasEvidence }
         );
       } catch (execError: any) {
+        // Drill into the error to capture stderr and the attempted command.
+        // ContainerError from runtime/error-classifier wraps these under
+        // `structured` / `cause`; plain Errors expose `message` only.
+        const cause = (execError as any)?.cause ?? {};
+        const structured = (execError as any)?.structured ?? {};
+        const detail: ToolExecutionFailureDetail = {
+          message: execError?.message || String(execError),
+          stderr: execError?.stderr ?? cause?.stderr ?? structured?.stderr ?? null,
+          attemptedCommand:
+            execError?.attemptedCommand ?? cause?.attemptedCommand ?? structured?.command ?? null,
+          exitCode: execError?.exitCode ?? cause?.exitCode ?? structured?.exitCode ?? null,
+        };
         toolResults.push({
           toolId: tool.id,
           toolStringId: tool.toolId,
@@ -1676,13 +2099,22 @@ Respond with your analysis.`;
           category: tool.category,
           containerName,
           execution: null,
-          error: execError.message,
+          error: detail.message,
           status: "failed",
+          skillPath: tool.skillPath ?? null,
+          skillBody: skillBodyMap.get(tool.id) ?? null,
+          failureDetail: detail,
         });
 
         await this.log(workflowId, taskId, "error",
-          `"${tool.name}" execution error: ${execError.message}`,
-          { toolId: tool.id, error: execError.message }
+          `"${tool.name}" execution error: ${detail.message}`,
+          {
+            toolId: tool.id,
+            error: detail.message,
+            stderr: detail.stderr,
+            attemptedCommand: detail.attemptedCommand,
+            exitCode: detail.exitCode,
+          }
         );
         // Continue to next tool — don't abort
       }
@@ -1705,10 +2137,25 @@ Respond with your analysis.`;
     if (completed > 0) {
       try {
         const summaryPrompt = this.buildToolSummaryPrompt(agent.name, target.value, toolResults);
+        // Pass the agent's stored systemPrompt as the system message — Phase 2
+        // (tool-skill-prompt-sync) keeps a `## Tool Skills` section in there
+        // for the toolset, and we want it in scope for summarization. The
+        // per-tool SKILL.md bodies rendered inside summaryPrompt are
+        // additional context for the just-run output.
+        const agentSystemPrompt =
+          typeof (agent.config as any)?.systemPrompt === "string"
+            ? (agent.config as any).systemPrompt
+            : null;
+        const messages: Array<{ role: string; content: string }> = agentSystemPrompt
+          ? [
+              { role: "system", content: agentSystemPrompt },
+              { role: "user", content: summaryPrompt },
+            ]
+          : [{ role: "user", content: summaryPrompt }];
         aiSummary = await this.callAgentAI(
           agent,
-          [{ role: "user", content: summaryPrompt }],
-          { maxTokens: 2000 },
+          messages,
+          { kind: "agent", maxTokens: 2000 },
           { workflowId, taskId, phase: "tool_execution_summary" }
         );
 
@@ -1719,6 +2166,18 @@ Respond with your analysis.`;
         );
         // Non-fatal — results are still available without AI summary
       }
+    }
+
+    // Opt-in: refuse to cascade a zero-evidence tool task into downstream agents.
+    // Default OFF — flip FF_REQUIRE_TOOL_EVIDENCE=true once the gate is trusted.
+    // The throw routes into the per-task catch, which fails the workflow rather
+    // than passing fabricated context to the next agent / report writer.
+    if (process.env.FF_REQUIRE_TOOL_EVIDENCE === "true" && completed === 0 && enabledToolIds.length > 0) {
+      throw new Error(
+        `No tool produced real evidence for "${agent.name}" (target ${target.value}). ` +
+        `Refusing to cascade fabricated context downstream. ` +
+        `Tools: ${toolResults.map(r => `${r.toolStringId}:${r.status}`).join(", ")}`,
+      );
     }
 
     return {
@@ -1826,61 +2285,17 @@ Respond with your analysis.`;
   }
 
   /**
-   * Build a prompt for AI summarization of sequential tool execution results
+   * Build a prompt for AI summarization of sequential tool execution results.
+   * Delegates to the module-level helper `renderToolSummaryPrompt` so the
+   * pure function can be unit-tested in isolation. The class wrapper is
+   * preserved as the public-from-instance call site.
    */
   private buildToolSummaryPrompt(
     agentName: string,
     targetValue: string,
     toolResults: ToolExecutionStepResult[],
   ): string {
-    const completedResults = toolResults.filter(r => r.status === "completed" && r.execution);
-
-    let resultsSection = "";
-    for (const result of completedResults) {
-      const stdout = result.execution!.stdout;
-      // Limit each tool's output in the prompt to 5KB to stay within token limits
-      const trimmedOutput = stdout.length > 5000
-        ? stdout.substring(0, 5000) + "\n... [trimmed for summarization]"
-        : stdout;
-
-      resultsSection += `
-### ${result.toolName} (${result.toolStringId})
-- Category: ${result.category}
-- Exit Code: ${result.execution!.exitCode}
-- Duration: ${result.execution!.duration}ms
-- Command: ${result.execution!.command}
-
-**Output:**
-\`\`\`
-${trimmedOutput}
-\`\`\`
-
-`;
-    }
-
-    const failedResults = toolResults.filter(r => r.status === "failed");
-    let failedSection = "";
-    if (failedResults.length > 0) {
-      failedSection = `
-### Failed Tools
-${failedResults.map(r => `- ${r.toolName}: ${r.error || "Unknown error"}`).join("\n")}
-`;
-    }
-
-    return `You are the "${agentName}" agent. You just ran ${toolResults.length} security tools against target "${targetValue}".
-
-Analyze the results below and provide a concise summary covering:
-1. Key findings from each tool
-2. Notable vulnerabilities or exposures discovered
-3. Recommended next steps based on the combined results
-4. Overall risk assessment
-
-## Tool Execution Results
-
-${resultsSection}
-${failedSection}
-
-Provide a structured summary with clear headings. Focus on actionable findings.`;
+    return renderToolSummaryPrompt(agentName, targetValue, toolResults);
   }
 
   /**
@@ -2038,7 +2453,7 @@ Respond with JSON: {"success": true/false, "reasoning": "brief explanation"}`;
       const response = await this.callAgentAI(
         agent,
         [{ role: "user", content: prompt }],
-        { maxTokens: 1024 },
+        { kind: "reasoning", maxTokens: 1024 },
         workflowId ? { workflowId, taskId: taskId || null, phase: "Senior Cyber Operator: Exploit Result Analysis" } : undefined
       );
 
@@ -2107,7 +2522,7 @@ Respond with JSON:
       const response = await this.callAgentAI(
         agent,
         [{ role: "user", content: prompt }],
-        { maxTokens: 1024 },
+        { kind: "reasoning", maxTokens: 1024 },
         workflowId ? { workflowId, taskId: taskId || null, phase: "Senior Cyber Operator: Auxiliary Result Analysis" } : undefined
       );
 
@@ -2249,7 +2664,7 @@ Only include modules that would help discover NEW attack vectors. Maximum 3 modu
       const response = await this.callAgentAI(
         agent,
         [{ role: "user", content: prompt }],
-        { maxTokens: 1024 },
+        { kind: "reasoning", maxTokens: 1024 },
         workflowId ? { workflowId, taskId: taskId || null, phase: "Senior Cyber Operator: Post-Exploit Module Derivation" } : undefined
       );
 
@@ -2314,7 +2729,7 @@ Select at most ${maxSelect} modules. Only include modules from the candidate lis
       const response = await this.callAgentAI(
         agent,
         [{ role: "user", content: prompt }],
-        { maxTokens: 1024 },
+        { kind: "reasoning", maxTokens: 1024 },
         workflowId ? { workflowId, taskId: taskId || null, phase: "Senior Cyber Operator: Module Relevance Selection" } : undefined
       );
 
@@ -2471,6 +2886,196 @@ Select at most ${maxSelect} modules. Only include modules from the candidate lis
     return name
       .replace(/_/g, " ")
       .replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  // ============================================================================
+  // BUG-HUNTER PHASE DISPATCH (FF_BUG_HUNTER)
+  // ============================================================================
+
+  /**
+   * Dispatch a bug-hunter phase task to its singleton agent. Each agent
+   * extends BaseTaskAgent and exposes executeTask(task) — the orchestrator
+   * just forwards the task definition with the input the workflow built up.
+   */
+  private async executeBugHunterPhase(
+    taskType: string,
+    agent: any,
+    input: any,
+    workflowId: string,
+    taskId: string,
+  ): Promise<Record<string, unknown>> {
+    const mod = await import("./agents/bug-hunter");
+    const map: Record<string, { executeTask: (t: any) => Promise<any> }> = {
+      bug_hunter_scope: mod.scopeAgent,
+      bug_hunter_recon: mod.reconAgent,
+      bug_hunter_hunt: mod.huntAgent,
+      bug_hunter_chain: mod.chainAgent,
+      bug_hunter_validate: mod.validateAgent,
+      bug_hunter_capture: mod.captureAgent,
+      bug_hunter_report: mod.bugReportAgent,
+    };
+    const instance = map[taskType];
+    if (!instance) throw new Error(`No bug-hunter agent registered for ${taskType}`);
+
+    // Make sure the agent has a DB row before running (idempotent).
+    if (typeof (instance as any).initialize === "function") {
+      await (instance as any).initialize();
+    }
+
+    const targetId = input.targetId || input.previousOutput?.metadata?.targetId;
+    const operationId = input.operationId || input.previousOutput?.metadata?.operationId;
+
+    const taskResult = await instance.executeTask({
+      taskType,
+      taskName: `${agent.name} (${taskType})`,
+      operationId,
+      targetId,
+      parameters: input.parameters ?? input,
+    });
+
+    await this.log(
+      workflowId,
+      taskId,
+      taskResult.success ? "info" : "error",
+      `${taskType} ${taskResult.success ? "completed" : "failed"}`,
+      taskResult.success ? { keys: Object.keys(taskResult.data ?? {}) } : { error: taskResult.error },
+    );
+
+    return {
+      type: "bug_hunter_phase",
+      phase: taskType,
+      success: taskResult.success,
+      data: taskResult.data ?? {},
+      memoryIds: taskResult.memoryIds ?? [],
+      error: taskResult.error,
+      metadata: {
+        operationId,
+        targetId,
+      },
+    };
+  }
+
+  /**
+   * Start a bug-hunter workflow: 7 sequential tasks
+   * (scope → recon → hunt → chain → validate → capture → report).
+   * Agents are seeded by migrations/0049_seed_bug_hunter_agents.sql and
+   * looked up by name; no model strings are pinned here — each agent's
+   * config has ai.provider="auto" so the inference router walks the
+   * Settings defaults (Ollama by default).
+   */
+  async startBugHunterWorkflow(opts: {
+    operationId: string;
+    targetId: string;
+    userId: string;
+    mode?: "redteam" | "wapt";
+    box?: "blackbox" | "greybox";
+    platform?: "hackerone" | "bugcrowd" | "intigriti" | "immunefi" | "redteam" | "internal";
+    /** Restrict the pipeline to a subset of phases. Defaults to all 7. */
+    phases?: Array<
+      | "scope"
+      | "recon"
+      | "hunt"
+      | "chain"
+      | "validate"
+      | "capture"
+      | "report"
+    >;
+    name?: string;
+  }): Promise<{ workflow: any; tasks: any[] }> {
+    const phasesOrdered = opts.phases ?? ["scope", "recon", "hunt", "chain", "validate", "capture", "report"];
+    const allAgents = await db.select().from(agents);
+    const byName = new Map(allAgents.map((a) => [a.name, a]));
+
+    const agentName = (phase: string): string => {
+      const titled = phase.charAt(0).toUpperCase() + phase.slice(1);
+      return `Bug Hunter — ${titled}`;
+    };
+
+    const missing = phasesOrdered.filter((p) => {
+      const name = agentName(p === "report" ? "Report" : p);
+      return !byName.has(name);
+    });
+    if (missing.length > 0) {
+      throw new Error(
+        `Bug-hunter agents not seeded — missing: ${missing.join(", ")}. Run migration 0049.`,
+      );
+    }
+
+    const [target] = await db.select().from(targets).where(eq(targets.id, opts.targetId)).limit(1);
+    if (!target) throw new Error(`target ${opts.targetId} not found`);
+
+    const firstAgent = byName.get(agentName(phasesOrdered[0]))!;
+
+    const [wf] = await db
+      .insert(agentWorkflows)
+      .values({
+        name: opts.name ?? `Bug Hunter - ${target.name}`,
+        workflowType: "bug_hunter",
+        targetId: target.id,
+        operationId: opts.operationId,
+        currentAgentId: firstAgent.id,
+        status: "pending",
+        progress: 0,
+        metadata: {
+          targetName: target.name,
+          targetValue: target.value,
+          mode: opts.mode ?? "wapt",
+          box: opts.box ?? "blackbox",
+          platform: opts.platform ?? "internal",
+          phases: phasesOrdered,
+        },
+        createdBy: opts.userId,
+      })
+      .returning();
+
+    const tasks = phasesOrdered.map((phase, index) => {
+      const agent = byName.get(agentName(phase))!;
+      return {
+        workflowId: wf.id,
+        agentId: agent.id,
+        taskType: `bug_hunter_${phase}` as
+          | "bug_hunter_scope"
+          | "bug_hunter_recon"
+          | "bug_hunter_hunt"
+          | "bug_hunter_chain"
+          | "bug_hunter_validate"
+          | "bug_hunter_capture"
+          | "bug_hunter_report",
+        taskName: `${agent.name} — Step ${index + 1}`,
+        sequenceOrder: index + 1,
+        inputData: {
+          operationId: opts.operationId,
+          targetId: target.id,
+          targetValue: target.value,
+          parameters: {
+            mode: opts.mode ?? "wapt",
+            box: opts.box ?? "blackbox",
+            platform: opts.platform ?? "internal",
+          },
+        },
+      };
+    });
+
+    await db.insert(workflowTasks).values(tasks);
+
+    await this.log(wf.id, null, "info", "Bug-hunter workflow started", {
+      phases: phasesOrdered,
+      mode: opts.mode ?? "wapt",
+      platform: opts.platform ?? "internal",
+    });
+
+    this.processWorkflow(wf.id).catch((err) => {
+      console.error("Bug-hunter workflow error:", err);
+    });
+
+    return {
+      workflow: wf,
+      tasks: await db
+        .select()
+        .from(workflowTasks)
+        .where(eq(workflowTasks.workflowId, wf.id))
+        .orderBy(asc(workflowTasks.sequenceOrder)),
+    };
   }
 
   // ============================================================================
@@ -3684,7 +4289,7 @@ Ordered list of remediation actions from highest to lowest priority.`;
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      { maxTokens: 16384 },
+      { kind: "reasoning", maxTokens: 16384 },
       {
         workflowId,
         taskId,

@@ -23,6 +23,7 @@ export const FEATURE_FLAGS = {
   gmlTelemetry: "FF_GML_TELEMETRY",
   a2aCapabilityGate: "FF_A2A_CAPABILITY_GATE",
   toolSkillGeneration: "FF_TOOL_SKILL_GENERATION",
+  requireToolEvidence: "FF_REQUIRE_TOOL_EVIDENCE",
   bugHunter: "FF_BUG_HUNTER",
   agentScopedAttackTree: "FF_AGENT_SCOPED_ATTACK_TREE",
   uiV3Tokens: "FF_UI_V3_TOKENS",

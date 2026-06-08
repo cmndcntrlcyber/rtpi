@@ -2172,7 +2172,7 @@ Respond with your analysis.`;
     // Default OFF — flip FF_REQUIRE_TOOL_EVIDENCE=true once the gate is trusted.
     // The throw routes into the per-task catch, which fails the workflow rather
     // than passing fabricated context to the next agent / report writer.
-    if (process.env.FF_REQUIRE_TOOL_EVIDENCE === "true" && completed === 0 && enabledToolIds.length > 0) {
+    if (readFeatureFlags(process.env).requireToolEvidence && completed === 0 && enabledToolIds.length > 0) {
       throw new Error(
         `No tool produced real evidence for "${agent.name}" (target ${target.value}). ` +
         `Refusing to cascade fabricated context downstream. ` +

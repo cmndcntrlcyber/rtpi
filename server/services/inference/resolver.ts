@@ -87,6 +87,9 @@ export function inferProviderFromModel(model: string): ProviderId | null {
   if (lower.startsWith("claude") || lower.startsWith("anthropic/")) return "anthropic";
   if (lower.startsWith("gpt") || lower.startsWith("o1") || lower.startsWith("openai/")) return "openai";
   if (lower.startsWith("text-embedding") || lower.startsWith("text-search")) return "openai";
+  // Ollama pulls HuggingFace GGUFs via "hf.co/<user>/<repo>:<quant>" — these
+  // contain "/" but belong to Ollama, so match them before the vLLM rule.
+  if (lower.startsWith("hf.co/") || lower.startsWith("huggingface.co/")) return "ollama";
   // vLLM hosts HuggingFace-style ids: vendor/model (e.g. Qwen/Qwen3.5-9B).
   if (lower.includes("/") && !lower.startsWith("anthropic/") && !lower.startsWith("openai/")) {
     return "vllm";

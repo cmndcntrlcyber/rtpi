@@ -44,6 +44,15 @@ describe("inferProviderFromModel", () => {
     expect(inferProviderFromModel("meta-llama/Llama-3-70B")).toBe("vllm");
   });
 
+  it("maps hf.co/* GGUF pull ids to ollama (not vllm)", () => {
+    // Ollama pulls HuggingFace GGUFs via hf.co/<user>/<repo>:<quant>. These
+    // contain "/" but must route to Ollama, not vLLM (regression: workflow
+    // agents were falling back to Anthropic when these were classed as vllm).
+    expect(inferProviderFromModel("hf.co/cmndcntrlcyber/qwen14b-code-trainer-v6-gguf:Q4_K_M")).toBe("ollama");
+    expect(inferProviderFromModel("hf.co/unsloth/gemma-4-26B-A4B-it-qat-GGUF:UD-Q4_K_XL")).toBe("ollama");
+    expect(inferProviderFromModel("huggingface.co/TheBloke/Mistral-7B-GGUF:Q4_K_M")).toBe("ollama");
+  });
+
   it("maps tagged names (name:tag) to ollama", () => {
     expect(inferProviderFromModel("llama3:8b")).toBe("ollama");
     expect(inferProviderFromModel("nomic-embed-text:latest")).toBe("ollama");

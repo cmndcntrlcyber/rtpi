@@ -244,7 +244,14 @@ export class AgentWorkflowOrchestrator {
    */
   private getAgentAIConfig(agent: any): AgentAIConfig {
     const config = agent.config as AgentConfig;
-    return mergeAgentAIConfig(config?.ai);
+    // The agent editor stores the assigned model at top-level `config.model`;
+    // `config.ai` is the documented-but-unused nested shape. Honor the real
+    // location so the reasoning/tool-loop path passes the agent's model as
+    // explicitModel instead of falling through to the provider fallback chain.
+    return mergeAgentAIConfig({
+      ...config?.ai,
+      model: config?.ai?.model ?? (config as any)?.model,
+    });
   }
 
   /**

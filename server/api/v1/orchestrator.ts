@@ -77,16 +77,19 @@ router.get("/engagements", async (_req: Request, res: Response) => {
  * POST /api/v1/orchestrator/engagements/start
  * Start a new pentest engagement workflow.
  */
-router.post("/engagements/start", logAudit("engagement:start"), async (req: Request, res: Response) => {
+router.post("/engagements/start", async (req: Request, res: Response) => {
+  const user = req.user as any;
   try {
     const parsed = startEngagementSchema.parse(req.body);
     const result = await startEngagement(parsed);
+    await logAudit(user.id, "engagement:start", "/orchestrator/engagements/start", (result as any)?.engagement_id ?? null, true, req);
     res.status(201).json(result);
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: "Validation error", details: error.errors });
       return;
     }
+    await logAudit(user.id, "engagement:start", "/orchestrator/engagements/start", null, false, req);
     console.error("[Orchestrator] Start engagement error:", error);
     res.status(502).json({ error: "Orchestrator service unavailable" });
   }
@@ -110,11 +113,14 @@ router.get("/engagements/:id", async (req: Request, res: Response) => {
  * POST /api/v1/orchestrator/engagements/:id/advance
  * Advance engagement to next phase.
  */
-router.post("/engagements/:id/advance", logAudit("engagement:advance"), async (req: Request, res: Response) => {
+router.post("/engagements/:id/advance", async (req: Request, res: Response) => {
+  const user = req.user as any;
   try {
     const result = await advanceEngagement(req.params.id);
+    await logAudit(user.id, "engagement:advance", `/orchestrator/engagements/${req.params.id}/advance`, req.params.id, true, req);
     res.json(result);
   } catch (error) {
+    await logAudit(user.id, "engagement:advance", `/orchestrator/engagements/${req.params.id}/advance`, req.params.id, false, req);
     console.error("[Orchestrator] Advance error:", error);
     res.status(502).json({ error: "Failed to advance engagement" });
   }
@@ -124,19 +130,22 @@ router.post("/engagements/:id/advance", logAudit("engagement:advance"), async (r
  * POST /api/v1/orchestrator/engagements/:id/approve
  * Approve or deny exploitation for an engagement.
  */
-router.post("/engagements/:id/approve", logAudit("engagement:approve"), async (req: Request, res: Response) => {
+router.post("/engagements/:id/approve", async (req: Request, res: Response) => {
+  const user = req.user as any;
   try {
     const parsed = approvalSchema.parse(req.body);
     const result = await approveExploitation({
       engagement_id: req.params.id,
       ...parsed,
     });
+    await logAudit(user.id, "engagement:approve", `/orchestrator/engagements/${req.params.id}/approve`, req.params.id, true, req);
     res.json(result);
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: "Validation error", details: error.errors });
       return;
     }
+    await logAudit(user.id, "engagement:approve", `/orchestrator/engagements/${req.params.id}/approve`, req.params.id, false, req);
     console.error("[Orchestrator] Approval error:", error);
     res.status(502).json({ error: "Failed to process approval" });
   }
@@ -166,16 +175,19 @@ const batchToolExecSchema = z.object({
  * POST /api/v1/orchestrator/tools/execute
  * Execute a single tool inside its mapped container.
  */
-router.post("/tools/execute", logAudit("tool:execute"), async (req: Request, res: Response) => {
+router.post("/tools/execute", async (req: Request, res: Response) => {
+  const user = req.user as any;
   try {
     const parsed = toolExecSchema.parse(req.body);
     const result = await executeTool(parsed);
+    await logAudit(user.id, "tool:execute", "/orchestrator/tools/execute", parsed.tool_name, true, req);
     res.json(result);
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: "Validation error", details: error.errors });
       return;
     }
+    await logAudit(user.id, "tool:execute", "/orchestrator/tools/execute", null, false, req);
     console.error("[Orchestrator] Tool exec error:", error);
     res.status(502).json({ error: "Tool execution failed" });
   }
@@ -185,16 +197,19 @@ router.post("/tools/execute", logAudit("tool:execute"), async (req: Request, res
  * POST /api/v1/orchestrator/tools/execute-batch
  * Execute multiple tools in parallel.
  */
-router.post("/tools/execute-batch", logAudit("tool:execute-batch"), async (req: Request, res: Response) => {
+router.post("/tools/execute-batch", async (req: Request, res: Response) => {
+  const user = req.user as any;
   try {
     const parsed = batchToolExecSchema.parse(req.body);
     const result = await executeToolsBatch(parsed);
+    await logAudit(user.id, "tool:execute-batch", "/orchestrator/tools/execute-batch", null, true, req);
     res.json(result);
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: "Validation error", details: error.errors });
       return;
     }
+    await logAudit(user.id, "tool:execute-batch", "/orchestrator/tools/execute-batch", null, false, req);
     console.error("[Orchestrator] Batch exec error:", error);
     res.status(502).json({ error: "Batch execution failed" });
   }

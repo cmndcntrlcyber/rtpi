@@ -30,6 +30,8 @@ import {
 import { eq, sql } from "drizzle-orm";
 import { fetchTaxiiObjects, type TaxiiObject } from "./taxii-client";
 import { embedder, EmbedderError } from "./embedder";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("cti-feed-ingestor");
 
 const EMBED_BATCH = 16;
 const SUMMARY_MAX = 4_000;
@@ -188,7 +190,7 @@ class CtiFeedIngestor {
       spec,
       () => {
         this.runDueSources().catch((err) =>
-          console.warn("[cti] cron tick failed:", err),
+          log.warn("[cti] cron tick failed:", err),
         );
       },
       null,
@@ -211,7 +213,7 @@ class CtiFeedIngestor {
       try {
         await this.runSource(source.id);
       } catch (err) {
-        console.warn(`[cti] source ${source.name} run failed:`, err);
+        log.warn(`[cti] source ${source.name} run failed:`, err);
       }
     }
   }
@@ -308,10 +310,10 @@ class CtiFeedIngestor {
           // with the next batch (rest of the run shouldn't fail because of
           // one slow embedding response).
           if (err instanceof EmbedderError && err.code === "dimension_mismatch") {
-            console.warn(`[cti] embedding skipped: ${err.message}`);
+            log.warn(`[cti] embedding skipped: ${err.message}`);
             break;
           }
-          console.warn("[cti] embedding batch failed:", err);
+          log.warn("[cti] embedding batch failed:", err);
         }
       }
 

@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Bot, Server, Activity, Clock, Plus, RotateCcw, Pause, Target, CheckCircle, AlertTriangle, Zap, GripVertical, ArrowRight, X, Import, Workflow, ChevronDown, ChevronRight, Pencil, Trash2, Search, MoveRight, Ban, MessageSquare, RefreshCw, Loader2, Cpu } from "lucide-react";
+import { Bot, Server, Activity, Clock, Plus, RotateCcw, Pause, Target, CheckCircle, AlertTriangle, Zap, GripVertical, ArrowRight, X, Import, Workflow, ChevronDown, ChevronRight, Pencil, Trash2, Search, MoveRight, Ban, MessageSquare, RefreshCw, Loader2, Cpu, Maximize2, Minimize2 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -31,6 +32,8 @@ import WorkflowBuilder from "@/components/agents/WorkflowBuilder";
 import WorkflowEditDialog from "@/components/agents/WorkflowEditDialog";
 import { AgentsTablePanel } from "@/components/agents/AgentsTablePanel";
 import { DefaultServersPanel } from "@/components/mcp/DefaultServersPanel";
+import AgentFlowCanvas from "@/components/flows/AgentFlowCanvas";
+import AgentMcpPanel from "@/components/flows/AgentMcpPanel";
 import { DualListbox } from "@/components/ui/DualListbox";
 import { useAgentChatManager } from "@/contexts/AgentChatContext";
 import {
@@ -322,6 +325,31 @@ export default function Agents() {
   const { operations } = useOperations();
   const [selectedTargetId, setSelectedTargetId] = useState<string>("");
   const [selectedWorkflowTemplateId, setSelectedWorkflowTemplateId] = useState<string>("");
+
+  // Agent Workflow Builder floating-window state. When floating, the builder is
+  // rendered in a draggable window via a portal to <body> (so no parent
+  // overflow/transform can clip it). builderWinPos is the window's top-left.
+  const [builderFloating, setBuilderFloating] = useState(false);
+  const [builderWinPos, setBuilderWinPos] = useState({ x: 120, y: 90 });
+  const builderDragRef = useRef<{ dx: number; dy: number } | null>(null);
+
+  const onBuilderDragStart = (e: React.MouseEvent) => {
+    builderDragRef.current = { dx: e.clientX - builderWinPos.x, dy: e.clientY - builderWinPos.y };
+    const onMove = (ev: MouseEvent) => {
+      if (!builderDragRef.current) return;
+      setBuilderWinPos({
+        x: Math.max(0, ev.clientX - builderDragRef.current.dx),
+        y: Math.max(0, ev.clientY - builderDragRef.current.dy),
+      });
+    };
+    const onUp = () => {
+      builderDragRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
   const [newServer, setNewServer] = useState({
     name: "",
     command: "",
@@ -408,6 +436,19 @@ export default function Agents() {
       refetchAgents();
     } catch {
       toast.error("Failed to assign tactic");
+    }
+  };
+
+  // Agent-LLM tab: set the inference model for a single agent. Merges into the
+  // agent's existing config so other config keys are preserved. The agent-flow
+  // canvas reads config.model and renders it read-only on the node header.
+  const handleSetAgentModel = async (agent: any, model: string) => {
+    try {
+      await api.put(`/agents/${agent.id}`, { config: { ...(agent.config || {}), model } });
+      toast.success(`Model set to ${model} for ${agent.name}`);
+      await refetchAgents();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to set agent model");
     }
   };
 
@@ -1025,35 +1066,34 @@ export default function Agents() {
         </div>
       </div>
 
-      {/* Workflow Order + combined Workflows (Active + History) — share row 1.
-          The AI Agents / MCP Servers panel sits alone in row 2 below. */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <Card className={`bg-card ${expandedGroups.workflowOrder !== expandedGroups.workflows ? "lg:col-span-2" : ""}`}>
-          <CardHeader
-            className="cursor-pointer hover:bg-secondary/50 rounded-t-lg transition-colors"
-            onClick={() => setExpandedGroups(prev => ({ ...prev, workflowOrder: !prev.workflowOrder }))}
-          >
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                {expandedGroups.workflowOrder ? (
-                  <ChevronDown className="h-4 w-4" />
-                ) : (
-                  <ChevronRight className="h-4 w-4" />
-                )}
-                <Workflow className="h-5 w-5 text-indigo-600" />
-                Workflow Order
-                <Badge variant="secondary" className="ml-2">
-                  {workflowTemplates.length}
-                </Badge>
-              </CardTitle>
+      {/* Agent Workflow Workorder (Langflow-style canvas). The 4-tab control
+          sits ABOVE the canvas, both full width: Workflow order, Workflows,
+          Agent-MCP, and Agent-LLM (per-agent inference model). */}
+      <div className="space-y-6 mb-6">
+        {/* 4-tab panel — full width, above the canvas */}
+        <Card className="bg-card">
+          <CardContent className="pt-4">
+            <Tabs
+              defaultValue="order"
+              className="w-full"
+              onValueChange={(v) => {
+                if (v === "agentllm" && ollamaModels.length === 0) loadOllamaModels();
+              }}
+            >
+              <TabsList className="grid grid-cols-4 w-full">
+                <TabsTrigger value="order" className="text-xs">Workflow order</TabsTrigger>
+                <TabsTrigger value="workflows" className="text-xs">Workflows</TabsTrigger>
+                <TabsTrigger value="agentmcp" className="text-xs">Agent-MCP</TabsTrigger>
+                <TabsTrigger value="agentllm" className="text-xs">Agent-LLM</TabsTrigger>
+              </TabsList>
 
-              {/* Target Selector, Reporters & Execute Button — only when expanded */}
-              {expandedGroups.workflowOrder && (
-                <div className="flex flex-col items-end gap-2" onClick={(e) => e.stopPropagation()}>
+              {/* ---- Workflow order tab ---- */}
+              <TabsContent value="order" className="mt-4 space-y-3">
+                <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-2">
                     <Target className="h-4 w-4 text-muted-foreground" />
                     <Select value={selectedTargetId} onValueChange={setSelectedTargetId}>
-                      <SelectTrigger className="w-48">
+                      <SelectTrigger className="flex-1">
                         <SelectValue placeholder="Select target..." />
                       </SelectTrigger>
                       <SelectContent>
@@ -1078,196 +1118,307 @@ export default function Agents() {
                   <Button
                     onClick={() => handleExecuteWorkflowTemplate()}
                     disabled={!selectedTargetId || !selectedWorkflowTemplateId}
-                    className="w-48 bg-green-600 hover:bg-green-700 text-white"
+                    className="w-full bg-green-600 hover:bg-green-700 text-white"
                   >
                     <Zap className="h-4 w-4 mr-2" />
                     Execute
                   </Button>
                 </div>
-              )}
-            </div>
-          </CardHeader>
-          {expandedGroups.workflowOrder && <CardContent>
-            {workflowTemplates.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Workflow className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p className="text-sm">No workflow templates yet.</p>
-                <p className="text-xs mt-1">
-                  Create a workflow using the &quot;Create Workflow&quot; button above.
-                </p>
-              </div>
-            ) : (
-              <>
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleWorkflowDragEnd}
-                >
-                  <SortableContext
-                    items={workflowTemplates.map((t) => t.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    <div className="space-y-3">
-                      {workflowTemplates.map((template, index) => (
-                        <SortableWorkflowItem
-                          key={template.id}
-                          template={template}
-                          index={index}
-                          onRemove={handleDeleteWorkflowTemplate}
-                          onSelect={setSelectedWorkflowTemplateId}
-                          onExecute={handleExecuteWorkflowTemplate}
-                          onEdit={handleEditWorkflowTemplate}
-                          isSelected={selectedWorkflowTemplateId === template.id}
-                          agentCount={template.configuration?.agents?.length || 0}
-                          targetSelected={!!selectedTargetId}
-                        />
-                      ))}
-                    </div>
-                  </SortableContext>
-                </DndContext>
 
-                {/* How it Works Section */}
-                {workflowTemplates.length > 0 && (
-                  <div className="mt-6 p-4 bg-indigo-50 rounded-lg border border-indigo-200">
-                    <h4 className="text-sm font-medium text-foreground mb-2">How Workflow Order Works</h4>
-                    <ul className="text-xs text-muted-foreground space-y-1">
-                      <li>• Workflows are listed in priority order (top = highest priority)</li>
-                      <li>• Each workflow contains its own agent sequence (managed in Workflow Builder)</li>
-                      <li>• Drag workflows up or down to change their priority</li>
-                      <li>• Click a workflow to select it, then click Execute to run against a target</li>
-                      <li>• Click X to delete a workflow template</li>
-                    </ul>
-                  </div>
-                )}
-              </>
-            )}
-          </CardContent>}
-        </Card>
-
-        {/* Combined Workflows — Active + History as tabs in one card.
-            Replaces the previous side-by-side Active Workflows + Workflow
-            History panels so operators see both states in one place.
-            Toggle behavior matches Workflow Order: when one of the two cards
-            is collapsed and the other expanded, the expanded card spans
-            both columns so the row reclaims the freed space. */}
-        <Card className={`bg-card ${expandedGroups.workflowOrder !== expandedGroups.workflows ? "lg:col-span-2" : ""}`}>
-          <CardHeader
-            className="cursor-pointer hover:bg-secondary/50 rounded-t-lg transition-colors pb-3"
-            onClick={() => setExpandedGroups(prev => ({ ...prev, workflows: !prev.workflows }))}
-          >
-            <CardTitle className="flex items-center gap-2">
-              {expandedGroups.workflows ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
-              <Activity className="h-5 w-5 text-blue-600" />
-              Workflows
-              <Badge variant="secondary" className="ml-2 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
-                {runningWorkflows.length} active
-              </Badge>
-              <Badge variant="secondary" className="ml-1">
-                {allNonRunning.length} history
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          {expandedGroups.workflows && <CardContent>
-            <Tabs defaultValue="active" className="w-full">
-              <TabsList>
-                <TabsTrigger value="active" className="flex items-center gap-2">
-                  <Activity className="h-4 w-4" />
-                  Active
-                  <Badge variant="secondary" className="ml-1 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
-                    {runningWorkflows.length}
-                  </Badge>
-                </TabsTrigger>
-                <TabsTrigger value="history" className="flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  History
-                  <Badge variant="secondary" className="ml-1">
-                    {allNonRunning.length}
-                  </Badge>
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="active" className="space-y-4 mt-4">
-                {runningWorkflows.length > 0 ? (
-                  <div className="space-y-4">
-                    {runningWorkflows.map((workflow) => (
-                      <WorkflowProgressCard
-                        key={workflow.id}
-                        workflow={workflow}
-                        tasks={workflowTasksMap[workflow.id] || []}
-                        agents={agents}
-                        onCancel={handleCancelWorkflow}
-                        onViewDetails={handleViewWorkflowDetails}
-                      />
-                    ))}
+                {workflowTemplates.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Workflow className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p className="text-sm">No workflow templates yet.</p>
+                    <p className="text-xs mt-1">
+                      Create a workflow using the &quot;Create Workflow&quot; button above,
+                      or &quot;New&quot; in the canvas.
+                    </p>
                   </div>
                 ) : (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <Activity className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                    <p className="text-sm">No active workflows</p>
-                    <p className="text-xs mt-1">Execute a workflow to see progress here.</p>
-                  </div>
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleWorkflowDragEnd}
+                  >
+                    <SortableContext
+                      items={workflowTemplates.map((t) => t.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="space-y-3">
+                        {workflowTemplates.map((template, index) => (
+                          <SortableWorkflowItem
+                            key={template.id}
+                            template={template}
+                            index={index}
+                            onRemove={handleDeleteWorkflowTemplate}
+                            onSelect={setSelectedWorkflowTemplateId}
+                            onExecute={handleExecuteWorkflowTemplate}
+                            onEdit={handleEditWorkflowTemplate}
+                            isSelected={selectedWorkflowTemplateId === template.id}
+                            agentCount={template.configuration?.agents?.length || 0}
+                            targetSelected={!!selectedTargetId}
+                          />
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
                 )}
               </TabsContent>
 
-              <TabsContent value="history" className="space-y-3 mt-4">
-                {allNonRunning.length > 0 ? (
-                  <div className="space-y-3">
-                    {allNonRunning.slice(0, 10).map((workflow) => (
-                      <div
-                        key={workflow.id}
-                        className="p-3 bg-secondary rounded border border-border hover:bg-secondary/80 transition-colors"
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex-1">
-                            <h4 className="text-sm font-medium text-foreground">
-                              {workflow.name}
-                            </h4>
-                            <p className="text-xs text-muted-foreground">
-                              {workflow.completedAt
-                                ? new Date(workflow.completedAt).toLocaleString()
-                                : new Date(workflow.createdAt).toLocaleString()}
-                            </p>
-                          </div>
-                          <Badge
-                            variant="secondary"
-                            className={`${
-                              workflow.status === "completed"
-                                ? "bg-green-500/10 text-green-600"
-                                : workflow.status === "failed"
-                                ? "bg-red-500/10 text-red-600"
-                                : "bg-secondary/10 text-muted-foreground"
-                            }`}
-                          >
-                            {workflow.status.toUpperCase()}
-                          </Badge>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleViewWorkflowDetails(workflow.id)}
-                          className="w-full text-xs"
-                        >
-                          View Details
-                        </Button>
+              {/* ---- Workflows tab (Active + History) ---- */}
+              <TabsContent value="workflows" className="mt-4">
+                <Tabs defaultValue="active" className="w-full">
+                  <TabsList>
+                    <TabsTrigger value="active" className="flex items-center gap-2">
+                      <Activity className="h-4 w-4" />
+                      Active
+                      <Badge variant="secondary" className="ml-1 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
+                        {runningWorkflows.length}
+                      </Badge>
+                    </TabsTrigger>
+                    <TabsTrigger value="history" className="flex items-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      History
+                      <Badge variant="secondary" className="ml-1">
+                        {allNonRunning.length}
+                      </Badge>
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="active" className="space-y-4 mt-4">
+                    {runningWorkflows.length > 0 ? (
+                      <div className="space-y-4">
+                        {runningWorkflows.map((workflow) => (
+                          <WorkflowProgressCard
+                            key={workflow.id}
+                            workflow={workflow}
+                            tasks={workflowTasksMap[workflow.id] || []}
+                            agents={agents}
+                            onCancel={handleCancelWorkflow}
+                            onViewDetails={handleViewWorkflowDetails}
+                          />
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <Clock className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                    <p className="text-sm">No workflow history</p>
-                    <p className="text-xs mt-1">Completed workflows will appear here.</p>
-                  </div>
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Activity className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                        <p className="text-sm">No active workflows</p>
+                        <p className="text-xs mt-1">Execute a workflow to see progress here.</p>
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="history" className="space-y-3 mt-4">
+                    {allNonRunning.length > 0 ? (
+                      <div className="space-y-3">
+                        {allNonRunning.slice(0, 10).map((workflow) => (
+                          <div
+                            key={workflow.id}
+                            className="p-3 bg-secondary rounded border border-border hover:bg-secondary/80 transition-colors"
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex-1">
+                                <h4 className="text-sm font-medium text-foreground">
+                                  {workflow.name}
+                                </h4>
+                                <p className="text-xs text-muted-foreground">
+                                  {workflow.completedAt
+                                    ? new Date(workflow.completedAt).toLocaleString()
+                                    : new Date(workflow.createdAt).toLocaleString()}
+                                </p>
+                              </div>
+                              <Badge
+                                variant="secondary"
+                                className={`${
+                                  workflow.status === "completed"
+                                    ? "bg-green-500/10 text-green-600"
+                                    : workflow.status === "failed"
+                                    ? "bg-red-500/10 text-red-600"
+                                    : "bg-secondary/10 text-muted-foreground"
+                                }`}
+                              >
+                                {workflow.status.toUpperCase()}
+                              </Badge>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleViewWorkflowDetails(workflow.id)}
+                              className="w-full text-xs"
+                            >
+                              View Details
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Clock className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                        <p className="text-sm">No workflow history</p>
+                        <p className="text-xs mt-1">Completed workflows will appear here.</p>
+                      </div>
+                    )}
+                  </TabsContent>
+                </Tabs>
+              </TabsContent>
+
+              {/* ---- Agent-MCP tab ---- */}
+              <TabsContent value="agentmcp" className="mt-4">
+                <AgentMcpPanel />
+              </TabsContent>
+
+              {/* ---- Agent-LLM tab: per-agent inference model ---- */}
+              <TabsContent value="agentllm" className="mt-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">
+                    Set the inference model per agent. This populates the model shown
+                    on the agent's canvas node (read-only there).
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={loadOllamaModels}
+                    disabled={ollamaModelsLoading}
+                  >
+                    {ollamaModelsLoading ? "Loading…" : "Refresh models"}
+                  </Button>
+                </div>
+                {ollamaModelsError && (
+                  <p className="text-xs text-red-500">Models: {ollamaModelsError}</p>
                 )}
+                <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                  {agents.length === 0 && (
+                    <p className="text-xs text-muted-foreground">No agents yet.</p>
+                  )}
+                  {agents.map((agent: any) => {
+                    const current = agent.config?.model || "";
+                    const known = ollamaModels.some((m) => m.name === current);
+                    return (
+                      <div
+                        key={agent.id}
+                        className="flex items-center gap-2 border border-border rounded px-2 py-1.5"
+                      >
+                        <Bot className="h-4 w-4 text-blue-600 shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm truncate">{agent.name}</div>
+                          <div className="text-[10px] text-muted-foreground truncate">
+                            {current || "no model set"}
+                          </div>
+                        </div>
+                        <Select
+                          value={current || undefined}
+                          onValueChange={(v) => handleSetAgentModel(agent, v)}
+                        >
+                          <SelectTrigger className="h-8 w-44 text-xs shrink-0">
+                            <SelectValue placeholder="Select model…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {/* Preserve a previously-set model even if it's not in
+                                the live Ollama list (e.g. a cloud/vLLM model). */}
+                            {current && !known && (
+                              <SelectItem value={current}>{current} (current)</SelectItem>
+                            )}
+                            {ollamaModels.map((m) => (
+                              <SelectItem key={m.name} value={m.name}>
+                                {m.name}
+                              </SelectItem>
+                            ))}
+                            {ollamaModels.length === 0 && !current && (
+                              <SelectItem value="__none__" disabled>
+                                No models — click Refresh
+                              </SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    );
+                  })}
+                </div>
               </TabsContent>
             </Tabs>
-          </CardContent>}
+          </CardContent>
+        </Card>
+
+        {/* Canvas — full width, below the tab panel. Can pop out into a
+            draggable floating window (rendered via portal to <body>). */}
+        <Card className="bg-card overflow-hidden">
+          <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="flex items-center gap-2">
+              <Workflow className="h-5 w-5 text-indigo-600" />
+              Agent Workflow Builder
+            </CardTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setBuilderFloating((f) => !f)}
+              title={builderFloating ? "Dock the builder back into the page" : "Open the builder in a floating window"}
+            >
+              {builderFloating ? (
+                <><Minimize2 className="h-4 w-4 mr-1" />Dock builder</>
+              ) : (
+                <><Maximize2 className="h-4 w-4 mr-1" />Floating window</>
+              )}
+            </Button>
+          </CardHeader>
+          <CardContent className="p-0">
+            {builderFloating ? (
+              <div className="p-6 text-sm text-muted-foreground flex items-center gap-2">
+                <Workflow className="h-4 w-4" />
+                Builder is open in a floating window.
+                <button
+                  className="underline hover:text-foreground"
+                  onClick={() => setBuilderFloating(false)}
+                >
+                  Dock it back
+                </button>
+              </div>
+            ) : (
+              <AgentFlowCanvas
+                templateId={selectedWorkflowTemplateId || null}
+                onSelectTemplate={(id) => setSelectedWorkflowTemplateId(id || "")}
+              />
+            )}
+          </CardContent>
         </Card>
       </div>
+
+      {/* Floating builder window — portal to <body> so no ancestor overflow or
+          transform can clip it. Draggable by its title bar. */}
+      {builderFloating &&
+        createPortal(
+          <div
+            className="fixed z-[60] rounded-lg border border-border bg-card shadow-2xl overflow-hidden flex flex-col"
+            style={{ left: builderWinPos.x, top: builderWinPos.y, width: "min(1280px, 94vw)" }}
+            role="dialog"
+            aria-label="Agent Workflow Builder"
+          >
+            <div
+              className="flex items-center justify-between px-3 py-2 bg-secondary/70 border-b border-border cursor-move select-none"
+              onMouseDown={onBuilderDragStart}
+            >
+              <span className="text-sm font-semibold flex items-center gap-2">
+                <Workflow className="h-4 w-4 text-indigo-600" />
+                Agent Workflow Builder
+              </span>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-6 w-6"
+                onClick={() => setBuilderFloating(false)}
+                title="Dock back into the page"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="overflow-hidden">
+              <AgentFlowCanvas
+                templateId={selectedWorkflowTemplateId || null}
+                onSelectTemplate={(id) => setSelectedWorkflowTemplateId(id || "")}
+              />
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {/* AI Agents / MCP Servers — full-width row 2 */}
       <Card className="bg-card">

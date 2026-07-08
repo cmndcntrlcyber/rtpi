@@ -5,6 +5,8 @@ import {
   batchValidateAssignments,
 } from "../../services/agent-tool-validator";
 import { z } from "zod";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("agent-tool-validation");
 
 const router = Router();
 
@@ -32,7 +34,7 @@ router.post("/validate", async (req, res) => {
 
     res.json(result);
   } catch (error: any) {
-    console.error("Failed to validate agent-tool assignment:", error);
+    log.error("Failed to validate agent-tool assignment:", error);
     res.status(500).json({
       error: "Failed to validate assignment",
       details: error?.message || "Internal server error",
@@ -68,7 +70,7 @@ router.post("/validate/batch", async (req, res) => {
 
     res.json({ results });
   } catch (error: any) {
-    console.error("Failed to batch validate assignments:", error);
+    log.error("Failed to batch validate assignments:", error);
     res.status(500).json({
       error: "Failed to batch validate",
       details: error?.message || "Internal server error",
@@ -91,7 +93,7 @@ router.get("/alternatives/:agentId", async (req, res) => {
 
     res.json({ alternatives });
   } catch (error: any) {
-    console.error("Failed to get alternative tools:", error);
+    log.error("Failed to get alternative tools:", error);
     res.status(500).json({
       error: "Failed to get alternatives",
       details: error?.message || "Internal server error",

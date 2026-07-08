@@ -11,6 +11,8 @@ import { agentTokenService } from "../../services/agent-token-service";
 import { db } from "../../db";
 import { agentBundles } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("agent-public");
 
 const router = Router();
 
@@ -40,7 +42,7 @@ router.get("/agents/download/:token", async (req, res) => {
     const validation = await agentTokenService.validateToken(token, clientIp);
 
     if (!validation.valid) {
-      console.warn(
+      log.warn(
         `[AgentPublic] Token validation failed: ${validation.errorMessage} (IP: ${clientIp})`
       );
 
@@ -90,7 +92,7 @@ router.get("/agents/download/:token", async (req, res) => {
     await agentTokenService.recordDownload(token);
 
     // Log successful download
-    console.log(
+    log.info(
       `[AgentPublic] Download successful: ${bundle.name} (${bundle.platform}/${bundle.architecture}) - IP: ${clientIp}`
     );
 

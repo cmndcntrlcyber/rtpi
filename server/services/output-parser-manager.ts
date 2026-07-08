@@ -7,6 +7,8 @@ import { db } from '../db';
 import { toolOutputParsers } from '../../shared/schema';
 import { eq } from 'drizzle-orm';
 import type { OutputParserConfig } from '../../shared/types/tool-config';
+import { createLogger } from '../lib/logger';
+const log = createLogger("output-parser-manager");
 
 /**
  * Parser type discriminator
@@ -224,7 +226,7 @@ export class OutputParserManager {
           result[key] = [];
         }
       } catch (error: any) {
-        console.error(`Failed to parse regex pattern for ${key}:`, error);
+        log.error(`Failed to parse regex pattern for ${key}:`, error);
         result[key] = { error: error.message };
       }
     }

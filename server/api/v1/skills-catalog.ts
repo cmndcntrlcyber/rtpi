@@ -26,6 +26,8 @@ import { db } from "../../db";
 import { ensureAuthenticated } from "../../auth/middleware";
 import { loadSkillSummary } from "../../services/skills/skill-loader";
 import { listAllRegisteredTools } from "../../services/skill-generator";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("skills-catalog");
 
 const router = Router();
 router.use(ensureAuthenticated);
@@ -66,7 +68,7 @@ router.get("/available", async (req, res) => {
         });
       }
     } catch (err) {
-      console.warn("[skills-catalog] tool-skill enumeration failed:", err);
+      log.warn("[skills-catalog] tool-skill enumeration failed:", err);
     }
   }
 
@@ -156,7 +158,7 @@ router.get("/available", async (req, res) => {
         }
       }
     } catch (err) {
-      console.warn("[skills-catalog] bug-hunter enumeration failed:", err);
+      log.warn("[skills-catalog] bug-hunter enumeration failed:", err);
     }
   }
 

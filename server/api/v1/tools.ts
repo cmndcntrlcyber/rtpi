@@ -52,6 +52,8 @@ import { enqueueSkillGeneration } from "../../services/skill-generator";
 import type { ToolConfiguration } from "../../../shared/types/tool-config";
 import { frameworkBindingService } from "../../services/frameworks/framework-binding-service";
 import { ContainerError } from "../../services/runtime/error-classifier";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("tools");
 
 const router = Router();
 
@@ -457,7 +459,7 @@ router.post("/:id/execute-docker", ensureRole("admin", "operator"), async (req, 
             updatedAt: new Date(),
           })
           .where(eq(toolRegistry.id, regTool.id));
-      } catch (e) { console.warn('[tools] Failed to update tool stats:', e); }
+      } catch (e) { log.warn('[tools] Failed to update tool stats:', e); }
 
       return res.json({
         success: true,
@@ -1225,7 +1227,7 @@ Category: ${(tool as any).category || 'unknown'}`;
       });
     } catch (aiError: any) {
       // Fallback: build a reasonable command from tool config + target
-      console.error('[generate-command] AI failed, using template fallback:', aiError.message);
+      log.error('[generate-command] AI failed, using template fallback:', aiError.message);
 
       const baseCmd = config?.baseCommand || tool.binaryPath;
       let command = baseCmd;
@@ -1406,7 +1408,7 @@ router.post("/refresh", ensureRole("admin", "operator"), async (req, res) => {
   const user = req.user as any;
 
   try {
-    console.log("Starting tools registry refresh...");
+    log.info("Starting tools registry refresh...");
 
     // Discover tools from container
     const discoveredTools = await discoverTools();
@@ -1451,7 +1453,7 @@ router.post("/refresh", ensureRole("admin", "operator"), async (req, res) => {
           },
         });
         added++;
-        console.log(`  Added: ${tool.name}`);
+        log.info(`  Added: ${tool.name}`);
       } else {
         // Update existing tool — preserve good description, sanitize version
         await db
@@ -1473,7 +1475,7 @@ router.post("/refresh", ensureRole("admin", "operator"), async (req, res) => {
           })
           .where(eq(securityTools.id, existing[0].id));
         updated++;
-        console.log(`  Updated: ${tool.name}`);
+        log.info(`  Updated: ${tool.name}`);
       }
     }
 
@@ -1535,7 +1537,7 @@ router.post("/refresh", ensureRole("admin", "operator"), async (req, res) => {
       }
     }
     if (cleaned > 0) {
-      console.log(`  Cleaned ${cleaned} toolRegistry entries with error strings`);
+      log.info(`  Cleaned ${cleaned} toolRegistry entries with error strings`);
     }
 
     await logAudit(user.id, "refresh_tools_registry", "/tools/refresh", null, true, req);
@@ -1550,7 +1552,7 @@ router.post("/refresh", ensureRole("admin", "operator"), async (req, res) => {
       tools: discoveredTools,
     });
   } catch (error: any) {
-    console.error("Tools refresh failed:", error);
+    log.error("Tools refresh failed:", error);
     await logAudit(user.id, "refresh_tools_registry", "/tools/refresh", null, false, req);
     res.status(500).json({
       error: "Failed to refresh tools registry",

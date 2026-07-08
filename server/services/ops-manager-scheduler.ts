@@ -2,6 +2,8 @@ import { db } from "../db";
 import { operations, agentWorkflows } from "../../shared/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { opsManagementOrchestrator } from "./ops-management-orchestrator";
+import { createLogger } from '../lib/logger';
+const log = createLogger("ops-manager-scheduler");
 
 /**
  * Operations Manager Scheduler
@@ -23,11 +25,11 @@ class OpsManagerScheduler {
    */
   start(): void {
     if (this.interval) {
-      console.log("⚠️  [OpsManagerScheduler] Scheduler already running");
+      log.info("⚠️  [OpsManagerScheduler] Scheduler already running");
       return;
     }
 
-    console.log("🚀 [OpsManagerScheduler] Starting hourly scheduler");
+    log.info("🚀 [OpsManagerScheduler] Starting hourly scheduler");
 
     // Run immediately on startup
     this.checkAndExecute();
@@ -43,7 +45,7 @@ class OpsManagerScheduler {
    */
   shutdown(): void {
     if (this.interval) {
-      console.log("🛑 [OpsManagerScheduler] Shutting down scheduler");
+      log.info("🛑 [OpsManagerScheduler] Shutting down scheduler");
       clearInterval(this.interval);
       this.interval = null;
     }
@@ -54,12 +56,12 @@ class OpsManagerScheduler {
    */
   private async checkAndExecute(): Promise<void> {
     if (this.isRunning) {
-      console.log("⏭️  [OpsManagerScheduler] Previous check still running, skipping");
+      log.info("⏭️  [OpsManagerScheduler] Previous check still running, skipping");
       return;
     }
 
     this.isRunning = true;
-    console.log("⏰ [OpsManagerScheduler] Running hourly check at", new Date().toISOString());
+    log.info("⏰ [OpsManagerScheduler] Running hourly check at", new Date().toISOString());
 
     try {
       // Find operations with hourly reporting enabled
@@ -68,10 +70,10 @@ class OpsManagerScheduler {
         .from(operations)
         .where(eq(operations.hourlyReportingEnabled, true));
 
-      console.log(`📊 [OpsManagerScheduler] Found ${enabledOperations.length} operations with hourly reporting enabled`);
+      log.info(`📊 [OpsManagerScheduler] Found ${enabledOperations.length} operations with hourly reporting enabled`);
 
       if (enabledOperations.length === 0) {
-        console.log("✅ [OpsManagerScheduler] No operations to process");
+        log.info("✅ [OpsManagerScheduler] No operations to process");
         return;
       }
 
@@ -83,7 +85,7 @@ class OpsManagerScheduler {
           // Small delay between operations to avoid overwhelming the system
           await new Promise(resolve => setTimeout(resolve, this.CHECK_DELAY_MS));
         } catch (error) {
-          console.error(
+          log.error(
             `❌ [OpsManagerScheduler] Error processing operation ${operation.id}:`,
             error instanceof Error ? error.message : error
           );
@@ -91,9 +93,9 @@ class OpsManagerScheduler {
         }
       }
 
-      console.log("✅ [OpsManagerScheduler] Hourly check completed");
+      log.info("✅ [OpsManagerScheduler] Hourly check completed");
     } catch (error) {
-      console.error(
+      log.error(
         "❌ [OpsManagerScheduler] Fatal error during check:",
         error instanceof Error ? error.message : error
       );
@@ -107,20 +109,20 @@ class OpsManagerScheduler {
    * Checks for active workflows and starts new one if needed
    */
   private async processOperation(operation: typeof operations.$inferSelect): Promise<void> {
-    console.log(`🔍 [OpsManagerScheduler] Processing operation: ${operation.name} (${operation.id})`);
+    log.info(`🔍 [OpsManagerScheduler] Processing operation: ${operation.name} (${operation.id})`);
 
     // Check for existing active workflows
     const activeWorkflow = await this.getActiveWorkflow(operation.id);
 
     if (activeWorkflow) {
-      console.log(
+      log.info(
         `⏸️  [OpsManagerScheduler] Skipping operation ${operation.id} - active workflow ${activeWorkflow.id} already running`
       );
       return;
     }
 
     // Start new workflow
-    console.log(`🚀 [OpsManagerScheduler] Starting new ops management workflow for operation ${operation.id}`);
+    log.info(`🚀 [OpsManagerScheduler] Starting new ops management workflow for operation ${operation.id}`);
 
     try {
       const workflow = await opsManagementOrchestrator.startOpsManagementWorkflow(
@@ -128,9 +130,9 @@ class OpsManagerScheduler {
         `Hourly Operations Management - ${new Date().toISOString()}`
       );
 
-      console.log(`✅ [OpsManagerScheduler] Started workflow ${workflow.id} for operation ${operation.id}`);
+      log.info(`✅ [OpsManagerScheduler] Started workflow ${workflow.id} for operation ${operation.id}`);
     } catch (error) {
-      console.error(
+      log.error(
         `❌ [OpsManagerScheduler] Failed to start workflow for operation ${operation.id}:`,
         error instanceof Error ? error.message : error
       );
@@ -162,7 +164,7 @@ class OpsManagerScheduler {
    * Used for testing or immediate execution
    */
   async triggerNow(operationId: string): Promise<string> {
-    console.log(`🔨 [OpsManagerScheduler] Manual trigger for operation ${operationId}`);
+    log.info(`🔨 [OpsManagerScheduler] Manual trigger for operation ${operationId}`);
 
     const operation = await db
       .select()
@@ -179,7 +181,7 @@ class OpsManagerScheduler {
       `Manual Trigger - ${new Date().toISOString()}`
     );
 
-    console.log(`✅ [OpsManagerScheduler] Manually started workflow ${workflow.id}`);
+    log.info(`✅ [OpsManagerScheduler] Manually started workflow ${workflow.id}`);
     return workflow.id;
   }
 

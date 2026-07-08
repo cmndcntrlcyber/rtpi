@@ -6,6 +6,8 @@ import { sysReptorClient } from "../sysreptor-client";
 import { db } from "../../db";
 import { vulnerabilities, operations } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("technical-writer-agent");
 
 /**
  * Technical Writer Agent
@@ -78,7 +80,7 @@ export class TechnicalWriterAgent extends BaseTaskAgent {
     } catch (error) {
       await this.updateStatus("error");
       const errMsg = error instanceof Error ? error.message : String(error);
-      console.error(`[TechnicalWriter] Task failed:`, errMsg);
+      log.error(`[TechnicalWriter] Task failed:`, errMsg);
       return { success: false, error: errMsg };
     }
   }
@@ -121,9 +123,9 @@ Format the output as a professional penetration test report with:
       return result.response.text;
     } catch (err) {
       if (err instanceof NoInferenceProviderAvailable) {
-        console.error("[technical-writer-agent] all providers exhausted:", err.message);
+        log.error("[technical-writer-agent] all providers exhausted:", err.message);
       } else {
-        console.error("[technical-writer-agent] router failed:", err);
+        log.error("[technical-writer-agent] router failed:", err);
       }
     }
 
@@ -147,7 +149,7 @@ Format the output as a professional penetration test report with:
         params.tags || ["rtpi", "automated"],
       );
 
-      console.log(`[TechnicalWriter] SysReptor project created: ${project.id}`);
+      log.info(`[TechnicalWriter] SysReptor project created: ${project.id}`);
 
       // 2. Fetch and push all operation vulnerabilities as findings
       let findingsExported = 0;
@@ -179,14 +181,14 @@ Format the output as a professional penetration test report with:
             });
             findingsExported++;
           } catch (err) {
-            console.error(
+            log.error(
               `[TechnicalWriter] Failed to add finding "${vuln.title}":`,
               err instanceof Error ? err.message : err,
             );
           }
         }
 
-        console.log(`[TechnicalWriter] Exported ${findingsExported}/${validVulns.length} findings`);
+        log.info(`[TechnicalWriter] Exported ${findingsExported}/${validVulns.length} findings`);
 
         // 3. Populate report sections with operation context
         try {
@@ -215,14 +217,14 @@ Format the output as a professional penetration test report with:
             }
           }
         } catch (err) {
-          console.warn("[TechnicalWriter] Could not populate sections:", err instanceof Error ? err.message : err);
+          log.warn("[TechnicalWriter] Could not populate sections:", err instanceof Error ? err.message : err);
         }
       }
 
       const url = `${process.env.SYSREPTOR_URL || "http://rtpi-sysreptor-app:8000"}/projects/${project.id}`;
       return { url, findingsExported };
     } catch (error) {
-      console.error(`[TechnicalWriter] SysReptor submission failed:`, error);
+      log.error(`[TechnicalWriter] SysReptor submission failed:`, error);
       return { url: null, findingsExported: 0 };
     }
   }

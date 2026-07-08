@@ -10,6 +10,8 @@ import { ensureAuthenticated } from "../../auth/middleware";
 import { z } from "zod";
 import { searchSkills, getSkillContent } from "../../services/langgraph-client";
 import { clearSkillCache } from "../../services/skill-discovery-service";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("skills");
 
 const router = Router();
 
@@ -44,7 +46,7 @@ router.post("/search", async (req: Request, res: Response) => {
       res.status(400).json({ error: "Validation error", details: error.errors });
       return;
     }
-    console.error("[Skills] Search error:", error);
+    log.error("[Skills] Search error:", error);
     res.status(502).json({ error: "Skill discovery service unavailable" });
   }
 });
@@ -58,7 +60,7 @@ router.get("/:skillName", async (req: Request, res: Response) => {
     const result = await getSkillContent(req.params.skillName);
     res.json(result);
   } catch (error) {
-    console.error("[Skills] Get skill error:", error);
+    log.error("[Skills] Get skill error:", error);
     res.status(404).json({ error: "Skill not found" });
   }
 });

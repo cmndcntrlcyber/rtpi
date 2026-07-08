@@ -10,6 +10,8 @@ import { eq, and, asc } from "drizzle-orm";
 import { pageReporterAgent } from "./page-reporter-agent";
 import { operationsManagerAgent } from "./operations-manager-agent";
 import { memoryService } from "./memory-service";
+import { createLogger } from '../lib/logger';
+const log = createLogger("ops-management-orchestrator");
 
 /**
  * Operations Management Orchestrator
@@ -31,7 +33,7 @@ class OpsManagementOrchestrator {
     operationId: string,
     workflowName: string
   ): Promise<typeof agentWorkflows.$inferSelect> {
-    console.log(`🚀 [OpsManagementOrchestrator] Starting workflow for operation ${operationId}`);
+    log.info(`🚀 [OpsManagementOrchestrator] Starting workflow for operation ${operationId}`);
 
     try {
       // Verify operation exists
@@ -47,7 +49,7 @@ class OpsManagementOrchestrator {
 
       // Get all page reporter agents
       const reporterAgents = await this.getPageReporterAgents();
-      console.log(`📊 [OpsManagementOrchestrator] Found ${reporterAgents.length} reporter agents`);
+      log.info(`📊 [OpsManagementOrchestrator] Found ${reporterAgents.length} reporter agents`);
 
       // Get operations manager agent
       const managerAgent = await this.getOperationsManagerAgent();
@@ -74,7 +76,7 @@ class OpsManagementOrchestrator {
 
       const createdWorkflow = workflow[0];
 
-      console.log(`✅ [OpsManagementOrchestrator] Created workflow ${createdWorkflow.id}`);
+      log.info(`✅ [OpsManagementOrchestrator] Created workflow ${createdWorkflow.id}`);
 
       // Create reporter tasks (all parallel, sequence 1-N)
       const reporterTasks = reporterAgents.map((agent, idx) => ({
@@ -110,7 +112,7 @@ class OpsManagementOrchestrator {
       const allTasks = [...reporterTasks, managerTask];
       const createdTasks = await db.insert(workflowTasks).values(allTasks).returning();
 
-      console.log(`✅ [OpsManagementOrchestrator] Created ${createdTasks.length} tasks`);
+      log.info(`✅ [OpsManagementOrchestrator] Created ${createdTasks.length} tasks`);
 
       // Update manager task with reporter task IDs
       const reporterTaskIds = createdTasks
@@ -144,7 +146,7 @@ class OpsManagementOrchestrator {
 
       // Start workflow execution asynchronously
       this.processWorkflow(createdWorkflow.id).catch((error) => {
-        console.error(
+        log.error(
           `❌ [OpsManagementOrchestrator] Error processing workflow ${createdWorkflow.id}:`,
           error
         );
@@ -152,7 +154,7 @@ class OpsManagementOrchestrator {
 
       return createdWorkflow;
     } catch (error) {
-      console.error(
+      log.error(
         `❌ [OpsManagementOrchestrator] Failed to start workflow:`,
         error instanceof Error ? error.message : error
       );
@@ -165,7 +167,7 @@ class OpsManagementOrchestrator {
    * Executes all reporter agents in parallel, then the operations manager
    */
   private async processWorkflow(workflowId: string): Promise<void> {
-    console.log(`⚙️  [OpsManagementOrchestrator] Processing workflow ${workflowId}`);
+    log.info(`⚙️  [OpsManagementOrchestrator] Processing workflow ${workflowId}`);
 
     try {
       // Update workflow status to running
@@ -195,7 +197,7 @@ class OpsManagementOrchestrator {
       const reporterTasks = tasks.slice(0, -1);
       const managerTask = tasks[tasks.length - 1];
 
-      console.log(
+      log.info(
         `📋 [OpsManagementOrchestrator] Executing ${reporterTasks.length} reporter tasks in parallel`
       );
 
@@ -208,7 +210,7 @@ class OpsManagementOrchestrator {
       const successCount = reporterResults.filter((r) => r.status === "fulfilled").length;
       const failureCount = reporterResults.filter((r) => r.status === "rejected").length;
 
-      console.log(
+      log.info(
         `📊 [OpsManagementOrchestrator] Reporter execution complete: ${successCount} succeeded, ${failureCount} failed`
       );
 
@@ -231,7 +233,7 @@ class OpsManagementOrchestrator {
       }
 
       // Execute operations manager
-      console.log(`🧠 [OpsManagementOrchestrator] Executing Operations Manager task`);
+      log.info(`🧠 [OpsManagementOrchestrator] Executing Operations Manager task`);
 
       await this.executeManagerTask(workflowId, managerTask);
 
@@ -247,9 +249,9 @@ class OpsManagementOrchestrator {
 
       await this.logWorkflow(workflowId, "info", "Workflow completed successfully");
 
-      console.log(`✅ [OpsManagementOrchestrator] Workflow ${workflowId} completed successfully`);
+      log.info(`✅ [OpsManagementOrchestrator] Workflow ${workflowId} completed successfully`);
     } catch (error) {
-      console.error(
+      log.error(
         `❌ [OpsManagementOrchestrator] Workflow ${workflowId} failed:`,
         error instanceof Error ? error.message : error
       );
@@ -280,7 +282,7 @@ class OpsManagementOrchestrator {
     workflowId: string,
     task: typeof workflowTasks.$inferSelect
   ): Promise<void> {
-    console.log(`📝 [OpsManagementOrchestrator] Executing reporter task ${task.id}: ${task.taskName}`);
+    log.info(`📝 [OpsManagementOrchestrator] Executing reporter task ${task.id}: ${task.taskName}`);
 
     try {
       // Update task status
@@ -309,9 +311,9 @@ class OpsManagementOrchestrator {
         })
         .where(eq(workflowTasks.id, task.id));
 
-      console.log(`✅ [OpsManagementOrchestrator] Reporter task ${task.id} completed`);
+      log.info(`✅ [OpsManagementOrchestrator] Reporter task ${task.id} completed`);
     } catch (error) {
-      console.error(
+      log.error(
         `❌ [OpsManagementOrchestrator] Reporter task ${task.id} failed:`,
         error instanceof Error ? error.message : error
       );
@@ -337,7 +339,7 @@ class OpsManagementOrchestrator {
     workflowId: string,
     task: typeof workflowTasks.$inferSelect
   ): Promise<void> {
-    console.log(`🧠 [OpsManagementOrchestrator] Executing manager task ${task.id}`);
+    log.info(`🧠 [OpsManagementOrchestrator] Executing manager task ${task.id}`);
 
     try {
       // Update task status
@@ -373,9 +375,9 @@ class OpsManagementOrchestrator {
         })
         .where(eq(workflowTasks.id, task.id));
 
-      console.log(`✅ [OpsManagementOrchestrator] Manager task ${task.id} completed`);
+      log.info(`✅ [OpsManagementOrchestrator] Manager task ${task.id} completed`);
     } catch (error) {
-      console.error(
+      log.error(
         `❌ [OpsManagementOrchestrator] Manager task ${task.id} failed:`,
         error instanceof Error ? error.message : error
       );

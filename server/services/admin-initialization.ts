@@ -6,6 +6,8 @@ import crypto from "crypto";
 import { db } from "../db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { createLogger } from '../lib/logger';
+const log = createLogger("admin-initialization");
 
 export async function initializeDefaultAdmin() {
   try {
@@ -23,7 +25,7 @@ export async function initializeDefaultAdmin() {
       .limit(1);
 
     if (existingAdmin.length > 0) {
-      console.log("✅ Admin user already exists");
+      log.info("✅ Admin user already exists");
       return;
     }
 
@@ -33,10 +35,10 @@ export async function initializeDefaultAdmin() {
       // Generate secure random password (16 characters, alphanumeric + symbols)
       const randomBytes = crypto.randomBytes(12);
       password = randomBytes.toString('base64').slice(0, 16);
-      console.log("🔐 Generated random admin password");
+      log.info("🔐 Generated random admin password");
     } else {
       password = defaultPassword;
-      console.log("🔐 Using default admin password from environment");
+      log.info("🔐 Using default admin password from environment");
     }
 
     // Hash password with bcrypt (12 rounds for security)
@@ -55,7 +57,7 @@ export async function initializeDefaultAdmin() {
       updatedAt: new Date(),
     });
 
-    console.log(`✅ Created admin user: ${adminUsername}`);
+    log.info(`✅ Created admin user: ${adminUsername}`);
 
     // Write password to ~/admin_password.txt (only if generated)
     if (generatePassword) {
@@ -79,12 +81,12 @@ Login URL: http://localhost:5000
 `;
 
       await fs.writeFile(passwordFilePath, fileContent, { mode: 0o600 });
-      console.log(`📝 Admin password written to: ${passwordFilePath}`);
-      console.log(`⚠️  Please delete ${passwordFilePath} after first login!`);
+      log.info(`📝 Admin password written to: ${passwordFilePath}`);
+      log.info(`⚠️  Please delete ${passwordFilePath} after first login!`);
     }
 
   } catch (error) {
-    console.error("❌ Failed to initialize admin user:", error);
+    log.error("❌ Failed to initialize admin user:", error);
     throw error;
   }
 }

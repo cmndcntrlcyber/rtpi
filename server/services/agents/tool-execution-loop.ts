@@ -23,6 +23,8 @@ import { metasploitExecutor } from "../metasploit-executor";
 import { empireExecutor } from "../empire-executor";
 import { mcpInvoker } from "./mcp-invoker";
 import { resolveAgentMcpServerIds } from "./mcp-resolve";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("tool-execution-loop");
 
 // ============================================================================
 // Types
@@ -531,7 +533,7 @@ export class ToolExecutionLoop extends EventEmitter {
           memoryId = memory.id;
           memoryIds.push(memory.id);
         } catch (memErr) {
-          console.error(`[ToolExecutionLoop] Failed to store memory:`, memErr);
+          log.error(`[ToolExecutionLoop] Failed to store memory:`, memErr);
         }
 
         // 2h. Emit progress
@@ -552,7 +554,7 @@ export class ToolExecutionLoop extends EventEmitter {
               this.discoveredFindings.push(...findings);
             }
           } catch (err) {
-            console.warn(`[ToolExecutionLoop] finding extraction failed for ${toolName}:`, err);
+            log.warn(`[ToolExecutionLoop] finding extraction failed for ${toolName}:`, err);
           }
         }
 
@@ -571,7 +573,7 @@ export class ToolExecutionLoop extends EventEmitter {
               maxProposals: 5,
             });
           } catch (err) {
-            console.warn(`[ToolExecutionLoop] chain proposer failed:`, err);
+            log.warn(`[ToolExecutionLoop] chain proposer failed:`, err);
           }
         }
 
@@ -631,7 +633,7 @@ export class ToolExecutionLoop extends EventEmitter {
           userPrompt = `${userPrompt}\n\n--- ADDITIONAL CONTEXT ---\n${extra.trim()}`;
         }
       } catch (err) {
-        console.warn(`[tool-execution-loop] pre-prompt hook failed:`, err);
+        log.warn(`[tool-execution-loop] pre-prompt hook failed:`, err);
       }
     }
 
@@ -892,11 +894,11 @@ Respond with valid JSON only, in this exact shape:
             },
           });
         } catch (err) {
-          console.warn(`[ToolExecutionLoop] failed to persist finding ${f.kind}/${f.value}:`, err);
+          log.warn(`[ToolExecutionLoop] failed to persist finding ${f.kind}/${f.value}:`, err);
         }
       }
     } catch (err) {
-      console.error(`[ToolExecutionLoop] persistFindings context creation failed:`, err);
+      log.error(`[ToolExecutionLoop] persistFindings context creation failed:`, err);
     }
   }
 
@@ -1150,7 +1152,7 @@ Respond with valid JSON only, in this exact shape:
             });
           }
         } catch (err) {
-          console.warn(
+          log.warn(
             `[tool-execution-loop] MCP tool discovery failed for server ${server.name}:`,
             err instanceof Error ? err.message : err,
           );
@@ -1158,7 +1160,7 @@ Respond with valid JSON only, in this exact shape:
       }
       return out;
     } catch (err) {
-      console.warn("[tool-execution-loop] getAgentMcpTools failed (non-fatal):", err);
+      log.warn("[tool-execution-loop] getAgentMcpTools failed (non-fatal):", err);
       return [];
     }
   }

@@ -16,6 +16,8 @@ import {
   attackTechniqueTactics,
 } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
+import { createLogger } from '../lib/logger';
+const log = createLogger("stix-parser");
 
 /**
  * STIX 2.1 Bundle interface
@@ -84,8 +86,8 @@ export async function importSTIXBundle(bundle: STIXBundle): Promise<ImportStats>
     errors: [],
   };
 
-  console.log(`Importing STIX bundle: ${bundle.id}`);
-  console.log(`Total objects: ${bundle.objects.length}`);
+  log.info(`Importing STIX bundle: ${bundle.id}`);
+  log.info(`Total objects: ${bundle.objects.length}`);
 
   // First pass: Import core objects
   for (const obj of bundle.objects) {
@@ -143,7 +145,7 @@ export async function importSTIXBundle(bundle: STIXBundle): Promise<ImportStats>
       }
     } catch (error: any) {
       stats.errors.push(`Error importing ${obj.type} ${obj.id}: ${error.message}`);
-      console.error(`Error importing ${obj.type} ${obj.id}:`, error);
+      log.error(`Error importing ${obj.type} ${obj.id}:`, error);
     }
   }
 
@@ -155,7 +157,7 @@ export async function importSTIXBundle(bundle: STIXBundle): Promise<ImportStats>
         stats.relationships++;
       } catch (error: any) {
         stats.errors.push(`Error importing relationship ${obj.id}: ${error.message}`);
-        console.error(`Error importing relationship ${obj.id}:`, error);
+        log.error(`Error importing relationship ${obj.id}:`, error);
       }
     }
   }
@@ -163,7 +165,7 @@ export async function importSTIXBundle(bundle: STIXBundle): Promise<ImportStats>
   // Third pass: Link techniques to tactics via kill_chain_phases
   await linkTechniquesToTactics();
 
-  console.log("Import complete:", stats);
+  log.info("Import complete:", stats);
   return stats;
 }
 

@@ -24,6 +24,8 @@ import { sql } from "drizzle-orm";
 import { db } from "../../db";
 import { readFeatureFlags } from "@shared/feature-flags";
 import { importBugHunterSkills } from "../../../scripts/import-bug-hunter-skills";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("skill-seed-startup");
 
 /** Delay before seeding so the DB pool is connected. Matches the 5s used by
  *  MCPServerManager.recoverErroredServers — seeding is heavier than the catalog
@@ -65,27 +67,27 @@ export async function seedBugHunterSkills(): Promise<void> {
   try {
     const existing = await countExistingSkillRows();
     if (existing > 0) {
-      console.log(
+      log.info(
         `[skill-seed] knowledge_base already has ${existing} bug_hunter_skill rows — skipping auto-import.`,
       );
       return;
     }
 
-    console.log("[skill-seed] no bug_hunter_skill rows found — importing corpus…");
+    log.info("[skill-seed] no bug_hunter_skill rows found — importing corpus…");
     const stats = await importBugHunterSkills({
       force: false,
       // Drop the per-skill progress lines; keep the summary the importer logs.
       log: (msg) => {
         if (msg.startsWith("  ") && !msg.includes(":")) return;
-        console.log(msg);
+        log.info(msg);
       },
     });
-    console.log(
+    log.info(
       `[skill-seed] import complete: ${stats.rowsInserted} rows inserted, ` +
         `${stats.rowsSkipped} unchanged, ${stats.embedBatchesOk} embed batches ok` +
         (stats.dimMismatch ? " (embeddings skipped — dimension mismatch; FTS fallback active)" : ""),
     );
   } catch (err) {
-    console.error("[skill-seed] auto-import failed (non-fatal):", err);
+    log.error("[skill-seed] auto-import failed (non-fatal):", err);
   }
 }

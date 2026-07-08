@@ -12,13 +12,15 @@
  */
 
 import { db } from "../db";
-import { toolRegistry, githubToolInstallations } from "../../shared/schema";
+import { toolRegistry, githubToolInstallations, agentToolBuilds } from "../../shared/schema";
 import { eq } from "drizzle-orm";
 import { analyzeGitHubRepository } from "./github-tool-installer";
 import { agentToolBuilder } from "./agent-tool-builder";
 import { multiContainerExecutor } from "./agents/multi-container-executor";
 import { DockerExecutor } from "./docker-executor";
 import { randomUUID } from "crypto";
+import { createLogger } from '../lib/logger';
+const log = createLogger("skill-import-pipeline");
 
 // ============================================================================
 // Types
@@ -123,12 +125,12 @@ export class SkillImportPipeline {
       }
 
       // 2. Analyze the repository
-      console.log(`[SkillImport] Analyzing ${githubUrl}...`);
+      log.info(`[SkillImport] Analyzing ${githubUrl}...`);
       const analysis = await analyzeGitHubRepository(githubUrl);
 
       // 3. Determine strategy
       const strategy = this.determineStrategy(analysis);
-      console.log(`[SkillImport] Strategy: ${strategy} for ${analysis.name} (${analysis.primaryLanguage})`);
+      log.info(`[SkillImport] Strategy: ${strategy} for ${analysis.name} (${analysis.primaryLanguage})`);
 
       // 4. Execute strategy
       let result: ImportResult;
@@ -153,7 +155,7 @@ export class SkillImportPipeline {
       return result;
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
-      console.error(`[SkillImport] Failed: ${errMsg}`);
+      log.error(`[SkillImport] Failed: ${errMsg}`);
 
       const result: ImportResult = {
         importId,
@@ -214,7 +216,7 @@ export class SkillImportPipeline {
     const repoPath = `${analysis.owner}/${analysis.name}`;
     const installCmd = config.installCmd(repoPath);
 
-    console.log(`[SkillImport] Installing binary in ${container}: ${installCmd}`);
+    log.info(`[SkillImport] Installing binary in ${container}: ${installCmd}`);
 
     const execResult = await this.dockerExecutor.exec(
       container,
@@ -267,7 +269,7 @@ export class SkillImportPipeline {
     const repoPath = `${analysis.owner}/${analysis.name}`;
     const installCmd = PYTHON_INSTALL.installCmd(repoPath);
 
-    console.log(`[SkillImport] Installing Python tool in ${container}: ${installCmd}`);
+    log.info(`[SkillImport] Installing Python tool in ${container}: ${installCmd}`);
 
     const execResult = await this.dockerExecutor.exec(
       container,
@@ -320,7 +322,7 @@ export class SkillImportPipeline {
     // - Docker build with auto-repair (up to 3 attempts)
     // - Container start
     // - MCP server registration
-    console.log(`[SkillImport] Building container for ${analysis.name} via AgentToolBuilder`);
+    log.info(`[SkillImport] Building container for ${analysis.name} via AgentToolBuilder`);
 
     // Create a build record via the agent tool builder
     const buildName = `skill-import-${analysis.name}`;
@@ -329,7 +331,7 @@ export class SkillImportPipeline {
     // The agent-tool-builder's startBuild expects a DB record with githubUrls
     // For now, delegate to its full pipeline
     const [buildRecord] = await db
-      .insert(require("@shared/schema").agentToolBuilds)
+      .insert(agentToolBuilds)
       .values({
         name: buildName,
         mode: "create",
@@ -341,7 +343,7 @@ export class SkillImportPipeline {
 
     // Start the build asynchronously
     agentToolBuilder.startBuild(buildRecord.id).catch((err: any) => {
-      console.error(`[SkillImport] Container build failed:`, err);
+      log.error(`[SkillImport] Container build failed:`, err);
     });
 
     return {
@@ -391,7 +393,7 @@ export class SkillImportPipeline {
         })
         .where(eq(toolRegistry.toolId, toolId));
 
-      console.log(`[SkillImport] Updated existing tool: ${toolId}`);
+      log.info(`[SkillImport] Updated existing tool: ${toolId}`);
       return toolId;
     }
 
@@ -410,7 +412,7 @@ export class SkillImportPipeline {
       validationStatus: "pending",
     });
 
-    console.log(`[SkillImport] Registered new tool: ${toolId}`);
+    log.info(`[SkillImport] Registered new tool: ${toolId}`);
 
     // Refresh the multi-container executor cache
     await multiContainerExecutor.refreshCache();

@@ -3,6 +3,8 @@ import type { TavilyResearchResult } from "./tavily-researcher";
 import type { SkillFrontmatter } from "./skill-renderer";
 import { REQUIRED_SECTIONS } from "./skill-renderer";
 import type { SkillRegistry } from "./skill-paths";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("skill-synthesizer");
 
 export interface SynthesisInput {
   registry: SkillRegistry;
@@ -155,9 +157,9 @@ async function trySynthesizeViaRouter(input: SynthesisInput): Promise<Synthesize
     return toSynthesized(input, json, generatedBy);
   } catch (err) {
     if (err instanceof NoInferenceProviderAvailable) {
-      console.error("[skill-synthesizer] all providers exhausted:", err.message);
+      log.error("[skill-synthesizer] all providers exhausted:", err.message);
     } else {
-      console.error("[skill-synthesizer] router failed:", err);
+      log.error("[skill-synthesizer] router failed:", err);
     }
     return null;
   }

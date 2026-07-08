@@ -9,6 +9,8 @@ import {
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { EventEmitter } from "events";
 import { memoryService } from "./memory-service";
+import { createLogger } from '../lib/logger';
+const log = createLogger("reporter-agent-service");
 
 interface ReporterConfig {
   pollIntervalMs?: number;
@@ -45,7 +47,7 @@ class ReporterAgentService extends EventEmitter {
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
 
-    console.log("[ReporterService] Initializing reporter agent service...");
+    log.info("[ReporterService] Initializing reporter agent service...");
 
     // Get all active reporters and start polling
     const activeReporters = await db
@@ -58,7 +60,7 @@ class ReporterAgentService extends EventEmitter {
     }
 
     this.isInitialized = true;
-    console.log(`[ReporterService] Initialized with ${activeReporters.length} active reporters`);
+    log.info(`[ReporterService] Initialized with ${activeReporters.length} active reporters`);
   }
 
   /**
@@ -89,7 +91,7 @@ class ReporterAgentService extends EventEmitter {
       })
       .returning();
 
-    console.log(`[ReporterService] Created reporter ${reporter.id} for page ${params.pageId}`);
+    log.info(`[ReporterService] Created reporter ${reporter.id} for page ${params.pageId}`);
     return reporter.id;
   }
 
@@ -107,7 +109,7 @@ class ReporterAgentService extends EventEmitter {
       .limit(1);
 
     if (!reporter) {
-      console.error(`[ReporterService] Reporter ${reporterId} not found`);
+      log.error(`[ReporterService] Reporter ${reporterId} not found`);
       return false;
     }
 
@@ -127,7 +129,7 @@ class ReporterAgentService extends EventEmitter {
     // Do an immediate poll
     await this.pollData(reporterId);
 
-    console.log(`[ReporterService] Started polling for reporter ${reporterId} every ${reporter.pollIntervalMs}ms`);
+    log.info(`[ReporterService] Started polling for reporter ${reporterId} every ${reporter.pollIntervalMs}ms`);
     return true;
   }
 
@@ -139,7 +141,7 @@ class ReporterAgentService extends EventEmitter {
     if (interval) {
       clearInterval(interval);
       this.pollIntervals.delete(reporterId);
-      console.log(`[ReporterService] Stopped polling for reporter ${reporterId}`);
+      log.info(`[ReporterService] Stopped polling for reporter ${reporterId}`);
     }
   }
 
@@ -170,7 +172,7 @@ class ReporterAgentService extends EventEmitter {
         .limit(1);
 
       if (!agent) {
-        console.error(`[ReporterService] Agent ${reporter.agentId} not found for reporter ${reporterId}`);
+        log.error(`[ReporterService] Agent ${reporter.agentId} not found for reporter ${reporterId}`);
         return null;
       }
 
@@ -227,7 +229,7 @@ class ReporterAgentService extends EventEmitter {
             changes,
             timestamp: new Date().toISOString(),
           }).catch((err) =>
-            console.error("[ReporterService] Failed to store poll in memory:", err),
+            log.error("[ReporterService] Failed to store poll in memory:", err),
           );
         }
       }
@@ -238,7 +240,7 @@ class ReporterAgentService extends EventEmitter {
         changes,
       };
     } catch (error) {
-      console.error(`[ReporterService] Poll failed for reporter ${reporterId}:`, error);
+      log.error(`[ReporterService] Poll failed for reporter ${reporterId}:`, error);
 
       // Update status to error
       await db
@@ -322,7 +324,7 @@ class ReporterAgentService extends EventEmitter {
       priority: params.priority || 5,
     });
 
-    console.log(`[ReporterService] Question submitted by reporter ${params.reporterId}`);
+    log.info(`[ReporterService] Question submitted by reporter ${params.reporterId}`);
     return question.id;
   }
 
@@ -396,7 +398,7 @@ class ReporterAgentService extends EventEmitter {
       taskName: params.taskName,
     });
 
-    console.log(`[ReporterService] Task ${task.id} assigned to reporter ${params.reporterId}`);
+    log.info(`[ReporterService] Task ${task.id} assigned to reporter ${params.reporterId}`);
     return task.id;
   }
 
@@ -504,7 +506,7 @@ class ReporterAgentService extends EventEmitter {
 
       return memory.id;
     } catch (error) {
-      console.error("[ReporterService] storeReportInMemory failed:", error);
+      log.error("[ReporterService] storeReportInMemory failed:", error);
       return null;
     }
   }
@@ -524,7 +526,7 @@ class ReporterAgentService extends EventEmitter {
         limit,
       });
     } catch (error) {
-      console.error("[ReporterService] queryRelevantMemories failed:", error);
+      log.error("[ReporterService] queryRelevantMemories failed:", error);
       return [];
     }
   }
@@ -544,7 +546,7 @@ class ReporterAgentService extends EventEmitter {
         strength: 1.0,
       });
     } catch (error) {
-      console.error("[ReporterService] createMemoryRelationships failed:", error);
+      log.error("[ReporterService] createMemoryRelationships failed:", error);
     }
   }
 
@@ -564,7 +566,7 @@ class ReporterAgentService extends EventEmitter {
       .where(eq(reporters.status, "active"));
 
     this.isInitialized = false;
-    console.log("[ReporterService] Shutdown complete");
+    log.info("[ReporterService] Shutdown complete");
   }
 }
 

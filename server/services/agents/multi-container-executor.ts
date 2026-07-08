@@ -10,6 +10,8 @@ import { toolRegistry } from '../../../shared/schema';
 import { DockerExecutor, ExecutionResult, ExecutionOptions } from '../docker-executor';
 import { containerRuntime } from '../runtime/container-runtime';
 import { eq } from 'drizzle-orm';
+import { createLogger } from '../../lib/logger';
+const log = createLogger("multi-container-executor");
 
 export interface ToolExecutionOptions extends ExecutionOptions {
   /** Override container (useful for testing tools in different containers) */
@@ -78,7 +80,7 @@ export class MultiContainerExecutor {
     // Build command
     const cmd = [toolInfo.binaryPath, ...args];
 
-    console.log(`[MultiContainerExecutor] Executing ${toolName} in ${containerName} as ${containerUser}`);
+    log.info(`[MultiContainerExecutor] Executing ${toolName} in ${containerName} as ${containerUser}`);
 
     // Execute via the runtime so a stopped container surfaces as a
     // structured ContainerError {code:"not_running", retryable, remediation}
@@ -222,7 +224,7 @@ export class MultiContainerExecutor {
     }
 
     this.lastCacheRefresh = Date.now();
-    console.log(`[MultiContainerExecutor] Cache refreshed with ${tools.length} tools`);
+    log.info(`[MultiContainerExecutor] Cache refreshed with ${tools.length} tools`);
   }
 
   /**
@@ -268,16 +270,8 @@ export class MultiContainerExecutor {
    * @returns Map of container names to running status
    */
   async getContainerStatuses(): Promise<Map<string, boolean>> {
-    const containers = [
-      'rtpi-tools',
-      'rtpi-maldev-agent',
-      'rtpi-azure-ad-agent',
-      'rtpi-burp-agent',
-      'rtpi-empire-agent',
-      'rtpi-fuzzing-agent',
-      'rtpi-framework-agent',
-      'rtpi-research-agent',
-    ];
+    const { TOOL_CONTAINERS } = await import('../tool-discovery-service');
+    const containers = TOOL_CONTAINERS;
 
     const statuses = new Map<string, boolean>();
 

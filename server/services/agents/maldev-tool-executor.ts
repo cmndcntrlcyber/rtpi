@@ -96,7 +96,7 @@ export class MaldevToolExecutor {
    * @returns Binary analysis results
    */
   async analyzeWithRadare2(binaryPath: string): Promise<BinaryAnalysis> {
-    console.log(`[Maldev Tools] Analyzing binary with radare2: ${binaryPath}`);
+    log.info(`[Maldev Tools] Analyzing binary with radare2: ${binaryPath}`);
 
     // Check binary protections
     const protectionsCmd = `rabin2 -I ${binaryPath}`;
@@ -160,7 +160,7 @@ export class MaldevToolExecutor {
    * @returns Array of ROP gadgets
    */
   async findGadgets(binaryPath: string, maxGadgets = 100): Promise<ROPGadget[]> {
-    console.log(`[Maldev Tools] Finding ROP gadgets with ROPgadget: ${binaryPath}`);
+    log.info(`[Maldev Tools] Finding ROP gadgets with ROPgadget: ${binaryPath}`);
 
     const cmd = `cd /opt/tools/ROPgadget && python3 ROPgadget.py --binary ${binaryPath} --depth 10 | head -${maxGadgets + 20}`;
     
@@ -171,7 +171,7 @@ export class MaldevToolExecutor {
     );
 
     if (result.exitCode !== 0) {
-      console.error('[Maldev Tools] ROPgadget failed:', result.stderr);
+      log.error('[Maldev Tools] ROPgadget failed:', result.stderr);
       return [];
     }
 
@@ -186,7 +186,7 @@ export class MaldevToolExecutor {
    * @returns ROP chain with payload
    */
   async buildROPChain(gadgets: ROPGadget[], objective: string): Promise<ROPChain> {
-    console.log(`[Maldev Tools] Building ROP chain for: ${objective}`);
+    log.info(`[Maldev Tools] Building ROP chain for: ${objective}`);
 
     // Generate Python script using pwntools
     const script = this.generatePwntoolsROPScript(gadgets, objective);
@@ -232,7 +232,7 @@ export class MaldevToolExecutor {
     payload: 'reverse_shell' | 'bind_shell' | 'exec' | 'read_flag',
     options: Record<string, any> = {}
   ): Promise<Shellcode> {
-    console.log(`[Maldev Tools] Generating ${payload} shellcode for ${platform}/${architecture}`);
+    log.info(`[Maldev Tools] Generating ${payload} shellcode for ${platform}/${architecture}`);
 
     const script = this.generatePwntoolsShellcodeScript(
       platform,
@@ -275,7 +275,7 @@ export class MaldevToolExecutor {
     code: string,
     techniques: Array<'encoding' | 'polymorphic' | 'syscall' | 'obfuscation'>
   ): Promise<string> {
-    console.log(`[Maldev Tools] Applying evasion techniques: ${techniques.join(', ')}`);
+    log.info(`[Maldev Tools] Applying evasion techniques: ${techniques.join(', ')}`);
 
     let modifiedCode = code;
 
@@ -318,7 +318,7 @@ export class MaldevToolExecutor {
     shellcode: string,
     architecture: 'x86' | 'x64' = 'x64'
   ): Promise<EmulationResult> {
-    console.log(`[Maldev Tools] Emulating shellcode with unicorn (${architecture})`);
+    log.info(`[Maldev Tools] Emulating shellcode with unicorn (${architecture})`);
 
     const script = this.generateUnicornEmulationScript(shellcode, architecture);
     
@@ -634,7 +634,7 @@ except Exception as e:
     crossReferences: Array<{ from: string; to: string; type: string }>;
     available: boolean;
   }> {
-    console.log(`[Maldev Tools] Analyzing with Ghidra: ${binaryPath}`);
+    log.info(`[Maldev Tools] Analyzing with Ghidra: ${binaryPath}`);
 
     // Check if GhidraMCP scripts are available
     const checkResult = await this.dockerExecutor.exec(
@@ -644,7 +644,7 @@ except Exception as e:
     );
 
     if (!checkResult.stdout.trim()) {
-      console.warn('[Maldev Tools] GhidraMCP not available — container rebuild required');
+      log.warn('[Maldev Tools] GhidraMCP not available — container rebuild required');
       return { functions: [], strings: [], imports: [], crossReferences: [], available: false };
     }
 
@@ -721,14 +721,14 @@ else:
       if (result.exitCode === 0 && result.stdout.trim()) {
         try {
           const parsed = JSON.parse(result.stdout.trim());
-          console.log(`[Maldev Tools] Ghidra analysis: ${parsed.functions?.length || 0} functions found`);
+          log.info(`[Maldev Tools] Ghidra analysis: ${parsed.functions?.length || 0} functions found`);
           return parsed;
         } catch {
-          console.warn('[Maldev Tools] Failed to parse Ghidra output');
+          log.warn('[Maldev Tools] Failed to parse Ghidra output');
         }
       }
     } catch (error) {
-      console.warn('[Maldev Tools] Ghidra analysis failed:', error instanceof Error ? error.message : error);
+      log.warn('[Maldev Tools] Ghidra analysis failed:', error instanceof Error ? error.message : error);
     }
 
     return { functions: [], strings: [], imports: [], crossReferences: [], available: false };
@@ -751,7 +751,7 @@ else:
     code?: string;
     description: string;
   }> {
-    console.log('[Maldev Tools] Generating ETW bypass via TamperETW');
+    log.info('[Maldev Tools] Generating ETW bypass via TamperETW');
 
     const checkResult = await this.dockerExecutor.exec(
       this.containerName,
@@ -808,7 +808,7 @@ else:
     description: string;
     sourceFiles?: string[];
   }> {
-    console.log('[Maldev Tools] Checking SHAPESHIFTER availability');
+    log.info('[Maldev Tools] Checking SHAPESHIFTER availability');
 
     const checkResult = await this.dockerExecutor.exec(
       this.containerName,
@@ -847,7 +847,7 @@ else:
     size?: number;
     error?: string;
   }> {
-    console.log('[Maldev Tools] Converting C to shellcode via C_To_Shellcode_NG');
+    log.info('[Maldev Tools] Converting C to shellcode via C_To_Shellcode_NG');
 
     const checkResult = await this.dockerExecutor.exec(
       this.containerName,
@@ -922,7 +922,7 @@ else:
     functions: string[],
     versions: string[] = ['7', '8', '10']
   ): Promise<{ asm: string; header: string; functions: string[] }> {
-    console.log(`[Maldev Tools] Generating syscall stubs for: ${functions.join(', ')}`);
+    log.info(`[Maldev Tools] Generating syscall stubs for: ${functions.join(', ')}`);
 
     const outputBase = `/tmp/syscalls_${Date.now()}`;
     const funcList = functions.join(',');
@@ -954,7 +954,7 @@ else:
       ),
     ]);
 
-    console.log(`[Maldev Tools] SysWhispers generated ${functions.length} syscall stubs`);
+    log.info(`[Maldev Tools] SysWhispers generated ${functions.length} syscall stubs`);
 
     return {
       asm: asmResult.stdout,
@@ -976,7 +976,7 @@ else:
     searchTerm?: string,
     maxGadgets: number = 100
   ): Promise<Array<{ address: string; instructions: string }>> {
-    console.log(`[Maldev Tools] Finding gadgets with Ropper: ${binaryPath}`);
+    log.info(`[Maldev Tools] Finding gadgets with Ropper: ${binaryPath}`);
 
     let cmd = `ropper --file ${binaryPath} --nocolor`;
     if (searchTerm) {
@@ -991,7 +991,7 @@ else:
     );
 
     if (result.exitCode !== 0 && !result.stdout) {
-      console.warn(`[Maldev Tools] Ropper failed: ${result.stderr}`);
+      log.warn(`[Maldev Tools] Ropper failed: ${result.stderr}`);
       return [];
     }
 
@@ -1003,7 +1003,7 @@ else:
       }
     }
 
-    console.log(`[Maldev Tools] Ropper found ${gadgets.length} gadgets`);
+    log.info(`[Maldev Tools] Ropper found ${gadgets.length} gadgets`);
     return gadgets;
   }
 
@@ -1015,7 +1015,7 @@ else:
    * XOR-encode shellcode using pwntools to evade simple signature detection.
    */
   private async applyEncoder(code: string): Promise<string> {
-    console.log('[Maldev Tools] Applying XOR encoder via pwntools');
+    log.info('[Maldev Tools] Applying XOR encoder via pwntools');
 
     const hexInput = code.replace(/\\x/g, '').replace(/0x/g, '').replace(/\s/g, '');
     const script = `
@@ -1046,11 +1046,11 @@ except Exception:
         { timeout: 15000, user: this.containerUser }
       );
       if (result.exitCode === 0 && result.stdout.trim()) {
-        console.log('[Maldev Tools] Encoder applied successfully');
+        log.info('[Maldev Tools] Encoder applied successfully');
         return result.stdout.trim();
       }
     } catch (error) {
-      console.warn('[Maldev Tools] Encoder failed:', error instanceof Error ? error.message : error);
+      log.warn('[Maldev Tools] Encoder failed:', error instanceof Error ? error.message : error);
     }
     return code;
   }
@@ -1060,7 +1060,7 @@ except Exception:
    * pwntools shellcraft for Linux syscalls.
    */
   private async convertToSyscalls(code: string): Promise<string> {
-    console.log('[Maldev Tools] Converting to direct syscalls');
+    log.info('[Maldev Tools] Converting to direct syscalls');
 
     // Try SysWhispers for common Windows evasion functions
     try {
@@ -1071,17 +1071,19 @@ except Exception:
         'NtCreateThreadEx',
       ]);
       if (stubs.asm) {
-        console.log('[Maldev Tools] SysWhispers syscall stubs generated');
+        log.info('[Maldev Tools] SysWhispers syscall stubs generated');
         return `/* SysWhispers Direct Syscall Stubs */\n${stubs.header}\n/* ASM: ${stubs.asm.length} bytes */\n${code}`;
       }
     } catch (error) {
-      console.warn('[Maldev Tools] SysWhispers failed, falling back to pwntools:', error instanceof Error ? error.message : error);
+      log.warn('[Maldev Tools] SysWhispers failed, falling back to pwntools:', error instanceof Error ? error.message : error);
     }
 
     // Fallback: pwntools Linux shellcraft
     const script = `
 from pwn import *
 import sys
+import { createLogger } from '../../lib/logger';
+const log = createLogger("maldev-tool-executor");
 context.arch = 'amd64'
 context.os = 'linux'
 context.log_level = 'error'
@@ -1104,11 +1106,11 @@ sys.stdout.write(asm_code.hex())
         { timeout: 15000, user: this.containerUser }
       );
       if (result.exitCode === 0 && result.stdout.trim()) {
-        console.log('[Maldev Tools] Pwntools syscall conversion successful');
+        log.info('[Maldev Tools] Pwntools syscall conversion successful');
         return result.stdout.trim();
       }
     } catch (error) {
-      console.warn('[Maldev Tools] Pwntools syscall conversion failed:', error instanceof Error ? error.message : error);
+      log.warn('[Maldev Tools] Pwntools syscall conversion failed:', error instanceof Error ? error.message : error);
     }
     return code;
   }
@@ -1117,19 +1119,19 @@ sys.stdout.write(asm_code.hex())
    * Code obfuscation using SHAPESHIFTER for .NET or XOR-based transforms.
    */
   private async obfuscateCode(code: string): Promise<string> {
-    console.log('[Maldev Tools] Applying code obfuscation');
+    log.info('[Maldev Tools] Applying code obfuscation');
 
     // Check SHAPESHIFTER availability
     const ssCheck = await this.checkShapeshifter();
     if (ssCheck.available) {
-      console.log('[Maldev Tools] SHAPESHIFTER available for .NET obfuscation');
+      log.info('[Maldev Tools] SHAPESHIFTER available for .NET obfuscation');
       // SHAPESHIFTER operates on .NET assemblies, not raw code strings
       // Return code with metadata tag for downstream processing
       return `/* SHAPESHIFTER_AVAILABLE: Apply .NET morphing before deployment */\n${code}`;
     }
 
     // Fallback: basic variable/string obfuscation via Python
-    console.warn('[Maldev Tools] SHAPESHIFTER not available, using basic obfuscation');
+    log.warn('[Maldev Tools] SHAPESHIFTER not available, using basic obfuscation');
     return code;
   }
 
@@ -1137,16 +1139,16 @@ sys.stdout.write(asm_code.hex())
    * Polymorphic transformation — ETW bypass + shellcode mutation.
    */
   private async makePolymorphic(code: string): Promise<string> {
-    console.log('[Maldev Tools] Applying polymorphic transformation');
+    log.info('[Maldev Tools] Applying polymorphic transformation');
 
     // Check TamperETW for ETW bypass integration
     const etwBypass = await this.generateETWBypass();
     if (etwBypass.available && etwBypass.code) {
-      console.log('[Maldev Tools] TamperETW available — integrating ETW bypass stub');
+      log.info('[Maldev Tools] TamperETW available — integrating ETW bypass stub');
       return `/* ETW Bypass Technique: ${etwBypass.technique} */\n/* ${etwBypass.description} */\n${code}`;
     }
 
-    console.warn('[Maldev Tools] Advanced polymorphic tools not available');
+    log.warn('[Maldev Tools] Advanced polymorphic tools not available');
     return code;
   }
 
@@ -1167,7 +1169,7 @@ sys.stdout.write(asm_code.hex())
     traces: Array<{ function: string; args: string[]; returnValue?: string; timestamp: number }>;
     errors: string[];
   }> {
-    console.log(`[Maldev Tools] Tracing with Frida: ${binaryPath}, functions: ${functions.join(', ')}`);
+    log.info(`[Maldev Tools] Tracing with Frida: ${binaryPath}, functions: ${functions.join(', ')}`);
 
     // Check Frida availability
     const check = await this.dockerExecutor.exec(

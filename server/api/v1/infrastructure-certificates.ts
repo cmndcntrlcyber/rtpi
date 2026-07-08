@@ -42,6 +42,8 @@ import {
   type CertType,
   type CertificateSummary,
 } from "../../services/infrastructure-certificate-service";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("infrastructure-certificates");
 
 const router = Router();
 router.use(ensureAuthenticated);
@@ -210,7 +212,7 @@ router.post("/", certFields, async (req: Request, res) => {
         message: "A certificate with this fingerprint already exists for this type",
       });
     }
-    console.error("[infrastructure-certificates] insert failed:", err);
+    log.error("[infrastructure-certificates] insert failed:", err);
     await logAudit(user.id, "upload_cert_failed", "/infrastructure/certificates", null, false, req);
     return res.status(500).json({ error: "insert_failed", message: err?.message });
   }

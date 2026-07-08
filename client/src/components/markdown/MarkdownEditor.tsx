@@ -1,4 +1,5 @@
 import { useState } from "react";
+import DOMPurify from "dompurify";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Eye, Edit } from "lucide-react";
@@ -48,8 +49,8 @@ export default function MarkdownEditor({
     
     // Line breaks
     html = html.replace(/\n/gim, '<br />');
-    
-    return html;
+
+    return DOMPurify.sanitize(html);
   };
 
   return (

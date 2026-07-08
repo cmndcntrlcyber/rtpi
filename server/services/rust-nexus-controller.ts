@@ -11,6 +11,9 @@ import {
 } from "@shared/schema";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { taskDistributor } from "./rust-nexus-task-distributor";
+import { createLogger } from '../lib/logger';
+import { logToolAudit } from '../auth/middleware';
+const log = createLogger("rust-nexus-controller");
 
 /**
  * rust-nexus Agentic Implants Controller
@@ -145,7 +148,7 @@ class RustNexusController {
     // Start HTTPS server
     await new Promise<void>((resolve, reject) => {
       this.httpsServer!.listen(port, () => {
-        console.log(`[RustNexusController] Server started on port ${port} with mTLS`);
+        log.info(`[RustNexusController] Server started on port ${port} with mTLS`);
         resolve();
       });
       this.httpsServer!.on("error", reject);
@@ -160,7 +163,7 @@ class RustNexusController {
    * Stop the WebSocket server
    */
   async stop(): Promise<void> {
-    console.log("[RustNexusController] Stopping server...");
+    log.info("[RustNexusController] Stopping server...");
 
     // Clear intervals
     if (this.heartbeatInterval) {
@@ -190,7 +193,7 @@ class RustNexusController {
       this.httpsServer = null;
     }
 
-    console.log("[RustNexusController] Server stopped");
+    log.info("[RustNexusController] Server stopped");
   }
 
   /**
@@ -200,7 +203,7 @@ class RustNexusController {
     // Extract certificate fingerprint from TLS connection
     const cert = req.socket.getPeerCertificate();
     if (!cert || !cert.fingerprint256) {
-      console.error("[RustNexusController] No client certificate provided");
+      log.error("[RustNexusController] No client certificate provided");
       ws.close(1008, "Client certificate required");
       return;
     }
@@ -219,7 +222,11 @@ class RustNexusController {
 
     this.connections.set(connectionId, connection);
 
-    console.log(`[RustNexusController] New connection: ${connectionId} (cert: ${fingerprint})`);
+    log.info(`[RustNexusController] New connection: ${connectionId} (cert: ${fingerprint})`);
+    logToolAudit(null, "rust_nexus_implant_connect", "rust-nexus", null, true, {
+      connectionId,
+      certificateFingerprint: fingerprint,
+    });
 
     // Handle messages
     ws.on("message", async (data) => {
@@ -227,7 +234,7 @@ class RustNexusController {
         const message: WebSocketMessage = JSON.parse(data.toString());
         await this.handleMessage(connectionId, message);
       } catch (error) {
-        console.error("[RustNexusController] Error handling message:", error);
+        log.error("[RustNexusController] Error handling message:", error);
         this.sendMessage(ws, {
           type: MessageType.ERROR,
           messageId: this.generateMessageId(),
@@ -244,7 +251,7 @@ class RustNexusController {
 
     // Handle errors
     ws.on("error", (error) => {
-      console.error(`[RustNexusController] WebSocket error for ${connectionId}:`, error);
+      log.error(`[RustNexusController] WebSocket error for ${connectionId}:`, error);
     });
   }
 
@@ -257,11 +264,11 @@ class RustNexusController {
   ): Promise<void> {
     const connection = this.connections.get(connectionId);
     if (!connection) {
-      console.error(`[RustNexusController] Connection not found: ${connectionId}`);
+      log.error(`[RustNexusController] Connection not found: ${connectionId}`);
       return;
     }
 
-    console.log(
+    log.info(
       `[RustNexusController] Message from ${connectionId}: ${message.type}`
     );
 
@@ -287,7 +294,7 @@ class RustNexusController {
         break;
 
       default:
-        console.warn(`[RustNexusController] Unknown message type: ${message.type}`);
+        log.warn(`[RustNexusController] Unknown message type: ${message.type}`);
     }
   }
 
@@ -329,7 +336,15 @@ class RustNexusController {
           })
           .where(eq(rustNexusImplants.id, implantId));
 
-        console.log(`[RustNexusController] Implant reconnected: ${payload.implantName}`);
+        log.info(`[RustNexusController] Implant reconnected: ${payload.implantName}`);
+        logToolAudit(null, "rust_nexus_implant_register", "rust-nexus", implantId, true, {
+          implantName: payload.implantName,
+          implantType: payload.implantType,
+          hostname: payload.hostname,
+          ipAddress: payload.ipAddress,
+          certificateFingerprint: payload.certificateFingerprint,
+          isReconnect: true,
+        });
       } else {
         // Register new implant (requires a valid user ID for created_by)
         // For now, we'll use a system user ID. In production, this should be configurable.
@@ -366,7 +381,15 @@ class RustNexusController {
         const operationMsg = payload.operationId
           ? ` (auto-assigned to operation ${payload.operationId})`
           : '';
-        console.log(`[RustNexusController] New implant registered: ${payload.implantName}${operationMsg}`);
+        log.info(`[RustNexusController] New implant registered: ${payload.implantName}${operationMsg}`);
+        logToolAudit(null, "rust_nexus_implant_register", "rust-nexus", implantId, true, {
+          implantName: payload.implantName,
+          implantType: payload.implantType,
+          hostname: payload.hostname,
+          ipAddress: payload.ipAddress,
+          certificateFingerprint: payload.certificateFingerprint,
+          isReconnect: false,
+        });
       }
 
       // Update connection
@@ -387,7 +410,11 @@ class RustNexusController {
         },
       });
     } catch (error) {
-      console.error("[RustNexusController] Registration error:", error);
+      log.error("[RustNexusController] Registration error:", error);
+      logToolAudit(null, "rust_nexus_implant_register", "rust-nexus", null, false, {
+        error: error instanceof Error ? error.message : String(error),
+        certificateFingerprint: connection.certificateFingerprint,
+      });
       this.sendMessage(connection.ws, {
         type: MessageType.ERROR,
         messageId: this.generateMessageId(),
@@ -406,7 +433,7 @@ class RustNexusController {
     payload: HeartbeatPayload
   ): Promise<void> {
     if (!connection.implantId) {
-      console.error("[RustNexusController] Heartbeat from unregistered implant");
+      log.error("[RustNexusController] Heartbeat from unregistered implant");
       return;
     }
 
@@ -434,7 +461,7 @@ class RustNexusController {
     payload: TaskRequest
   ): Promise<void> {
     if (!connection.implantId) {
-      console.error("[RustNexusController] Task request from unregistered implant");
+      log.error("[RustNexusController] Task request from unregistered implant");
       return;
     }
 
@@ -475,6 +502,13 @@ class RustNexusController {
           updatedAt: new Date(),
         })
         .where(eq(rustNexusTasks.id, task.id));
+
+      logToolAudit(null, "rust_nexus_task_assign", "rust-nexus", task.id, true, {
+        implantId: connection.implantId,
+        implantName: connection.implantName,
+        taskType: task.taskType,
+        taskName: task.taskName,
+      });
     }
   }
 
@@ -487,7 +521,7 @@ class RustNexusController {
     payload: TaskResult
   ): Promise<void> {
     if (!connection.implantId) {
-      console.error("[RustNexusController] Task result from unregistered implant");
+      log.error("[RustNexusController] Task result from unregistered implant");
       return;
     }
 
@@ -517,9 +551,16 @@ class RustNexusController {
         })
         .where(eq(rustNexusTasks.id, payload.taskId));
 
-      console.log(`[RustNexusController] Task ${payload.taskId} ${status}`);
+      log.info(`[RustNexusController] Task ${payload.taskId} ${status}`);
+      logToolAudit(null, status === "completed" ? "rust_nexus_task_complete" : "rust_nexus_task_fail", "rust-nexus", payload.taskId, status === "completed", {
+        implantId: payload.implantId,
+        resultType: payload.resultType,
+        exitCode: payload.exitCode,
+        executionTimeMs: payload.executionTimeMs,
+        errorMessage: payload.errorMessage,
+      });
     } catch (error) {
-      console.error("[RustNexusController] Error storing task result:", error);
+      log.error("[RustNexusController] Error storing task result:", error);
     }
   }
 
@@ -532,7 +573,7 @@ class RustNexusController {
     payload: TelemetryPayload
   ): Promise<void> {
     if (!connection.implantId) {
-      console.error("[RustNexusController] Telemetry from unregistered implant");
+      log.error("[RustNexusController] Telemetry from unregistered implant");
       return;
     }
 
@@ -551,7 +592,7 @@ class RustNexusController {
         collectedAt: new Date(),
       });
     } catch (error) {
-      console.error("[RustNexusController] Error storing telemetry:", error);
+      log.error("[RustNexusController] Error storing telemetry:", error);
     }
   }
 
@@ -562,7 +603,7 @@ class RustNexusController {
     const connection = this.connections.get(connectionId);
     if (!connection) return;
 
-    console.log(`[RustNexusController] Disconnected: ${connectionId}`);
+    log.info(`[RustNexusController] Disconnected: ${connectionId}`);
 
     // Update implant status if authenticated
     if (connection.implantId) {
@@ -573,6 +614,11 @@ class RustNexusController {
           updatedAt: new Date(),
         })
         .where(eq(rustNexusImplants.id, connection.implantId));
+
+      logToolAudit(null, "rust_nexus_implant_disconnect", "rust-nexus", connection.implantId, true, {
+        implantName: connection.implantName,
+        certificateFingerprint: connection.certificateFingerprint,
+      });
     }
 
     // Remove connection
@@ -592,7 +638,7 @@ class RustNexusController {
         const timeSinceHeartbeat = now.getTime() - connection.lastHeartbeat.getTime();
 
         if (timeSinceHeartbeat > staleThreshold) {
-          console.warn(
+          log.warn(
             `[RustNexusController] Stale connection detected: ${connectionId}`
           );
           connection.ws.close(1000, "Heartbeat timeout");
@@ -615,7 +661,7 @@ class RustNexusController {
         });
 
         if (assignments.length > 0) {
-          console.log(
+          log.info(
             `[RustNexusController] Assigned ${assignments.length} tasks to implants`
           );
         }
@@ -626,13 +672,13 @@ class RustNexusController {
         // 3. Retry failed tasks with exponential backoff
         const retriedCount = await taskDistributor.retryFailedTasks();
         if (retriedCount > 0) {
-          console.log(`[RustNexusController] Retried ${retriedCount} failed tasks`);
+          log.info(`[RustNexusController] Retried ${retriedCount} failed tasks`);
         }
 
         // 4. Mark permanent failures (max retries exceeded)
         const permanentFailures = await taskDistributor.markPermanentFailures();
         if (permanentFailures > 0) {
-          console.log(
+          log.info(
             `[RustNexusController] Marked ${permanentFailures} tasks as permanently failed`
           );
         }
@@ -640,7 +686,7 @@ class RustNexusController {
         // 5. Handle timeouts
         const timeouts = await taskDistributor.handleTimeouts();
         if (timeouts > 0) {
-          console.log(`[RustNexusController] ${timeouts} tasks timed out`);
+          log.info(`[RustNexusController] ${timeouts} tasks timed out`);
         }
 
         // 6. Notify implants with newly assigned tasks
@@ -671,7 +717,7 @@ class RustNexusController {
             );
 
             if (connection) {
-              console.log(
+              log.info(
                 `[RustNexusController] Notifying ${connection.implantName} of ${taskCount} assigned tasks`
               );
               // Implant will send a task_request to fetch tasks
@@ -679,7 +725,7 @@ class RustNexusController {
           }
         }
       } catch (error) {
-        console.error("[RustNexusController] Task distribution error:", error);
+        log.error("[RustNexusController] Task distribution error:", error);
       }
     }, 10000); // Run every 10 seconds
   }
@@ -767,6 +813,10 @@ class RustNexusController {
         updatedAt: new Date(),
       })
       .where(eq(rustNexusImplants.id, implantId));
+
+    logToolAudit(null, "rust_nexus_implant_terminate", "rust-nexus", implantId, true, {
+      reason: "Terminated by operator",
+    });
   }
 }
 

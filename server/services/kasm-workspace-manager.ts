@@ -6,6 +6,8 @@ import { kasmWorkspaces, kasmSessions } from '@shared/schema';
 import { eq, and, lt, isNull, sql, desc } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { kasmNginxManager } from './kasm-nginx-manager';
+import { createLogger } from '../lib/logger';
+const log = createLogger("kasm-workspace-manager");
 
 // ============================================================================
 // v2.9.1 Phase 10 — TLS hardening + circuit breaker
@@ -35,7 +37,7 @@ function buildKasmHttpsAgent(): { agent: https.Agent; mode: TLSMode } {
         mode: 'pinned',
       };
     } catch (err) {
-      console.warn(
+      log.warn(
         `[KasmWorkspaceManager] KASM_CA_PATH=${caPath} could not be read; falling back. ` +
           (err instanceof Error ? err.message : ''),
       );
@@ -43,7 +45,7 @@ function buildKasmHttpsAgent(): { agent: https.Agent; mode: TLSMode } {
   }
 
   if (process.env.RTPI_KASM_INSECURE_TLS === '1' || process.env.RTPI_KASM_INSECURE_TLS === 'true') {
-    console.warn(
+    log.warn(
       '[KasmWorkspaceManager] RTPI_KASM_INSECURE_TLS is on — KASM API certs are NOT verified. ' +
         'Set KASM_CA_PATH to a pinned CA to harden.',
     );
@@ -262,7 +264,7 @@ export class KasmWorkspaceManager {
         this.breaker.lastError = error?.message ?? 'transport error';
         if (this.breaker.failures >= CB_FAIL_THRESHOLD) {
           this.breaker.openUntil = Date.now() + CB_OPEN_MS;
-          console.warn(
+          log.warn(
             `[KasmWorkspaceManager] circuit breaker OPEN for ${CB_OPEN_MS / 1000}s after ${this.breaker.failures} consecutive failures (last: ${this.breaker.lastError})`,
           );
         }
@@ -304,19 +306,19 @@ export class KasmWorkspaceManager {
    */
   async initialize(): Promise<void> {
     if (!this.enabled) {
-      console.log('[KasmWorkspaceManager] Kasm integration disabled');
+      log.info('[KasmWorkspaceManager] Kasm integration disabled');
       return;
     }
 
     try {
       // Authenticate with Kasm API
       await this.authenticate();
-      console.log('[KasmWorkspaceManager] Successfully initialized and authenticated');
+      log.info('[KasmWorkspaceManager] Successfully initialized and authenticated');
 
       // Clean up any orphaned workspaces on startup
       await this.cleanupExpiredWorkspaces();
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Failed to initialize:', error);
+      log.error('[KasmWorkspaceManager] Failed to initialize:', error);
       throw error;
     }
   }
@@ -335,7 +337,7 @@ export class KasmWorkspaceManager {
       this.apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       return token;
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Authentication failed:', error);
+      log.error('[KasmWorkspaceManager] Authentication failed:', error);
       throw new Error('Failed to authenticate with Kasm API');
     }
   }
@@ -408,7 +410,7 @@ export class KasmWorkspaceManager {
 
       const provisioningDuration = Date.now() - provisioningStartTime;
 
-      console.log(
+      log.info(
         `[KasmWorkspaceManager] Provisioned workspace ${workspaceId} for user ${config.userId} ` +
         `(total: ${provisioningDuration}ms, quota: ${quotaCheckDuration}ms, ` +
         `session: ${sessionCreateDuration}ms, db: ${dbInsertDuration}ms)`
@@ -421,7 +423,7 @@ export class KasmWorkspaceManager {
       try {
         await kasmNginxManager.registerWorkspaceProxy(workspaceId, kasmSession.port);
       } catch (err) {
-        console.error(`[KasmWorkspaceManager] Workspace ${workspaceId} provisioned but proxy route registration failed:`, err);
+        log.error(`[KasmWorkspaceManager] Workspace ${workspaceId} provisioned but proxy route registration failed:`, err);
       }
 
       // Start monitoring the workspace with performance tracking
@@ -435,7 +437,7 @@ export class KasmWorkspaceManager {
         expiresAt,
       };
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Failed to provision workspace:', error);
+      log.error('[KasmWorkspaceManager] Failed to provision workspace:', error);
       throw error;
     }
   }
@@ -460,7 +462,7 @@ export class KasmWorkspaceManager {
 
       return response.data.session as KasmSession;
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Failed to create Kasm session:', error);
+      log.error('[KasmWorkspaceManager] Failed to create Kasm session:', error);
       throw error;
     }
   }
@@ -516,13 +518,13 @@ export class KasmWorkspaceManager {
             .where(eq(kasmWorkspaces.id, workspaceId));
 
           const performanceWarning = totalStartupTime > 60000 ? ' ⚠️  EXCEEDS 60s GOAL' : ' ✅ Within target';
-          console.log(
+          log.info(
             `[KasmWorkspaceManager] Workspace ${workspaceId} is now running ` +
             `(startup: ${totalStartupTime}ms, attempts: ${attempts + 1})${performanceWarning}`
           );
 
           // Log detailed performance breakdown
-          console.log(
+          log.info(
             `[KasmWorkspaceManager] Performance breakdown: ` +
             `quota=${metadata.performance?.quotaCheckDurationMs}ms, ` +
             `session=${metadata.performance?.sessionCreateDurationMs}ms, ` +
@@ -551,7 +553,7 @@ export class KasmWorkspaceManager {
             })
             .where(eq(kasmWorkspaces.id, workspaceId));
 
-          console.error(
+          log.error(
             `[KasmWorkspaceManager] Workspace ${workspaceId} failed to start ` +
             `(time: ${totalStartupTime}ms, attempts: ${attempts + 1})`
           );
@@ -577,7 +579,7 @@ export class KasmWorkspaceManager {
           setTimeout(checkStatus, 3000);
         }
       } catch (error) {
-        console.error('[KasmWorkspaceManager] Error monitoring workspace startup:', error);
+        log.error('[KasmWorkspaceManager] Error monitoring workspace startup:', error);
       }
     };
 
@@ -592,7 +594,7 @@ export class KasmWorkspaceManager {
       const response = await this.apiClient.get(`/api/sessions/${sessionId}`);
       return response.data.session.status;
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Failed to get session status:', error);
+      log.error('[KasmWorkspaceManager] Failed to get session status:', error);
       return 'unknown';
     }
   }
@@ -636,7 +638,7 @@ export class KasmWorkspaceManager {
         .set({ lastAccessed: new Date(), updatedAt: new Date() })
         .where(eq(kasmWorkspaces.id, workspaceId));
 
-      console.log(`[KasmWorkspaceManager] Created session for workspace ${workspaceId}`);
+      log.info(`[KasmWorkspaceManager] Created session for workspace ${workspaceId}`);
 
       return {
         id: session.id,
@@ -647,7 +649,7 @@ export class KasmWorkspaceManager {
         expiresAt: session.expiresAt,
       };
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Failed to create session:', error);
+      log.error('[KasmWorkspaceManager] Failed to create session:', error);
       throw error;
     }
   }
@@ -665,7 +667,7 @@ export class KasmWorkspaceManager {
         })
         .where(eq(kasmSessions.sessionToken, sessionToken));
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Failed to update session activity:', error);
+      log.error('[KasmWorkspaceManager] Failed to update session activity:', error);
     }
   }
 
@@ -679,9 +681,9 @@ export class KasmWorkspaceManager {
         .set({ terminatedAt: new Date() })
         .where(eq(kasmSessions.sessionToken, sessionToken));
 
-      console.log(`[KasmWorkspaceManager] Terminated session ${sessionToken}`);
+      log.info(`[KasmWorkspaceManager] Terminated session ${sessionToken}`);
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Failed to terminate session:', error);
+      log.error('[KasmWorkspaceManager] Failed to terminate session:', error);
       throw error;
     }
   }
@@ -711,7 +713,7 @@ export class KasmWorkspaceManager {
         expiresAt: s.expiresAt,
       }));
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Failed to get active sessions:', error);
+      log.error('[KasmWorkspaceManager] Failed to get active sessions:', error);
       return [];
     }
   }
@@ -733,7 +735,7 @@ export class KasmWorkspaceManager {
       await this.cleanupExpiredSessions();
     }, this.cleanupIntervalMs);
 
-    console.log(`[KasmWorkspaceManager] Cleanup schedule started (interval: ${this.cleanupIntervalMs}ms)`);
+    log.info(`[KasmWorkspaceManager] Cleanup schedule started (interval: ${this.cleanupIntervalMs}ms)`);
   }
 
   /**
@@ -743,7 +745,7 @@ export class KasmWorkspaceManager {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = undefined;
-      console.log('[KasmWorkspaceManager] Cleanup schedule stopped');
+      log.info('[KasmWorkspaceManager] Cleanup schedule stopped');
     }
   }
 
@@ -770,17 +772,17 @@ export class KasmWorkspaceManager {
           await this.terminateWorkspace(workspace.id);
           cleanedCount++;
         } catch (error) {
-          console.error(`[KasmWorkspaceManager] Failed to cleanup workspace ${workspace.id}:`, error);
+          log.error(`[KasmWorkspaceManager] Failed to cleanup workspace ${workspace.id}:`, error);
         }
       }
 
       if (cleanedCount > 0) {
-        console.log(`[KasmWorkspaceManager] Cleaned up ${cleanedCount} expired workspace(s)`);
+        log.info(`[KasmWorkspaceManager] Cleaned up ${cleanedCount} expired workspace(s)`);
       }
 
       return cleanedCount;
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Failed to cleanup expired workspaces:', error);
+      log.error('[KasmWorkspaceManager] Failed to cleanup expired workspaces:', error);
       return 0;
     }
   }
@@ -803,12 +805,12 @@ export class KasmWorkspaceManager {
         .returning();
 
       if (result.length > 0) {
-        console.log(`[KasmWorkspaceManager] Cleaned up ${result.length} expired session(s)`);
+        log.info(`[KasmWorkspaceManager] Cleaned up ${result.length} expired session(s)`);
       }
 
       return result.length;
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Failed to cleanup expired sessions:', error);
+      log.error('[KasmWorkspaceManager] Failed to cleanup expired sessions:', error);
       return 0;
     }
   }
@@ -832,7 +834,7 @@ export class KasmWorkspaceManager {
         try {
           await this.apiClient.delete(`/api/sessions/${workspace.kasmSessionId}`);
         } catch (error) {
-          console.error('[KasmWorkspaceManager] Failed to destroy Kasm session:', error);
+          log.error('[KasmWorkspaceManager] Failed to destroy Kasm session:', error);
           // Continue with database cleanup even if Kasm API call fails
         }
       }
@@ -843,7 +845,7 @@ export class KasmWorkspaceManager {
       try {
         await kasmNginxManager.unregisterWorkspaceProxy(workspaceId);
       } catch (err) {
-        console.error(`[KasmWorkspaceManager] Failed to unregister proxy route for ${workspaceId}:`, err);
+        log.error(`[KasmWorkspaceManager] Failed to unregister proxy route for ${workspaceId}:`, err);
       }
 
       // Update database
@@ -867,9 +869,9 @@ export class KasmWorkspaceManager {
           )
         );
 
-      console.log(`[KasmWorkspaceManager] Terminated workspace ${workspaceId}`);
+      log.info(`[KasmWorkspaceManager] Terminated workspace ${workspaceId}`);
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Failed to terminate workspace:', error);
+      log.error('[KasmWorkspaceManager] Failed to terminate workspace:', error);
       throw error;
     }
   }
@@ -944,7 +946,7 @@ export class KasmWorkspaceManager {
         );
       }
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Resource quota check failed:', error);
+      log.error('[KasmWorkspaceManager] Resource quota check failed:', error);
       throw error;
     }
   }
@@ -984,7 +986,7 @@ export class KasmWorkspaceManager {
         quota: this.defaultQuota,
       };
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Failed to get resource usage:', error);
+      log.error('[KasmWorkspaceManager] Failed to get resource usage:', error);
       throw error;
     }
   }
@@ -1015,11 +1017,11 @@ export class KasmWorkspaceManager {
         .set({ expiresAt: newExpiry, updatedAt: new Date() })
         .where(eq(kasmWorkspaces.id, workspaceId));
 
-      console.log(`[KasmWorkspaceManager] Extended workspace ${workspaceId} expiry by ${additionalHours} hours`);
+      log.info(`[KasmWorkspaceManager] Extended workspace ${workspaceId} expiry by ${additionalHours} hours`);
 
       return newExpiry;
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Failed to extend workspace expiry:', error);
+      log.error('[KasmWorkspaceManager] Failed to extend workspace expiry:', error);
       throw error;
     }
   }
@@ -1056,7 +1058,7 @@ export class KasmWorkspaceManager {
         minutesUntilExpiry: Math.floor((ws.expiresAt.getTime() - now.getTime()) / (60 * 1000)),
       }));
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Failed to get expiring workspaces:', error);
+      log.error('[KasmWorkspaceManager] Failed to get expiring workspaces:', error);
       return [];
     }
   }
@@ -1191,11 +1193,11 @@ export class KasmWorkspaceManager {
         })
         .where(eq(kasmWorkspaces.id, workspaceId));
 
-      console.log(`[KasmWorkspaceManager] Shared workspace ${workspaceId} with user ${targetUserId}`);
+      log.info(`[KasmWorkspaceManager] Shared workspace ${workspaceId} with user ${targetUserId}`);
 
       return session;
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Failed to share workspace:', error);
+      log.error('[KasmWorkspaceManager] Failed to share workspace:', error);
       throw error;
     }
   }
@@ -1238,9 +1240,9 @@ export class KasmWorkspaceManager {
           .where(eq(kasmWorkspaces.id, workspaceId));
       }
 
-      console.log(`[KasmWorkspaceManager] Revoked workspace ${workspaceId} sharing from user ${targetUserId}`);
+      log.info(`[KasmWorkspaceManager] Revoked workspace ${workspaceId} sharing from user ${targetUserId}`);
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Failed to revoke workspace sharing:', error);
+      log.error('[KasmWorkspaceManager] Failed to revoke workspace sharing:', error);
       throw error;
     }
   }
@@ -1293,11 +1295,11 @@ export class KasmWorkspaceManager {
         })
         .where(eq(kasmWorkspaces.id, workspaceId));
 
-      console.log(`[KasmWorkspaceManager] Created snapshot ${snapshotName} for workspace ${workspaceId}`);
+      log.info(`[KasmWorkspaceManager] Created snapshot ${snapshotName} for workspace ${workspaceId}`);
 
       return snapshot;
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Failed to create snapshot:', error);
+      log.error('[KasmWorkspaceManager] Failed to create snapshot:', error);
       throw error;
     }
   }
@@ -1319,7 +1321,7 @@ export class KasmWorkspaceManager {
       const metadata = workspace.metadata as Record<string, any> || {};
       return metadata.snapshots || [];
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Failed to list snapshots:', error);
+      log.error('[KasmWorkspaceManager] Failed to list snapshots:', error);
       return [];
     }
   }
@@ -1343,9 +1345,9 @@ export class KasmWorkspaceManager {
         snapshot_name: snapshotName,
       });
 
-      console.log(`[KasmWorkspaceManager] Restored workspace ${workspaceId} from snapshot ${snapshotName}`);
+      log.info(`[KasmWorkspaceManager] Restored workspace ${workspaceId} from snapshot ${snapshotName}`);
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Failed to restore from snapshot:', error);
+      log.error('[KasmWorkspaceManager] Failed to restore from snapshot:', error);
       throw error;
     }
   }
@@ -1366,7 +1368,7 @@ export class KasmWorkspaceManager {
 
       return workspace || null;
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Failed to get workspace:', error);
+      log.error('[KasmWorkspaceManager] Failed to get workspace:', error);
       return null;
     }
   }
@@ -1388,7 +1390,7 @@ export class KasmWorkspaceManager {
 
       return workspaces;
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Failed to list workspaces:', error);
+      log.error('[KasmWorkspaceManager] Failed to list workspaces:', error);
       return [];
     }
   }
@@ -1407,7 +1409,7 @@ export class KasmWorkspaceManager {
         })
         .where(eq(kasmWorkspaces.id, workspaceId));
     } catch (error) {
-      console.error('[KasmWorkspaceManager] Failed to update workspace status:', error);
+      log.error('[KasmWorkspaceManager] Failed to update workspace status:', error);
     }
   }
 
@@ -1416,7 +1418,7 @@ export class KasmWorkspaceManager {
    */
   async shutdown(): Promise<void> {
     this.stopCleanupSchedule();
-    console.log('[KasmWorkspaceManager] Shutdown complete');
+    log.info('[KasmWorkspaceManager] Shutdown complete');
   }
 }
 

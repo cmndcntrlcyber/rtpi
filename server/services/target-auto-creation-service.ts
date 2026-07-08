@@ -10,6 +10,8 @@ import { db } from '../db';
 import { targets, discoveredAssets, operations } from '@shared/schema';
 import { eq, and, isNull, inArray } from 'drizzle-orm';
 import { getOperationTag } from './operation-tag-helper';
+import { createLogger } from '../lib/logger';
+const log = createLogger("target-auto-creation-service");
 
 // ============================================================================
 // Types
@@ -54,7 +56,7 @@ class TargetAutoCreationService {
     operationId: string,
     scanId: string
   ): Promise<AutoCreationResult> {
-    console.log(`[TargetAutoCreation] Starting auto-creation for operation ${operationId}, scan ${scanId}`);
+    log.info(`[TargetAutoCreation] Starting auto-creation for operation ${operationId}, scan ${scanId}`);
 
     const result: AutoCreationResult = {
       created: 0,
@@ -83,11 +85,11 @@ class TargetAutoCreationService {
         );
 
       if (unlinkedAssets.length === 0) {
-        console.log('[TargetAutoCreation] No unlinked assets found');
+        log.info('[TargetAutoCreation] No unlinked assets found');
         return result;
       }
 
-      console.log(`[TargetAutoCreation] Found ${unlinkedAssets.length} unlinked assets`);
+      log.info(`[TargetAutoCreation] Found ${unlinkedAssets.length} unlinked assets`);
 
       // Get existing targets for this operation to check for duplicates
       const existingTargets = await db
@@ -100,7 +102,7 @@ class TargetAutoCreationService {
       for (const asset of unlinkedAssets) {
         // Enforce cap
         if (result.created >= MAX_AUTO_CREATED_TARGETS) {
-          console.log(`[TargetAutoCreation] Reached cap of ${MAX_AUTO_CREATED_TARGETS} auto-created targets`);
+          log.info(`[TargetAutoCreation] Reached cap of ${MAX_AUTO_CREATED_TARGETS} auto-created targets`);
           break;
         }
 
@@ -172,18 +174,18 @@ class TargetAutoCreationService {
             existingValues.add(asset.value); // Prevent further duplicates in this batch
           }
         } catch (err) {
-          console.warn(`[TargetAutoCreation] Failed to create target for asset ${asset.value}:`, err);
+          log.warn(`[TargetAutoCreation] Failed to create target for asset ${asset.value}:`, err);
           result.skipped++;
         }
       }
 
-      console.log(
+      log.info(
         `[TargetAutoCreation] Complete: ${result.created} created, ${result.skipped} skipped, ${result.linked} linked`
       );
 
       return result;
     } catch (error) {
-      console.error('[TargetAutoCreation] Auto-creation failed:', error);
+      log.error('[TargetAutoCreation] Auto-creation failed:', error);
       throw error;
     }
   }
@@ -237,7 +239,7 @@ class TargetAutoCreationService {
         }
       }
     } catch (error) {
-      console.warn('[TargetAutoCreation] Error linking existing targets:', error);
+      log.warn('[TargetAutoCreation] Error linking existing targets:', error);
     }
 
     return linked;

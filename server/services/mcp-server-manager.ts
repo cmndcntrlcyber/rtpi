@@ -7,6 +7,8 @@ import { syncDefaultCatalog } from './mcp/catalog-sync';
 import { preflightServer, formatPreflightError } from './mcp/preflight';
 import { repairKnownBadCatalogEntries } from './mcp/repair-known-bad';
 import { enqueueSkillGeneration } from './skill-generator';
+import { createLogger } from '../lib/logger';
+const log = createLogger("mcp-server-manager");
 
 // Spawn timeout in milliseconds (30 seconds)
 const SPAWN_TIMEOUT_MS = 30000;
@@ -49,7 +51,7 @@ class MCPServerManager {
           await repairKnownBadCatalogEntries();
           await syncDefaultCatalog();
         } catch (err) {
-          console.error("[MCPServerManager] Default catalog repair/sync failed:", err);
+          log.error("[MCPServerManager] Default catalog repair/sync failed:", err);
         }
       }, 1000);
     }
@@ -71,9 +73,9 @@ class MCPServerManager {
       for (const server of erroredServers) {
         // Reset stale 'running' status (process died during previous shutdown)
         if (server.status === "running" && !this.processes.has(server.id)) {
-          console.log(`[MCPServerManager] Recovering stale server: ${server.name} (${server.id})`);
+          log.info(`[MCPServerManager] Recovering stale server: ${server.name} (${server.id})`);
         } else if (server.status === "error") {
-          console.log(`[MCPServerManager] Recovering errored server: ${server.name} (${server.id})`);
+          log.info(`[MCPServerManager] Recovering errored server: ${server.name} (${server.id})`);
         }
 
         // Reset error state before attempting restart
@@ -85,15 +87,15 @@ class MCPServerManager {
         try {
           await this.startServer(server.id);
         } catch (err) {
-          console.error(`[MCPServerManager] Failed to recover server ${server.name}:`, err);
+          log.error(`[MCPServerManager] Failed to recover server ${server.name}:`, err);
         }
       }
 
       if (erroredServers.length > 0) {
-        console.log(`[MCPServerManager] Recovery complete: attempted ${erroredServers.length} server(s)`);
+        log.info(`[MCPServerManager] Recovery complete: attempted ${erroredServers.length} server(s)`);
       }
     } catch (error) {
-      console.error("[MCPServerManager] Server recovery failed:", error);
+      log.error("[MCPServerManager] Server recovery failed:", error);
     }
   }
 
@@ -108,19 +110,19 @@ class MCPServerManager {
         .then((rows) => rows[0]);
 
       if (!server) {
-        console.error(`Server ${serverId} not found`);
+        log.error(`Server ${serverId} not found`);
         return false;
       }
 
       // Check if already running
       if (this.processes.has(serverId)) {
-        console.log(`Server ${serverId} is already running`);
+        log.info(`Server ${serverId} is already running`);
         return true;
       }
 
       // Validate command is not empty
       if (!server.command || server.command.trim() === '') {
-        console.error(`Server ${serverId} has no command configured`);
+        log.error(`Server ${serverId} has no command configured`);
         await this.updateErrorStatus(serverId, 'No command configured');
         return false;
       }
@@ -140,12 +142,12 @@ class MCPServerManager {
       });
       if (!preflight.ok) {
         const errMsg = formatPreflightError(preflight);
-        console.error(`Server ${serverId} preflight failed: ${errMsg}`);
+        log.error(`Server ${serverId} preflight failed: ${errMsg}`);
         await this.updateErrorStatus(serverId, errMsg);
         return false;
       }
 
-      console.log(`Starting server ${serverId} with command: ${server.command} ${args.join(' ')}`);
+      log.info(`Starting server ${serverId} with command: ${server.command} ${args.join(' ')}`);
 
       // Spawn the process with shell: true to allow command parsing
       // This enables commands like "npx -y tavily-mcp@latest" to work correctly
@@ -161,20 +163,20 @@ class MCPServerManager {
       let spawnError: Error | null = null;
       childProcess.on('error', (error) => {
         spawnError = error;
-        console.error(`Server ${serverId} spawn error:`, error);
+        log.error(`Server ${serverId} spawn error:`, error);
       });
 
       // Wait a tick for spawn errors to propagate
       await new Promise(resolve => setImmediate(resolve));
 
       if (spawnError) {
-        console.error(`Failed to spawn server ${serverId}:`, spawnError);
+        log.error(`Failed to spawn server ${serverId}:`, spawnError);
         await this.updateErrorStatus(serverId, spawnError.message);
         return false;
       }
 
       if (!childProcess.pid) {
-        console.error(`Failed to spawn server ${serverId} - no PID assigned`);
+        log.error(`Failed to spawn server ${serverId} - no PID assigned`);
         await this.updateErrorStatus(serverId, 'Process failed to start - no PID assigned');
         return false;
       }
@@ -184,7 +186,7 @@ class MCPServerManager {
         const proc = this.processes.get(serverId);
         if (proc && proc.process.exitCode === null) {
           // Process is still running after timeout, assume success
-          console.log(`Server ${serverId} spawn timeout cleared - process is running`);
+          log.info(`Server ${serverId} spawn timeout cleared - process is running`);
         }
       }, SPAWN_TIMEOUT_MS);
 
@@ -198,13 +200,13 @@ class MCPServerManager {
 
       // Set up event handlers for runtime errors
       childProcess.on('error', (error) => {
-        console.error(`Server ${serverId} runtime error:`, error);
+        log.error(`Server ${serverId} runtime error:`, error);
         this.cleanupSpawnTimeout(serverId);
         this.handleServerFailure(serverId, error.message);
       });
 
       childProcess.on('exit', (code, signal) => {
-        console.log(`Server ${serverId} exited with code ${code}, signal ${signal}`);
+        log.info(`Server ${serverId} exited with code ${code}, signal ${signal}`);
         this.cleanupSpawnTimeout(serverId);
         // Only treat as failure if unexpected exit (not stopped by us)
         if (this.processes.has(serverId)) {
@@ -214,7 +216,7 @@ class MCPServerManager {
 
       // Capture stderr for debugging
       childProcess.stderr?.on('data', (data) => {
-        console.error(`Server ${serverId} stderr:`, data.toString());
+        log.error(`Server ${serverId} stderr:`, data.toString());
       });
 
       // Update database status and reset restart counter (allows recovery from error state)
@@ -229,7 +231,7 @@ class MCPServerManager {
         })
         .where(eq(mcpServers.id, serverId));
 
-      console.log(`Server ${serverId} started successfully with PID ${childProcess.pid}`);
+      log.info(`Server ${serverId} started successfully with PID ${childProcess.pid}`);
       // FF_TOOL_SKILL_GENERATION — confirm the row has a SKILL.md once the
       // server actually starts. enqueueSkillGeneration() short-circuits when
       // the source hash matches an existing skill, so this is cheap on every
@@ -237,7 +239,7 @@ class MCPServerManager {
       enqueueSkillGeneration('mcp', serverId);
       return true;
     } catch (error) {
-      console.error(`Failed to start server ${serverId}:`, error);
+      log.error(`Failed to start server ${serverId}:`, error);
       await this.updateErrorStatus(serverId, error instanceof Error ? error.message : 'Unknown error');
       return false;
     }
@@ -255,7 +257,7 @@ class MCPServerManager {
       const serverProcess = this.processes.get(serverId);
 
       if (!serverProcess) {
-        console.log(`Server ${serverId} is not running`);
+        log.info(`Server ${serverId} is not running`);
         await this.updateStatus(serverId, 'stopped');
         return true;
       }
@@ -285,16 +287,16 @@ class MCPServerManager {
         })
         .where(eq(mcpServers.id, serverId));
 
-      console.log(`Server ${serverId} stopped successfully`);
+      log.info(`Server ${serverId} stopped successfully`);
       return true;
     } catch (error) {
-      console.error(`Failed to stop server ${serverId}:`, error);
+      log.error(`Failed to stop server ${serverId}:`, error);
       return false;
     }
   }
 
   async restartServer(serverId: string): Promise<boolean> {
-    console.log(`Restarting server ${serverId}`);
+    log.info(`Restarting server ${serverId}`);
     await this.stopServer(serverId);
     
     // Wait a bit before restarting
@@ -325,7 +327,7 @@ class MCPServerManager {
 
     // Check if auto-restart is enabled
     if (server.autoRestart && server.restartCount < server.maxRestarts) {
-      console.log(`Auto-restarting server ${serverId} (${server.restartCount + 1}/${server.maxRestarts})`);
+      log.info(`Auto-restarting server ${serverId} (${server.restartCount + 1}/${server.maxRestarts})`);
 
       // Increment restart count
       await db
@@ -375,7 +377,7 @@ class MCPServerManager {
                          this.processes.get(server.id)!.process.exitCode === null;
 
         if (!isRunning) {
-          console.log(`Server ${server.id} is marked as running but process is dead`);
+          log.info(`Server ${server.id} is marked as running but process is dead`);
           await this.handleServerFailure(server.id);
         }
       }

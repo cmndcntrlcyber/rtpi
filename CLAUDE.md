@@ -22,6 +22,10 @@ npm run db:push          # Apply schema changes to database
 npm run db:generate      # Generate migrations
 npm run db:studio        # Open Drizzle Studio GUI
 
+# Admin
+npm run db:create-admin  # Create default admin user
+npm run db:unlock-admin  # Unlock a locked admin account (resets failed attempts)
+
 # Code quality
 npm run lint             # Run ESLint
 npm run format           # Format with Prettier
@@ -56,6 +60,12 @@ server/                 # Backend Express application
   auth/                # Authentication (local, Google OAuth, API key strategies)
   services/            # Business logic (agent orchestration, tool execution, report generation)
   middleware/          # Rate limiting, CSRF protection
+  scripts/             # Administrative & operational scripts
+    admin/             # User account management (create/unlock admin)
+    data/              # ATT&CK data pipeline & database seeding
+    tools/             # Tool registry & migration
+    infra/             # Infrastructure, Docker, SSL, environment setup
+    kasm/              # Kasm workspace operations & load testing
 
 client/src/            # Frontend React application
   pages/               # Page components (Dashboard, Operations, Targets, etc.)

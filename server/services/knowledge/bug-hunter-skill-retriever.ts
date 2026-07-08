@@ -21,6 +21,8 @@
 import { sql } from "drizzle-orm";
 import { db } from "../../db";
 import { embedder, EmbedderError } from "./embedder";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("bug-hunter-skill-retriever");
 
 export type BugHunterPhase =
   | "scope"
@@ -86,7 +88,7 @@ export async function retrieveBugHunterSkills(opts: RetrieveOptions): Promise<Re
   } catch (err) {
     if (!(err instanceof EmbedderError)) throw err;
     // Dimension mismatch / no provider → fall through to text search.
-    console.warn("[bug-hunter-retriever] embed failed, falling back to text:", err.message);
+    log.warn("[bug-hunter-retriever] embed failed, falling back to text:", err.message);
   }
 
   if (queryVec) {

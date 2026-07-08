@@ -22,6 +22,8 @@ import { readFeatureFlags } from "@shared/feature-flags";
 import { routeReasoning, NoInferenceProviderAvailable } from "../inference/inference-router";
 import { loadSkillFileByRelativePath } from "../skills/skill-loader";
 import type { SkillRegistry } from "../skills/skill-paths";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("tool-skill-prompt-sync");
 
 export interface ToolSkillEntry {
   registry: SkillRegistry;
@@ -223,12 +225,12 @@ Output the new system prompt now.`;
     return text;
   } catch (err) {
     if (err instanceof NoInferenceProviderAvailable) {
-      console.warn(
+      log.warn(
         "[tool-skill-prompt-sync] reasoning router exhausted — falling back to deterministic splice:",
         err.message,
       );
     } else {
-      console.warn("[tool-skill-prompt-sync] reasoning rewrite failed:", err);
+      log.warn("[tool-skill-prompt-sync] reasoning rewrite failed:", err);
     }
     return null;
   }
@@ -346,7 +348,7 @@ export async function syncAgentPromptForToolset(
     .set({ config: nextConfig, updatedAt: new Date() })
     .where(eq(agents.id, agentId));
 
-  console.log(
+  log.info(
     `[tool-skill-prompt-sync] agent=${agentId} reason=${opts.reason || "manual"} skills=${syncedIds.length} ` +
       `mode=${usedReasoning ? "reasoning" : "deterministic"}`,
   );
@@ -388,7 +390,7 @@ export async function syncAllAgentsForSkillChange(opts: {
       if (r.changed) changed += 1;
     } catch (err) {
       errors += 1;
-      console.error(`[tool-skill-prompt-sync] bulk sync failed for agent ${a.id}:`, err);
+      log.error(`[tool-skill-prompt-sync] bulk sync failed for agent ${a.id}:`, err);
     }
   }
   return { scanned: all.length, changed, errors };

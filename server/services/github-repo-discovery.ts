@@ -6,6 +6,8 @@
  */
 
 import { EventEmitter } from "events";
+import { createLogger } from '../lib/logger';
+const log = createLogger("github-repo-discovery");
 
 export interface DiscoveredRepo {
   name: string;
@@ -144,7 +146,7 @@ export class GitHubRepoDiscovery extends EventEmitter {
         const repos = await this.searchGitHub(query, agentType);
         allRepos.push(...repos);
       } catch (error) {
-        console.error(`Search failed for query "${query}":`, error);
+        log.error(`Search failed for query "${query}":`, error);
       }
     }
 
@@ -173,7 +175,7 @@ export class GitHubRepoDiscovery extends EventEmitter {
    */
   private async searchGitHub(query: string, category: string): Promise<DiscoveredRepo[]> {
     if (!this.tavilyApiKey) {
-      console.warn("Tavily API key not set, using mock data");
+      log.warn("Tavily API key not set, using mock data");
       return this.getMockRepos(category);
     }
 
@@ -199,7 +201,7 @@ export class GitHubRepoDiscovery extends EventEmitter {
       const data = await response.json();
       return this.parseGitHubResults(data.results || [], category);
     } catch (error) {
-      console.error("Tavily search failed:", error);
+      log.error("Tavily search failed:", error);
       return [];
     }
   }

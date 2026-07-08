@@ -10,6 +10,8 @@ import { toolTestEvents } from './tool-tester';
 import { db } from '../db';
 import { toolRegistry, rdArtifacts, rdExperiments } from '@shared/schema';
 import { eq } from 'drizzle-orm';
+import { createLogger } from '../lib/logger';
+const log = createLogger("rd-feedback-loop");
 
 toolTestEvents.on('test_complete', async ({ toolId, allPassed, results }) => {
   if (allPassed) return; // No feedback needed for passing tools
@@ -52,8 +54,8 @@ toolTestEvents.on('test_complete', async ({ toolId, allPassed, results }) => {
       results: {},
     });
 
-    console.log(`[RD Feedback] Created refinement experiment for tool "${tool.name}"`);
+    log.info(`[RD Feedback] Created refinement experiment for tool "${tool.name}"`);
   } catch (error) {
-    console.error('[RD Feedback] Error creating refinement experiment:', error);
+    log.error('[RD Feedback] Error creating refinement experiment:', error);
   }
 });

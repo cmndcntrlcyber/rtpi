@@ -3,6 +3,8 @@ import { db } from "../../db";
 import { toolWorkflows, securityTools, toolRegistry } from "@shared/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { z } from "zod";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("tool-workflows");
 
 const router = Router();
 
@@ -74,7 +76,7 @@ router.get("/", async (req, res) => {
 
     res.json({ workflows });
   } catch (error: any) {
-    console.error("Failed to list tool workflows:", error);
+    log.error("Failed to list tool workflows:", error);
     res.status(500).json({
       error: "Failed to list tool workflows",
       details: error?.message || "Internal server error"
@@ -97,7 +99,7 @@ router.get("/:id", async (req, res) => {
 
     res.json(workflow);
   } catch (error: any) {
-    console.error("Failed to get tool workflow:", error);
+    log.error("Failed to get tool workflow:", error);
     res.status(500).json({
       error: "Failed to get tool workflow",
       details: error?.message || "Internal server error"
@@ -142,7 +144,7 @@ router.post("/", async (req, res) => {
 
     res.status(201).json(workflow);
   } catch (error: any) {
-    console.error("Failed to create tool workflow:", error);
+    log.error("Failed to create tool workflow:", error);
     res.status(500).json({
       error: "Failed to create tool workflow",
       details: error?.message || "Internal server error"
@@ -191,7 +193,7 @@ router.put("/:id", async (req, res) => {
 
     res.json(updated);
   } catch (error: any) {
-    console.error("Failed to update tool workflow:", error);
+    log.error("Failed to update tool workflow:", error);
     res.status(500).json({
       error: "Failed to update tool workflow",
       details: error?.message || "Internal server error"
@@ -229,7 +231,7 @@ router.delete("/:id", async (req, res) => {
 
     res.status(204).send();
   } catch (error: any) {
-    console.error("Failed to delete tool workflow:", error);
+    log.error("Failed to delete tool workflow:", error);
     res.status(500).json({
       error: "Failed to delete tool workflow",
       details: error?.message || "Internal server error"
@@ -274,7 +276,7 @@ router.post("/:id/duplicate", async (req, res) => {
 
     res.status(201).json(duplicate);
   } catch (error: any) {
-    console.error("Failed to duplicate tool workflow:", error);
+    log.error("Failed to duplicate tool workflow:", error);
     res.status(500).json({
       error: "Failed to duplicate tool workflow",
       details: error?.message || "Internal server error"
@@ -325,7 +327,7 @@ router.post("/:id/execute", async (req, res) => {
       // In a real implementation, this would return an execution ID
     });
   } catch (error: any) {
-    console.error("Failed to execute tool workflow:", error);
+    log.error("Failed to execute tool workflow:", error);
     res.status(500).json({
       error: "Failed to execute tool workflow",
       details: error?.message || "Internal server error"
@@ -356,9 +358,32 @@ router.get("/meta/available-tools", async (_req, res) => {
       updatedAt: rt.updatedAt,
     }));
 
+    // Also surface security_tools entries (the curated/legacy catalog) that the
+    // registry doesn't already cover, keyed by name to avoid duplicates.
+    const seenNames = new Set(tools.map(t => (t.name || '').toLowerCase()));
+    const secTools = await db.select().from(securityTools);
+    for (const st of secTools) {
+      if (seenNames.has((st.name || '').toLowerCase())) continue;
+      seenNames.add((st.name || '').toLowerCase());
+      tools.push({
+        id: st.id,
+        name: st.name,
+        category: st.category,
+        description: st.description,
+        status: 'available' as const,
+        command: st.command ?? st.name,
+        dockerImage: st.dockerImage || 'rtpi-tools',
+        version: st.version,
+        configPath: st.configPath,
+        usageCount: st.usageCount ?? 0,
+        createdAt: st.createdAt,
+        updatedAt: st.updatedAt,
+      });
+    }
+
     res.json({ tools });
   } catch (error: any) {
-    console.error("Failed to get available tools:", error);
+    log.error("Failed to get available tools:", error);
     res.status(500).json({
       error: "Failed to get available tools",
       details: error?.message || "Internal server error"

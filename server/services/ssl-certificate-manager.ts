@@ -1,5 +1,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { createLogger } from '../lib/logger';
+const log = createLogger("ssl-certificate-manager");
 
 const execAsync = promisify(exec);
 
@@ -73,20 +75,20 @@ class SSLCertificateManager {
    * Initialize SSL certificate manager
    */
   private async initialize(): Promise<void> {
-    console.log('[SSL Certificate Manager] Initializing...');
+    log.info('[SSL Certificate Manager] Initializing...');
 
     try {
       // Check if certbot is available
       const status = await this.getCertbotStatus();
 
       if (status.installed) {
-        console.log(`[SSL Certificate Manager] Certbot version ${status.version} detected`);
-        console.log(`[SSL Certificate Manager] Managing ${status.certificateCount} certificate(s)`);
+        log.info(`[SSL Certificate Manager] Certbot version ${status.version} detected`);
+        log.info(`[SSL Certificate Manager] Managing ${status.certificateCount} certificate(s)`);
       } else {
-        console.warn('[SSL Certificate Manager] Certbot not available - SSL automation disabled');
+        log.warn('[SSL Certificate Manager] Certbot not available - SSL automation disabled');
       }
     } catch (error) {
-      console.error('[SSL Certificate Manager] Initialization warning:', error);
+      log.error('[SSL Certificate Manager] Initialization warning:', error);
     }
   }
 
@@ -98,7 +100,7 @@ class SSLCertificateManager {
    * Request a new SSL certificate from Let's Encrypt
    */
   async requestCertificate(request: CertificateRequest): Promise<CertificateInfo> {
-    console.log(`[SSL] Requesting certificate for ${request.domain}...`);
+    log.info(`[SSL] Requesting certificate for ${request.domain}...`);
 
     // Validate request
     if (!request.domain || !request.email) {
@@ -145,9 +147,9 @@ class SSLCertificateManager {
       // Execute certbot in container
       const { stdout, stderr } = await this.execInCertbotContainer(certbotCmd);
 
-      console.log('[SSL] Certbot output:', stdout);
+      log.info('[SSL] Certbot output:', stdout);
       if (stderr) {
-        console.warn('[SSL] Certbot warnings:', stderr);
+        log.warn('[SSL] Certbot warnings:', stderr);
       }
 
       if (!request.dryRun) {
@@ -169,7 +171,7 @@ class SSLCertificateManager {
         keyPath: `${this.certPath}/${request.domain}/privkey.pem`,
       };
     } catch (error) {
-      console.error(`[SSL] Failed to request certificate for ${request.domain}:`, error);
+      log.error(`[SSL] Failed to request certificate for ${request.domain}:`, error);
       throw new Error(`Certificate request failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -178,7 +180,7 @@ class SSLCertificateManager {
    * Setup Cloudflare DNS credentials for DNS-01 challenge (#KW-12)
    */
   private async setupCloudflareCredentials(apiToken: string): Promise<void> {
-    console.log('[SSL] Setting up Cloudflare DNS credentials...');
+    log.info('[SSL] Setting up Cloudflare DNS credentials...');
 
     const credentialsContent = `# Cloudflare API token
 dns_cloudflare_api_token = ${apiToken}
@@ -189,9 +191,9 @@ dns_cloudflare_api_token = ${apiToken}
       const writeCmd = `echo '${credentialsContent}' > ${this.cloudflareCredFile} && chmod 600 ${this.cloudflareCredFile}`;
       await this.execInCertbotContainer(writeCmd);
 
-      console.log('[SSL] Cloudflare credentials configured');
+      log.info('[SSL] Cloudflare credentials configured');
     } catch (error) {
-      console.error('[SSL] Failed to setup Cloudflare credentials:', error);
+      log.error('[SSL] Failed to setup Cloudflare credentials:', error);
       throw new Error('Failed to configure Cloudflare DNS credentials');
     }
   }
@@ -204,7 +206,7 @@ dns_cloudflare_api_token = ${apiToken}
    * Renew all expiring certificates
    */
   async renewCertificates(daysBeforeExpiry: number = 30): Promise<RenewalResult[]> {
-    console.log(`[SSL] Checking for certificates expiring within ${daysBeforeExpiry} days...`);
+    log.info(`[SSL] Checking for certificates expiring within ${daysBeforeExpiry} days...`);
 
     try {
       // Get all certificates
@@ -212,11 +214,11 @@ dns_cloudflare_api_token = ${apiToken}
       const expiringCerts = certificates.filter(cert => cert.daysRemaining <= daysBeforeExpiry);
 
       if (expiringCerts.length === 0) {
-        console.log('[SSL] No certificates need renewal');
+        log.info('[SSL] No certificates need renewal');
         return [];
       }
 
-      console.log(`[SSL] Found ${expiringCerts.length} certificate(s) to renew`);
+      log.info(`[SSL] Found ${expiringCerts.length} certificate(s) to renew`);
       const results: RenewalResult[] = [];
 
       // Renew each expiring certificate
@@ -246,7 +248,7 @@ dns_cloudflare_api_token = ${apiToken}
 
       return results;
     } catch (error) {
-      console.error('[SSL] Certificate renewal check failed:', error);
+      log.error('[SSL] Certificate renewal check failed:', error);
       throw new Error(`Renewal check failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -255,20 +257,20 @@ dns_cloudflare_api_token = ${apiToken}
    * Renew a specific certificate
    */
   async renewCertificate(domain: string): Promise<void> {
-    console.log(`[SSL] Renewing certificate for ${domain}...`);
+    log.info(`[SSL] Renewing certificate for ${domain}...`);
 
     try {
       const renewCmd = `certbot renew --cert-name ${domain} --non-interactive`;
       const { stdout, stderr } = await this.execInCertbotContainer(renewCmd);
 
-      console.log('[SSL] Renewal output:', stdout);
+      log.info('[SSL] Renewal output:', stdout);
       if (stderr) {
-        console.warn('[SSL] Renewal warnings:', stderr);
+        log.warn('[SSL] Renewal warnings:', stderr);
       }
 
-      console.log(`[SSL] Certificate for ${domain} renewed successfully`);
+      log.info(`[SSL] Certificate for ${domain} renewed successfully`);
     } catch (error) {
-      console.error(`[SSL] Failed to renew certificate for ${domain}:`, error);
+      log.error(`[SSL] Failed to renew certificate for ${domain}:`, error);
       throw new Error(`Certificate renewal failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -277,13 +279,13 @@ dns_cloudflare_api_token = ${apiToken}
    * Force renew all certificates (for testing) (#KW-15)
    */
   async forceRenewAll(): Promise<RenewalResult[]> {
-    console.log('[SSL] Force renewing all certificates...');
+    log.info('[SSL] Force renewing all certificates...');
 
     try {
       const renewCmd = 'certbot renew --force-renewal --non-interactive';
       const { stdout } = await this.execInCertbotContainer(renewCmd);
 
-      console.log('[SSL] Force renewal output:', stdout);
+      log.info('[SSL] Force renewal output:', stdout);
 
       // Reload nginx
       await this.reloadNginx();
@@ -298,7 +300,7 @@ dns_cloudflare_api_token = ${apiToken}
         timestamp: new Date(),
       }));
     } catch (error) {
-      console.error('[SSL] Force renewal failed:', error);
+      log.error('[SSL] Force renewal failed:', error);
       throw new Error(`Force renewal failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -346,7 +348,7 @@ dns_cloudflare_api_token = ${apiToken}
         chainPath: `${this.certPath}/${domain}/chain.pem`,
       };
     } catch (error) {
-      console.error(`[SSL] Failed to get certificate info for ${domain}:`, error);
+      log.error(`[SSL] Failed to get certificate info for ${domain}:`, error);
       throw new Error(`Failed to get certificate info: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -373,13 +375,13 @@ dns_cloudflare_api_token = ${apiToken}
           const certInfo = await this.getCertificateInfo(domain);
           certificates.push(certInfo);
         } catch (error) {
-          console.warn(`[SSL] Failed to get info for ${domain}:`, error);
+          log.warn(`[SSL] Failed to get info for ${domain}:`, error);
         }
       }
 
       return certificates;
     } catch (error) {
-      console.error('[SSL] Failed to list certificates:', error);
+      log.error('[SSL] Failed to list certificates:', error);
       return [];
     }
   }
@@ -388,7 +390,7 @@ dns_cloudflare_api_token = ${apiToken}
    * Revoke a certificate
    */
   async revokeCertificate(domain: string, reason?: string): Promise<void> {
-    console.log(`[SSL] Revoking certificate for ${domain}...`);
+    log.info(`[SSL] Revoking certificate for ${domain}...`);
 
     try {
       const revokeCmd = [
@@ -399,15 +401,15 @@ dns_cloudflare_api_token = ${apiToken}
       ].filter(Boolean).join(' ');
 
       const { stdout } = await this.execInCertbotContainer(revokeCmd);
-      console.log('[SSL] Revocation output:', stdout);
+      log.info('[SSL] Revocation output:', stdout);
 
       // Delete certificate files
       const deleteCmd = `certbot delete --cert-name ${domain} --non-interactive`;
       await this.execInCertbotContainer(deleteCmd);
 
-      console.log(`[SSL] Certificate for ${domain} revoked and deleted`);
+      log.info(`[SSL] Certificate for ${domain} revoked and deleted`);
     } catch (error) {
-      console.error(`[SSL] Failed to revoke certificate for ${domain}:`, error);
+      log.error(`[SSL] Failed to revoke certificate for ${domain}:`, error);
       throw new Error(`Certificate revocation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -420,7 +422,7 @@ dns_cloudflare_api_token = ${apiToken}
    * Reload nginx to apply new certificates
    */
   async reloadNginx(): Promise<void> {
-    console.log('[SSL] Reloading nginx...');
+    log.info('[SSL] Reloading nginx...');
 
     try {
       // Test nginx configuration first
@@ -431,9 +433,9 @@ dns_cloudflare_api_token = ${apiToken}
       const reloadCmd = 'nginx -s reload';
       const { stdout } = await this.execInNginxContainer(reloadCmd);
 
-      console.log('[SSL] Nginx reloaded:', stdout || 'success');
+      log.info('[SSL] Nginx reloaded:', stdout || 'success');
     } catch (error) {
-      console.error('[SSL] Failed to reload nginx:', error);
+      log.error('[SSL] Failed to reload nginx:', error);
       throw new Error(`Nginx reload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -485,7 +487,7 @@ add_header X-XSS-Protection "1; mode=block" always;
     success: boolean;
     steps: Array<{ step: string; success: boolean; message: string }>;
   }> {
-    console.log(`[SSL] Testing certificate rotation for ${domain}...`);
+    log.info(`[SSL] Testing certificate rotation for ${domain}...`);
 
     const steps: Array<{ step: string; success: boolean; message: string }> = [];
 
@@ -590,7 +592,7 @@ add_header X-XSS-Protection "1; mode=block" always;
         })),
       };
     } catch (error) {
-      console.error('[SSL] Failed to get certbot status:', error);
+      log.error('[SSL] Failed to get certbot status:', error);
       return {
         installed: false,
         certificateCount: 0,

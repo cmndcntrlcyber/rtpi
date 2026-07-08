@@ -13,6 +13,11 @@
 import { WebSocket, WebSocketServer } from "ws";
 import { IncomingMessage } from "http";
 import { randomUUID } from "crypto";
+import cookie from "cookie";
+import cookieSignature from "cookie-signature";
+import { createLogger } from '../lib/logger';
+import { redisClient, sessionSecret } from '../auth/session';
+const log = createLogger("agent-websocket-manager");
 
 // ============================================================================
 // Types
@@ -102,30 +107,32 @@ export class AgentWebSocketManager {
     // Cleanup stale connections every 5 minutes
     setInterval(() => this.cleanup(), 300000);
 
-    console.log("[AgentWebSocket] Manager initialized");
+    log.info("[AgentWebSocket] Manager initialized");
   }
 
   // --------------------------------------------------------------------------
   // Connection handling
   // --------------------------------------------------------------------------
 
-  private handleConnection(ws: WebSocket, request: IncomingMessage): void {
-    const url = request.url || "";
+  private async handleConnection(ws: WebSocket, request: IncomingMessage): Promise<void> {
     const clientId = randomUUID();
 
-    // Extract userId from query params or cookie (TODO: proper session auth)
-    const urlObj = new URL(url, "http://localhost");
-    const userId = urlObj.searchParams.get("userId") || "anonymous";
+    const userId = await this.authenticateRequest(request);
+    if (!userId) {
+      log.warn(`[AgentWebSocket] Rejected unauthenticated connection: ${clientId}`);
+      ws.close(1008, "Authentication required");
+      return;
+    }
 
     const client: ConnectedClient = {
       ws,
       userId,
-      subscriptions: new Set(["*"]), // Subscribe to all by default
+      subscriptions: new Set(["*"]),
       connectedAt: new Date(),
     };
 
     this.clients.set(clientId, client);
-    console.log(`[AgentWebSocket] Client connected: ${clientId} (user: ${userId})`);
+    log.info(`[AgentWebSocket] Client connected: ${clientId} (user: ${userId})`);
 
     // Send ready event
     this.sendToClient(client, {
@@ -140,17 +147,17 @@ export class AgentWebSocketManager {
         const message: ClientMessage = JSON.parse(data.toString());
         this.handleClientMessage(clientId, message);
       } catch (err) {
-        console.error("[AgentWebSocket] Invalid message:", err);
+        log.error("[AgentWebSocket] Invalid message:", err);
       }
     });
 
     ws.on("close", () => {
-      console.log(`[AgentWebSocket] Client disconnected: ${clientId}`);
+      log.info(`[AgentWebSocket] Client disconnected: ${clientId}`);
       this.clients.delete(clientId);
     });
 
     ws.on("error", (err) => {
-      console.error(`[AgentWebSocket] Client error ${clientId}:`, err);
+      log.error(`[AgentWebSocket] Client error ${clientId}:`, err);
       this.clients.delete(clientId);
     });
   }
@@ -203,6 +210,39 @@ export class AgentWebSocketManager {
           timestamp: new Date().toISOString(),
         });
         break;
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // Authentication
+  // --------------------------------------------------------------------------
+
+  private async authenticateRequest(request: IncomingMessage): Promise<string | null> {
+    try {
+      const cookieHeader = request.headers.cookie;
+      if (!cookieHeader) return null;
+
+      const cookies = cookie.parse(cookieHeader);
+      const signed = cookies["rtpi.sid"];
+      if (!signed) return null;
+
+      // express-session prefixes signed cookies with "s:"
+      const raw = signed.startsWith("s:")
+        ? signed.slice(2)
+        : signed;
+
+      const sessionId = cookieSignature.unsign(raw, sessionSecret);
+      if (sessionId === false) return null;
+
+      const sessionData = await redisClient.get(`sess:${sessionId}`);
+      if (!sessionData) return null;
+
+      const session = JSON.parse(sessionData);
+      const userId = session?.passport?.user;
+      return typeof userId === "string" ? userId : null;
+    } catch (err) {
+      log.error("[AgentWebSocket] Session auth error:", err);
+      return null;
     }
   }
 
@@ -340,14 +380,14 @@ export class AgentWebSocketManager {
   private handleApprovalResponse(approvalId: string, approved: boolean, reason?: string): void {
     const pending = this.pendingApprovals.get(approvalId);
     if (!pending) {
-      console.warn(`[AgentWebSocket] Unknown approval ID: ${approvalId}`);
+      log.warn(`[AgentWebSocket] Unknown approval ID: ${approvalId}`);
       return;
     }
 
     clearTimeout(pending.timeout);
     this.pendingApprovals.delete(approvalId);
 
-    console.log(`[AgentWebSocket] Approval ${approvalId}: ${approved ? "APPROVED" : "DENIED"} — ${reason || "no reason"}`);
+    log.info(`[AgentWebSocket] Approval ${approvalId}: ${approved ? "APPROVED" : "DENIED"} — ${reason || "no reason"}`);
 
     // Notify all clients of the decision
     this.broadcastEvent({

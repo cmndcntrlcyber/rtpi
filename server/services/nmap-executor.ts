@@ -14,6 +14,11 @@ import { db } from '../db';
 import { discoveredAssets, discoveredServices, axScanResults } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { XMLParser } from 'fast-xml-parser';
+import { createLogger } from '../lib/logger';
+import { logToolAudit } from '../auth/middleware';
+import { scanDuration, toolExecutionsTotal } from '../lib/metrics';
+
+const log = createLogger("nmap-executor");
 
 // ============================================================================
 // Types
@@ -91,13 +96,15 @@ class NmapExecutor {
 
     const scanId = scanRecord.id;
 
+    logToolAudit(userId, "nmap_scan_start", "nmap", scanId, true, { targets, options });
+
     // Run the scan asynchronously (fire-and-forget with proper error handling)
     this.runScan(scanId, targets, options, operationId, scanRecord.startedAt!, userId)
       .then((result) => {
-        console.log(`Nmap scan ${scanId} completed: ${result.assetsCount} hosts, ${result.servicesCount} services`);
+        log.info({ scanId, hosts: result.assetsCount, services: result.servicesCount }, "Nmap scan completed");
       })
       .catch((error) => {
-        console.error(`Nmap scan ${scanId} failed:`, error);
+        log.error({ scanId, err: error }, "Nmap scan failed");
       });
 
     return { scanId };
@@ -122,8 +129,7 @@ class NmapExecutor {
       // Build nmap command arguments
       const args = this.buildArgs(targets, options);
 
-      console.log(`Starting Nmap scan ${scanId} for targets:`, targets);
-      console.log(`Nmap args:`, args.join(' '));
+      log.info({ scanId, targets, args: args.join(" ") }, "Starting Nmap scan");
 
       // Execute nmap via Docker (rtpi-tools container) with automatic retry
       const result = await dockerExecutor.execWithRetry(
@@ -163,6 +169,11 @@ class NmapExecutor {
         })
         .where(eq(axScanResults.id, scanId));
 
+      const durationSecs = Math.floor((Date.now() - startedAt.getTime()) / 1000);
+      scanDuration.observe({ scanner: "nmap", target_type: "host" }, durationSecs);
+      toolExecutionsTotal.inc({ tool: "nmap", status: "success" });
+      logToolAudit(userId, "nmap_scan_complete", "nmap", scanId, true, { hosts: counts.assetsCount, services: counts.servicesCount, duration: durationSecs });
+
       stopKeepalive();
 
       // Emit scan completed event for pipeline cascade
@@ -170,7 +181,7 @@ class NmapExecutor {
         const { workflowEventHandlers } = await import('./workflow-event-handlers');
         await workflowEventHandlers.handleScanCompleted(scanId, 'nmap', operationId, userId);
       } catch (eventError) {
-        console.error(`Nmap scan ${scanId}: Failed to emit scan_completed event:`, eventError);
+        log.error({ scanId, err: eventError }, "Failed to emit scan_completed event");
       }
 
       return counts;
@@ -181,7 +192,7 @@ class NmapExecutor {
       const [currentScan] = await db.select({ status: axScanResults.status })
         .from(axScanResults).where(eq(axScanResults.id, scanId)).limit(1);
       if (currentScan?.status === 'cancelled') {
-        console.log(`⛔ Nmap scan ${scanId} was cancelled, skipping error status update`);
+        log.info({ scanId }, "Nmap scan was cancelled, skipping error status update");
         return { assetsCount: 0, servicesCount: 0 };
       }
 
@@ -209,6 +220,9 @@ class NmapExecutor {
           completedAt: new Date(),
         })
         .where(eq(axScanResults.id, scanId));
+
+      toolExecutionsTotal.inc({ tool: "nmap", status: "failure" });
+      logToolAudit(userId, "nmap_scan_complete", "nmap", scanId, false, { error: error instanceof Error ? error.message : "Unknown error" });
 
       throw error;
     }
@@ -269,7 +283,7 @@ class NmapExecutor {
       const xmlEnd = stdout.lastIndexOf(xmlEndTag);
 
       if (xmlStart === -1 || xmlEnd === -1) {
-        console.warn('Nmap: No XML output found, falling back to empty result');
+        log.warn("No XML output found, falling back to empty result");
         return { hosts: [], raw: stdout };
       }
 
@@ -344,13 +358,13 @@ class NmapExecutor {
             os,
           });
         } catch (hostError) {
-          console.warn('Nmap: Failed to parse host entry:', hostError);
+          log.warn({ err: hostError }, "Failed to parse host entry");
         }
       }
 
       return { hosts, raw: stdout };
     } catch (error) {
-      console.error('Nmap: XML parsing failed:', error);
+      log.error({ err: error }, "XML parsing failed");
       return { hosts: [], raw: stdout };
     }
   }
@@ -469,11 +483,11 @@ class NmapExecutor {
 
             if (service) servicesCount++;
           } catch (err) {
-            console.warn(`Nmap: Failed to store service ${host.ip}:${port.port}:`, err);
+            log.warn({ err, host: host.ip, port: port.port }, "Failed to store service");
           }
         }
       } catch (err) {
-        console.warn(`Nmap: Failed to store host ${host.ip}:`, err);
+        log.warn({ err, host: host.ip }, "Failed to store host");
       }
     }
 

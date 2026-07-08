@@ -5,6 +5,8 @@ import { eq, and, desc, gte, lte, or } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import { z } from "zod";
 import { rdExperimentOrchestrator } from "../../services/rd-experiment-orchestrator";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("offsec-rd-experiments");
 
 const router = Router();
 
@@ -316,7 +318,7 @@ router.post("/:id/execute", ensureRole("admin", "operator"), async (req, res) =>
 
     // Start execution in background, return immediately
     rdExperimentOrchestrator.executeExperiment(id, context).catch((err) => {
-      console.error(`[RD Orchestrator] Background experiment ${id} failed:`, err);
+      log.error(`[RD Orchestrator] Background experiment ${id} failed:`, err);
     });
 
     res.json({
@@ -408,7 +410,7 @@ router.post("/projects/:projectId/execute", ensureRole("admin", "operator"), asy
 
     // Execute all planned experiments in background
     rdExperimentOrchestrator.executeProject(projectId).catch((err) => {
-      console.error(`[RD Orchestrator] Background project ${projectId} execution failed:`, err);
+      log.error(`[RD Orchestrator] Background project ${projectId} execution failed:`, err);
     });
 
     res.json({

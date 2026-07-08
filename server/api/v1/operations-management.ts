@@ -15,8 +15,13 @@ import { operationsManagerAgent } from "../../services/operations-manager-agent"
 import { memoryService } from "../../services/memory-service";
 import { autonomousOperationOrchestrator } from "../../services/autonomous-operation-orchestrator";
 import { ollamaAIClient } from "../../services/ollama-ai-client";
+import { createLogger } from '../../lib/logger';
+import { ensureAuthenticated } from "../../auth/middleware";
+const log = createLogger("operations-management");
 
 const router = express.Router();
+
+router.use(ensureAuthenticated);
 
 // ============================================================================
 // REPORTER AGENTS
@@ -58,7 +63,7 @@ router.get("/reporters", async (req, res) => {
       totalCount: reportersWithStats.length,
     });
   } catch (error) {
-    console.error("Error fetching reporters:", error);
+    log.error("Error fetching reporters:", error);
     res.status(500).json({
       error: "Failed to fetch reporter agents",
       details: error instanceof Error ? error.message : "Unknown error",
@@ -106,7 +111,7 @@ router.get("/reports/:operationId", async (req, res) => {
       hasMore: reportsList.length === Number(limit),
     });
   } catch (error) {
-    console.error("Error fetching reports:", error);
+    log.error("Error fetching reports:", error);
     res.status(500).json({
       error: "Failed to fetch reports",
       details: error instanceof Error ? error.message : "Unknown error",
@@ -135,7 +140,7 @@ router.get("/reports/latest/:pageRole", async (req, res) => {
 
     res.json({ report: report[0] });
   } catch (error) {
-    console.error("Error fetching latest report:", error);
+    log.error("Error fetching latest report:", error);
     res.status(500).json({
       error: "Failed to fetch latest report",
       details: error instanceof Error ? error.message : "Unknown error",
@@ -163,7 +168,7 @@ router.get("/manager/tasks/:operationId", async (req, res) => {
 
     res.json({ tasks });
   } catch (error) {
-    console.error("Error fetching manager tasks:", error);
+    log.error("Error fetching manager tasks:", error);
     res.status(500).json({
       error: "Failed to fetch manager tasks",
       details: error instanceof Error ? error.message : "Unknown error",
@@ -197,7 +202,7 @@ router.get("/manager/synthesis/:operationId", async (req, res) => {
 
     res.json({ synthesis: synthesis[0] });
   } catch (error) {
-    console.error("Error fetching synthesis:", error);
+    log.error("Error fetching synthesis:", error);
     res.status(500).json({
       error: "Failed to fetch synthesis",
       details: error instanceof Error ? error.message : "Unknown error",
@@ -241,7 +246,7 @@ router.get("/questions/:operationId", async (req, res) => {
 
     res.json({ questions });
   } catch (error) {
-    console.error("Error fetching questions:", error);
+    log.error("Error fetching questions:", error);
     res.status(500).json({
       error: "Failed to fetch questions",
       details: error instanceof Error ? error.message : "Unknown error",
@@ -281,7 +286,7 @@ router.post("/questions/:questionId/answer", async (req, res) => {
 
     res.json({ question: updated[0] });
   } catch (error) {
-    console.error("Error answering question:", error);
+    log.error("Error answering question:", error);
     res.status(500).json({
       error: "Failed to answer question",
       details: error instanceof Error ? error.message : "Unknown error",
@@ -337,7 +342,7 @@ router.get("/questions/pending", async (req, res) => {
 
     res.json({ questions: enriched, count: enriched.length });
   } catch (error) {
-    console.error("Error fetching pending questions:", error);
+    log.error("Error fetching pending questions:", error);
     res.status(500).json({
       error: "Failed to fetch pending questions",
       details: error instanceof Error ? error.message : "Unknown error",
@@ -377,7 +382,7 @@ router.post("/questions/:id/respond", async (req, res) => {
       taskGenerated: result.taskGenerated,
     });
   } catch (error) {
-    console.error("Error responding to question:", error);
+    log.error("Error responding to question:", error);
     res.status(500).json({
       error: "Failed to respond to question",
       details: error instanceof Error ? error.message : "Unknown error",
@@ -405,7 +410,7 @@ router.post("/questions/:id/dismiss", async (req, res) => {
 
     res.json({ success: true });
   } catch (error) {
-    console.error("Error dismissing question:", error);
+    log.error("Error dismissing question:", error);
     res.status(500).json({
       error: "Failed to dismiss question",
       details: error instanceof Error ? error.message : "Unknown error",
@@ -441,7 +446,7 @@ router.post("/enable/:operationId", async (req, res) => {
       message: "Hourly reporting enabled",
     });
   } catch (error) {
-    console.error("Error enabling hourly reporting:", error);
+    log.error("Error enabling hourly reporting:", error);
     res.status(500).json({
       error: "Failed to enable hourly reporting",
       details: error instanceof Error ? error.message : "Unknown error",
@@ -473,7 +478,7 @@ router.post("/disable/:operationId", async (req, res) => {
       message: "Hourly reporting disabled",
     });
   } catch (error) {
-    console.error("Error disabling hourly reporting:", error);
+    log.error("Error disabling hourly reporting:", error);
     res.status(500).json({
       error: "Failed to disable hourly reporting",
       details: error instanceof Error ? error.message : "Unknown error",
@@ -497,7 +502,7 @@ router.post("/trigger-now/:operationId", async (req, res) => {
       message: "Operations management workflow triggered",
     });
   } catch (error) {
-    console.error("Error triggering workflow:", error);
+    log.error("Error triggering workflow:", error);
     res.status(500).json({
       error: "Failed to trigger workflow",
       details: error instanceof Error ? error.message : "Unknown error",
@@ -580,7 +585,7 @@ router.get("/dashboard/:operationId", async (req, res) => {
       schedulerStatus,
     });
   } catch (error) {
-    console.error("Error fetching dashboard stats:", error);
+    log.error("Error fetching dashboard stats:", error);
     res.status(500).json({
       error: "Failed to fetch dashboard stats",
       details: error instanceof Error ? error.message : "Unknown error",
@@ -598,7 +603,7 @@ router.get("/scheduler/status", async (req, res) => {
 
     res.json({ status });
   } catch (error) {
-    console.error("Error fetching scheduler status:", error);
+    log.error("Error fetching scheduler status:", error);
     res.status(500).json({
       error: "Failed to fetch scheduler status",
       details: error instanceof Error ? error.message : "Unknown error",
@@ -897,7 +902,7 @@ RESPONSE GUIDELINES:
       tokensUsed: aiResponse.tokensUsed,
     });
   } catch (error) {
-    console.error("Error in operations manager chat:", error);
+    log.error("Error in operations manager chat:", error);
     res.status(500).json({
       error: "Failed to process chat message",
       details: error instanceof Error ? error.message : "Unknown error",
@@ -916,7 +921,7 @@ router.post("/autonomous/:operationId", async (req, res) => {
 
     // Start execution in background
     autonomousOperationOrchestrator.executeOperation(operationId).catch((err) => {
-      console.error(`[Autonomous] Background operation ${operationId} failed:`, err);
+      log.error(`[Autonomous] Background operation ${operationId} failed:`, err);
     });
 
     res.json({

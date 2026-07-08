@@ -22,6 +22,8 @@
  */
 
 import { routeReasoning, NoInferenceProviderAvailable } from "./inference/inference-router";
+import { createLogger } from '../lib/logger';
+const log = createLogger("tool-config-deriver");
 
 export type DerivedParameterType = "string" | "number" | "boolean" | "array";
 
@@ -190,19 +192,19 @@ export async function deriveToolConfigFromSkill(input: DeriveInput): Promise<Der
     });
     const derived = parseDerivedToolConfig(result.response.text, allowedKeys);
     if (derived) {
-      console.log(
+      log.info(
         `[tool-config-deriver] derived config for ${input.toolId} via ${result.provider}/${result.model} (source=${result.source})`,
       );
     }
     return derived;
   } catch (err) {
     if (err instanceof NoInferenceProviderAvailable) {
-      console.warn(
+      log.warn(
         `[tool-config-deriver] no reasoning provider available for ${input.toolId}; falling back to legacy stub.`,
       );
       return null;
     }
-    console.warn(`[tool-config-deriver] derivation failed for ${input.toolId}:`, err);
+    log.warn(`[tool-config-deriver] derivation failed for ${input.toolId}:`, err);
     return null;
   }
 }

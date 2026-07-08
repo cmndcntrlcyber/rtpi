@@ -7,6 +7,8 @@ import {
 } from "@shared/schema";
 import { eq, and, or, desc, lt, sql } from "drizzle-orm";
 import { agentConfig } from "../config/agent-config";
+import { createLogger } from '../lib/logger';
+const log = createLogger("agent-message-bus");
 
 // ============================================================================
 // Types
@@ -78,14 +80,14 @@ export class AgentMessageBus extends EventEmitter {
 
   async initialize(): Promise<void> {
     if (!agentConfig.messageBus.enabled) {
-      console.log("[MessageBus] Message bus disabled by configuration");
+      log.info("[MessageBus] Message bus disabled by configuration");
       return;
     }
 
-    console.log("[MessageBus] Initializing Agent Message Bus...");
+    log.info("[MessageBus] Initializing Agent Message Bus...");
     this.startCleanupTask();
     this.startHeartbeatMonitoring();
-    console.log("[MessageBus] Agent Message Bus initialized");
+    log.info("[MessageBus] Agent Message Bus initialized");
   }
 
   async shutdown(): Promise<void> {
@@ -97,7 +99,7 @@ export class AgentMessageBus extends EventEmitter {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
     }
-    console.log("[MessageBus] Agent Message Bus shutdown");
+    log.info("[MessageBus] Agent Message Bus shutdown");
   }
 
   // ============================================================================
@@ -139,7 +141,7 @@ export class AgentMessageBus extends EventEmitter {
     }
 
     this.emit("agent_registered", { agentId: agentInfo.agentId, agentRole: agentInfo.agentRole });
-    console.log(`[MessageBus] Agent registered: ${agentInfo.agentRole} (${agentInfo.agentId})`);
+    log.info(`[MessageBus] Agent registered: ${agentInfo.agentRole} (${agentInfo.agentId})`);
   }
 
   async unregisterAgent(agentId: string): Promise<void> {
@@ -149,7 +151,7 @@ export class AgentMessageBus extends EventEmitter {
       .where(eq(agentRegistry.agentId, agentId));
 
     this.emit("agent_unregistered", { agentId });
-    console.log(`[MessageBus] Agent unregistered: ${agentId}`);
+    log.info(`[MessageBus] Agent unregistered: ${agentId}`);
   }
 
   async getAgentRegistry(): Promise<(typeof agentRegistry.$inferSelect)[]> {
@@ -212,7 +214,7 @@ export class AgentMessageBus extends EventEmitter {
       broadcastToRole: message.broadcastToRole,
     });
 
-    console.log(
+    log.info(
       `[MessageBus] Message sent: ${message.messageType} from ${message.from.agentRole} → ${message.to?.agentRole || message.broadcastToRole || "unknown"}`,
     );
 
@@ -378,7 +380,7 @@ export class AgentMessageBus extends EventEmitter {
             ),
           );
       } catch (error) {
-        console.error("[MessageBus] Cleanup failed:", error);
+        log.error("[MessageBus] Cleanup failed:", error);
       }
     }, agentConfig.messageBus.cleanupIntervalMs);
   }
@@ -399,7 +401,7 @@ export class AgentMessageBus extends EventEmitter {
             ),
           );
       } catch (error) {
-        console.error("[MessageBus] Heartbeat monitoring failed:", error);
+        log.error("[MessageBus] Heartbeat monitoring failed:", error);
       }
     }, agentConfig.messageBus.heartbeatIntervalMs);
   }

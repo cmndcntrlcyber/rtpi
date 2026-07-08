@@ -16,6 +16,8 @@ import { maldevAgent } from './maldev-agent';
 import { ollamaAIClient } from '../ollama-ai-client';
 import { searchKnowledge } from '../knowledge/knowledge-base-reader';
 import type { ResearchArtifact, POCArtifact } from '../rd-experiment-orchestrator';
+import { createLogger } from '../../lib/logger';
+const log = createLogger("poc-development-agent");
 
 // ============================================================================
 // POC Development Agent
@@ -142,7 +144,7 @@ class PocDevelopmentAgent extends BaseTaskAgent {
       );
       return `Reference patterns from prior R&D (adapt, don't copy verbatim):\n${blocks.join('\n')}`;
     } catch (error) {
-      console.warn('[POC Agent] KB consultation failed (non-fatal):', error);
+      log.warn('[POC Agent] KB consultation failed (non-fatal):', error);
       return '';
     }
   }

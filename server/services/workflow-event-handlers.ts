@@ -9,6 +9,8 @@ import { db } from '../db';
 import { operations, agents, workflowTemplates, targets, discoveredAssets, discoveredServices } from '../../shared/schema';
 import { eq, and, inArray } from 'drizzle-orm';
 import { EventEmitter } from 'events';
+import { createLogger } from '../lib/logger';
+const log = createLogger("workflow-event-handlers");
 
 // ============================================================================
 // Workflow Template Seed Data
@@ -195,10 +197,10 @@ class WorkflowEventHandlers extends EventEmitter {
    * Handle operation created event - trigger Surface Assessment workflow
    */
   async handleOperationCreated(operationId: string, userId: string): Promise<void> {
-    console.log(`Workflow Event: Operation ${operationId} created`);
+    log.info(`Workflow Event: Operation ${operationId} created`);
 
     if (!this.config.enableAutoTrigger || !this.config.enableSurfaceAssessmentOnOperationCreate) {
-      console.log('Auto-trigger disabled, skipping Surface Assessment');
+      log.info('Auto-trigger disabled, skipping Surface Assessment');
       return;
     }
 
@@ -209,12 +211,12 @@ class WorkflowEventHandlers extends EventEmitter {
       .where(eq(operations.id, operationId));
 
     if (!operation) {
-      console.log(`Operation ${operationId} not found`);
+      log.info(`Operation ${operationId} not found`);
       return;
     }
 
     if (this.config.requireScopeForSurfaceAssessment && !operation.scope) {
-      console.log('Operation has no scope, skipping Surface Assessment');
+      log.info('Operation has no scope, skipping Surface Assessment');
       return;
     }
 
@@ -243,18 +245,18 @@ class WorkflowEventHandlers extends EventEmitter {
 
         // Execute async
         dynamicWorkflowOrchestrator.executeWorkflow(workflowId).catch((err) => {
-          console.error('Workflow execution failed:', err);
+          log.error('Workflow execution failed:', err);
         });
 
-        console.log(`Started workflow ${workflowId} for operation ${operationId}`);
+        log.info(`Started workflow ${workflowId} for operation ${operationId}`);
         this.emit('workflow_started', { workflowId, operationId, triggerEvent: 'operation_created' });
       } else {
         // Fallback to direct agent execution
-        console.log('No workflow template found, triggering Surface Assessment Agent directly');
+        log.info('No workflow template found, triggering Surface Assessment Agent directly');
         await this.triggerSurfaceAssessmentDirect(operationId, userId);
       }
     } catch (error) {
-      console.error('Failed to trigger Surface Assessment workflow:', error);
+      log.error('Failed to trigger Surface Assessment workflow:', error);
       // Fallback to direct agent execution
       await this.triggerSurfaceAssessmentDirect(operationId, userId);
     }
@@ -274,12 +276,12 @@ class WorkflowEventHandlers extends EventEmitter {
 
       // Execute async
       surfaceAssessmentAgent.processOperation(operationId, userId).catch((err) => {
-        console.error('Surface Assessment Agent failed:', err);
+        log.error('Surface Assessment Agent failed:', err);
       });
 
-      console.log(`Triggered Surface Assessment Agent directly for operation ${operationId}`);
+      log.info(`Triggered Surface Assessment Agent directly for operation ${operationId}`);
     } catch (error) {
-      console.error('Failed to trigger Surface Assessment Agent:', error);
+      log.error('Failed to trigger Surface Assessment Agent:', error);
     }
   }
 
@@ -287,10 +289,10 @@ class WorkflowEventHandlers extends EventEmitter {
    * Handle Surface Assessment completed - trigger Web Hacker workflow
    */
   async handleSurfaceAssessmentCompleted(operationId: string, userId: string): Promise<void> {
-    console.log(`Workflow Event: Surface Assessment completed for ${operationId}`);
+    log.info(`Workflow Event: Surface Assessment completed for ${operationId}`);
 
     if (!this.config.enableAutoTrigger || !this.config.enableWebHackerOnSurfaceAssessmentComplete) {
-      console.log('Auto-trigger disabled, skipping Web Hacker');
+      log.info('Auto-trigger disabled, skipping Web Hacker');
       return;
     }
 
@@ -319,10 +321,10 @@ class WorkflowEventHandlers extends EventEmitter {
 
         // Execute async
         dynamicWorkflowOrchestrator.executeWorkflow(workflowId).catch((err) => {
-          console.error('Workflow execution failed:', err);
+          log.error('Workflow execution failed:', err);
         });
 
-        console.log(`Started Web Hacker workflow ${workflowId} for operation ${operationId}`);
+        log.info(`Started Web Hacker workflow ${workflowId} for operation ${operationId}`);
         this.emit('workflow_started', {
           workflowId,
           operationId,
@@ -330,11 +332,11 @@ class WorkflowEventHandlers extends EventEmitter {
         });
       } else {
         // Fallback to direct agent execution
-        console.log('No workflow template found, triggering Web Hacker Agent directly');
+        log.info('No workflow template found, triggering Web Hacker Agent directly');
         await this.triggerWebHackerDirect(operationId, userId);
       }
     } catch (error) {
-      console.error('Failed to trigger Web Hacker workflow:', error);
+      log.error('Failed to trigger Web Hacker workflow:', error);
       // Fallback to direct agent execution
       await this.triggerWebHackerDirect(operationId, userId);
     }
@@ -354,12 +356,12 @@ class WorkflowEventHandlers extends EventEmitter {
 
       // Execute async
       webHackerAgent.processOperation(operationId, userId).catch((err) => {
-        console.error('Web Hacker Agent failed:', err);
+        log.error('Web Hacker Agent failed:', err);
       });
 
-      console.log(`Triggered Web Hacker Agent directly for operation ${operationId}`);
+      log.info(`Triggered Web Hacker Agent directly for operation ${operationId}`);
     } catch (error) {
-      console.error('Failed to trigger Web Hacker Agent:', error);
+      log.error('Failed to trigger Web Hacker Agent:', error);
     }
   }
 
@@ -372,7 +374,7 @@ class WorkflowEventHandlers extends EventEmitter {
     operationId: string,
     userId: string
   ): Promise<void> {
-    console.log(`Workflow Event: ${scanType} scan ${scanId} completed for operation ${operationId}`);
+    log.info(`Workflow Event: ${scanType} scan ${scanId} completed for operation ${operationId}`);
 
     // Emit event for listeners
     this.emit('scan_completed', { scanId, scanType, operationId, userId });
@@ -407,13 +409,13 @@ class WorkflowEventHandlers extends EventEmitter {
     scanId: string,
     userId: string
   ): Promise<void> {
-    console.log(`Pipeline: BBOT scan completed, auto-creating targets for operation ${operationId}`);
+    log.info(`Pipeline: BBOT scan completed, auto-creating targets for operation ${operationId}`);
 
     try {
       const { targetAutoCreationService } = await import('./target-auto-creation-service');
       const result = await targetAutoCreationService.autoCreateTargetsFromAssets(operationId, scanId);
 
-      console.log(`Pipeline: Auto-created ${result.created} targets, skipped ${result.skipped}, linked ${result.linked}`);
+      log.info(`Pipeline: Auto-created ${result.created} targets, skipped ${result.skipped}, linked ${result.linked}`);
 
       // Update pipeline status
       await this.updatePipelineStatus(operationId, 'target_creation', 'completed', {
@@ -433,7 +435,7 @@ class WorkflowEventHandlers extends EventEmitter {
         await this.handleTargetsAutoCreated(operationId, scanId, userId, result.targetIds);
       }
     } catch (error) {
-      console.error('Pipeline: Target auto-creation failed:', error);
+      log.error('Pipeline: Target auto-creation failed:', error);
       await this.updatePipelineStatus(operationId, 'target_creation', 'failed');
     }
   }
@@ -447,7 +449,7 @@ class WorkflowEventHandlers extends EventEmitter {
     userId: string,
     targetIds: string[]
   ): Promise<void> {
-    console.log(`Pipeline: Triggering Nmap scans for ${targetIds.length} auto-created targets`);
+    log.info(`Pipeline: Triggering Nmap scans for ${targetIds.length} auto-created targets`);
 
     try {
       // Query auto-created targets (IP and domain types are scannable by nmap)
@@ -463,7 +465,7 @@ class WorkflowEventHandlers extends EventEmitter {
         );
 
       if (autoTargets.length === 0) {
-        console.log('Pipeline: No scannable targets found for Nmap');
+        log.info('Pipeline: No scannable targets found for Nmap');
         return;
       }
 
@@ -492,7 +494,7 @@ class WorkflowEventHandlers extends EventEmitter {
             effectiveUserId
           );
         } catch (nmapError) {
-          console.error('Pipeline: Nmap batch scan failed:', nmapError);
+          log.error('Pipeline: Nmap batch scan failed:', nmapError);
         }
       }
 
@@ -501,7 +503,7 @@ class WorkflowEventHandlers extends EventEmitter {
         totalTargets: autoTargets.length,
       });
     } catch (error) {
-      console.error('Pipeline: Failed to trigger Nmap scans:', error);
+      log.error('Pipeline: Failed to trigger Nmap scans:', error);
       await this.updatePipelineStatus(operationId, 'nmap', 'failed');
     }
   }
@@ -514,7 +516,7 @@ class WorkflowEventHandlers extends EventEmitter {
     scanId: string,
     userId: string
   ): Promise<void> {
-    console.log(`Pipeline: Nmap scan completed, checking for web services in operation ${operationId}`);
+    log.info(`Pipeline: Nmap scan completed, checking for web services in operation ${operationId}`);
 
     try {
       // Query discovered services for web ports
@@ -538,7 +540,7 @@ class WorkflowEventHandlers extends EventEmitter {
         );
 
       if (webServices.length === 0) {
-        console.log('Pipeline: No web services found for Nuclei scanning');
+        log.info('Pipeline: No web services found for Nuclei scanning');
         await this.updatePipelineStatus(operationId, 'nuclei', 'skipped');
         return;
       }
@@ -556,7 +558,7 @@ class WorkflowEventHandlers extends EventEmitter {
         }
       }
 
-      console.log(`Pipeline: Found ${targetUrls.size} web targets for Nuclei`);
+      log.info(`Pipeline: Found ${targetUrls.size} web targets for Nuclei`);
 
       // Get userId from operation owner if needed
       let effectiveUserId = userId;
@@ -577,7 +579,7 @@ class WorkflowEventHandlers extends EventEmitter {
         targetCount: targetUrls.size,
       });
     } catch (error) {
-      console.error('Pipeline: Failed to trigger Nuclei scan:', error);
+      log.error('Pipeline: Failed to trigger Nuclei scan:', error);
       await this.updatePipelineStatus(operationId, 'nuclei', 'failed');
     }
   }
@@ -590,7 +592,7 @@ class WorkflowEventHandlers extends EventEmitter {
     scanId: string,
     userId: string
   ): Promise<void> {
-    console.log(`Pipeline: Nuclei scan completed for operation ${operationId}`);
+    log.info(`Pipeline: Nuclei scan completed for operation ${operationId}`);
 
     this.emit('nuclei_scan_completed', { operationId, scanId, userId });
 
@@ -601,7 +603,7 @@ class WorkflowEventHandlers extends EventEmitter {
         await vulnerabilityReporterAgent.pollNow();
       }
     } catch (error) {
-      console.error('Pipeline: Failed to trigger vulnerability reporter:', error);
+      log.error('Pipeline: Failed to trigger vulnerability reporter:', error);
     }
 
     await this.updatePipelineStatus(operationId, 'completed', 'completed');
@@ -652,7 +654,7 @@ class WorkflowEventHandlers extends EventEmitter {
         })
         .where(eq(operations.id, operationId));
     } catch (error) {
-      console.error('Failed to update pipeline status:', error);
+      log.error('Failed to update pipeline status:', error);
     }
   }
 
@@ -660,7 +662,7 @@ class WorkflowEventHandlers extends EventEmitter {
    * Seed default workflow templates if they don't exist
    */
   private async seedWorkflowTemplates(): Promise<void> {
-    console.log('Checking workflow templates...');
+    log.info('Checking workflow templates...');
 
     try {
       const existingTemplates = await db.select().from(workflowTemplates);
@@ -671,17 +673,17 @@ class WorkflowEventHandlers extends EventEmitter {
         if (!existingNames.has(template.name)) {
           await db.insert(workflowTemplates).values(template);
           seeded++;
-          console.log(`  + Seeded: ${template.name}`);
+          log.info(`  + Seeded: ${template.name}`);
         }
       }
 
       if (seeded > 0) {
-        console.log(`Seeded ${seeded} new workflow templates`);
+        log.info(`Seeded ${seeded} new workflow templates`);
       } else {
-        console.log(`All ${DEFAULT_WORKFLOW_TEMPLATES.length} workflow templates already exist`);
+        log.info(`All ${DEFAULT_WORKFLOW_TEMPLATES.length} workflow templates already exist`);
       }
     } catch (error) {
-      console.error('Failed to seed workflow templates:', error);
+      log.error('Failed to seed workflow templates:', error);
     }
   }
 
@@ -690,11 +692,11 @@ class WorkflowEventHandlers extends EventEmitter {
    */
   async initializeAgentSystem(): Promise<void> {
     if (this.initialized) {
-      console.log('Agent system already initialized');
+      log.info('Agent system already initialized');
       return;
     }
 
-    console.log('Initializing Agent System...');
+    log.info('Initializing Agent System...');
 
     // Seed workflow templates first
     await this.seedWorkflowTemplates();
@@ -704,9 +706,9 @@ class WorkflowEventHandlers extends EventEmitter {
       const { toolConnectorAgent } = await import('./agents/tool-connector-agent');
       await toolConnectorAgent.initialize();
       await toolConnectorAgent.start();
-      console.log('Tool Connector Agent initialized and started');
+      log.info('Tool Connector Agent initialized and started');
     } catch (error) {
-      console.error('Failed to initialize Tool Connector Agent:', error);
+      log.error('Failed to initialize Tool Connector Agent:', error);
     }
 
     try {
@@ -717,30 +719,30 @@ class WorkflowEventHandlers extends EventEmitter {
       // Set up event listener for Surface Assessment completion
       surfaceAssessmentAgent.on('operation_completed', ({ operationId }) => {
         // Auto-trigger Web Hacker Agent
-        this.handleSurfaceAssessmentCompleted(operationId, 'system').catch(console.error);
+        this.handleSurfaceAssessmentCompleted(operationId, 'system').catch((err) => log.error({ err }, "Surface assessment completion handler failed"));
       });
 
-      console.log('Surface Assessment Agent initialized');
+      log.info('Surface Assessment Agent initialized');
     } catch (error) {
-      console.error('Failed to initialize Surface Assessment Agent:', error);
+      log.error('Failed to initialize Surface Assessment Agent:', error);
     }
 
     try {
       // Initialize Web Hacker Agent
       const { webHackerAgent } = await import('./agents/web-hacker-agent');
       await webHackerAgent.initialize();
-      console.log('Web Hacker Agent initialized');
+      log.info('Web Hacker Agent initialized');
     } catch (error) {
-      console.error('Failed to initialize Web Hacker Agent:', error);
+      log.error('Failed to initialize Web Hacker Agent:', error);
     }
 
     try {
       // Initialize Dynamic Workflow Orchestrator
       const { dynamicWorkflowOrchestrator } = await import('./dynamic-workflow-orchestrator');
       await dynamicWorkflowOrchestrator.refreshCapabilityCache();
-      console.log('Dynamic Workflow Orchestrator initialized');
+      log.info('Dynamic Workflow Orchestrator initialized');
     } catch (error) {
-      console.error('Failed to initialize Dynamic Workflow Orchestrator:', error);
+      log.error('Failed to initialize Dynamic Workflow Orchestrator:', error);
     }
 
     // Phase 3: Initialize Vulnerability Reporter Agent
@@ -748,44 +750,44 @@ class WorkflowEventHandlers extends EventEmitter {
       const { vulnerabilityReporterAgent } = await import('./vulnerability-reporter-agent');
       await vulnerabilityReporterAgent.initialize();
       await vulnerabilityReporterAgent.startPolling();
-      console.log('Vulnerability Reporter Agent initialized and polling');
+      log.info('Vulnerability Reporter Agent initialized and polling');
     } catch (error) {
-      console.error('Failed to initialize Vulnerability Reporter Agent:', error);
+      log.error('Failed to initialize Vulnerability Reporter Agent:', error);
     }
 
     // Initialize Research Agent (v2.4.1)
     try {
       const { researchAgent } = await import('./agents/research-agent');
       await researchAgent.initialize();
-      console.log('Research Agent initialized');
+      log.info('Research Agent initialized');
     } catch (error) {
-      console.error('Failed to initialize Research Agent:', error);
+      log.error('Failed to initialize Research Agent:', error);
     }
 
     // Initialize Maldev Agent (v2.4.2)
     try {
       const { maldevAgent } = await import('./agents/maldev-agent');
       await maldevAgent.initialize();
-      console.log('Maldev Agent initialized');
+      log.info('Maldev Agent initialized');
     } catch (error) {
-      console.error('Failed to initialize Maldev Agent:', error);
+      log.error('Failed to initialize Maldev Agent:', error);
     }
 
     // Register Vulnerability Investigation Workflow (v2.3.6)
     try {
       await import('./vulnerability-investigation-workflow');
-      console.log('Vulnerability Investigation Workflow registered');
+      log.info('Vulnerability Investigation Workflow registered');
     } catch (error) {
-      console.error('Failed to register Vulnerability Investigation Workflow:', error);
+      log.error('Failed to register Vulnerability Investigation Workflow:', error);
     }
 
     // Initialize HTTP Service Detection Automation (v2.3.6.2)
     try {
       const { initializeHttpServiceDetectionAutomation } = await import('./http-service-detection-automation');
       await initializeHttpServiceDetectionAutomation();
-      console.log('HTTP Service Detection Automation initialized');
+      log.info('HTTP Service Detection Automation initialized');
     } catch (error) {
-      console.error('Failed to initialize HTTP Service Detection Automation:', error);
+      log.error('Failed to initialize HTTP Service Detection Automation:', error);
     }
 
     // Phase 3: Seed Operations Manager + Page Reporter agents
@@ -824,12 +826,12 @@ class WorkflowEventHandlers extends EventEmitter {
 
       if (agentsToCreate.length > 0) {
         await db.insert(agents).values(agentsToCreate);
-        console.log(`Seeded ${agentsToCreate.length} ops management agents`);
+        log.info(`Seeded ${agentsToCreate.length} ops management agents`);
       } else {
-        console.log('Ops management agents already exist');
+        log.info('Ops management agents already exist');
       }
     } catch (error) {
-      console.error('Failed to seed ops management agents:', error);
+      log.error('Failed to seed ops management agents:', error);
     }
 
     // Bug-Hunter agents + autopilot (FF_BUG_HUNTER)
@@ -837,20 +839,20 @@ class WorkflowEventHandlers extends EventEmitter {
       try {
         const { initializeBugHunterAgents } = await import('./agents/bug-hunter');
         await initializeBugHunterAgents();
-        console.log('Bug-Hunter agents initialized (FF_BUG_HUNTER)');
+        log.info('Bug-Hunter agents initialized (FF_BUG_HUNTER)');
       } catch (error) {
-        console.error('Failed to initialize Bug-Hunter agents:', error);
+        log.error('Failed to initialize Bug-Hunter agents:', error);
       }
       try {
         const { bugHunterAutopilot } = await import('./bug-hunter/autopilot-scheduler');
         bugHunterAutopilot.start();
       } catch (error) {
-        console.error('Failed to start Bug-Hunter autopilot:', error);
+        log.error('Failed to start Bug-Hunter autopilot:', error);
       }
     }
 
     this.initialized = true;
-    console.log('Agent System initialization complete');
+    log.info('Agent System initialization complete');
     this.emit('agent_system_initialized');
   }
 
@@ -858,20 +860,20 @@ class WorkflowEventHandlers extends EventEmitter {
    * Shutdown all agents gracefully
    */
   async shutdownAgentSystem(): Promise<void> {
-    console.log('Shutting down Agent System...');
+    log.info('Shutting down Agent System...');
 
     try {
       const { toolConnectorAgent } = await import('./agents/tool-connector-agent');
       await toolConnectorAgent.stop();
     } catch (error) {
-      console.error('Error stopping Tool Connector Agent:', error);
+      log.error('Error stopping Tool Connector Agent:', error);
     }
 
     try {
       const { dynamicWorkflowOrchestrator } = await import('./dynamic-workflow-orchestrator');
       dynamicWorkflowOrchestrator.destroy();
     } catch (error) {
-      console.error('Error destroying Dynamic Workflow Orchestrator:', error);
+      log.error('Error destroying Dynamic Workflow Orchestrator:', error);
     }
 
     // Phase 3: Stop Vulnerability Reporter Agent
@@ -879,7 +881,7 @@ class WorkflowEventHandlers extends EventEmitter {
       const { vulnerabilityReporterAgent } = await import('./vulnerability-reporter-agent');
       await vulnerabilityReporterAgent.stopPolling();
     } catch (error) {
-      console.error('Error stopping Vulnerability Reporter Agent:', error);
+      log.error('Error stopping Vulnerability Reporter Agent:', error);
     }
 
     // Bug-Hunter autopilot
@@ -888,12 +890,12 @@ class WorkflowEventHandlers extends EventEmitter {
         const { bugHunterAutopilot } = await import('./bug-hunter/autopilot-scheduler');
         bugHunterAutopilot.shutdown();
       } catch (error) {
-        console.error('Error stopping Bug-Hunter autopilot:', error);
+        log.error('Error stopping Bug-Hunter autopilot:', error);
       }
     }
 
     this.initialized = false;
-    console.log('Agent System shutdown complete');
+    log.info('Agent System shutdown complete');
     this.emit('agent_system_shutdown');
   }
 
@@ -915,7 +917,7 @@ class WorkflowEventHandlers extends EventEmitter {
         );
 
       if (!template) {
-        console.error(`Workflow template "${templateName}" not found`);
+        log.error(`Workflow template "${templateName}" not found`);
         return null;
       }
 
@@ -929,13 +931,13 @@ class WorkflowEventHandlers extends EventEmitter {
 
       // Execute async
       dynamicWorkflowOrchestrator.executeWorkflow(workflowId).catch((err) => {
-        console.error('Workflow execution failed:', err);
+        log.error('Workflow execution failed:', err);
       });
 
       this.emit('workflow_triggered', { workflowId, templateName, operationId });
       return workflowId;
     } catch (error) {
-      console.error(`Failed to trigger workflow "${templateName}":`, error);
+      log.error(`Failed to trigger workflow "${templateName}":`, error);
       return null;
     }
   }

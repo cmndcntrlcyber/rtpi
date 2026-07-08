@@ -147,6 +147,7 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "workflow_completed",
   "workflow_failed",
   "harness_evaluation_ready",
+  "capability_drift",
 ]);
 
 // ============================================================================
@@ -187,6 +188,7 @@ export const auditLogs = pgTable("audit_logs", {
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
   success: boolean("success").notNull().default(true),
+  retentionDays: integer("retention_days").notNull().default(90),
   timestamp: timestamp("timestamp").notNull().defaultNow(),
 });
 
@@ -459,6 +461,13 @@ export const mcpServers = pgTable("mcp_servers", {
   skillPath: text("skill_path"),
   skillGeneratedAt: timestamp("skill_generated_at"),
   skillSourceHash: text("skill_source_hash"),
+  // v3.1.10 — Response time metrics (rolling window)
+  avgResponseMs: integer("avg_response_ms"),
+  p95ResponseMs: integer("p95_response_ms"),
+  metricsCallCount: integer("metrics_call_count").notNull().default(0),
+  // v3.1.10 — Capability drift detection
+  lastCapabilityHash: text("last_capability_hash"),
+  lastCapabilitySnapshot: json("last_capability_snapshot"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => [
@@ -942,6 +951,11 @@ export const toolCategoryEnum = pgEnum("tool_category", [
   "discovery",
   "security-scanning",
   "web-recon",
+  // Categories for cloud, LLM-security, C2-implant, and web-injection tool containers
+  "cloud-security",
+  "llm-security",
+  "c2-implant",
+  "web-injection",
 ]);
 
 export const parameterTypeEnum = pgEnum("parameter_type", [
@@ -1441,6 +1455,48 @@ export const empireEvents = pgTable("empire_events", {
   timestamp: timestamp("timestamp").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   eventData: json("event_data").default({}),
+});
+
+// ============================================================================
+// SLIVER C2 TABLES
+// ============================================================================
+
+export const sliverSessionStatusEnum = pgEnum("sliver_session_status", [
+  "active", "dormant", "killed", "disconnected",
+]);
+
+export const sliverSessions = pgTable("sliver_sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sessionId: text("session_id").notNull().unique(),
+  name: text("name"),
+  hostname: text("hostname"),
+  username: text("username"),
+  os: text("os"),
+  arch: text("arch"),
+  transport: text("transport"),
+  remoteAddress: text("remote_address"),
+  pid: integer("pid"),
+  filename: text("filename"),
+  lastCheckin: timestamp("last_checkin"),
+  status: sliverSessionStatusEnum("status").default("active"),
+  isBeacon: boolean("is_beacon").default(false),
+  beaconInterval: integer("beacon_interval"),
+  metadata: json("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const sliverTasks = pgTable("sliver_tasks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sessionId: text("session_id").notNull(),
+  command: text("command").notNull(),
+  parameters: json("parameters").default({}),
+  status: empireTaskStatusEnum("status").default("queued"),
+  results: text("results"),
+  errorMessage: text("error_message"),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
 });
 
 // ============================================================================

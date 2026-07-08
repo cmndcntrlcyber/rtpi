@@ -1,5 +1,7 @@
 import Docker from "dockerode";
 import { Readable } from "stream";
+import { createLogger } from '../lib/logger';
+const log = createLogger("docker-executor");
 
 // Initialize Docker client
 const docker = new Docker();
@@ -99,7 +101,7 @@ export class DockerExecutor {
       }
 
       if (attempts >= maxAttempts) {
-        console.warn(`[DockerExecutor] Could not verify exit code after ${maxAttempts} attempts`);
+        log.warn(`[DockerExecutor] Could not verify exit code after ${maxAttempts} attempts`);
       }
 
       const completedAt = new Date();
@@ -144,7 +146,7 @@ export class DockerExecutor {
 
         if (attempt <= maxRetries) {
           const delayMs = 1000 * attempt;
-          console.warn(`[DockerExecutor] Retry ${attempt} in ${delayMs}ms:`, lastError.message);
+          log.warn(`[DockerExecutor] Retry ${attempt} in ${delayMs}ms:`, lastError.message);
           await new Promise(resolve => setTimeout(resolve, delayMs));
         }
       }
@@ -432,7 +434,7 @@ export class DockerExecutor {
           // Warn at 80% capacity
           if (totalSize > this.MAX_OUTPUT_SIZE * 0.8 &&
               totalSize <= this.MAX_OUTPUT_SIZE * 0.8 + size) {
-            console.warn(`[DockerExecutor] Output approaching limit: ${Math.round(totalSize / 1024 / 1024)}MB / ${Math.round(this.MAX_OUTPUT_SIZE / 1024 / 1024)}MB`);
+            log.warn(`[DockerExecutor] Output approaching limit: ${Math.round(totalSize / 1024 / 1024)}MB / ${Math.round(this.MAX_OUTPUT_SIZE / 1024 / 1024)}MB`);
           }
 
           if (totalSize > this.MAX_OUTPUT_SIZE) {
@@ -457,7 +459,7 @@ export class DockerExecutor {
       stream.on("end", () => {
         clearTimeout(timeoutId);
         if (buffer.length > 0) {
-          console.warn(`[DockerExecutor] Stream ended with ${buffer.length} bytes remaining`);
+          log.warn(`[DockerExecutor] Stream ended with ${buffer.length} bytes remaining`);
         }
         resolve({ stdout, stderr });
       });
@@ -506,7 +508,7 @@ export class DockerExecutor {
     }
 
     if (buffer.length > 0) {
-      console.warn(`[DockerExecutor] Stream ended with ${buffer.length} bytes unprocessed`);
+      log.warn(`[DockerExecutor] Stream ended with ${buffer.length} bytes unprocessed`);
     }
   }
 }
@@ -529,7 +531,7 @@ export async function keepDatabaseAlive(
     try {
       await db.execute(sql`SELECT 1`);
     } catch (error) {
-      console.error('[DockerExecutor] Database keepalive failed:', error);
+      log.error('[DockerExecutor] Database keepalive failed:', error);
     }
   }, intervalMs);
 

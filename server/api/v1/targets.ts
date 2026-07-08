@@ -8,6 +8,8 @@ import { nmapExecutor } from "../../services/nmap-executor";
 import { TargetSanitizer, type TargetType } from "../../../shared/utils/target-sanitizer";
 import { ScanTimeoutCalculator } from "../../../shared/utils/scan-timeout-calculator";
 import { getOperationTag, mergeOperationTag } from "../../services/operation-tag-helper";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("targets");
 
 const router = Router();
 
@@ -275,9 +277,9 @@ router.post("/:id/scan", ensureRole("admin", "operator"), async (req, res) => {
     // Debug logging removed
     // Debug logging removed
     // Debug logging removed
-    console.log(`[Nmap] Host count estimate: ${timeoutCalc.hostCount.toLocaleString()}`);
-    console.log(`[Nmap] Estimated duration: ${ScanTimeoutCalculator.formatDuration(timeoutCalc.estimatedDuration)}`);
-    console.log(`[Nmap] Timeout set to: ${ScanTimeoutCalculator.formatDuration(timeoutCalc.timeout)}`);
+    log.info(`[Nmap] Host count estimate: ${timeoutCalc.hostCount.toLocaleString()}`);
+    log.info(`[Nmap] Estimated duration: ${ScanTimeoutCalculator.formatDuration(timeoutCalc.estimatedDuration)}`);
+    log.info(`[Nmap] Timeout set to: ${ScanTimeoutCalculator.formatDuration(timeoutCalc.timeout)}`);
     
     if (timeoutCalc.warning) {
       // Warning logged for debugging
@@ -329,7 +331,7 @@ router.post("/:id/scan", ensureRole("admin", "operator"), async (req, res) => {
           }
         }
       } catch (storeError) {
-        console.error("[Nmap] Failed to store results in discoveredServices:", storeError);
+        log.error("[Nmap] Failed to store results in discoveredServices:", storeError);
       }
     }
 

@@ -10,6 +10,8 @@ import { db } from '../db';
 import { operations, axScanResults, targets } from '@shared/schema';
 import { eq, and, inArray } from 'drizzle-orm';
 import { buildOperationTag } from './operation-tag-helper';
+import { createLogger } from '../lib/logger';
+const log = createLogger("operation-lifecycle-automation");
 
 // ============================================================================
 // Types
@@ -44,7 +46,7 @@ class OperationLifecycleAutomation {
    * - Sets pipelineStatus to track the pipeline
    */
   async handleOperationActivated(operationId: string, userId: string): Promise<void> {
-    console.log(`[Lifecycle] Operation ${operationId} activated`);
+    log.info(`[Lifecycle] Operation ${operationId} activated`);
 
     try {
       // Fetch operation
@@ -54,13 +56,13 @@ class OperationLifecycleAutomation {
         .where(eq(operations.id, operationId));
 
       if (!operation) {
-        console.log(`[Lifecycle] Operation ${operationId} not found`);
+        log.info(`[Lifecycle] Operation ${operationId} not found`);
         return;
       }
 
       // Check if automation is enabled
       if (!operation.automationEnabled) {
-        console.log(`[Lifecycle] Automation disabled for operation ${operationId}`);
+        log.info(`[Lifecycle] Automation disabled for operation ${operationId}`);
         return;
       }
 
@@ -68,15 +70,15 @@ class OperationLifecycleAutomation {
       const scopeTargets = this.extractScopeTargets(operation);
 
       if (scopeTargets.length === 0) {
-        console.log(`[Lifecycle] No scope targets found for operation ${operationId}, skipping automation`);
+        log.info(`[Lifecycle] No scope targets found for operation ${operationId}, skipping automation`);
         return;
       }
 
-      console.log(`[Lifecycle] Found ${scopeTargets.length} scope targets: ${scopeTargets.join(', ')}`);
+      log.info(`[Lifecycle] Found ${scopeTargets.length} scope targets: ${scopeTargets.join(', ')}`);
 
       // Create targets directly from scope data
       const createdCount = await this.createTargetsFromScope(operationId, scopeTargets, operation.name);
-      console.log(`[Lifecycle] Created ${createdCount} targets from scope data`);
+      log.info(`[Lifecycle] Created ${createdCount} targets from scope data`);
 
       // Initialize pipeline status
       const pipelineStatus: PipelineStatus = {
@@ -118,9 +120,9 @@ class OperationLifecycleAutomation {
         })
         .where(eq(operations.id, operationId));
 
-      console.log(`[Lifecycle] BBOT scan ${scanId} started for operation ${operationId}`);
+      log.info(`[Lifecycle] BBOT scan ${scanId} started for operation ${operationId}`);
     } catch (error) {
-      console.error(`[Lifecycle] Failed to activate pipeline for operation ${operationId}:`, error);
+      log.error(`[Lifecycle] Failed to activate pipeline for operation ${operationId}:`, error);
     }
   }
 
@@ -201,7 +203,7 @@ class OperationLifecycleAutomation {
         existingValues.add(target);
         created++;
       } catch (err) {
-        console.warn(`[Lifecycle] Failed to create target for ${target}:`, err);
+        log.warn(`[Lifecycle] Failed to create target for ${target}:`, err);
       }
     }
 
@@ -231,7 +233,7 @@ class OperationLifecycleAutomation {
    * - Sets pipelineStatus.currentPhase = 'paused'
    */
   async handleOperationPaused(operationId: string): Promise<void> {
-    console.log(`[Lifecycle] Operation ${operationId} paused`);
+    log.info(`[Lifecycle] Operation ${operationId} paused`);
 
     try {
       // Cancel running and pending scans
@@ -265,9 +267,9 @@ class OperationLifecycleAutomation {
           .where(eq(operations.id, operationId));
       }
 
-      console.log(`[Lifecycle] Pipeline paused for operation ${operationId}`);
+      log.info(`[Lifecycle] Pipeline paused for operation ${operationId}`);
     } catch (error) {
-      console.error(`[Lifecycle] Failed to pause pipeline for operation ${operationId}:`, error);
+      log.error(`[Lifecycle] Failed to pause pipeline for operation ${operationId}:`, error);
     }
   }
 
@@ -277,7 +279,7 @@ class OperationLifecycleAutomation {
    * - Sets pipelineStatus.currentPhase = 'completed'
    */
   async handleOperationCompleted(operationId: string, userId: string): Promise<void> {
-    console.log(`[Lifecycle] Operation ${operationId} completed/cancelled`);
+    log.info(`[Lifecycle] Operation ${operationId} completed/cancelled`);
 
     try {
       // Cancel any running scans
@@ -311,9 +313,9 @@ class OperationLifecycleAutomation {
           .where(eq(operations.id, operationId));
       }
 
-      console.log(`[Lifecycle] Pipeline completed for operation ${operationId}`);
+      log.info(`[Lifecycle] Pipeline completed for operation ${operationId}`);
     } catch (error) {
-      console.error(`[Lifecycle] Failed to complete pipeline for operation ${operationId}:`, error);
+      log.error(`[Lifecycle] Failed to complete pipeline for operation ${operationId}:`, error);
     }
   }
 }

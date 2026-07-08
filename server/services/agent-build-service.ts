@@ -12,6 +12,8 @@ import crypto from 'crypto';
 import { db } from '@db';
 import { agentBuilds } from '@shared/schema';
 import { eq } from 'drizzle-orm';
+import { createLogger } from '../lib/logger';
+const log = createLogger("agent-build-service");
 
 // ============================================================================
 // Types
@@ -113,11 +115,11 @@ class AgentBuildService {
       metadata: options.metadata || {},
     }).returning();
 
-    console.log(`[AgentBuildService] Created build ${build.id} for ${options.platform}/${options.architecture}`);
+    log.info(`[AgentBuildService] Created build ${build.id} for ${options.platform}/${options.architecture}`);
 
     // Start build asynchronously
     this.executeBuild(build.id, options).catch(error => {
-      console.error(`[AgentBuildService] Build ${build.id} failed:`, error);
+      log.error(`[AgentBuildService] Build ${build.id} failed:`, error);
     });
 
     return build.id;
@@ -138,7 +140,7 @@ class AgentBuildService {
         .set({ status: 'building' })
         .where(eq(agentBuilds.id, buildId));
 
-      console.log(`[AgentBuildService] Starting build ${buildId}`);
+      log.info(`[AgentBuildService] Starting build ${buildId}`);
       const startTime = Date.now();
 
       // Construct Docker command
@@ -154,7 +156,7 @@ class AgentBuildService {
         '/output'
       ];
 
-      console.log(`[AgentBuildService] Docker command: docker ${dockerArgs.join(' ')}`);
+      log.info(`[AgentBuildService] Docker command: docker ${dockerArgs.join(' ')}`);
 
       // Spawn Docker process
       const docker = spawn('docker', dockerArgs);
@@ -171,7 +173,7 @@ class AgentBuildService {
 
       // Set timeout
       const timeoutId = setTimeout(() => {
-        console.warn(`[AgentBuildService] Build ${buildId} timed out`);
+        log.warn(`[AgentBuildService] Build ${buildId} timed out`);
         docker.kill('SIGTERM');
       }, this.buildTimeout);
 
@@ -218,7 +220,7 @@ class AgentBuildService {
           completedAt: new Date(),
         }).where(eq(agentBuilds.id, buildId));
 
-        console.log(`[AgentBuildService] Build ${buildId} completed successfully in ${duration}ms`);
+        log.info(`[AgentBuildService] Build ${buildId} completed successfully in ${duration}ms`);
       } else {
         // Build failed
         await db.update(agentBuilds).set({
@@ -229,7 +231,7 @@ class AgentBuildService {
           completedAt: new Date(),
         }).where(eq(agentBuilds.id, buildId));
 
-        console.error(`[AgentBuildService] Build ${buildId} failed with exit code ${exitCode}`);
+        log.error(`[AgentBuildService] Build ${buildId} failed with exit code ${exitCode}`);
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -239,7 +241,7 @@ class AgentBuildService {
         completedAt: new Date(),
       }).where(eq(agentBuilds.id, buildId));
 
-      console.error(`[AgentBuildService] Build ${buildId} error:`, errorMessage);
+      log.error(`[AgentBuildService] Build ${buildId} error:`, errorMessage);
     }
   }
 
@@ -259,7 +261,7 @@ class AgentBuildService {
     if (build.status === 'building' || build.status === 'pending') {
       const fileCheck = await this.checkBuildFilesExist(buildId, build.platform);
       if (fileCheck.exists) {
-        console.log(`[AgentBuildService] getBuildStatus: Build ${buildId} detected complete via filesystem (DB status was: ${build.status})`);
+        log.info(`[AgentBuildService] getBuildStatus: Build ${buildId} detected complete via filesystem (DB status was: ${build.status})`);
 
         const duration = Date.now() - new Date(build.createdAt).getTime();
         const completedAt = new Date();
@@ -381,7 +383,7 @@ class AgentBuildService {
       if (status.status === 'building' || status.status === 'pending') {
         const fileCheck = await this.checkBuildFilesExist(buildId, status.platform);
         if (fileCheck.exists) {
-          console.log(`[AgentBuildService] Build ${buildId} detected complete via filesystem (DB status was: ${status.status})`);
+          log.info(`[AgentBuildService] Build ${buildId} detected complete via filesystem (DB status was: ${status.status})`);
 
           // Update DB to reflect actual state
           const duration = Date.now() - new Date(status.createdAt).getTime();
@@ -393,7 +395,7 @@ class AgentBuildService {
             buildDurationMs: duration,
             completedAt: new Date(),
           }).where(eq(agentBuilds.id, buildId)).catch(err => {
-            console.warn(`[AgentBuildService] Failed to update DB for ${buildId}:`, err);
+            log.warn(`[AgentBuildService] Failed to update DB for ${buildId}:`, err);
           });
 
           return {
@@ -430,7 +432,7 @@ class AgentBuildService {
       completedAt: new Date(),
     }).where(eq(agentBuilds.id, buildId));
 
-    console.log(`[AgentBuildService] Build ${buildId} cancelled`);
+    log.info(`[AgentBuildService] Build ${buildId} cancelled`);
     return true;
   }
 
@@ -470,12 +472,12 @@ class AgentBuildService {
           await fs.rm(buildDir, { recursive: true, force: true });
           cleanedCount++;
         } catch (error) {
-          console.warn(`[AgentBuildService] Failed to clean up build ${build.id}:`, error);
+          log.warn(`[AgentBuildService] Failed to clean up build ${build.id}:`, error);
         }
       }
     }
 
-    console.log(`[AgentBuildService] Cleaned up ${cleanedCount} old builds`);
+    log.info(`[AgentBuildService] Cleaned up ${cleanedCount} old builds`);
     return cleanedCount;
   }
 

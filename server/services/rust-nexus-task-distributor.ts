@@ -5,6 +5,8 @@ import {
   rustNexusTaskResults,
 } from "@shared/schema";
 import { eq, and, inArray, lt, or, sql, desc, asc } from "drizzle-orm";
+import { createLogger } from '../lib/logger';
+const log = createLogger("rust-nexus-task-distributor");
 
 /**
  * Advanced Task Distribution System for rust-nexus Implants
@@ -374,7 +376,7 @@ class RustNexusTaskDistributor {
       }
     }
 
-    console.log(
+    log.info(
       `[TaskDistributor] Priority scheduler promoted ${waitingTasks.length} waiting tasks`
     );
   }
@@ -531,7 +533,7 @@ class RustNexusTaskDistributor {
 
         retriedCount++;
 
-        console.log(
+        log.info(
           `[TaskDistributor] Retrying task ${task.id} (attempt ${retryCount}/${task.maxRetries})`
         );
       }
@@ -673,7 +675,7 @@ class RustNexusTaskDistributor {
           .where(eq(rustNexusTasks.id, task.id));
 
         timeoutCount++;
-        console.log(`[TaskDistributor] Task ${task.id} timed out`);
+        log.info(`[TaskDistributor] Task ${task.id} timed out`);
       }
     }
 

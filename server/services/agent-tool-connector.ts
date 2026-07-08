@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { agents, targets, mcpServers } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { dockerExecutor } from "./docker-executor";
 import { executeTool } from "./tool-executor";
 import { mcpGrpcBridge } from "./mcp-grpc-bridge";
@@ -8,6 +8,8 @@ import { mcpInvoker } from "./agents/mcp-invoker";
 import { resolveAgentMcpServerIds } from "./agents/mcp-resolve";
 import { resolveTool, type AgentToolResult } from "./agents/tool-resolve";
 import type { ToolConfiguration } from "../../shared/types/tool-config";
+import { createLogger } from '../lib/logger';
+const log = createLogger("agent-tool-connector");
 
 /**
  * Generic Agent-Tool Connector
@@ -127,8 +129,8 @@ export class AgentToolConnector {
       timeout: 60000, // 1 minute default
     };
 
-    console.log(`[AgentToolConnector] Executing tool on implant: ${toolCall.toolName}`);
-    console.log(`[AgentToolConnector] Agent: ${agent.name}, Implant: ${implantId || 'auto-select'}`);
+    log.info(`[AgentToolConnector] Executing tool on implant: ${toolCall.toolName}`);
+    log.info(`[AgentToolConnector] Agent: ${agent.name}, Implant: ${implantId || 'auto-select'}`);
 
     // Execute via bridge
     const response = await mcpGrpcBridge.executeToolOnImplant(request);
@@ -372,8 +374,8 @@ export class AgentToolConnector {
       // Build command from tool metadata and target
       const command = this.buildCommand(tool, target, context.input);
 
-      console.log(`[Agent: ${agent.name}] Executing tool: ${tool.name}`);
-      console.log(`[Command] ${command.join(" ")}`);
+      log.info(`[Agent: ${agent.name}] Executing tool: ${tool.name}`);
+      log.info(`[Command] ${command.join(" ")}`);
 
       // Execute command in rtpi-tools container
       const result = await dockerExecutor.exec("rtpi-tools", command, {
@@ -393,7 +395,7 @@ export class AgentToolConnector {
       };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(`[Agent: ${agent.name}] Tool execution failed:`, errorMsg);
+      log.error(`[Agent: ${agent.name}] Tool execution failed:`, errorMsg);
 
       const failOutput = { success: false, error: errorMsg, stdout: "", stderr: errorMsg };
       return {
@@ -647,6 +649,9 @@ export interface LoopExecution {
   id: string;
   agentId: string;
   partnerId: string;
+  // Full participant ring. For a pairwise loop this is [agentId, partnerId];
+  // a canvas "Add To Loop" group can have N>=2 agents that take turns in order.
+  agentIds: string[];
   targetId: string;
   currentIteration: number;
   maxIterations: number;
@@ -702,17 +707,50 @@ class AgentLoopService {
       throw new Error("Loop partner agent not found");
     }
 
-    const loopId = `loop_${agentId}_${partner.id}_${Date.now()}`;
+    // Delegate to the shared ring runner with a 2-agent ring. The pairwise
+    // settings (maxIterations / exitCondition) come from the lead agent's config.
+    return this.startLoopGroup([agentId, partner.id], targetId, initialInput, {
+      maxIterations: config?.maxLoopIterations || 5,
+      maxDurationSec: config?.maxLoopDuration || 300,
+      exitCondition: config?.loopExitCondition || "functional_poc",
+    });
+  }
 
+  /**
+   * Start a loop across N agents that take turns in ring order. This backs the
+   * canvas "Add To Loop" feature. A 2-agent ring is exactly the legacy pairwise
+   * loop, so startLoop() funnels through here too.
+   */
+  async startLoopGroup(
+    agentIds: string[],
+    targetId: string,
+    initialInput: string,
+    options: { maxIterations?: number; maxDurationSec?: number; exitCondition?: string } = {}
+  ): Promise<LoopExecution | null> {
+    const ring = (agentIds || []).filter(Boolean);
+    if (ring.length < 1) {
+      throw new Error("A loop requires at least one agent");
+    }
+
+    // Validate every participant exists.
+    const rows = await db.select().from(agents).where(inArray(agents.id, ring));
+    const found = new Set(rows.map((r) => r.id));
+    const missing = ring.filter((id) => !found.has(id));
+    if (missing.length > 0) {
+      throw new Error(`Loop participant agent(s) not found: ${missing.join(", ")}`);
+    }
+
+    const loopId = `loop_${ring[0]}_${ring.length}_${Date.now()}`;
     const loopExecution: LoopExecution = {
       id: loopId,
-      agentId,
-      partnerId: partner.id,
+      agentId: ring[0],
+      partnerId: ring[1] ?? ring[0],
+      agentIds: ring,
       targetId,
       currentIteration: 0,
-      maxIterations: config?.maxLoopIterations || 5,
-      maxDurationMs: (config?.maxLoopDuration || 300) * 1000, // Default 5 minutes
-      exitCondition: config?.loopExitCondition || "functional_poc",
+      maxIterations: options.maxIterations || 5,
+      maxDurationMs: (options.maxDurationSec || 300) * 1000,
+      exitCondition: options.exitCondition || "functional_poc",
       status: "running",
       iterations: [],
       startedAt: new Date(),
@@ -722,7 +760,7 @@ class AgentLoopService {
 
     // Start loop execution in background
     this.executeLoop(loopExecution, initialInput).catch((error) => {
-      console.error("Loop execution error:", error);
+      log.error("Loop execution error:", error);
       loopExecution.status = "failed";
       loopExecution.completedAt = new Date();
     });
@@ -735,7 +773,10 @@ class AgentLoopService {
     input: string
   ): Promise<void> {
     let currentInput = input;
-    let currentAgentId = loop.agentId;
+    // Round-robin position within the participant ring (loop.agentIds).
+    const ring = loop.agentIds.length > 0 ? loop.agentIds : [loop.agentId];
+    let ringIndex = 0;
+    let currentAgentId = ring[ringIndex];
     const startTime = Date.now();
 
     // Circuit breaker: track recent output hashes to detect stagnation
@@ -752,7 +793,7 @@ class AgentLoopService {
         loop.status = "timeout";
         loop.terminationReason = `Loop timeout after ${Math.round(elapsedMs / 1000)}s (max: ${Math.round(loop.maxDurationMs / 1000)}s)`;
         loop.completedAt = new Date();
-        console.warn(`[AgentLoop] ${loop.id} timed out after ${loop.currentIteration} iterations`);
+        log.warn(`[AgentLoop] ${loop.id} timed out after ${loop.currentIteration} iterations`);
         break;
       }
 
@@ -778,7 +819,7 @@ class AgentLoopService {
             loop.status = "stagnant";
             loop.terminationReason = `Agent outputs are repeating (${maxConsecutiveRepeats} identical responses)`;
             loop.completedAt = new Date();
-            console.warn(`[AgentLoop] ${loop.id} detected stagnant output after ${loop.currentIteration + 1} iterations`);
+            log.warn(`[AgentLoop] ${loop.id} detected stagnant output after ${loop.currentIteration + 1} iterations`);
             break;
           }
         }
@@ -808,9 +849,9 @@ class AgentLoopService {
           break;
         }
 
-        // Switch agents for next iteration
-        currentAgentId =
-          currentAgentId === loop.agentId ? loop.partnerId : loop.agentId;
+        // Advance to the next agent in the ring for the next iteration
+        ringIndex = (ringIndex + 1) % ring.length;
+        currentAgentId = ring[ringIndex];
         currentInput = output;
       } catch (error) {
         const iteration: LoopIteration = {

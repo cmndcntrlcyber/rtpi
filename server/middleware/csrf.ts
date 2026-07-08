@@ -1,51 +1,63 @@
 import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
+import { redisClient } from "../auth/session";
+import { secureCompare } from "../utils/encryption";
 
-// CSRF token storage (in production, use Redis)
-const csrfTokens = new Map<string, string>();
+const CSRF_PREFIX = "csrf:";
+const CSRF_TTL_SECONDS = 3600;
 
-// Generate CSRF token
-export function generateCsrfToken(req: Request): string {
+export async function generateCsrfToken(req: Request): Promise<string> {
   const token = crypto.randomBytes(32).toString("hex");
   const sessionId = (req.session as any)?.id || req.sessionID;
-  
-  csrfTokens.set(sessionId, token);
-  
-  // Clean up old tokens (basic cleanup, in production use Redis with TTL)
-  if (csrfTokens.size > 1000) {
-    const firstKey = csrfTokens.keys().next().value;
-    if (firstKey !== undefined) {
-      csrfTokens.delete(firstKey);
-    }
-  }
-  
+
+  await redisClient.set(`${CSRF_PREFIX}${sessionId}`, token, {
+    EX: CSRF_TTL_SECONDS,
+  });
+
   return token;
 }
 
-// Validate CSRF token
-export function validateCsrfToken(req: Request, res: Response, next: NextFunction) {
-  // Skip CSRF for GET, HEAD, OPTIONS
+export async function validateCsrfToken(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
   if (["GET", "HEAD", "OPTIONS"].includes(req.method)) {
     return next();
   }
 
-  const sessionId = (req.session as any)?.id || req.sessionID;
-  const providedToken = req.headers["x-csrf-token"] as string;
-  const storedToken = csrfTokens.get(sessionId);
+  try {
+    const sessionId = (req.session as any)?.id || req.sessionID;
+    const providedToken = req.headers["x-csrf-token"] as string;
+    const storedToken = await redisClient.get(`${CSRF_PREFIX}${sessionId}`);
 
-  if (!providedToken || !storedToken || providedToken !== storedToken) {
-    return res.status(403).json({ 
-      error: "CSRF token validation failed",
-      message: "Invalid or missing CSRF token" 
-    });
+    if (
+      !providedToken ||
+      !storedToken ||
+      !secureCompare(providedToken, storedToken)
+    ) {
+      return res.status(403).json({
+        error: "CSRF token validation failed",
+        message: "Invalid or missing CSRF token",
+      });
+    }
+
+    next();
+  } catch (err) {
+    next(err);
   }
-
-  next();
 }
 
-// Middleware to attach CSRF token to response
-export function attachCsrfToken(req: Request, res: Response, next: NextFunction) {
-  const token = generateCsrfToken(req);
-  res.locals.csrfToken = token;
-  next();
+export async function attachCsrfToken(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const token = await generateCsrfToken(req);
+    res.locals.csrfToken = token;
+    next();
+  } catch (err) {
+    next(err);
+  }
 }

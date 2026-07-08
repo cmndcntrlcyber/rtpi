@@ -12,6 +12,8 @@ import {
   inferenceProviderRegistry,
   type ProviderId,
 } from "../../services/inference/inference-provider-registry";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("inference");
 
 const router = Router();
 router.use(ensureAuthenticated);
@@ -105,7 +107,7 @@ router.patch("/providers/:id", ensureRole("admin"), async (req, res) => {
     }
     fs.writeFileSync(envPath, content, "utf-8");
   } catch (err: any) {
-    console.warn("[inference] Failed to persist .env updates:", err?.message);
+    log.warn("[inference] Failed to persist .env updates:", err?.message);
   }
 
   await logAudit(user.id, "patch_inference_provider", `/inference/providers/${id}`, id, true, req);

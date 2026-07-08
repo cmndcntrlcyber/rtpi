@@ -13,6 +13,8 @@ import { agentToolBuilds, agents } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import { agentToolBuilder } from "../../services/agent-tool-builder";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("agent-tool-builds");
 
 const router = Router();
 
@@ -82,7 +84,7 @@ router.post("/", ensureRole("admin", "operator"), async (req, res) => {
 
     // Kick off the async pipeline (don't await)
     agentToolBuilder.startBuild(build.id).catch((err) => {
-      console.error(`[AgentToolBuilder] Build ${build.id} failed:`, err);
+      log.error(`[AgentToolBuilder] Build ${build.id} failed:`, err);
     });
 
     await logAudit(
@@ -96,7 +98,7 @@ router.post("/", ensureRole("admin", "operator"), async (req, res) => {
 
     res.status(201).json({ buildId: build.id });
   } catch (error: any) {
-    console.error("[AgentToolBuilds] Failed to create build:", error);
+    log.error("[AgentToolBuilds] Failed to create build:", error);
     res.status(500).json({
       error: "Failed to create build",
       details: error?.message,
@@ -121,7 +123,7 @@ router.get("/:id", async (req, res) => {
 
     res.json(build);
   } catch (error: any) {
-    console.error("[AgentToolBuilds] Failed to get build:", error);
+    log.error("[AgentToolBuilds] Failed to get build:", error);
     res.status(500).json({
       error: "Failed to get build status",
       details: error?.message,
@@ -140,7 +142,7 @@ router.get("/", async (_req, res) => {
 
     res.json({ builds });
   } catch (error: any) {
-    console.error("[AgentToolBuilds] Failed to list builds:", error);
+    log.error("[AgentToolBuilds] Failed to list builds:", error);
     res.status(500).json({
       error: "Failed to list builds",
       details: error?.message,

@@ -51,7 +51,7 @@ services:
     tty: true
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "echo", "healthy"]
+      test: ["CMD-SHELL", "nmap --version > /dev/null 2>&1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -108,6 +108,12 @@ services:
     networks:
       - rtpi-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:1337/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   # ATT&CK Workbench MongoDB Database
   workbench-db:
@@ -183,6 +189,12 @@ services:
     networks:
       - rtpi-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/ > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   # ============================================================================
   # Kasm Workspaces - Browser-Based Desktop Streaming Platform
@@ -391,6 +403,12 @@ services:
     networks:
       - rtpi-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/ > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   # Kasm Proxy (Nginx) - Reverse proxy for workspace access
   kasm-proxy:
@@ -458,6 +476,12 @@ services:
     networks:
       - rtpi-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "(echo > /dev/tcp/localhost/4822) 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   # Kasm Agent - Workspace provisioning and monitoring
   kasm-agent:
@@ -487,6 +511,12 @@ services:
     networks:
       - rtpi-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   # Kasm Share - File sharing service for workspaces
   kasm-share:
@@ -533,6 +563,12 @@ services:
     networks:
       - rtpi-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8182/ > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   # Certbot - Automated SSL/TLS certificate management
   # Supports both HTTP-01 and DNS-01 (Cloudflare) challenges
@@ -766,7 +802,7 @@ services:
     restart: unless-stopped
     init: true
     healthcheck:
-      test: ["CMD-SHELL", "true"]
+      test: ["CMD-SHELL", "kill -0 1 && which python3 > /dev/null"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -795,7 +831,7 @@ services:
     restart: unless-stopped
     init: true
     healthcheck:
-      test: ["CMD-SHELL", "true"]
+      test: ["CMD-SHELL", "kill -0 1 && which python3 > /dev/null"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -832,7 +868,7 @@ services:
     restart: unless-stopped
     init: true
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f burp-entrypoint || true"]
+      test: ["CMD-SHELL", "pgrep -f burp-entrypoint || exit 1"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -861,7 +897,7 @@ services:
     restart: unless-stopped
     init: true
     healthcheck:
-      test: ["CMD-SHELL", "true"]
+      test: ["CMD-SHELL", "kill -0 1 && test -d /opt/tools"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -887,6 +923,11 @@ services:
       - rtpi-network
     restart: unless-stopped
     init: true
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 && test -d /opt/tools"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
 
   # Sliver C2 Framework - BishopFox
   offsec-sliver:
@@ -909,6 +950,11 @@ services:
       - rtpi-network
     restart: unless-stopped
     init: true
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 && test -d /opt/tools"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
 
   # Loki C2 Framework - boku7
   offsec-loki:
@@ -931,6 +977,11 @@ services:
       - rtpi-network
     restart: unless-stopped
     init: true
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 && test -d /opt/tools"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
 
   # AdaptixC2 Framework - Adaptix-Framework
   offsec-adaptix:
@@ -953,6 +1004,11 @@ services:
       - rtpi-network
     restart: unless-stopped
     init: true
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 && test -d /opt/tools"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
 
   # Fuzzing Agent - Web Fuzzing, Directory Discovery
   # MITRE Tactics: Discovery, Reconnaissance
@@ -983,7 +1039,7 @@ services:
     restart: unless-stopped
     init: true
     healthcheck:
-      test: ["CMD-SHELL", "true"]
+      test: ["CMD-SHELL", "kill -0 1 && which ffuf > /dev/null"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -1012,7 +1068,7 @@ services:
     restart: unless-stopped
     init: true
     healthcheck:
-      test: ["CMD-SHELL", "true"]
+      test: ["CMD-SHELL", "kill -0 1 && test -d /opt/tools"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -1048,7 +1104,7 @@ services:
     restart: unless-stopped
     init: true
     healthcheck:
-      test: ["CMD-SHELL", "true"]
+      test: ["CMD-SHELL", "kill -0 1 && which python3 > /dev/null"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -1134,6 +1190,12 @@ services:
       - rtpi-network
     dns:
       - 127.0.0.11
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:7777/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     logging:
       driver: "json-file"
       options:
@@ -1666,7 +1728,7 @@ services:
     restart: unless-stopped
     init: true
     healthcheck:
-      test: ["CMD-SHELL", "true"]
+      test: ["CMD-SHELL", "kill -0 1 && which aws > /dev/null"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -1694,7 +1756,7 @@ services:
     restart: unless-stopped
     init: true
     healthcheck:
-      test: ["CMD-SHELL", "true"]
+      test: ["CMD-SHELL", "kill -0 1 && which python3 > /dev/null"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -1721,6 +1783,11 @@ services:
       - rtpi-network
     restart: unless-stopped
     init: true
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 && which sqlmap > /dev/null"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
 
   # ============================================================================
   # v2.5 — RE Tool Containers (Phase C)

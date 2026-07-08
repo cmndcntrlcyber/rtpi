@@ -481,6 +481,7 @@ export default function Vulnerabilities() {
         open={editDialogOpen}
         vulnerability={selectedVulnerability}
         targets={targets}
+        operations={operations}
         onClose={() => setEditDialogOpen(false)}
         onSave={handleSaveVulnerability}
         onDelete={handleDeleteVulnerability}

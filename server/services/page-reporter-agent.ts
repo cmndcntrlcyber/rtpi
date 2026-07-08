@@ -10,6 +10,8 @@ import {
   securityTools,
 } from "../../shared/schema";
 import { eq, desc } from "drizzle-orm";
+import { createLogger } from '../lib/logger';
+const log = createLogger("page-reporter-agent");
 
 /**
  * Page Reporter Agent Service
@@ -35,7 +37,7 @@ class PageReporterAgent {
     operationId: string,
     reportingPeriod: Date
   ): Promise<any> {
-    console.log(`📝 [PageReporterAgent] Executing reporter ${agentId} for operation ${operationId}`);
+    log.info(`📝 [PageReporterAgent] Executing reporter ${agentId} for operation ${operationId}`);
 
     try {
       // Get agent configuration
@@ -48,7 +50,7 @@ class PageReporterAgent {
       const agentConfig = agent[0].config as any;
       const pageRole = agentConfig?.pageRole || "unknown";
 
-      console.log(`📊 [PageReporterAgent] Reporter role: ${pageRole}`);
+      log.info(`📊 [PageReporterAgent] Reporter role: ${pageRole}`);
 
       // Get last report for comparison
       const lastReport = await this.getLastReport(agentId, operationId);
@@ -89,7 +91,7 @@ class PageReporterAgent {
         })
         .returning();
 
-      console.log(`✅ [PageReporterAgent] Report ${report[0].id} created for agent ${agentId}`);
+      log.info(`✅ [PageReporterAgent] Report ${report[0].id} created for agent ${agentId}`);
 
       return {
         reportId: report[0].id,
@@ -100,7 +102,7 @@ class PageReporterAgent {
         issueCount: issues.length,
       };
     } catch (error) {
-      console.error(
+      log.error(
         `❌ [PageReporterAgent] Failed to execute reporter ${agentId}:`,
         error instanceof Error ? error.message : error
       );
@@ -155,7 +157,7 @@ class PageReporterAgent {
         return this.fetchWorkflowsData(operationId);
 
       default:
-        console.warn(`⚠️  [PageReporterAgent] Unknown page role: ${pageRole}`);
+        log.warn(`⚠️  [PageReporterAgent] Unknown page role: ${pageRole}`);
         return { pageRole, note: "No data collection implemented for this role" };
     }
   }

@@ -14,6 +14,8 @@ import { nucleiTemplates, vulnerabilities, users } from "@shared/schema";
 import { eq, and, ilike, inArray, desc, sql } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import * as yaml from "yaml";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("nuclei-templates");
 
 const router = Router();
 
@@ -104,7 +106,7 @@ router.get("/", async (req, res) => {
       },
     });
   } catch (error: any) {
-    console.error("Failed to list nuclei templates:", error);
+    log.error("Failed to list nuclei templates:", error);
     res.status(500).json({
       error: "Failed to list templates",
       details: error?.message || "Internal server error",
@@ -183,7 +185,7 @@ router.get("/stats", async (_req, res) => {
       topTemplates,
     });
   } catch (error: any) {
-    console.error("Failed to get template stats:", error);
+    log.error("Failed to get template stats:", error);
     res.status(500).json({
       error: "Failed to get statistics",
       details: error?.message || "Internal server error",
@@ -240,7 +242,7 @@ router.get("/:id", async (req, res) => {
       creator,
     });
   } catch (error: any) {
-    console.error("Failed to get template:", error);
+    log.error("Failed to get template:", error);
     res.status(500).json({
       error: "Failed to get template",
       details: error?.message || "Internal server error",
@@ -321,7 +323,7 @@ router.post("/", ensureRole("admin", "operator"), async (req, res) => {
 
     res.status(201).json({ template });
   } catch (error: any) {
-    console.error("Failed to create template:", error);
+    log.error("Failed to create template:", error);
     const user = req.user as any;
     await logAudit(user.id, "create_nuclei_template", "/nuclei-templates", null, false, req);
     res.status(500).json({
@@ -391,7 +393,7 @@ router.put("/:id", ensureRole("admin", "operator"), async (req, res) => {
 
     res.json({ template: updated });
   } catch (error: any) {
-    console.error("Failed to update template:", error);
+    log.error("Failed to update template:", error);
     const user = req.user as any;
     await logAudit(user.id, "update_nuclei_template", "/nuclei-templates", id, false, req);
     res.status(500).json({
@@ -425,7 +427,7 @@ router.delete("/:id", ensureRole("admin"), async (req, res) => {
 
     res.json({ success: true, deleted: existing.templateId });
   } catch (error: any) {
-    console.error("Failed to delete template:", error);
+    log.error("Failed to delete template:", error);
     const user = req.user as any;
     await logAudit(user.id, "delete_nuclei_template", "/nuclei-templates", id, false, req);
     res.status(500).json({
@@ -496,7 +498,7 @@ router.post("/validate", async (req, res) => {
       });
     }
   } catch (error: any) {
-    console.error("Failed to validate template:", error);
+    log.error("Failed to validate template:", error);
     res.status(500).json({
       error: "Failed to validate template",
       details: error?.message || "Internal server error",
@@ -572,7 +574,7 @@ router.post("/:id/validate", ensureRole("admin", "operator"), async (req, res) =
       validation: validationResults,
     });
   } catch (error: any) {
-    console.error("Failed to validate template:", error);
+    log.error("Failed to validate template:", error);
     res.status(500).json({
       error: "Failed to validate template",
       details: error?.message || "Internal server error",
@@ -633,7 +635,7 @@ router.post("/:id/record-usage", ensureRole("admin", "operator", "agent"), async
       },
     });
   } catch (error: any) {
-    console.error("Failed to record template usage:", error);
+    log.error("Failed to record template usage:", error);
     res.status(500).json({
       error: "Failed to record usage",
       details: error?.message || "Internal server error",
@@ -655,7 +657,7 @@ router.get("/meta/categories", async (_req, res) => {
       categories: categories.map((c) => c.category).filter(Boolean),
     });
   } catch (error: any) {
-    console.error("Failed to get categories:", error);
+    log.error("Failed to get categories:", error);
     res.status(500).json({
       error: "Failed to get categories",
       details: error?.message || "Internal server error",

@@ -15,6 +15,8 @@ import { agents, toolRegistry, toolParameters } from '../../../shared/schema';
 import { DockerExecutor } from '../docker-executor';
 import { eq, and, sql } from 'drizzle-orm';
 import { EventEmitter } from 'events';
+import { createLogger } from '../../lib/logger';
+const log = createLogger("tool-connector-agent");
 
 // ============================================================================
 // Types
@@ -123,6 +125,38 @@ const TOOL_CONTAINERS: ToolContainer[] = [
     // Most tools were moved to fuzzing-agent, burp-agent, framework-agent, etc.
     enabledToolCategories: ['exploitation', 'reconnaissance', 'network'],
   },
+  {
+    name: 'rtpi-cloud-agent',
+    user: 'rtpi-agent',
+    category: 'cloud',
+    enabledToolCategories: ['cloud-security'],
+  },
+  {
+    name: 'rtpi-llm-sec-agent',
+    user: 'rtpi-agent',
+    category: 'llm-security',
+    enabledToolCategories: ['llm-security'],
+  },
+  {
+    name: 'rtpi-sliver-agent',
+    user: 'rtpi-agent',
+    category: 'c2',
+    // Sliver ships a real CLI (/usr/local/bin/sliver[-server]), so it is discoverable here.
+    enabledToolCategories: ['c2-implant'],
+  },
+  {
+    name: 'rtpi-web-injection-agent',
+    user: 'rtpi-agent',
+    category: 'web-injection',
+    // `catch` is a Node app exposed via a /opt/tools/bin/catch launcher (see
+    // Dockerfile.agent-tools-web-injection); --help is wrapper-handled so discovery is clean.
+    enabledToolCategories: ['web-injection'],
+  },
+  // NOTE: rtpi-adaptix-agent, rtpi-c3-agent, and rtpi-loki-agent are intentionally
+  // omitted. They ship source trees only (/opt/<name>/src) with no PATH-resolvable CLI,
+  // so the which/test-x discovery model below cannot register them. Like Empire, these
+  // C2 frameworks are surfaced through the C2 frameworks panel/connectors, not this
+  // tool registry.
 ];
 
 // ============================================================================
@@ -255,6 +289,45 @@ export class ToolConnectorAgent extends EventEmitter {
       'which masscan && masscan --version 2>&1 | head -2',
       'which zmap && zmap --version 2>&1 | head -1',
     ],
+    // rtpi-cloud-agent: tools live in /opt/tools/venv/bin (on PATH). Flags verified to
+    // emit non-empty output as the rtpi-agent user. pacu/pmapper/aws print a banner or
+    // an env-dependent error rather than a clean version, but still resolve + register.
+    'cloud-security': [
+      'which prowler && prowler --version 2>&1 | head -1',
+      'which scout && scout --version 2>&1 | head -1',
+      'which pacu && pacu --help 2>&1 | head -1',
+      'which pmapper && pmapper --version 2>&1 | head -1',
+      'which cartography && cartography --help 2>&1 | head -1',
+      'which steampipe && steampipe --version 2>&1 | head -1',
+      'which trufflehog && trufflehog --version 2>&1 | head -1',
+      'which s3scanner && s3scanner --version 2>&1 | head -1',
+      'which cloudsplaining && cloudsplaining --version 2>&1 | head -1',
+      'which parliament && parliament --version 2>&1 | head -1',
+      'which aws && aws --version 2>&1 | head -1',
+    ],
+    // rtpi-llm-sec-agent. deepeval/deepteam lead --help with a blank line (trimmed to
+    // empty), so use --version. promptfoo emits nothing and jadx is non-exec for the
+    // rtpi-agent user; both are listed for completeness and are skipped by the
+    // which/test-x guard until fixed.
+    'llm-security': [
+      'which garak && garak --version 2>&1 | head -1',
+      'which promptfoo && promptfoo --version 2>&1 | head -1',
+      'which deepeval && deepeval --version 2>&1 | head -1',
+      'which deepteam && deepteam --version 2>&1 | head -1',
+      'which modelscan && modelscan --version 2>&1 | head -1',
+      'which jadx && jadx --version 2>&1 | head -1',
+      'which d2j-dex2jar && d2j-dex2jar --help 2>&1 | head -1',
+    ],
+    // rtpi-sliver-agent: `version` needs a live server, so probe with --help.
+    'c2-implant': [
+      'which sliver && sliver --help 2>&1 | head -1',
+      'which sliver-server && sliver-server --help 2>&1 | head -1',
+    ],
+    // rtpi-web-injection-agent: `catch` is a Node-app launcher; --help is handled by the
+    // wrapper so it returns a one-line summary without starting the server.
+    'web-injection': [
+      'which catch && catch --help 2>&1 | head -1',
+    ],
   };
 
   // Parameter extraction patterns for common tools
@@ -283,7 +356,7 @@ export class ToolConnectorAgent extends EventEmitter {
 
     if (existingAgent) {
       this.agentId = existingAgent.id;
-      console.log(`Tool Connector Agent found: ${this.agentId}`);
+      log.info(`Tool Connector Agent found: ${this.agentId}`);
     } else {
       const [newAgent] = await db
         .insert(agents)
@@ -299,7 +372,7 @@ export class ToolConnectorAgent extends EventEmitter {
         })
         .returning();
       this.agentId = newAgent.id;
-      console.log(`Tool Connector Agent created: ${this.agentId}`);
+      log.info(`Tool Connector Agent created: ${this.agentId}`);
     }
 
     // Register with dynamic workflow orchestrator
@@ -323,9 +396,9 @@ export class ToolConnectorAgent extends EventEmitter {
         ],
         [] // No dependencies
       );
-      console.log('Tool Connector Agent registered with orchestrator');
+      log.info('Tool Connector Agent registered with orchestrator');
     } catch (error) {
-      console.warn('Could not register with orchestrator:', error);
+      log.warn('Could not register with orchestrator:', error);
     }
   }
 
@@ -334,7 +407,7 @@ export class ToolConnectorAgent extends EventEmitter {
    */
   async start(): Promise<void> {
     if (this.isRunning) {
-      console.log('Tool Connector Agent already running');
+      log.info('Tool Connector Agent already running');
       return;
     }
 
@@ -346,7 +419,7 @@ export class ToolConnectorAgent extends EventEmitter {
     try {
       await this.poll();
     } catch (error) {
-      console.error('Initial poll failed:', error);
+      log.error('Initial poll failed:', error);
     }
 
     // Set up recurring poll
@@ -354,12 +427,12 @@ export class ToolConnectorAgent extends EventEmitter {
       try {
         await this.poll();
       } catch (error) {
-        console.error('Poll failed:', error);
+        log.error('Poll failed:', error);
         this.emit('poll_error', error);
       }
     }, this.config.pollIntervalMs);
 
-    console.log(`Tool Connector Agent started, polling every ${this.config.pollIntervalMs / 1000}s`);
+    log.info(`Tool Connector Agent started, polling every ${this.config.pollIntervalMs / 1000}s`);
   }
 
   /**
@@ -373,7 +446,7 @@ export class ToolConnectorAgent extends EventEmitter {
     this.isRunning = false;
     await this.updateAgentStatus('idle');
     this.emit('stopped');
-    console.log('Tool Connector Agent stopped');
+    log.info('Tool Connector Agent stopped');
   }
 
   /**
@@ -404,7 +477,7 @@ export class ToolConnectorAgent extends EventEmitter {
    * Execute a single poll cycle - polls all configured containers
    */
   async poll(): Promise<DiscoveredTool[]> {
-    console.log('Tool Connector Agent: Starting poll...');
+    log.info('Tool Connector Agent: Starting poll...');
     this.lastPollTime = new Date();
 
     try {
@@ -415,11 +488,11 @@ export class ToolConnectorAgent extends EventEmitter {
         // Check if container is running
         const isRunning = await this.isContainerRunning(container.name);
         if (!isRunning) {
-          console.log(`Tool Connector Agent: Container ${container.name} not running, skipping`);
+          log.info(`Tool Connector Agent: Container ${container.name} not running, skipping`);
           continue;
         }
 
-        console.log(`Tool Connector Agent: Polling container ${container.name}...`);
+        log.info(`Tool Connector Agent: Polling container ${container.name}...`);
 
         // Discover tools in this container
         for (const category of container.enabledToolCategories) {
@@ -443,7 +516,7 @@ export class ToolConnectorAgent extends EventEmitter {
       await this.syncRegistry(discoveredTools);
 
       this.emit('poll_complete', discoveredTools);
-      console.log(`Tool Connector Agent: Discovered ${discoveredTools.length} tools across ${TOOL_CONTAINERS.length} containers`);
+      log.info(`Tool Connector Agent: Discovered ${discoveredTools.length} tools across ${TOOL_CONTAINERS.length} containers`);
 
       // Update agent stats
       if (this.agentId) {
@@ -459,7 +532,7 @@ export class ToolConnectorAgent extends EventEmitter {
       return discoveredTools;
 
     } catch (error) {
-      console.error('Tool Connector Agent poll failed:', error);
+      log.error('Tool Connector Agent poll failed:', error);
       await this.updateAgentStatus('error');
       this.emit('poll_error', error);
       throw error;
@@ -740,7 +813,7 @@ export class ToolConnectorAgent extends EventEmitter {
           await this.syncParameters(newTool.id, tool.parameters);
         }
       } catch (error) {
-        console.error(`Failed to sync tool ${tool.name}:`, error);
+        log.error(`Failed to sync tool ${tool.name}:`, error);
       }
     }
 

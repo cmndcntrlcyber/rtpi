@@ -21,6 +21,8 @@ import { BaseTaskAgent, type TaskDefinition, type TaskResult } from "../base-tas
 import { routeReasoning, NoInferenceProviderAvailable } from "../../inference/inference-router";
 import { retrieveBugHunterSkills } from "../../knowledge/bug-hunter-skill-retriever";
 import { loadEngagementMeta } from "../../bug-hunter/engagement-scaffolder";
+import { createLogger } from '../../../lib/logger';
+const log = createLogger("bug-report-agent");
 
 type Platform = "hackerone" | "bugcrowd" | "intigriti" | "immunefi" | "redteam" | "internal";
 
@@ -116,9 +118,9 @@ Output: one markdown document, each finding as its own H2 section.`;
         reportMarkdown = result.response.text;
       } catch (err) {
         if (err instanceof NoInferenceProviderAvailable) {
-          console.warn("[BugReportAgent] no provider — emitting minimal report");
+          log.warn("[BugReportAgent] no provider — emitting minimal report");
         } else {
-          console.warn("[BugReportAgent] report generation failed:", err);
+          log.warn("[BugReportAgent] report generation failed:", err);
         }
         reportMarkdown = subset
           .map((v) => `## ${v.title}\n\n_Severity: ${v.severity}_\n\n${v.description ?? ""}`)

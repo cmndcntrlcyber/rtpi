@@ -35,6 +35,8 @@ import {
   harnessEvaluations,
 } from "@shared/schema";
 import { routeReasoning, NoInferenceProviderAvailable } from "./inference/inference-router";
+import { createLogger } from '../lib/logger';
+const log = createLogger("harness-optimization-evaluator");
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || "./uploads";
 const EVAL_DIR = path.join(UPLOAD_DIR, "harness-evaluations");
@@ -99,7 +101,7 @@ class HarnessOptimizationEvaluator {
         .where(eq(agentWorkflows.id, workflowId))
         .limit(1);
       if (!wf) {
-        console.warn(`[harness-eval] workflow ${workflowId} not found; skipping enqueue`);
+        log.warn(`[harness-eval] workflow ${workflowId} not found; skipping enqueue`);
         return null;
       }
 
@@ -115,11 +117,11 @@ class HarnessOptimizationEvaluator {
 
       // Out-of-band — run() persists running/completed/failed to the row.
       this.run(row.id).catch((err) => {
-        console.error(`[harness-eval] worker for ${row.id} threw:`, err);
+        log.error(`[harness-eval] worker for ${row.id} threw:`, err);
       });
       return row.id;
     } catch (err) {
-      console.error(`[harness-eval] enqueue failed for workflow ${workflowId}:`, err);
+      log.error(`[harness-eval] enqueue failed for workflow ${workflowId}:`, err);
       return null;
     }
   }
@@ -135,14 +137,14 @@ class HarnessOptimizationEvaluator {
         .from(harnessEvaluations)
         .where(inArray(harnessEvaluations.status, ["queued", "running"]));
       if (stuck.length === 0) return;
-      console.log(`[harness-eval] recovering ${stuck.length} pending evaluation(s)`);
+      log.info(`[harness-eval] recovering ${stuck.length} pending evaluation(s)`);
       for (const row of stuck) {
         this.run(row.id).catch((err) => {
-          console.error(`[harness-eval] recovery for ${row.id} threw:`, err);
+          log.error(`[harness-eval] recovery for ${row.id} threw:`, err);
         });
       }
     } catch (err) {
-      console.warn(`[harness-eval] recoverPending failed:`, err);
+      log.warn(`[harness-eval] recoverPending failed:`, err);
     }
   }
 
@@ -202,9 +204,9 @@ class HarnessOptimizationEvaluator {
         model = result.model;
       } catch (err) {
         if (err instanceof NoInferenceProviderAvailable) {
-          console.warn(`[harness-eval] no provider for ${evaluationId}; using template fallback`);
+          log.warn(`[harness-eval] no provider for ${evaluationId}; using template fallback`);
         } else {
-          console.warn(`[harness-eval] LLM analysis failed for ${evaluationId}; using template fallback:`, err);
+          log.warn(`[harness-eval] LLM analysis failed for ${evaluationId}; using template fallback:`, err);
         }
         analysis = this.templateAnalysis(workflow, metrics);
         generatedBy = "template";
@@ -235,7 +237,7 @@ class HarnessOptimizationEvaluator {
 
       await this.notify(workflow, evaluationId, analysis, metrics);
     } catch (err: any) {
-      console.error(`[harness-eval] evaluation ${evaluationId} failed:`, err);
+      log.error(`[harness-eval] evaluation ${evaluationId} failed:`, err);
       await db
         .update(harnessEvaluations)
         .set({
@@ -536,7 +538,7 @@ ${rows(a?.controlPlan, (c) => `- ${esc(typeof c === "string" ? c : JSON.stringif
         },
       });
     } catch (err) {
-      console.warn(`[harness-eval] notification failed for ${evaluationId}:`, err);
+      log.warn(`[harness-eval] notification failed for ${evaluationId}:`, err);
     }
   }
 }

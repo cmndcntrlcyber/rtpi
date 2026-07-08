@@ -8,6 +8,8 @@
  */
 
 import axios, { AxiosInstance, AxiosError } from 'axios';
+import { createLogger } from '../lib/logger';
+const log = createLogger("attack-workbench-client");
 
 interface WorkbenchConfig {
   apiUrl: string;
@@ -122,9 +124,9 @@ export class AttackWorkbenchClient {
       (error: AxiosError) => {
         // Don't log 401 errors - they're expected when Workbench requires auth
         if (error.response?.status !== 401) {
-          console.error('Workbench API Error:', error.message);
+          log.error('Workbench API Error:', error.message);
           if (error.response) {
-            console.error('Response:', error.response.status, error.response.data);
+            log.error('Response:', error.response.status, error.response.data);
           }
         }
         return Promise.reject(error);
@@ -144,7 +146,7 @@ export class AttackWorkbenchClient {
       if (error.response && error.response.status === 401) {
         return true;
       }
-      console.error('Failed to connect to Workbench:', error.message);
+      log.error('Failed to connect to Workbench:', error.message);
       return false;
     }
   }
@@ -169,7 +171,7 @@ export class AttackWorkbenchClient {
       if (error.response?.status === 401) {
         return [];
       }
-      console.error('Failed to fetch techniques:', error);
+      log.error('Failed to fetch techniques:', error);
       return [];
     }
   }
@@ -182,7 +184,7 @@ export class AttackWorkbenchClient {
       const response = await this.client.get(`/techniques/${stixId}`);
       return response.data;
     } catch (error) {
-      console.error(`Failed to fetch technique ${stixId}:`, error);
+      log.error(`Failed to fetch technique ${stixId}:`, error);
       return null;
     }
   }
@@ -195,7 +197,7 @@ export class AttackWorkbenchClient {
       const response = await this.client.post('/techniques', technique);
       return response.data;
     } catch (error) {
-      console.error('Failed to create technique:', error);
+      log.error('Failed to create technique:', error);
       return null;
     }
   }
@@ -208,7 +210,7 @@ export class AttackWorkbenchClient {
       const response = await this.client.put(`/techniques/${stixId}`, technique);
       return response.data;
     } catch (error) {
-      console.error(`Failed to update technique ${stixId}:`, error);
+      log.error(`Failed to update technique ${stixId}:`, error);
       return null;
     }
   }
@@ -221,7 +223,7 @@ export class AttackWorkbenchClient {
       await this.client.delete(`/techniques/${stixId}`);
       return true;
     } catch (error) {
-      console.error(`Failed to delete technique ${stixId}:`, error);
+      log.error(`Failed to delete technique ${stixId}:`, error);
       return false;
     }
   }
@@ -240,7 +242,7 @@ export class AttackWorkbenchClient {
       if (error.response?.status === 401) {
         return [];
       }
-      console.error('Failed to fetch collections:', error);
+      log.error('Failed to fetch collections:', error);
       return [];
     }
   }
@@ -253,7 +255,7 @@ export class AttackWorkbenchClient {
       const response = await this.client.get(`/collections/${stixId}`);
       return response.data;
     } catch (error) {
-      console.error(`Failed to fetch collection ${stixId}:`, error);
+      log.error(`Failed to fetch collection ${stixId}:`, error);
       return null;
     }
   }
@@ -266,7 +268,7 @@ export class AttackWorkbenchClient {
       const response = await this.client.post('/collections', collection);
       return response.data;
     } catch (error) {
-      console.error('Failed to create collection:', error);
+      log.error('Failed to create collection:', error);
       return null;
     }
   }
@@ -279,7 +281,7 @@ export class AttackWorkbenchClient {
       const response = await this.client.get(`/collections/${stixId}/bundle`);
       return response.data;
     } catch (error) {
-      console.error(`Failed to fetch collection bundle ${stixId}:`, error);
+      log.error(`Failed to fetch collection bundle ${stixId}:`, error);
       return null;
     }
   }
@@ -298,7 +300,7 @@ export class AttackWorkbenchClient {
       if (error.response?.status === 401) {
         return [];
       }
-      console.error('Failed to fetch groups:', error);
+      log.error('Failed to fetch groups:', error);
       return [];
     }
   }
@@ -311,7 +313,7 @@ export class AttackWorkbenchClient {
       const response = await this.client.post('/groups', group);
       return response.data;
     } catch (error) {
-      console.error('Failed to create group:', error);
+      log.error('Failed to create group:', error);
       return null;
     }
   }
@@ -330,7 +332,7 @@ export class AttackWorkbenchClient {
       if (error.response?.status === 401) {
         return [];
       }
-      console.error('Failed to fetch software:', error);
+      log.error('Failed to fetch software:', error);
       return [];
     }
   }
@@ -343,7 +345,7 @@ export class AttackWorkbenchClient {
       const response = await this.client.post('/software', software);
       return response.data;
     } catch (error) {
-      console.error('Failed to create software:', error);
+      log.error('Failed to create software:', error);
       return null;
     }
   }
@@ -362,7 +364,7 @@ export class AttackWorkbenchClient {
       if (error.response?.status === 401) {
         return [];
       }
-      console.error('Failed to fetch mitigations:', error);
+      log.error('Failed to fetch mitigations:', error);
       return [];
     }
   }
@@ -375,7 +377,7 @@ export class AttackWorkbenchClient {
       const response = await this.client.post('/mitigations', mitigation);
       return response.data;
     } catch (error) {
-      console.error('Failed to create mitigation:', error);
+      log.error('Failed to create mitigation:', error);
       return null;
     }
   }
@@ -398,7 +400,7 @@ export class AttackWorkbenchClient {
       if (error.response?.status === 401) {
         return [];
       }
-      console.error('Failed to fetch relationships:', error);
+      log.error('Failed to fetch relationships:', error);
       return [];
     }
   }
@@ -411,7 +413,7 @@ export class AttackWorkbenchClient {
       const response = await this.client.post('/relationships', relationship);
       return response.data;
     } catch (error) {
-      console.error('Failed to create relationship:', error);
+      log.error('Failed to create relationship:', error);
       return null;
     }
   }

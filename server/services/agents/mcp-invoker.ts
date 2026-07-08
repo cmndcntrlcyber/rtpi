@@ -23,6 +23,8 @@ import { db } from "../../db";
 import { mcpServers } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { mcpServerManager } from "../mcp-server-manager";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("mcp-invoker");
 
 // --- Types ------------------------------------------------------------------
 
@@ -76,15 +78,20 @@ interface ServerState {
   toolsCache?: { at: number; tools: MCPTool[] };
   /** True once stdout/stderr listeners have been attached for this process. */
   attached: boolean;
+  /** Rolling window of recent response times for metrics. */
+  recentDurations: number[];
 }
 
 const TOOLS_CACHE_TTL_MS = 60_000;
 const REQUEST_TIMEOUT_MS = 30_000;
 const PROBE_INTERVAL_MS = 30_000;
+const METRICS_FLUSH_INTERVAL_MS = 10_000;
+const METRICS_WINDOW_SIZE = 100;
 
 class MCPInvoker {
   private state = new Map<string, ServerState>();
   private probeInterval: NodeJS.Timeout | null = null;
+  private metricsInterval: NodeJS.Timeout | null = null;
 
   /**
    * Send `tools/list` to the MCP server. Cached 60s per server.
@@ -107,10 +114,13 @@ class MCPInvoker {
    */
   async callTool(serverId: string, name: string, args: Record<string, unknown> = {}): Promise<MCPCallResult> {
     await this.ensureInitialized(serverId);
+    const start = performance.now();
     const result = await this.request<MCPCallResult>(serverId, "tools/call", {
       name,
       arguments: args,
     });
+    const durationMs = Math.round(performance.now() - start);
+    this.recordMetric(serverId, durationMs);
     return result;
   }
 
@@ -148,10 +158,54 @@ class MCPInvoker {
     if (this.probeInterval || process.env.NODE_ENV === "test") return;
     this.probeInterval = setInterval(() => {
       this.probeAll().catch((err) => {
-        console.warn("[mcp-invoker] probe loop tick failed:", err);
+        log.warn("[mcp-invoker] probe loop tick failed:", err);
       });
     }, PROBE_INTERVAL_MS);
     this.probeInterval.unref?.();
+  }
+
+  /**
+   * Start the periodic metrics flush loop. Idempotent, skipped under test.
+   */
+  startMetricsLoop(): void {
+    if (this.metricsInterval || process.env.NODE_ENV === "test") return;
+    this.metricsInterval = setInterval(() => {
+      this.flushMetrics().catch((err) => {
+        log.warn("[mcp-invoker] metrics flush failed:", err);
+      });
+    }, METRICS_FLUSH_INTERVAL_MS);
+    this.metricsInterval.unref?.();
+  }
+
+  private recordMetric(serverId: string, durationMs: number): void {
+    const state = this.state.get(serverId);
+    if (!state) return;
+    state.recentDurations.push(durationMs);
+    if (state.recentDurations.length > METRICS_WINDOW_SIZE) {
+      state.recentDurations.splice(0, state.recentDurations.length - METRICS_WINDOW_SIZE);
+    }
+  }
+
+  async flushMetrics(): Promise<void> {
+    for (const [serverId, state] of this.state.entries()) {
+      if (state.recentDurations.length === 0) continue;
+      const durations = [...state.recentDurations];
+      const avg = Math.round(durations.reduce((a, b) => a + b, 0) / durations.length);
+      const sorted = durations.slice().sort((a, b) => a - b);
+      const p95 = sorted[Math.ceil(0.95 * sorted.length) - 1];
+      try {
+        await db
+          .update(mcpServers)
+          .set({
+            avgResponseMs: avg,
+            p95ResponseMs: p95,
+            metricsCallCount: durations.length,
+          })
+          .where(eq(mcpServers.id, serverId));
+      } catch {
+        // Best-effort — never let a DB error disrupt the invoker.
+      }
+    }
   }
 
   /** Probe every running MCP server once. */
@@ -175,6 +229,7 @@ class MCPInvoker {
         buffer: "",
         initialized: false,
         attached: false,
+        recentDurations: [],
       };
       this.state.set(serverId, state);
     }
@@ -301,3 +356,4 @@ class MCPInvoker {
 
 export const mcpInvoker = new MCPInvoker();
 mcpInvoker.startProbeLoop();
+mcpInvoker.startMetricsLoop();

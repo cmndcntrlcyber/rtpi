@@ -1,200 +1,282 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { db } from '../../../../server/db';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 
-// Mock database
-vi.mock('../../../../server/db');
+const mockUser = {
+  id: 'user-1',
+  username: 'testuser',
+  email: 'test@example.com',
+  role: 'operator',
+  isActive: true,
+  googleId: 'google-123456',
+  authMethod: 'google_oauth',
+  lastLogin: new Date('2024-01-01'),
+  mustChangePassword: false,
+};
+
+const mockDbSelectFromWhereLimit = vi.fn();
+const mockDbSelectFromWhere = vi.fn().mockReturnValue({ limit: mockDbSelectFromWhereLimit });
+const mockDbSelect = vi.fn().mockReturnValue({
+  from: vi.fn().mockReturnValue({
+    where: mockDbSelectFromWhere,
+  }),
+});
+
+const mockDbUpdateSetWhere = vi.fn().mockResolvedValue(undefined);
+const mockDbUpdateSet = vi.fn().mockReturnValue({ where: mockDbUpdateSetWhere });
+const mockDbUpdate = vi.fn().mockReturnValue({ set: mockDbUpdateSet });
+
+const mockDbInsertReturning = vi.fn().mockResolvedValue([]);
+const mockDbInsertValues = vi.fn().mockReturnValue({ returning: mockDbInsertReturning });
+const mockDbInsert = vi.fn().mockReturnValue({ values: mockDbInsertValues });
+
+vi.mock('../../../../server/db', () => ({
+  db: {
+    select: (...args: any[]) => mockDbSelect(...args),
+    update: (...args: any[]) => mockDbUpdate(...args),
+    insert: (...args: any[]) => mockDbInsert(...args),
+  },
+}));
+
+const mockInitializeTokens = vi.fn().mockResolvedValue(undefined);
+
+vi.mock('../../../../server/services/empire-executor', () => ({
+  empireExecutor: {
+    initializeTokensForUser: (...args: any[]) => mockInitializeTokens(...args),
+  },
+}));
+
+vi.mock('../../../../server/lib/logger', () => ({
+  createLogger: () => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  }),
+}));
+
+function makeProfile(overrides: Record<string, any> = {}) {
+  return {
+    id: 'google-123456',
+    displayName: 'Test User',
+    emails: [{ value: 'test@example.com', verified: true }],
+    ...overrides,
+  };
+}
+
+function resetDbMockChains() {
+  mockDbSelectFromWhere.mockReturnValue({ limit: mockDbSelectFromWhereLimit });
+  mockDbSelect.mockReturnValue({
+    from: vi.fn().mockReturnValue({
+      where: mockDbSelectFromWhere,
+    }),
+  });
+  mockDbUpdate.mockReturnValue({ set: mockDbUpdateSet });
+  mockDbUpdateSet.mockReturnValue({ where: mockDbUpdateSetWhere });
+  mockDbInsert.mockReturnValue({ values: mockDbInsertValues });
+  mockDbInsertValues.mockReturnValue({ returning: mockDbInsertReturning });
+}
 
 describe('Google OAuth Strategy', () => {
+  const originalClientId = process.env.GOOGLE_CLIENT_ID;
+  const originalClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.resetModules();
+    resetDbMockChains();
+
+    process.env.GOOGLE_CLIENT_ID = 'test-client-id';
+    process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
   });
 
-  describe('Profile Data Extraction', () => {
-    it('should extract Google ID from profile', () => {
-      const profile = {
-        id: 'google-123456',
-        displayName: 'Test User',
-        emails: [{ value: 'test@example.com', verified: true }],
-      };
+  afterEach(() => {
+    if (originalClientId) process.env.GOOGLE_CLIENT_ID = originalClientId;
+    else delete process.env.GOOGLE_CLIENT_ID;
+    if (originalClientSecret) process.env.GOOGLE_CLIENT_SECRET = originalClientSecret;
+    else delete process.env.GOOGLE_CLIENT_SECRET;
+  });
 
-      expect(profile.id).toBe('google-123456');
-    });
+  async function getVerifyCallback() {
+    const mod = await import('../../../../server/auth/strategies/google');
+    const passport = mod.default;
+    const strategy = (passport as any)._strategy('google');
+    expect(strategy).toBeDefined();
+    return strategy._verify;
+  }
 
-    it('should extract email from profile', () => {
-      const profile = {
-        id: 'google-123',
-        emails: [{ value: 'test@example.com' }],
-      };
+  describe('Existing User by Google ID', () => {
+    it('should authenticate user found by googleId and update lastLogin', async () => {
+      mockDbSelectFromWhereLimit.mockResolvedValueOnce([mockUser]);
 
-      const email = profile.emails?.[0]?.value;
-      expect(email).toBe('test@example.com');
-    });
+      const verify = await getVerifyCallback();
+      const done = vi.fn();
+      await verify('access-token', 'refresh-token', makeProfile(), done);
 
-    it('should extract display name from profile', () => {
-      const profile = {
-        id: 'google-123',
-        displayName: 'John Doe',
-        emails: [{ value: 'john@example.com' }],
-      };
-
-      expect(profile.displayName).toBe('John Doe');
-    });
-
-    it('should handle missing email', () => {
-      const profile = {
-        id: 'google-123',
-        displayName: 'Test User',
-        emails: undefined,
-      };
-
-      const email = profile.emails?.[0]?.value;
-      expect(email).toBeUndefined();
+      expect(done).toHaveBeenCalledWith(null, mockUser);
+      expect(mockDbUpdate).toHaveBeenCalled();
+      expect(mockDbUpdateSet).toHaveBeenCalledWith(
+        expect.objectContaining({ lastLogin: expect.any(Date) })
+      );
     });
   });
 
-  describe('Existing User Lookup', () => {
-    it('should find existing user by Google ID', async () => {
-      const mockUser = {
-        id: 'user-123',
-        googleId: 'google-123456',
-        email: 'test@example.com',
-        authMethod: 'google_oauth',
-      };
+  describe('Account Linking by Email', () => {
+    it('should link Google account to existing user found by email', async () => {
+      const existingUser = { ...mockUser, googleId: null, authMethod: 'local' };
+      const linkedUser = { ...mockUser, authMethod: 'google_oauth' };
 
-      vi.mocked(db.select).mockReturnValue({
-        from: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            limit: vi.fn().mockResolvedValue([mockUser]),
-          }),
-        }),
-      } as any);
+      // First query (by googleId): not found
+      mockDbSelectFromWhereLimit.mockResolvedValueOnce([]);
+      // Second query (by email): found
+      mockDbSelectFromWhereLimit.mockResolvedValueOnce([existingUser]);
+      // Third query (re-fetch after update): returns linked user
+      mockDbSelectFromWhereLimit.mockResolvedValueOnce([linkedUser]);
 
-      expect(mockUser.googleId).toBe('google-123456');
-    });
+      const verify = await getVerifyCallback();
+      const done = vi.fn();
+      await verify('access-token', 'refresh-token', makeProfile(), done);
 
-    it('should find existing user by email', async () => {
-      const mockUser = {
-        id: 'user-123',
-        email: 'test@example.com',
-        googleId: null,
-      };
-
-      vi.mocked(db.select).mockReturnValue({
-        from: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            limit: vi.fn().mockResolvedValue([mockUser]),
-          }),
-        }),
-      } as any);
-
-      expect(mockUser.email).toBe('test@example.com');
-    });
-  });
-
-  describe('Account Linking', () => {
-    it('should link Google account to existing email user', () => {
-      const existingUser = {
-        id: 'user-123',
-        email: 'test@example.com',
-        googleId: null,
-        authMethod: 'local',
-      };
-
-      const linkedUser = {
-        ...existingUser,
-        googleId: 'google-123456',
-        authMethod: 'google_oauth',
-      };
-
-      expect(linkedUser.googleId).toBe('google-123456');
-      expect(linkedUser.authMethod).toBe('google_oauth');
-    });
-
-    it('should update last login on account linking', () => {
-      const lastLogin = new Date();
-      expect(lastLogin).toBeInstanceOf(Date);
+      expect(mockDbUpdate).toHaveBeenCalled();
+      expect(mockDbUpdateSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          googleId: 'google-123456',
+          authMethod: 'google_oauth',
+          lastLogin: expect.any(Date),
+        })
+      );
+      expect(done).toHaveBeenCalledWith(null, linkedUser);
     });
   });
 
   describe('New User Creation', () => {
-    it('should create username from email prefix', () => {
-      const email = 'john.doe@example.com';
-      const username = email.split('@')[0];
-      expect(username).toBe('john.doe');
+    it('should create a new user when no match by googleId or email', async () => {
+      const newUser = { ...mockUser, id: 'new-user-1', username: 'test' };
+
+      // First query (by googleId): not found
+      mockDbSelectFromWhereLimit.mockResolvedValueOnce([]);
+      // Second query (by email): not found
+      mockDbSelectFromWhereLimit.mockResolvedValueOnce([]);
+      // Insert returns new user
+      mockDbInsertReturning.mockResolvedValueOnce([newUser]);
+
+      const verify = await getVerifyCallback();
+      const done = vi.fn();
+      await verify('access-token', 'refresh-token', makeProfile(), done);
+
+      expect(mockDbInsert).toHaveBeenCalled();
+      expect(mockDbInsertValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          username: 'test',
+          email: 'test@example.com',
+          googleId: 'google-123456',
+          authMethod: 'google_oauth',
+          role: 'operator',
+          isActive: true,
+          mustChangePassword: false,
+        })
+      );
+      expect(done).toHaveBeenCalledWith(null, newUser);
     });
 
-    it('should set default role to operator', () => {
-      const defaultRole = 'operator';
-      expect(defaultRole).toBe('operator');
+    it('should derive username from email prefix', async () => {
+      const newUser = { ...mockUser, id: 'new-user-2', username: 'john.doe' };
+      const profile = makeProfile({
+        emails: [{ value: 'john.doe@company.com' }],
+      });
+
+      mockDbSelectFromWhereLimit.mockResolvedValueOnce([]);
+      mockDbSelectFromWhereLimit.mockResolvedValueOnce([]);
+      mockDbInsertReturning.mockResolvedValueOnce([newUser]);
+
+      const verify = await getVerifyCallback();
+      const done = vi.fn();
+      await verify('access-token', 'refresh-token', profile, done);
+
+      expect(mockDbInsertValues).toHaveBeenCalledWith(
+        expect.objectContaining({ username: 'john.doe' })
+      );
     });
 
-    it('should set auth method to google_oauth', () => {
-      const authMethod = 'google_oauth';
-      expect(authMethod).toBe('google_oauth');
+    it('should initialize Empire tokens for new user', async () => {
+      const newUser = { ...mockUser, id: 'new-user-3' };
+
+      mockDbSelectFromWhereLimit.mockResolvedValueOnce([]);
+      mockDbSelectFromWhereLimit.mockResolvedValueOnce([]);
+      mockDbInsertReturning.mockResolvedValueOnce([newUser]);
+
+      const verify = await getVerifyCallback();
+      const done = vi.fn();
+      await verify('access-token', 'refresh-token', makeProfile(), done);
+
+      expect(mockInitializeTokens).toHaveBeenCalledWith('new-user-3');
     });
 
-    it('should activate new accounts by default', () => {
-      const isActive = true;
-      expect(isActive).toBe(true);
-    });
+    it('should set default role to operator for new users', async () => {
+      const newUser = { ...mockUser, id: 'new-user-4' };
 
-    it('should not require password change for OAuth', () => {
-      const mustChangePassword = false;
-      expect(mustChangePassword).toBe(false);
-    });
-  });
+      mockDbSelectFromWhereLimit.mockResolvedValueOnce([]);
+      mockDbSelectFromWhereLimit.mockResolvedValueOnce([]);
+      mockDbInsertReturning.mockResolvedValueOnce([newUser]);
 
-  describe('Last Login Tracking', () => {
-    it('should update last login for existing users', () => {
-      const lastLogin = new Date();
-      expect(lastLogin).toBeInstanceOf(Date);
-    });
+      const verify = await getVerifyCallback();
+      const done = vi.fn();
+      await verify('access-token', 'refresh-token', makeProfile(), done);
 
-    it('should set last login for new users', () => {
-      const lastLogin = new Date();
-      expect(lastLogin).toBeInstanceOf(Date);
-    });
-  });
-
-  describe('OAuth Configuration', () => {
-    it('should require Google client ID configuration', () => {
-      // In test environment, env vars may not be loaded
-      // Testing configuration structure instead
-      const configKey = 'GOOGLE_CLIENT_ID';
-      expect(configKey).toBe('GOOGLE_CLIENT_ID');
-    });
-
-    it('should require Google client secret configuration', () => {
-      const configKey = 'GOOGLE_CLIENT_SECRET';
-      expect(configKey).toBe('GOOGLE_CLIENT_SECRET');
-    });
-
-    it('should have callback URL configured', () => {
-      const callbackUrl = process.env.GOOGLE_CALLBACK_URL || 'http://localhost:3000/api/v1/auth/google/callback';
-      expect(callbackUrl).toContain('/auth/google/callback');
+      expect(mockDbInsertValues).toHaveBeenCalledWith(
+        expect.objectContaining({ role: 'operator' })
+      );
     });
   });
 
   describe('Error Handling', () => {
-    it('should handle missing email gracefully', () => {
-      const missingEmailError = 'No email found in Google profile';
-      expect(missingEmailError).toContain('No email');
+    it('should reject profile with no email', async () => {
+      const profile = makeProfile({ emails: undefined });
+
+      const verify = await getVerifyCallback();
+      const done = vi.fn();
+      await verify('access-token', 'refresh-token', profile, done);
+
+      expect(done).toHaveBeenCalledWith(expect.any(Error));
+      expect(done.mock.calls[0][0].message).toContain('No email');
     });
 
-    it('should handle database errors', async () => {
-      vi.mocked(db.select).mockReturnValue({
-        from: vi.fn().mockReturnValue({
-          where: vi.fn().mockReturnValue({
-            limit: vi.fn().mockRejectedValue(new Error('DB error')),
-          }),
-        }),
-      } as any);
+    it('should reject profile with empty emails array', async () => {
+      const profile = makeProfile({ emails: [] });
 
-      try {
-        await db.select().from({} as any).where({} as any).limit(1);
-      } catch (error) {
-        expect(error).toBeInstanceOf(Error);
-      }
+      const verify = await getVerifyCallback();
+      const done = vi.fn();
+      await verify('access-token', 'refresh-token', profile, done);
+
+      expect(done).toHaveBeenCalledWith(expect.any(Error));
+    });
+
+    it('should pass database errors to done callback', async () => {
+      const dbError = new Error('DB connection failed');
+      mockDbSelectFromWhereLimit.mockRejectedValueOnce(dbError);
+
+      const verify = await getVerifyCallback();
+      const done = vi.fn();
+      await verify('access-token', 'refresh-token', makeProfile(), done);
+
+      expect(done).toHaveBeenCalledWith(dbError);
+    });
+  });
+
+  describe('OAuth Configuration', () => {
+    it('should register strategy when env vars are set', async () => {
+      const mod = await import('../../../../server/auth/strategies/google');
+      expect(mod.isOAuthAvailable).toBe(true);
+
+      const strategy = (mod.default as any)._strategy('google');
+      expect(strategy).toBeDefined();
+    });
+
+    it('should not register strategy when env vars are missing', async () => {
+      vi.resetModules();
+      delete process.env.GOOGLE_CLIENT_ID;
+      delete process.env.GOOGLE_CLIENT_SECRET;
+
+      const mod = await import('../../../../server/auth/strategies/google');
+      expect(mod.isOAuthAvailable).toBeFalsy();
     });
   });
 });

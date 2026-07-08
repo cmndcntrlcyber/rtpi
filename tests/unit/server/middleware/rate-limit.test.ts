@@ -1,115 +1,115 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Request, Response } from 'express';
+
+const rateLimitConfigs: Record<string, any>[] = [];
+vi.mock('express-rate-limit', () => ({
+  default: (options: any) => {
+    rateLimitConfigs.push(options);
+    const handler = vi.fn();
+    Object.assign(handler, { _options: options });
+    return handler;
+  },
+}));
+
+let apiLimiter: any;
+let authLimiter: any;
+let passwordChangeLimiter: any;
+
+beforeEach(async () => {
+  rateLimitConfigs.length = 0;
+  vi.resetModules();
+  const mod = await import('../../../../server/middleware/rate-limit');
+  apiLimiter = mod.apiLimiter;
+  authLimiter = mod.authLimiter;
+  passwordChangeLimiter = mod.passwordChangeLimiter;
+});
 
 describe('Rate Limiting Middleware', () => {
-  describe('API Rate Limiter', () => {
-    it('should set 1-minute window', () => {
-      const windowMs = 60 * 1000; // 1 minute
-      expect(windowMs).toBe(60000);
+  describe('apiLimiter', () => {
+    it('should have a 1-minute window (60000ms)', () => {
+      expect(apiLimiter._options.windowMs).toBe(60 * 1000);
     });
 
-    it('should allow 100 requests per minute', () => {
-      const maxRequests = 100;
-      expect(maxRequests).toBe(100);
+    it('should allow 500 requests per minute', () => {
+      expect(apiLimiter._options.max).toBe(500);
+    });
+
+    it('should use standard rate-limit headers', () => {
+      expect(apiLimiter._options.standardHeaders).toBe(true);
+    });
+
+    it('should not use legacy X-RateLimit headers', () => {
+      expect(apiLimiter._options.legacyHeaders).toBe(false);
+    });
+
+    it('should return a descriptive error message', () => {
+      expect(apiLimiter._options.message).toContain('Too many requests');
     });
 
     it('should skip health check endpoint', () => {
-      const healthPath = '/api/v1/health';
-      const shouldSkip = healthPath === '/api/v1/health';
-      expect(shouldSkip).toBe(true);
+      const req = { path: '/api/v1/health' } as Partial<Request>;
+      expect(apiLimiter._options.skip(req, {} as Response)).toBe(true);
     });
 
-    it('should not skip other endpoints', () => {
-      const otherPath = '/api/v1/targets';
-      const shouldSkip = otherPath === '/api/v1/health';
-      expect(shouldSkip).toBe(false);
+    it('should not skip arbitrary API endpoints', () => {
+      const req = { path: '/api/v1/targets' } as Partial<Request>;
+      expect(apiLimiter._options.skip(req, {} as Response)).toBe(false);
     });
 
-    it('should use standard headers', () => {
-      const useStandardHeaders = true;
-      expect(useStandardHeaders).toBe(true);
+    it('should skip agent-workflows for authenticated users', () => {
+      const req = {
+        path: '/api/v1/agent-workflows',
+        isAuthenticated: () => true,
+      } as any;
+      expect(apiLimiter._options.skip(req, {} as Response)).toBe(true);
     });
 
-    it('should not use legacy headers', () => {
-      const useLegacyHeaders = false;
-      expect(useLegacyHeaders).toBe(false);
+    it('should not skip agent-workflows for unauthenticated users', () => {
+      const req = {
+        path: '/api/v1/agent-workflows',
+        isAuthenticated: () => false,
+      } as any;
+      expect(apiLimiter._options.skip(req, {} as Response)).toBe(false);
     });
   });
 
-  describe('Auth Rate Limiter', () => {
-    it('should set 15-minute window', () => {
-      const windowMs = 15 * 60 * 1000; // 15 minutes
-      expect(windowMs).toBe(900000);
+  describe('authLimiter', () => {
+    it('should have a 15-minute window', () => {
+      expect(authLimiter._options.windowMs).toBe(15 * 60 * 1000);
     });
 
     it('should allow 5 attempts per window', () => {
-      const maxAttempts = 5;
-      expect(maxAttempts).toBe(5);
+      expect(authLimiter._options.max).toBe(5);
     });
 
     it('should skip successful requests', () => {
-      const skipSuccessfulRequests = true;
-      expect(skipSuccessfulRequests).toBe(true);
+      expect(authLimiter._options.skipSuccessfulRequests).toBe(true);
     });
 
-    it('should show appropriate error message', () => {
-      const message = 'Too many authentication attempts, please try again later';
-      expect(message).toContain('authentication attempts');
+    it('should return an auth-specific error message', () => {
+      expect(authLimiter._options.message).toContain('authentication attempts');
     });
   });
 
-  describe('Password Change Rate Limiter', () => {
-    it('should set 1-hour window', () => {
-      const windowMs = 60 * 60 * 1000; // 1 hour
-      expect(windowMs).toBe(3600000);
+  describe('passwordChangeLimiter', () => {
+    it('should have a 1-hour window', () => {
+      expect(passwordChangeLimiter._options.windowMs).toBe(60 * 60 * 1000);
     });
 
     it('should allow 3 changes per hour', () => {
-      const maxChanges = 3;
-      expect(maxChanges).toBe(3);
+      expect(passwordChangeLimiter._options.max).toBe(3);
     });
 
-    it('should show appropriate error message', () => {
-      const message = 'Too many password change attempts, please try again later';
-      expect(message).toContain('password change');
+    it('should return a password-specific error message', () => {
+      expect(passwordChangeLimiter._options.message).toContain('password change');
     });
   });
 
-  describe('Rate Limiting Calculations', () => {
-    it('should calculate requests per second for API limiter', () => {
-      const requestsPerMinute = 100;
-      const requestsPerSecond = requestsPerMinute / 60;
-      expect(requestsPerSecond).toBeCloseTo(1.67, 1);
-    });
-
-    it('should calculate time between auth attempts', () => {
-      const windowMinutes = 15;
-      const maxAttempts = 5;
-      const minutesBetweenAttempts = windowMinutes / maxAttempts;
-      expect(minutesBetweenAttempts).toBe(3); // 3 minutes between attempts
-    });
-
-    it('should calculate password change frequency', () => {
-      const windowHours = 1;
-      const maxChanges = 3;
-      const minutesBetweenChanges = (windowHours * 60) / maxChanges;
-      expect(minutesBetweenChanges).toBe(20); // 20 minutes between changes
-    });
-  });
-
-  describe('Error Messages', () => {
-    it('should have generic API rate limit message', () => {
-      const message = 'Too many requests from this IP, please try again later';
-      expect(message).toContain('Too many requests');
-    });
-
-    it('should have auth-specific rate limit message', () => {
-      const message = 'Too many authentication attempts, please try again later';
-      expect(message).toContain('authentication');
-    });
-
-    it('should have password-specific rate limit message', () => {
-      const message = 'Too many password change attempts, please try again later';
-      expect(message).toContain('password');
+  describe('middleware exports', () => {
+    it('should export all three limiters', () => {
+      expect(apiLimiter).toBeDefined();
+      expect(authLimiter).toBeDefined();
+      expect(passwordChangeLimiter).toBeDefined();
     });
   });
 });

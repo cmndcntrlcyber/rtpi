@@ -8,6 +8,8 @@
 import { db } from "../db";
 import { agents, securityTools } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { createLogger } from '../lib/logger';
+const log = createLogger("agent-tool-validator");
 
 // Tool capability requirements
 interface ToolRequirements {
@@ -369,7 +371,7 @@ export async function suggestAlternativeTools(
 
     return compatibleTools;
   } catch (error) {
-    console.error("Failed to suggest alternative tools:", error);
+    log.error("Failed to suggest alternative tools:", error);
     return [];
   }
 }

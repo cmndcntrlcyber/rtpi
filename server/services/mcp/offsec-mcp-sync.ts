@@ -30,6 +30,8 @@ import { db } from "../../db";
 import { mcpServers } from "@shared/schema";
 import { dockerExecutor } from "../docker-executor";
 import { readFeatureFlags } from "@shared/feature-flags";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("offsec-mcp-sync");
 
 /** Matches the offsec container naming convention `rtpi-<type>-agent`. */
 const OFFSEC_CONTAINER_PATTERN = /^rtpi-.+-agent$/;
@@ -101,7 +103,7 @@ export async function syncOffsecContainerMcpServers(): Promise<OffsecMcpSyncResu
     }
   }
 
-  console.log(
+  log.info(
     `[offsec-mcp-sync] inserted ${result.inserted}, already-present ${result.alreadyPresent}`,
   );
   return result;

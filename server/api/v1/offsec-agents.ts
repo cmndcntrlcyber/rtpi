@@ -19,6 +19,8 @@ import { promisify } from "util";
 import * as path from "path";
 import multer from "multer";
 import * as fs from "fs";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("offsec-agents");
 
 const execAsync = promisify(exec);
 
@@ -253,7 +255,7 @@ router.post("/sync", ensureRole("admin", "operator"), async (req, res) => {
 
     res.json({ synced, errors });
   } catch (error: any) {
-    console.error("[offsec-agents] /sync failed:", error);
+    log.error("[offsec-agents] /sync failed:", error);
     res.status(500).json({ error: "Failed to sync OffSec agents", details: error?.message });
   }
 });
@@ -671,7 +673,7 @@ async function getMCPTools(containerName: string): Promise<any[]> {
     ));
   } catch (error: any) {
     // Non-zero exit / docker exec failure: surface it rather than masking as [].
-    console.warn(
+    log.warn(
       `[offsec-agents] MCP tool discovery failed for ${containerName}: ${error.message}`
     );
     return [];
@@ -680,7 +682,7 @@ async function getMCPTools(containerName: string): Promise<any[]> {
   try {
     const tools = JSON.parse(stdout);
     if (Array.isArray(tools) && tools.length === 0) {
-      console.warn(
+      log.warn(
         `[offsec-agents] MCP bridge returned zero tools for running container ${containerName}. ` +
           `This usually means tool discovery found nothing under TOOLS_PATH, not a bridge failure.`
       );
@@ -688,7 +690,7 @@ async function getMCPTools(containerName: string): Promise<any[]> {
     return Array.isArray(tools) ? tools : [];
   } catch {
     // stdout was not parseable JSON — the bridge itself is misbehaving.
-    console.warn(
+    log.warn(
       `[offsec-agents] MCP bridge for ${containerName} returned non-JSON output. ` +
         `stdout="${stdout.slice(0, 200)}" stderr="${stderr.slice(0, 200)}"`
     );

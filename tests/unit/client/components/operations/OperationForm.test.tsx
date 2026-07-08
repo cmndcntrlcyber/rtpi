@@ -3,6 +3,42 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import OperationForm from '../../../../../client/src/components/operations/OperationForm';
 
+vi.mock('@/hooks/useWorkflowTemplates', () => ({
+  useWorkflowTemplates: () => ({
+    templates: [],
+    loading: false,
+    reorder: vi.fn(),
+    refetch: vi.fn(),
+  }),
+}));
+
+vi.mock('@/components/markdown/MarkdownEditor', () => ({
+  default: ({ value, onChange }: any) => (
+    <textarea data-testid="markdown-editor" value={value || ''} onChange={(e: any) => onChange?.(e.target.value)} />
+  ),
+}));
+
+vi.mock('@/components/shared/DynamicFieldList', () => ({
+  default: () => <div data-testid="dynamic-field-list" />,
+}));
+
+vi.mock('@/components/shared/QuestionResponseTable', () => ({
+  default: () => <div data-testid="question-response-table" />,
+  __esModule: true,
+}));
+
+vi.mock('@/components/operations/LinkedTargets', () => ({
+  default: () => <div data-testid="linked-targets" />,
+}));
+
+vi.mock('@/components/operations/CompletedWorkflows', () => ({
+  default: () => <div data-testid="completed-workflows" />,
+}));
+
+vi.mock('@/components/operations/BugBountyImportCard', () => ({
+  default: () => <div data-testid="bug-bounty-import" />,
+}));
+
 describe('OperationForm Component', () => {
   const mockOnSubmit = vi.fn();
   const mockOnOpenChange = vi.fn();
@@ -22,11 +58,10 @@ describe('OperationForm Component', () => {
       expect(screen.queryByText('Create New Operation')).not.toBeInTheDocument();
     });
 
-    it('should render all form fields', () => {
+    it('should render key form fields', () => {
       render(<OperationForm open={true} onOpenChange={mockOnOpenChange} onSubmit={mockOnSubmit} />);
       expect(screen.getByLabelText(/Operation Name/i)).toBeInTheDocument();
-      expect(screen.getByLabelText(/Description/i)).toBeInTheDocument();
-      expect(screen.getByText(/Operation Type/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Purpose/i)).toBeInTheDocument();
       expect(screen.getByText(/Status \*/i)).toBeInTheDocument();
     });
 
@@ -64,14 +99,14 @@ describe('OperationForm Component', () => {
       expect((nameInput as HTMLInputElement).value).toBe('Test Operation');
     });
 
-    it('should allow description input', async () => {
+    it('should allow purpose input', async () => {
       const user = userEvent.setup();
       render(<OperationForm open={true} onOpenChange={mockOnOpenChange} onSubmit={mockOnSubmit} />);
 
-      const descInput = screen.getByLabelText(/Description/i);
-      await user.type(descInput, 'Test description');
+      const purposeInput = screen.getByLabelText(/Purpose/i);
+      await user.type(purposeInput, 'Test description');
 
-      expect((descInput as HTMLTextAreaElement).value).toBe('Test description');
+      expect((purposeInput as HTMLTextAreaElement).value).toBe('Test description');
     });
 
     it('should submit form with data', async () => {
@@ -105,35 +140,34 @@ describe('OperationForm Component', () => {
       name: 'Existing Operation',
       description: 'Existing description',
       status: 'active',
-      type: 'Phishing',
     };
 
     it('should populate form with initial data', () => {
       render(
-        <OperationForm 
-          open={true} 
-          onOpenChange={mockOnOpenChange} 
-          onSubmit={mockOnSubmit} 
+        <OperationForm
+          open={true}
+          onOpenChange={mockOnOpenChange}
+          onSubmit={mockOnSubmit}
           initialData={initialData}
         />
       );
-      
+
       const nameInput = screen.getByLabelText(/Operation Name/i) as HTMLInputElement;
       expect(nameInput.value).toBe('Existing Operation');
     });
 
-    it('should show initial description', () => {
+    it('should show initial purpose', () => {
       render(
-        <OperationForm 
-          open={true} 
-          onOpenChange={mockOnOpenChange} 
-          onSubmit={mockOnSubmit} 
+        <OperationForm
+          open={true}
+          onOpenChange={mockOnOpenChange}
+          onSubmit={mockOnSubmit}
           initialData={initialData}
         />
       );
-      
-      const descInput = screen.getByLabelText(/Description/i) as HTMLTextAreaElement;
-      expect(descInput.value).toBe('Existing description');
+
+      const purposeInput = screen.getByLabelText(/Purpose/i) as HTMLTextAreaElement;
+      expect(purposeInput.value).toBe('Existing description');
     });
   });
 
@@ -146,7 +180,6 @@ describe('OperationForm Component', () => {
 
     it('should have default status value', () => {
       render(<OperationForm open={true} onOpenChange={mockOnOpenChange} onSubmit={mockOnSubmit} />);
-      // Status label should be present
       const statusLabel = screen.getByText(/Status \*/i);
       expect(statusLabel).toBeInTheDocument();
     });

@@ -6,6 +6,8 @@ import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware
 import { metasploitExecutor, MetasploitModule } from "../../services/metasploit-executor";
 import fs from "fs";
 import path from "path";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("metasploit");
 
 const router = Router();
 
@@ -100,7 +102,7 @@ router.get("/search", async (req, res) => {
       count: results.length,
     });
   } catch (error: any) {
-    console.error("Module search error:", error);
+    log.error("Module search error:", error);
     res.status(500).json({
       error: "Failed to search modules",
       details: error?.message || "Internal server error"

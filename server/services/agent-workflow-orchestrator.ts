@@ -36,6 +36,8 @@ import { ToolExecutionLoop, LoopConstraints, AgentToolScope, ATTACK_SYNTHETIC_TO
 import { readFeatureFlags } from "@shared/feature-flags";
 import { agentWebSocketManager } from "./agent-websocket-manager";
 import { randomUUID } from "crypto";
+import { createLogger } from '../lib/logger';
+const log = createLogger("agent-workflow-orchestrator");
 
 // ============================================================================
 // ATTACK TREE TYPES — Recursive branching attack methodology
@@ -313,7 +315,7 @@ export class AgentWorkflowOrchestrator {
             });
 
       const text = result.response.text;
-      console.log(
+      log.info(
         `[WorkflowOrchestrator] AI call: kind=${kind} provider=${result.provider} model=${result.model} source=${result.source}`,
       );
 
@@ -468,7 +470,7 @@ export class AgentWorkflowOrchestrator {
 
       // Start processing in background
       this.processWorkflow(workflowId).catch((error) => {
-        console.error("Workflow processing error:", error);
+        log.error("Workflow processing error:", error);
       });
 
       return {
@@ -480,7 +482,7 @@ export class AgentWorkflowOrchestrator {
           .orderBy(asc(workflowTasks.sequenceOrder)),
       };
     } catch (error) {
-      console.error("Failed to start workflow:", error);
+      log.error("Failed to start workflow:", error);
       throw error;
     }
   }
@@ -565,7 +567,7 @@ export class AgentWorkflowOrchestrator {
 
       // Start processing in background
       this.processWorkflow(workflowId).catch((error) => {
-        console.error("Tool execution workflow error:", error);
+        log.error("Tool execution workflow error:", error);
       });
 
       return {
@@ -577,7 +579,7 @@ export class AgentWorkflowOrchestrator {
           .orderBy(asc(workflowTasks.sequenceOrder)),
       };
     } catch (error) {
-      console.error("Failed to start tool execution workflow:", error);
+      log.error("Failed to start tool execution workflow:", error);
       throw error;
     }
   }
@@ -644,7 +646,7 @@ export class AgentWorkflowOrchestrator {
             },
           })
           .returning();
-        console.log(`Auto-created agent: ${name} (${created.id})`);
+        log.info(`Auto-created agent: ${name} (${created.id})`);
         return created;
       };
 
@@ -726,7 +728,7 @@ export class AgentWorkflowOrchestrator {
 
       // Start processing in background
       this.processWorkflow(workflowId).catch((error) => {
-        console.error("Surface assessment report workflow error:", error);
+        log.error("Surface assessment report workflow error:", error);
       });
 
       return {
@@ -738,7 +740,7 @@ export class AgentWorkflowOrchestrator {
           .orderBy(asc(workflowTasks.sequenceOrder)),
       };
     } catch (error) {
-      console.error("Failed to start surface assessment report workflow:", error);
+      log.error("Failed to start surface assessment report workflow:", error);
       throw error;
     }
   }
@@ -978,11 +980,11 @@ export class AgentWorkflowOrchestrator {
         try {
           const { technicalWriterAgent } = await import("./agents/technical-writer-agent");
           technicalWriterAgent.generateAutomatedReport(completedWorkflow.operationId).catch((err: any) => {
-            console.error(`[WorkflowOrchestrator] Auto-report generation failed:`, err);
+            log.error(`[WorkflowOrchestrator] Auto-report generation failed:`, err);
           });
           await this.log(workflowId, null, "info", "Automated report generation triggered");
         } catch (err) {
-          console.warn(`[WorkflowOrchestrator] Could not trigger auto-report:`, err);
+          log.warn(`[WorkflowOrchestrator] Could not trigger auto-report:`, err);
         }
       }
 
@@ -1022,7 +1024,7 @@ export class AgentWorkflowOrchestrator {
       await harnessOptimizationEvaluator.enqueue(workflowId);
       await this.log(workflowId, null, "info", "Harness optimization evaluation queued");
     } catch (err) {
-      console.warn(`[WorkflowOrchestrator] Could not queue harness evaluation:`, err);
+      log.warn(`[WorkflowOrchestrator] Could not queue harness evaluation:`, err);
     }
   }
 
@@ -1101,7 +1103,7 @@ export class AgentWorkflowOrchestrator {
           );
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : String(error);
-          console.error(`SearchSploit error for ${query}:`, error);
+          log.error(`SearchSploit error for ${query}:`, error);
           
           await this.log(
             workflowId,
@@ -1728,7 +1730,7 @@ export class AgentWorkflowOrchestrator {
           }
         );
 
-        console.log(`Auto-created report for workflow ${workflow.id} with file: ${fileData.filePath}`);
+        log.info(`Auto-created report for workflow ${workflow.id} with file: ${fileData.filePath}`);
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         
@@ -1740,7 +1742,7 @@ export class AgentWorkflowOrchestrator {
           { error: errorMsg }
         );
         
-        console.error("Failed to auto-create report:", error);
+        log.error("Failed to auto-create report:", error);
         // Don't throw - report creation failure shouldn't fail the workflow
       }
     }
@@ -1759,7 +1761,7 @@ export class AgentWorkflowOrchestrator {
         );
       }
     } catch (error) {
-      console.error("Failed to create vulnerability records:", error);
+      log.error("Failed to create vulnerability records:", error);
       // Non-fatal — don't fail the workflow
     }
 
@@ -2432,7 +2434,7 @@ Provide your response in the following JSON format:
         return parsed;
       }
     } catch (error) {
-      console.error("Failed to parse execution plan:", error);
+      log.error("Failed to parse execution plan:", error);
     }
 
     // Fallback: Return basic plan
@@ -2483,7 +2485,7 @@ Respond with JSON: {"success": true/false, "reasoning": "brief explanation"}`;
         return JSON.parse(jsonMatch[0]);
       }
     } catch (error) {
-      console.error("Failed to analyze exploitation result:", error);
+      log.error("Failed to analyze exploitation result:", error);
     }
 
     return { success: false, reasoning: "Unable to determine success" };
@@ -2558,7 +2560,7 @@ Respond with JSON:
         };
       }
     } catch (error) {
-      console.error("Failed to analyze auxiliary result:", error);
+      log.error("Failed to analyze auxiliary result:", error);
     }
 
     // Fallback: pattern-based detection
@@ -2695,7 +2697,7 @@ Only include modules that would help discover NEW attack vectors. Maximum 3 modu
         return Array.isArray(parsed) ? parsed.slice(0, 3) : [];
       }
     } catch (error) {
-      console.error("Failed to derive post-exploit modules:", error);
+      log.error("Failed to derive post-exploit modules:", error);
     }
 
     // Fallback: basic post-exploitation modules
@@ -2762,7 +2764,7 @@ Select at most ${maxSelect} modules. Only include modules from the candidate lis
         }
       }
     } catch (error) {
-      console.error("AI module selection failed, falling back to keyword scoring:", error);
+      log.error("AI module selection failed, falling back to keyword scoring:", error);
     }
 
     // Fallback: keyword-based relevance scoring
@@ -2889,7 +2891,7 @@ Select at most ${maxSelect} modules. Only include modules from the candidate lis
 
         created++;
       } catch (err) {
-        console.warn(`Failed to create vulnerability for ${modulePath}:`, err);
+        log.warn(`Failed to create vulnerability for ${modulePath}:`, err);
       }
     }
 
@@ -3086,7 +3088,7 @@ Select at most ${maxSelect} modules. Only include modules from the candidate lis
     });
 
     this.processWorkflow(wf.id).catch((err) => {
-      console.error("Bug-hunter workflow error:", err);
+      log.error("Bug-hunter workflow error:", err);
     });
 
     return {
@@ -3753,7 +3755,7 @@ Format in markdown.`;
         context,
       });
     } catch (error) {
-      console.error("Failed to write workflow log:", error);
+      log.error("Failed to write workflow log:", error);
     }
   }
 
@@ -3938,7 +3940,7 @@ Format in markdown.`;
         credentials = credsResult.data;
       }
     } catch (error) {
-      console.error("Failed to fetch Empire credentials:", error);
+      log.error("Failed to fetch Empire credentials:", error);
     }
 
     await this.log(
@@ -4034,7 +4036,7 @@ Format in markdown.`;
         }))
       };
     } catch (error) {
-      console.error("Failed to get Empire infrastructure:", error);
+      log.error("Failed to get Empire infrastructure:", error);
       await this.log(
         workflowId,
         taskId,
@@ -4485,7 +4487,7 @@ Use professional formatting with tables, headers, and clear actionable language.
         await this.log(workflowId, taskId, "error", "Failed to save report to database", {
           error: errorMsg,
         });
-        console.error("Failed to save surface assessment report:", error);
+        log.error("Failed to save surface assessment report:", error);
       }
     }
 

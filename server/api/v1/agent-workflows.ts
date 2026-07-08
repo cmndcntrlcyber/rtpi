@@ -4,6 +4,8 @@ import { agentWorkflows, workflowTasks, workflowLogs, targets, operations, workf
 import { eq, desc, and, inArray } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import { agentWorkflowOrchestrator } from "../../services/agent-workflow-orchestrator";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("agent-workflows");
 
 const router = Router();
 
@@ -154,7 +156,7 @@ router.post("/start", ensureRole("admin", "operator"), async (req, res) => {
 
       // Execute async - don't wait for completion
       dynamicWorkflowOrchestrator.executeWorkflow(workflowId).catch((err: Error) => {
-        console.error("Custom workflow execution failed:", err);
+        log.error("Custom workflow execution failed:", err);
       });
 
       await logAudit(

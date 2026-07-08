@@ -3,6 +3,17 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import OperationCard from '../../../../../client/src/components/operations/OperationCard';
 
+vi.mock('@/lib/api', () => ({
+  api: {
+    get: vi.fn().mockResolvedValue({}),
+    delete: vi.fn().mockResolvedValue({}),
+  },
+}));
+
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
+
 describe('OperationCard Component', () => {
   const mockOperation = {
     id: '1',
@@ -62,7 +73,6 @@ describe('OperationCard Component', () => {
 
     it('should display initials from operation name', () => {
       render(<OperationCard operation={mockOperation} />);
-      // "Test Operation" -> "TO"
       expect(screen.getByText('TO')).toBeInTheDocument();
     });
   });
@@ -82,15 +92,12 @@ describe('OperationCard Component', () => {
   describe('Date Formatting', () => {
     it('should display start date', () => {
       const { container } = render(<OperationCard operation={mockOperation} />);
-      // The formatDate function formats the date based on the system locale
-      // We check for the presence of date components rather than exact format
       expect(container.textContent).toMatch(/Jan(uary)?\s+1,\s+2024/);
     });
 
     it('should display end date when operation is completed', () => {
       const { container } = render(<OperationCard operation={mockOperation} />);
       expect(container.textContent).toContain('Ended');
-      // Check for date components
       expect(container.textContent).toMatch(/Jan(uary)?\s+15,\s+2024/);
     });
 
@@ -105,112 +112,121 @@ describe('OperationCard Component', () => {
     it('should call onSelect when card is clicked', async () => {
       const onSelect = vi.fn();
       const user = userEvent.setup();
-      
+
       render(<OperationCard operation={mockOperation} onSelect={onSelect} />);
-      
+
       const card = screen.getByText('Test Operation').closest('div')?.parentElement?.parentElement;
       await user.click(card!);
-      
+
       expect(onSelect).toHaveBeenCalledWith(mockOperation);
     });
 
     it('should not call onSelect if not provided', async () => {
       const user = userEvent.setup();
-      
+
       render(<OperationCard operation={mockOperation} />);
-      
+
       const card = screen.getByText('Test Operation').closest('div')?.parentElement?.parentElement;
       await user.click(card!);
-      
-      // Should not throw error
+
       expect(true).toBe(true);
     });
 
-    it('should call onEdit when edit button is clicked', async () => {
+    it('should call onEdit when edit menu item is clicked', async () => {
       const onEdit = vi.fn();
       const user = userEvent.setup();
-      
+
       render(<OperationCard operation={mockOperation} onEdit={onEdit} />);
-      
-      const editButton = screen.getByText('Edit');
-      await user.click(editButton);
-      
+
+      const menuTrigger = screen.getByLabelText('Open menu');
+      await user.click(menuTrigger);
+
+      const editItem = screen.getByText('Edit');
+      await user.click(editItem);
+
       expect(onEdit).toHaveBeenCalledWith(mockOperation);
     });
 
-    it('should call onDelete when delete button is clicked', async () => {
+    it('should call onDelete when delete menu item is clicked', async () => {
       const onDelete = vi.fn();
       const user = userEvent.setup();
-      
+
       render(<OperationCard operation={mockOperation} onDelete={onDelete} />);
-      
-      const deleteButton = screen.getByText('Delete');
-      await user.click(deleteButton);
-      
+
+      const menuTrigger = screen.getByLabelText('Open menu');
+      await user.click(menuTrigger);
+
+      const deleteItem = screen.getByText('Delete');
+      await user.click(deleteItem);
+
       expect(onDelete).toHaveBeenCalledWith(mockOperation);
     });
 
-    it('should stop propagation when edit button is clicked', async () => {
+    it('should not call onSelect when edit menu item is clicked', async () => {
       const onSelect = vi.fn();
       const onEdit = vi.fn();
       const user = userEvent.setup();
-      
+
       render(<OperationCard operation={mockOperation} onSelect={onSelect} onEdit={onEdit} />);
-      
-      const editButton = screen.getByText('Edit');
-      await user.click(editButton);
-      
+
+      const menuTrigger = screen.getByLabelText('Open menu');
+      await user.click(menuTrigger);
+
+      const editItem = screen.getByText('Edit');
+      await user.click(editItem);
+
       expect(onEdit).toHaveBeenCalledWith(mockOperation);
       expect(onSelect).not.toHaveBeenCalled();
     });
 
-    it('should stop propagation when delete button is clicked', async () => {
+    it('should not call onSelect when delete menu item is clicked', async () => {
       const onSelect = vi.fn();
       const onDelete = vi.fn();
       const user = userEvent.setup();
-      
+
       render(<OperationCard operation={mockOperation} onSelect={onSelect} onDelete={onDelete} />);
-      
-      const deleteButton = screen.getByText('Delete');
-      await user.click(deleteButton);
-      
+
+      const menuTrigger = screen.getByLabelText('Open menu');
+      await user.click(menuTrigger);
+
+      const deleteItem = screen.getByText('Delete');
+      await user.click(deleteItem);
+
       expect(onDelete).toHaveBeenCalledWith(mockOperation);
       expect(onSelect).not.toHaveBeenCalled();
     });
   });
 
   describe('Action Buttons', () => {
-    it('should show edit button when onEdit is provided', () => {
+    it('should show dropdown menu trigger when onEdit is provided', () => {
       const onEdit = vi.fn();
       render(<OperationCard operation={mockOperation} onEdit={onEdit} />);
-      expect(screen.getByText('Edit')).toBeInTheDocument();
+      expect(screen.getByLabelText('Open menu')).toBeInTheDocument();
     });
 
-    it('should show delete button when onDelete is provided', () => {
+    it('should show dropdown menu trigger when onDelete is provided', () => {
       const onDelete = vi.fn();
       render(<OperationCard operation={mockOperation} onDelete={onDelete} />);
-      expect(screen.getByText('Delete')).toBeInTheDocument();
+      expect(screen.getByLabelText('Open menu')).toBeInTheDocument();
     });
 
-    it('should not show action buttons when no handlers provided', () => {
+    it('should not show dropdown menu when no handlers provided', () => {
       render(<OperationCard operation={mockOperation} />);
-      expect(screen.queryByText('Edit')).not.toBeInTheDocument();
-      expect(screen.queryByText('Delete')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Open menu')).not.toBeInTheDocument();
     });
 
-    it('should show both buttons when both handlers provided', () => {
+    it('should show dropdown menu trigger when both handlers provided', () => {
       const onEdit = vi.fn();
       const onDelete = vi.fn();
       render(<OperationCard operation={mockOperation} onEdit={onEdit} onDelete={onDelete} />);
-      expect(screen.getByText('Edit')).toBeInTheDocument();
-      expect(screen.getByText('Delete')).toBeInTheDocument();
+      expect(screen.getByLabelText('Open menu')).toBeInTheDocument();
     });
   });
 
   describe('Styling and Classes', () => {
     it('should have hover effect', () => {
       const { container } = render(<OperationCard operation={mockOperation} />);
-      const card = container.querySelector('.hover\\:shadow-md');
+      const card = container.querySelector('.hover\\:shadow-lg');
       expect(card).toBeInTheDocument();
     });
 
@@ -237,7 +253,6 @@ describe('OperationCard Component', () => {
     it('should handle single letter name', () => {
       const op = { ...mockOperation, name: 'A' };
       const { container } = render(<OperationCard operation={op} />);
-      // Single letter 'A' appears in both initials badge and name
       expect(container.textContent).toContain('A');
     });
 

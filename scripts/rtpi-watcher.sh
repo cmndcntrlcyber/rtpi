@@ -69,6 +69,7 @@ PG_CONTAINER=${RTPI_WATCHER_PG_CONTAINER:-rtpi-postgres}
 PG_USER=${RTPI_WATCHER_PG_USER:-rtpi}
 PG_DB=${RTPI_WATCHER_PG_DB:-rtpi_main}
 DRY_RUN=${RTPI_WATCHER_DRY_RUN:-0}
+READY_FILE=${RTPI_WATCHER_READY_FILE:-/tmp/rtpi-ready}
 
 # State (associative arrays — bash 4+).
 declare -A RESTART_COUNT      # name -> number of restarts in current window
@@ -166,6 +167,11 @@ heal_restart_container() {
 # ---------------------------------------------------------------------------
 check_api() {
   if [ -z "$API_HEALTH_URL" ]; then return 0; fi
+  # Skip if the server hasn't finished booting (readiness file not yet written)
+  if [ -n "$READY_FILE" ] && [ ! -f "$READY_FILE" ]; then
+    debug "Readiness file $READY_FILE not found — server still booting; skipping API check"
+    return 0
+  fi
   local body
   if ! body=$(curl -sf --max-time "$API_TIMEOUT" "$API_HEALTH_URL" 2>/dev/null); then
     warn "API health probe failed: $API_HEALTH_URL"

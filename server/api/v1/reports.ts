@@ -9,6 +9,8 @@ import { executiveSummaryGenerator } from "../../services/executive-summary-gene
 import fs from "fs/promises";
 import path from "path";
 import crypto from "crypto";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("reports");
 
 const router = Router();
 
@@ -89,7 +91,7 @@ async function cleanupExpiredPdfJobs(): Promise<void> {
     try {
       await db.delete(pdfJobs).where(eq(pdfJobs.id, row.id));
     } catch (err) {
-      console.warn(`[pdf-jobs] failed to delete row ${row.id}:`, err);
+      log.warn(`[pdf-jobs] failed to delete row ${row.id}:`, err);
     }
   }
 }
@@ -98,7 +100,7 @@ async function cleanupExpiredPdfJobs(): Promise<void> {
 if (process.env.NODE_ENV !== "test") {
   setInterval(() => {
     cleanupExpiredPdfJobs().catch((err) => {
-      console.warn("[pdf-jobs] cleanup pass failed:", err);
+      log.warn("[pdf-jobs] cleanup pass failed:", err);
     });
   }, 60 * 60 * 1000).unref();
 }
@@ -530,7 +532,7 @@ router.post("/:id/pdf", ensureRole("admin", "operator"), async (req, res) => {
       reportData,
       pdfOptions: req.body?.pdfOptions,
     }).catch((err) => {
-      console.error(`[pdf-jobs] worker for ${jobId} threw:`, err);
+      log.error(`[pdf-jobs] worker for ${jobId} threw:`, err);
     });
 
     await logAudit(user.id, "queue_pdf_render", `/reports/${reportId}/pdf`, jobId, true, req);

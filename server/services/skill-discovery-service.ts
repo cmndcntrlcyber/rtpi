@@ -12,6 +12,8 @@ import type {
   SkillContentResponse,
 } from "../../shared/types/skill-types";
 import { searchSkills, getSkillContent } from "./langgraph-client";
+import { createLogger } from '../lib/logger';
+const log = createLogger("skill-discovery-service");
 
 // Simple in-memory cache for skill searches
 const searchCache = new Map<string, { data: SkillSearchResponse; expires: number }>();
@@ -37,7 +39,7 @@ export async function findSkills(req: SkillSearchRequest): Promise<SkillSearchRe
     return response.results;
   } catch (error) {
     // If orchestrator is unavailable, return empty results
-    console.error("[SkillDiscovery] Search failed:", error);
+    log.error("[SkillDiscovery] Search failed:", error);
     return [];
   }
 }

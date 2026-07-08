@@ -11,6 +11,8 @@
  */
 
 import { routeReasoning, NoInferenceProviderAvailable } from "./inference/inference-router";
+import { createLogger } from '../lib/logger';
+const log = createLogger("executive-summary-generator");
 
 // ============================================================================
 // Types
@@ -118,7 +120,7 @@ export class ExecutiveSummaryGenerator {
       return this.parseResponse(result.response.text, reportData, includeRiskScore);
     } catch (err) {
       if (err instanceof NoInferenceProviderAvailable) {
-        console.error("[executive-summary-generator] all providers exhausted, using template:", err.message);
+        log.error("[executive-summary-generator] all providers exhausted, using template:", err.message);
         return this.generateFallbackSummary(reportData, options);
       }
       throw err;
@@ -236,7 +238,7 @@ Ensure the JSON is valid and parseable.`;
       // If JSON parsing fails, create structured response from text
       return this.parseTextResponse(response, reportData, includeRiskScore);
     } catch (error) {
-      console.error("Failed to parse AI response:", error);
+      log.error("Failed to parse AI response:", error);
       // Fallback to basic structure
       return {
         summary: response.substring(0, 500),

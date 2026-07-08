@@ -22,6 +22,8 @@ import {
   checkAllContainerHealth,
   checkAgentContainerHealth,
 } from "../../services/langgraph-client";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("orchestrator");
 
 const router = Router();
 
@@ -68,7 +70,7 @@ router.get("/engagements", async (_req: Request, res: Response) => {
     const result = await listEngagements();
     res.json(result);
   } catch (error) {
-    console.error("[Orchestrator] List engagements error:", error);
+    log.error("[Orchestrator] List engagements error:", error);
     res.status(502).json({ error: "Orchestrator service unavailable" });
   }
 });
@@ -90,7 +92,7 @@ router.post("/engagements/start", async (req: Request, res: Response) => {
       return;
     }
     await logAudit(user.id, "engagement:start", "/orchestrator/engagements/start", null, false, req);
-    console.error("[Orchestrator] Start engagement error:", error);
+    log.error("[Orchestrator] Start engagement error:", error);
     res.status(502).json({ error: "Orchestrator service unavailable" });
   }
 });
@@ -104,7 +106,7 @@ router.get("/engagements/:id", async (req: Request, res: Response) => {
     const result = await getEngagementStatus(req.params.id);
     res.json(result);
   } catch (error) {
-    console.error("[Orchestrator] Get status error:", error);
+    log.error("[Orchestrator] Get status error:", error);
     res.status(404).json({ error: "Engagement not found" });
   }
 });
@@ -121,7 +123,7 @@ router.post("/engagements/:id/advance", async (req: Request, res: Response) => {
     res.json(result);
   } catch (error) {
     await logAudit(user.id, "engagement:advance", `/orchestrator/engagements/${req.params.id}/advance`, req.params.id, false, req);
-    console.error("[Orchestrator] Advance error:", error);
+    log.error("[Orchestrator] Advance error:", error);
     res.status(502).json({ error: "Failed to advance engagement" });
   }
 });
@@ -146,7 +148,7 @@ router.post("/engagements/:id/approve", async (req: Request, res: Response) => {
       return;
     }
     await logAudit(user.id, "engagement:approve", `/orchestrator/engagements/${req.params.id}/approve`, req.params.id, false, req);
-    console.error("[Orchestrator] Approval error:", error);
+    log.error("[Orchestrator] Approval error:", error);
     res.status(502).json({ error: "Failed to process approval" });
   }
 });
@@ -188,7 +190,7 @@ router.post("/tools/execute", async (req: Request, res: Response) => {
       return;
     }
     await logAudit(user.id, "tool:execute", "/orchestrator/tools/execute", null, false, req);
-    console.error("[Orchestrator] Tool exec error:", error);
+    log.error("[Orchestrator] Tool exec error:", error);
     res.status(502).json({ error: "Tool execution failed" });
   }
 });
@@ -210,7 +212,7 @@ router.post("/tools/execute-batch", async (req: Request, res: Response) => {
       return;
     }
     await logAudit(user.id, "tool:execute-batch", "/orchestrator/tools/execute-batch", null, false, req);
-    console.error("[Orchestrator] Batch exec error:", error);
+    log.error("[Orchestrator] Batch exec error:", error);
     res.status(502).json({ error: "Batch execution failed" });
   }
 });
@@ -224,7 +226,7 @@ router.get("/tools/registry", async (_req: Request, res: Response) => {
     const registry = await getToolRegistry();
     res.json(registry);
   } catch (error) {
-    console.error("[Orchestrator] Registry error:", error);
+    log.error("[Orchestrator] Registry error:", error);
     res.status(502).json({ error: "Tool registry unavailable" });
   }
 });
@@ -238,7 +240,7 @@ router.get("/tools/containers/health", async (_req: Request, res: Response) => {
     const health = await checkAllContainerHealth();
     res.json(health);
   } catch (error) {
-    console.error("[Orchestrator] Container health error:", error);
+    log.error("[Orchestrator] Container health error:", error);
     res.status(502).json({ error: "Container health check failed" });
   }
 });
@@ -252,7 +254,7 @@ router.get("/tools/containers/:agentRole/health", async (req: Request, res: Resp
     const health = await checkAgentContainerHealth(req.params.agentRole as any);
     res.json(health);
   } catch (error) {
-    console.error("[Orchestrator] Agent container health error:", error);
+    log.error("[Orchestrator] Agent container health error:", error);
     res.status(502).json({ error: "Agent container health check failed" });
   }
 });

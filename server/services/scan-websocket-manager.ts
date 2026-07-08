@@ -9,6 +9,8 @@
 import { WebSocket, WebSocketServer } from "ws";
 import { IncomingMessage } from "http";
 import { dockerExecutor } from "./docker-executor";
+import { createLogger } from '../lib/logger';
+const log = createLogger("scan-websocket-manager");
 
 interface ScanSession {
   targetId: string;
@@ -42,12 +44,12 @@ export class ScanWebSocketManager {
       this.handleConnection(ws, request);
     });
 
-    console.log('[ScanWebSocket] WebSocket manager initialized');
+    log.info('[ScanWebSocket] WebSocket manager initialized');
   }
 
   private handleConnection(ws: WebSocket, request: IncomingMessage) {
     const url = request.url || '';
-    console.log(`[ScanWebSocket] New connection: ${url}`);
+    log.info(`[ScanWebSocket] New connection: ${url}`);
 
     // Extract target ID from URL: /api/v1/targets/:id/scan/ws
     const match = url.match(/\/api\/v1\/targets\/([^/]+)\/scan\/ws/);
@@ -81,13 +83,13 @@ export class ScanWebSocketManager {
         const message = JSON.parse(data.toString());
         this.handleClientMessage(sessionId, message);
       } catch (error) {
-        console.error('[ScanWebSocket] Failed to parse client message:', error);
+        log.error('[ScanWebSocket] Failed to parse client message:', error);
       }
     });
 
     // Handle disconnect
     ws.on('close', () => {
-      console.log(`[ScanWebSocket] Client disconnected: ${sessionId}`);
+      log.info(`[ScanWebSocket] Client disconnected: ${sessionId}`);
       const session = this.sessions.get(sessionId);
       if (session) {
         session.aborted = true;
@@ -97,7 +99,7 @@ export class ScanWebSocketManager {
 
     // Handle errors
     ws.on('error', (error) => {
-      console.error(`[ScanWebSocket] WebSocket error for ${sessionId}:`, error);
+      log.error(`[ScanWebSocket] WebSocket error for ${sessionId}:`, error);
       this.sessions.delete(sessionId);
     });
 
@@ -119,7 +121,7 @@ export class ScanWebSocketManager {
         break;
       
       case 'abort':
-        console.log(`[ScanWebSocket] Client requested abort for ${sessionId}`);
+        log.info(`[ScanWebSocket] Client requested abort for ${sessionId}`);
         session.aborted = true;
         session.ws.send(JSON.stringify({ 
           type: 'aborted', 
@@ -128,7 +130,7 @@ export class ScanWebSocketManager {
         break;
       
       default:
-        console.warn(`[ScanWebSocket] Unknown message type: ${message.type}`);
+        log.warn(`[ScanWebSocket] Unknown message type: ${message.type}`);
     }
   }
 
@@ -224,7 +226,7 @@ export class ScanWebSocketManager {
     const now = Date.now();
     for (const [sessionId, session] of this.sessions.entries()) {
       if (now - session.startedAt.getTime() > maxAgeMs) {
-        console.log(`[ScanWebSocket] Cleaning up stale session: ${sessionId}`);
+        log.info(`[ScanWebSocket] Cleaning up stale session: ${sessionId}`);
         session.ws.close();
         this.sessions.delete(sessionId);
       }

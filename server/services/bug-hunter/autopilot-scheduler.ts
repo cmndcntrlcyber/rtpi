@@ -27,6 +27,8 @@ import { eq } from "drizzle-orm";
 import { db } from "../../db";
 import { operations, targets } from "@shared/schema";
 import { agentWorkflowOrchestrator } from "../agent-workflow-orchestrator";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("autopilot-scheduler");
 
 interface AutopilotConfig {
   enabled?: boolean;
@@ -48,18 +50,18 @@ class BugHunterAutopilot {
 
   start(): void {
     if (!isFlagEnabled()) {
-      console.log("[bug-hunter-autopilot] FF_BUG_HUNTER not set — scheduler dormant");
+      log.info("[bug-hunter-autopilot] FF_BUG_HUNTER not set — scheduler dormant");
       return;
     }
     if (this.interval) {
-      console.log("[bug-hunter-autopilot] already running");
+      log.info("[bug-hunter-autopilot] already running");
       return;
     }
-    console.log("[bug-hunter-autopilot] starting; poll every", CHECK_INTERVAL_MS / 1000, "s");
+    log.info("[bug-hunter-autopilot] starting; poll every", CHECK_INTERVAL_MS / 1000, "s");
     // Don't fire immediately on boot — give the rest of the stack ~30s to settle.
-    setTimeout(() => this.tick().catch((err) => console.warn("[bug-hunter-autopilot] tick failed:", err)), 30_000);
+    setTimeout(() => this.tick().catch((err) => log.warn("[bug-hunter-autopilot] tick failed:", err)), 30_000);
     this.interval = setInterval(() => {
-      this.tick().catch((err) => console.warn("[bug-hunter-autopilot] tick failed:", err));
+      this.tick().catch((err) => log.warn("[bug-hunter-autopilot] tick failed:", err));
     }, CHECK_INTERVAL_MS);
   }
 
@@ -67,7 +69,7 @@ class BugHunterAutopilot {
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
-      console.log("[bug-hunter-autopilot] stopped");
+      log.info("[bug-hunter-autopilot] stopped");
     }
   }
 
@@ -88,19 +90,19 @@ class BugHunterAutopilot {
         // Resolve a target — caller must have stamped one when enabling.
         const targetId = auto.targetId;
         if (!targetId) {
-          console.warn(`[bug-hunter-autopilot] op ${op.id}: no targetId — skipping`);
+          log.warn(`[bug-hunter-autopilot] op ${op.id}: no targetId — skipping`);
           continue;
         }
         const [target] = await db.select().from(targets).where(eq(targets.id, targetId)).limit(1);
         if (!target) {
-          console.warn(`[bug-hunter-autopilot] op ${op.id}: target ${targetId} not found — skipping`);
+          log.warn(`[bug-hunter-autopilot] op ${op.id}: target ${targetId} not found — skipping`);
           continue;
         }
 
         const phases = auto.phases ?? ["hunt", "chain", "validate"];
         const mode = auto.mode ?? "wapt";
 
-        console.log(`[bug-hunter-autopilot] starting cycle for op ${op.id} (${op.name})`, { phases, mode });
+        log.info(`[bug-hunter-autopilot] starting cycle for op ${op.id} (${op.name})`, { phases, mode });
 
         try {
           await Promise.race([
@@ -123,7 +125,7 @@ class BugHunterAutopilot {
           };
           await db.update(operations).set({ metadata: newMeta, updatedAt: new Date() }).where(eq(operations.id, op.id));
         } catch (err) {
-          console.warn(`[bug-hunter-autopilot] op ${op.id} cycle failed:`, err);
+          log.warn(`[bug-hunter-autopilot] op ${op.id} cycle failed:`, err);
         }
       }
     } finally {

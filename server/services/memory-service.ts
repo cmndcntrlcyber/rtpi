@@ -8,6 +8,8 @@ import {
 import { eq, and, or, desc, ilike, sql, lt } from "drizzle-orm";
 import { mem0Config } from "../config/mem0-config";
 import { routeEmbedding, NoInferenceProviderAvailable } from "./inference/inference-router";
+import { createLogger } from '../lib/logger';
+const log = createLogger("memory-service");
 
 // ============================================================================
 // Types
@@ -599,7 +601,7 @@ export class MemoryService {
         resultCount: params.resultCount ?? null,
       });
     } catch (error) {
-      console.error("Memory service - failed to log access:", error);
+      log.error("Memory service - failed to log access:", error);
     }
   }
 
@@ -697,9 +699,9 @@ export class MemoryService {
       return result.response.vectors[0] ?? null;
     } catch (error) {
       if (error instanceof NoInferenceProviderAvailable) {
-        console.error("Memory service - embedding providers exhausted:", error.message);
+        log.error("Memory service - embedding providers exhausted:", error.message);
       } else {
-        console.error("Memory service - embedding generation failed:", error);
+        log.error("Memory service - embedding generation failed:", error);
       }
       return null;
     }

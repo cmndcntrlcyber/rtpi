@@ -6,6 +6,8 @@ import { memoryService, SearchResult, AddMemoryParams } from "../memory-service"
 import { agentMessageBus, AgentMessage } from "../agent-message-bus";
 import { agentConfig } from "../../config/agent-config";
 import { ToolExecutionLoop, LoopConstraints, LoopResult, ApprovalCallback } from "./tool-execution-loop";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("base-task-agent");
 
 // ============================================================================
 // Types
@@ -93,7 +95,7 @@ export abstract class BaseTaskAgent extends EventEmitter {
     });
 
     this._initialized = true;
-    console.log(`[${this.agentName}] Initialized with ID ${this.agentId}`);
+    log.info(`[${this.agentName}] Initialized with ID ${this.agentId}`);
   }
 
   // ============================================================================
@@ -118,7 +120,7 @@ export abstract class BaseTaskAgent extends EventEmitter {
         limit: context.limit || 10,
       });
     } catch (error) {
-      console.error(`[${this.agentName}] Memory query failed:`, error);
+      log.error(`[${this.agentName}] Memory query failed:`, error);
       return [];
     }
   }
@@ -155,7 +157,7 @@ export abstract class BaseTaskAgent extends EventEmitter {
       const memory = await memoryService.addMemory(memoryParams);
       return memory.id;
     } catch (error) {
-      console.error(`[${this.agentName}] Failed to store task memory:`, error);
+      log.error(`[${this.agentName}] Failed to store task memory:`, error);
       return null;
     }
   }

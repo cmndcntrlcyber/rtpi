@@ -16,6 +16,8 @@ import { db } from '../../db';
 import { nucleiTemplates, vulnerabilities } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { agentMessageBus } from '../agent-message-bus';
+import { createLogger } from '../../lib/logger';
+const log = createLogger("rd-team-agent");
 
 // ============================================================================
 // Types
@@ -119,7 +121,7 @@ export class RDTeamAgent extends BaseTaskAgent {
       return result;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`[R&D Team] Task failed: ${errorMsg}`);
+      log.error(`[R&D Team] Task failed: ${errorMsg}`);
       await this.updateStatus('error');
 
       const result: TaskResult = { success: false, error: errorMsg };
@@ -142,7 +144,7 @@ export class RDTeamAgent extends BaseTaskAgent {
       return { success: false, error: 'Missing required parameters: at least one of cveId, description, or service is required' };
     }
 
-    console.log(`[R&D Team] Researching vulnerability: ${cveId || description || `${service} ${version || ''}`}`);
+    log.info(`[R&D Team] Researching vulnerability: ${cveId || description || `${service} ${version || ''}`}`);
     await this.reportProgress(task.id || 'research', 10, 'Starting CVE research');
 
     try {
@@ -186,13 +188,13 @@ export class RDTeamAgent extends BaseTaskAgent {
       if (!cveId && !description) {
         return { success: false, error: 'Missing required parameters: either research package or cveId/description' };
       }
-      console.log(`[R&D Team] No research provided, researching first...`);
+      log.info(`[R&D Team] No research provided, researching first...`);
       await this.reportProgress(task.id || 'template-gen', 10, 'Researching vulnerability before template generation');
       researchPackage = await this.researchVulnerability(cveId, description, service, version);
       await this.reportProgress(task.id || 'template-gen', 30, 'Research complete, generating template');
     }
 
-    console.log(`[R&D Team] Generating Nuclei template for: ${researchPackage.cveId || researchPackage.description}`);
+    log.info(`[R&D Team] Generating Nuclei template for: ${researchPackage.cveId || researchPackage.description}`);
     await this.reportProgress(task.id || 'template-gen', 40, 'Generating Nuclei template via AI');
 
     try {
@@ -231,7 +233,7 @@ export class RDTeamAgent extends BaseTaskAgent {
       return { success: false, error: 'Missing required parameters: templateId, targetUrl' };
     }
 
-    console.log(`[R&D Team] Validating template ${templateId} against ${targetUrl}`);
+    log.info(`[R&D Team] Validating template ${templateId} against ${targetUrl}`);
     await this.reportProgress(task.id || 'validate', 10, 'Starting template validation');
 
     try {
@@ -264,7 +266,7 @@ export class RDTeamAgent extends BaseTaskAgent {
       return { success: false, error: 'Missing required parameters: cveId or service' };
     }
 
-    console.log(`[R&D Team] Researching exploits for: ${cveId || `${service} ${version || ''}`}`);
+    log.info(`[R&D Team] Researching exploits for: ${cveId || `${service} ${version || ''}`}`);
     await this.reportProgress(task.id || 'exploit', 10, 'Starting exploit research');
 
     try {
@@ -297,7 +299,7 @@ export class RDTeamAgent extends BaseTaskAgent {
       return { success: false, error: 'Missing required parameters: at least one of cveId, description, or service' };
     }
 
-    console.log(`[R&D Team] Running full pipeline for: ${cveId || description || `${service} ${version || ''}`}`);
+    log.info(`[R&D Team] Running full pipeline for: ${cveId || description || `${service} ${version || ''}`}`);
 
     // Step 1: Research
     await this.reportProgress(task.id || 'pipeline', 10, 'Step 1/4: Researching vulnerability');
@@ -332,7 +334,7 @@ export class RDTeamAgent extends BaseTaskAgent {
     try {
       await this.deployTemplate(templateResult.templateId, templateResult.yamlContent);
     } catch (error) {
-      console.warn(`[R&D Team] Template deployment failed (non-fatal): ${error}`);
+      log.warn(`[R&D Team] Template deployment failed (non-fatal): ${error}`);
       // Non-fatal — template is still in the database
     }
 
@@ -343,7 +345,7 @@ export class RDTeamAgent extends BaseTaskAgent {
       try {
         validationResult = await this.validateTemplate(templateResult.templateId, targetUrl, operationId);
       } catch (error) {
-        console.warn(`[R&D Team] Template validation failed (non-fatal): ${error}`);
+        log.warn(`[R&D Team] Template validation failed (non-fatal): ${error}`);
       }
     }
 
@@ -403,7 +405,7 @@ export class RDTeamAgent extends BaseTaskAgent {
 
     const tavilyApiKey = process.env.TAVILY_API_KEY;
     if (!tavilyApiKey) {
-      console.warn('[R&D Team] TAVILY_API_KEY not configured — skipping web research');
+      log.warn('[R&D Team] TAVILY_API_KEY not configured — skipping web research');
       return research;
     }
 
@@ -467,13 +469,13 @@ export class RDTeamAgent extends BaseTaskAgent {
             }
           }
         } catch (pocError) {
-          console.warn(`[R&D Team] PoC search failed (non-fatal): ${pocError}`);
+          log.warn(`[R&D Team] PoC search failed (non-fatal): ${pocError}`);
         }
       }
 
-      console.log(`[R&D Team] Research complete: ${research.rawResults.length} results, ${research.pocUrls.length} PoCs found`);
+      log.info(`[R&D Team] Research complete: ${research.rawResults.length} results, ${research.pocUrls.length} PoCs found`);
     } catch (error) {
-      console.error('[R&D Team] Tavily search failed:', error);
+      log.error('[R&D Team] Tavily search failed:', error);
       throw new Error(`CVE research failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
@@ -569,7 +571,7 @@ export class RDTeamAgent extends BaseTaskAgent {
   ): Promise<Array<{ title: string; url: string; description: string; source: string }>> {
     const tavilyApiKey = process.env.TAVILY_API_KEY;
     if (!tavilyApiKey) {
-      console.warn('[R&D Team] TAVILY_API_KEY not configured — cannot search exploits');
+      log.warn('[R&D Team] TAVILY_API_KEY not configured — cannot search exploits');
       return [];
     }
 
@@ -616,7 +618,7 @@ export class RDTeamAgent extends BaseTaskAgent {
         });
       }
     } catch (error) {
-      console.error('[R&D Team] Exploit search failed:', error);
+      log.error('[R&D Team] Exploit search failed:', error);
     }
 
     return exploits;
@@ -754,7 +756,7 @@ Output ONLY the YAML template content.`;
       })
       .returning();
 
-    console.log(`[R&D Team] Template ${templateId} generated and stored (DB ID: ${templateRecord.id})`);
+    log.info(`[R&D Team] Template ${templateId} generated and stored (DB ID: ${templateRecord.id})`);
 
     return {
       templateId,
@@ -807,9 +809,9 @@ Output ONLY the YAML template content.`;
         .set({ filePath: templatePath })
         .where(eq(nucleiTemplates.templateId, templateId));
 
-      console.log(`[R&D Team] Template deployed to ${templatePath}`);
+      log.info(`[R&D Team] Template deployed to ${templatePath}`);
     } catch (error) {
-      console.error(`[R&D Team] Template deployment failed:`, error);
+      log.error(`[R&D Team] Template deployment failed:`, error);
       throw new Error(`Failed to deploy template to container: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -841,7 +843,7 @@ Output ONLY the YAML template content.`;
 
     const templatePath = template.filePath || `/home/rtpi-tools/nuclei-templates/custom/${templateId}.yaml`;
 
-    console.log(`[R&D Team] Validating template ${templateId} against ${targetUrl}`);
+    log.info(`[R&D Team] Validating template ${templateId} against ${targetUrl}`);
 
     try {
       // Use nuclei executor to run the template (if we have an operationId)
@@ -973,7 +975,7 @@ Output ONLY the YAML template content.`;
    * Report a blocker to the Operations Manager agent via the message bus.
    */
   private async reportBlocker(task: TaskDefinition, reason: string): Promise<void> {
-    console.warn(`[R&D Team] BLOCKER: ${reason}`);
+    log.warn(`[R&D Team] BLOCKER: ${reason}`);
 
     this.emit('blocker', {
       taskId: task.id,
@@ -1000,7 +1002,7 @@ Output ONLY the YAML template content.`;
           },
         });
       } catch (error) {
-        console.error('[R&D Team] Failed to send blocker message:', error);
+        log.error('[R&D Team] Failed to send blocker message:', error);
       }
     }
   }

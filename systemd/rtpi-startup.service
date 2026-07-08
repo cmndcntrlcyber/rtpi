@@ -1,0 +1,58 @@
+# rtpi-startup.service — orchestrated boot of the full RTPI stack.
+#
+# Runs scripts/rtpi-startup.sh at system boot to bring up all services in
+# dependency order with health gates between phases. Oneshot — systemd
+# considers the unit "active" only after the full stack is healthy. Other
+# units (rtpi-watcher, rtpi-container-healer) should start After= this one
+# so they don't begin healing containers that haven't been started yet.
+#
+# Install:
+#   sudo install -m 0644 systemd/rtpi-startup.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable rtpi-startup.service
+#
+# Manual run:
+#   sudo systemctl start rtpi-startup.service
+#
+# Inspect:
+#   systemctl status rtpi-startup.service
+#   journalctl -u rtpi-startup.service -e
+
+[Unit]
+Description=RTPI stack orchestrated startup
+Documentation=file:///home/cmndcntrl/code/rtpi/docs/HEALTHCHECK.md
+After=docker.service network-online.target
+Wants=docker.service network-online.target
+# The watcher and healer should wait for us to finish bringing the stack up.
+Before=rtpi-watcher.service rtpi-container-healer.timer
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=cmndcntrl
+Group=cmndcntrl
+WorkingDirectory=/home/cmndcntrl/code/rtpi
+
+EnvironmentFile=-/etc/default/rtpi-startup
+
+ExecStart=/home/cmndcntrl/code/rtpi/scripts/rtpi-startup.sh
+
+# Startup can take several minutes (DB init, ATT&CK bootstrap, model cache warm).
+TimeoutStartSec=600
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rtpi-startup
+
+# Sandboxing — same as rtpi-watcher; needs docker socket access.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

@@ -17,6 +17,8 @@
 import { BaseTaskAgent, TaskDefinition, TaskResult } from './base-task-agent';
 import { agentMessageBus } from '../agent-message-bus';
 import { searchKnowledge, extractCvesFromHits } from '../knowledge/knowledge-base-reader';
+import { createLogger } from '../../lib/logger';
+const log = createLogger("research-agent");
 
 // ============================================================================
 // Types
@@ -139,7 +141,7 @@ export class ResearchAgent extends BaseTaskAgent {
       return result;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`[Research Agent] Task failed: ${errorMsg}`);
+      log.error(`[Research Agent] Task failed: ${errorMsg}`);
       await this.updateStatus('error');
       return { success: false, error: errorMsg };
     }
@@ -156,7 +158,7 @@ export class ResearchAgent extends BaseTaskAgent {
       return { success: false, error: 'Missing required parameter: service or cveId' };
     }
 
-    console.log(`[Research Agent] Starting full research pipeline for: ${cveId || `${service} ${version || ''}`}`);
+    log.info(`[Research Agent] Starting full research pipeline for: ${cveId || `${service} ${version || ''}`}`);
     await this.reportProgress(task.id || 'research', 5, 'Starting research pipeline');
 
     const allQueries: string[] = [];
@@ -197,7 +199,7 @@ export class ResearchAgent extends BaseTaskAgent {
         category: h.category,
         similarity: h.similarity,
       }));
-      console.log(
+      log.info(
         `[Research Agent] KB consultation found ${priorHits.length} prior article(s), ${priorCves.length} known CVE(s)`
       );
     }
@@ -282,7 +284,7 @@ export class ResearchAgent extends BaseTaskAgent {
     const cves: VulnerabilityResearchPackage['cves'] = [];
 
     if (!this.tavilyApiKey) {
-      console.warn('[Research Agent] Tavily API key not configured');
+      log.warn('[Research Agent] Tavily API key not configured');
       return { cves, queries };
     }
 
@@ -308,7 +310,7 @@ export class ResearchAgent extends BaseTaskAgent {
     const responses = await Promise.all(
       selectedQueries.map((query) =>
         this.tavilySearch(query, 'advanced', 8).catch((error) => {
-          console.error(`[Research Agent] CVE discovery search failed for: ${query}`, error);
+          log.error(`[Research Agent] CVE discovery search failed for: ${query}`, error);
           return null;
         })
       )
@@ -377,7 +379,7 @@ export class ResearchAgent extends BaseTaskAgent {
     const responses = await Promise.all(
       selectedQueries.map((query) =>
         this.tavilySearch(query, 'advanced', 5).catch((error) => {
-          console.error(`[Research Agent] Exploit intel search failed for: ${query}`, error);
+          log.error(`[Research Agent] Exploit intel search failed for: ${query}`, error);
           return null;
         })
       )
@@ -514,9 +516,9 @@ export class ResearchAgent extends BaseTaskAgent {
         },
         priority: pkg.methodology.riskLevel === 'critical' ? 1 : 2,
       });
-      console.log(`[Research Agent] Routed research package to maldev-agent for ${pkg.service}`);
+      log.info(`[Research Agent] Routed research package to maldev-agent for ${pkg.service}`);
     } catch (error) {
-      console.error('[Research Agent] Failed to route to maldev-agent:', error);
+      log.error('[Research Agent] Failed to route to maldev-agent:', error);
     }
   }
 
@@ -543,7 +545,7 @@ export class ResearchAgent extends BaseTaskAgent {
     try {
       return await searchKnowledge({ query, topK: 5 });
     } catch (error) {
-      console.warn('[Research Agent] KB consultation failed (non-fatal):', error);
+      log.warn('[Research Agent] KB consultation failed (non-fatal):', error);
       return [];
     }
   }
@@ -572,13 +574,13 @@ export class ResearchAgent extends BaseTaskAgent {
       });
 
       if (!response.ok) {
-        console.warn(`[Research Agent] Tavily returned ${response.status} for: ${query}`);
+        log.warn(`[Research Agent] Tavily returned ${response.status} for: ${query}`);
         return null;
       }
 
       return await response.json() as TavilyResponse;
     } catch (error) {
-      console.error(`[Research Agent] Tavily search error: ${error}`);
+      log.error(`[Research Agent] Tavily search error: ${error}`);
       return null;
     }
   }

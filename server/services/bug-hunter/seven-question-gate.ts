@@ -21,6 +21,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { routeReasoning, NoInferenceProviderAvailable } from "../inference/inference-router";
 import { retrieveBugHunterSkills } from "../knowledge/bug-hunter-skill-retriever";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("seven-question-gate");
 
 export type Verdict = "PASS" | "DOWNGRADE" | "CHAIN_REQUIRED" | "KILL";
 
@@ -201,7 +203,7 @@ async function runLlmGates(
     });
     triageSkill = skills.map((s) => s.content.slice(0, 2000)).join("\n\n---\n\n").slice(0, 6000);
   } catch (err) {
-    console.warn("[seven-question-gate] skill retrieval failed:", err);
+    log.warn("[seven-question-gate] skill retrieval failed:", err);
   }
 
   const acceptedImpacts = scope.acceptedImpacts?.length
@@ -260,9 +262,9 @@ ${triageSkill}`;
     return parsed;
   } catch (err) {
     if (err instanceof NoInferenceProviderAvailable) {
-      console.warn("[seven-question-gate] no provider available — Q1/2/4/5/6 default to null");
+      log.warn("[seven-question-gate] no provider available — Q1/2/4/5/6 default to null");
     } else {
-      console.warn("[seven-question-gate] llm gates failed:", err);
+      log.warn("[seven-question-gate] llm gates failed:", err);
     }
     return null;
   }

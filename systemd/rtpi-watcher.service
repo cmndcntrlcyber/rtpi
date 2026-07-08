@@ -23,7 +23,7 @@ Documentation=file:///home/cmndcntrl/code/rtpi/docs/operations/rtpi-watcher.md
 # Don't fight the system at boot — wait for docker, but don't depend on the
 # rtpi compose project. The watcher's whole point is that it heals what's
 # already supposed to be up.
-After=docker.service network-online.target
+After=docker.service network-online.target rtpi-startup.service
 Wants=docker.service network-online.target
 # If docker is permanently broken, restart-on-failure won't help; let systemd
 # treat the watcher itself as a unit that should always be running.

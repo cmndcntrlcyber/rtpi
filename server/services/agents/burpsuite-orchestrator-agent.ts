@@ -18,6 +18,8 @@ import { db } from '../../db';
 import { vulnerabilities, agents } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { agentMessageBus } from '../agent-message-bus';
+import { createLogger } from '../../lib/logger';
+const log = createLogger("burpsuite-orchestrator-agent");
 
 // ============================================================================
 // Types
@@ -167,7 +169,7 @@ export class BurpSuiteOrchestratorAgent extends BaseTaskAgent {
       return result;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`[BurpSuite Orchestrator] Task failed: ${errorMsg}`);
+      log.error(`[BurpSuite Orchestrator] Task failed: ${errorMsg}`);
       await this.updateStatus('error');
 
       const result: TaskResult = { success: false, error: errorMsg };
@@ -189,7 +191,7 @@ export class BurpSuiteOrchestratorAgent extends BaseTaskAgent {
         status: status.activationStatus,
       };
     } catch (error) {
-      console.error('[BurpSuite Orchestrator] Failed to check activation status:', error);
+      log.error('[BurpSuite Orchestrator] Failed to check activation status:', error);
       return { active: false, status: 'error' };
     }
   }
@@ -209,7 +211,7 @@ export class BurpSuiteOrchestratorAgent extends BaseTaskAgent {
       return { success: false, error: 'Missing required parameters: vulnerabilityId, targetUrl' };
     }
 
-    console.log(`[BurpSuite Orchestrator] Investigating finding ${vulnerabilityId} at ${targetUrl}`);
+    log.info(`[BurpSuite Orchestrator] Investigating finding ${vulnerabilityId} at ${targetUrl}`);
     await this.reportProgress(task.id || vulnerabilityId, 10, 'Starting investigation');
 
     try {
@@ -265,7 +267,7 @@ export class BurpSuiteOrchestratorAgent extends BaseTaskAgent {
       return { success: false, error: 'Missing required parameters: vulnerabilityId, targetUrl' };
     }
 
-    console.log(`[BurpSuite Orchestrator] Validating vulnerability ${vulnerabilityId} at ${targetUrl}`);
+    log.info(`[BurpSuite Orchestrator] Validating vulnerability ${vulnerabilityId} at ${targetUrl}`);
     await this.reportProgress(task.id || vulnerabilityId, 10, 'Starting active scan for validation');
 
     try {
@@ -327,7 +329,7 @@ export class BurpSuiteOrchestratorAgent extends BaseTaskAgent {
       return { success: false, error: 'Missing required parameter: targetUrl' };
     }
 
-    console.log(`[BurpSuite Orchestrator] Starting active scan on ${targetUrl}`);
+    log.info(`[BurpSuite Orchestrator] Starting active scan on ${targetUrl}`);
 
     try {
       const scanResult = await this.startActiveScan(targetUrl);
@@ -371,7 +373,7 @@ export class BurpSuiteOrchestratorAgent extends BaseTaskAgent {
       return { success: false, error: 'Missing required parameter: targetHost' };
     }
 
-    console.log(`[BurpSuite Orchestrator] Analyzing proxy history for ${targetHost}`);
+    log.info(`[BurpSuite Orchestrator] Analyzing proxy history for ${targetHost}`);
 
     try {
       const history = await this.getProxyHistory(targetHost, limit || 100);
@@ -436,7 +438,7 @@ export class BurpSuiteOrchestratorAgent extends BaseTaskAgent {
         body: data.body || '',
       };
     } catch (error) {
-      console.error('[BurpSuite Orchestrator] Proxy request failed:', error);
+      log.error('[BurpSuite Orchestrator] Proxy request failed:', error);
       throw new Error(`Failed to send request through Burp proxy: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -468,7 +470,7 @@ export class BurpSuiteOrchestratorAgent extends BaseTaskAgent {
         status: 'running',
       };
     } catch (error) {
-      console.error('[BurpSuite Orchestrator] Failed to start active scan:', error);
+      log.error('[BurpSuite Orchestrator] Failed to start active scan:', error);
       throw new Error(`Failed to start Burp active scan: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -505,7 +507,7 @@ export class BurpSuiteOrchestratorAgent extends BaseTaskAgent {
           }
         }
       } catch (error) {
-        console.warn(`[BurpSuite Orchestrator] Scan poll error for ${scanId}:`, error);
+        log.warn(`[BurpSuite Orchestrator] Scan poll error for ${scanId}:`, error);
       }
 
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
@@ -531,7 +533,7 @@ export class BurpSuiteOrchestratorAgent extends BaseTaskAgent {
       const data = await response.json() as any;
       return (data.entries || data.history || []) as ProxyHistoryEntry[];
     } catch (error) {
-      console.error('[BurpSuite Orchestrator] Failed to get proxy history:', error);
+      log.error('[BurpSuite Orchestrator] Failed to get proxy history:', error);
       throw new Error(`Failed to get Burp proxy history: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -718,11 +720,11 @@ export class BurpSuiteOrchestratorAgent extends BaseTaskAgent {
         })
         .where(eq(vulnerabilities.id, vulnId));
 
-      console.log(
+      log.info(
         `[BurpSuite Orchestrator] Updated vulnerability ${vulnId}: status=${updates.investigationStatus}`
       );
     } catch (error) {
-      console.error(`[BurpSuite Orchestrator] Failed to update vulnerability ${vulnId}:`, error);
+      log.error(`[BurpSuite Orchestrator] Failed to update vulnerability ${vulnId}:`, error);
     }
   }
 
@@ -734,7 +736,7 @@ export class BurpSuiteOrchestratorAgent extends BaseTaskAgent {
    * Report a blocker to the Operations Manager agent via the message bus.
    */
   private async reportBlocker(task: TaskDefinition, reason: string): Promise<void> {
-    console.warn(`[BurpSuite Orchestrator] BLOCKER: ${reason}`);
+    log.warn(`[BurpSuite Orchestrator] BLOCKER: ${reason}`);
 
     this.emit('blocker', {
       taskId: task.id,
@@ -762,7 +764,7 @@ export class BurpSuiteOrchestratorAgent extends BaseTaskAgent {
           },
         });
       } catch (error) {
-        console.error('[BurpSuite Orchestrator] Failed to send blocker message:', error);
+        log.error('[BurpSuite Orchestrator] Failed to send blocker message:', error);
       }
     }
   }

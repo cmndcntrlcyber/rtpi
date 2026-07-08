@@ -4,6 +4,8 @@ import { fileURLToPath } from "url";
 import { db } from "../db";
 import { attackTactics } from "@shared/schema";
 import { importSTIXBundle } from "./stix-parser";
+import { createLogger } from '../lib/logger';
+const log = createLogger("attack-bootstrap");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -23,7 +25,7 @@ async function fetchStixBundle(): Promise<unknown> {
 
 export async function bootstrapAttackData(): Promise<void> {
   if (process.env.ATTACK_AUTO_IMPORT === "false") {
-    console.log("🗂️  MITRE ATT&CK auto-import disabled (ATTACK_AUTO_IMPORT=false)");
+    log.info("🗂️  MITRE ATT&CK auto-import disabled (ATTACK_AUTO_IMPORT=false)");
     return;
   }
 
@@ -33,17 +35,17 @@ export async function bootstrapAttackData(): Promise<void> {
   let bundle: any;
 
   if (existsSync(DATA_FILE)) {
-    console.log(`🗂️  MITRE ATT&CK DB empty — importing from ${DATA_FILE}`);
+    log.info(`🗂️  MITRE ATT&CK DB empty — importing from ${DATA_FILE}`);
     bundle = JSON.parse(readFileSync(DATA_FILE, "utf-8"));
   } else {
-    console.log(`🗂️  MITRE ATT&CK DB empty and no local bundle — downloading from ${STIX_URL}`);
+    log.info(`🗂️  MITRE ATT&CK DB empty and no local bundle — downloading from ${STIX_URL}`);
     bundle = await fetchStixBundle();
     try {
       mkdirSync(dirname(DATA_FILE), { recursive: true });
       writeFileSync(DATA_FILE, JSON.stringify(bundle));
-      console.log(`💾 Cached STIX bundle to ${DATA_FILE}`);
+      log.info(`💾 Cached STIX bundle to ${DATA_FILE}`);
     } catch (cacheErr) {
-      console.warn(`⚠️  Could not cache STIX bundle:`, cacheErr);
+      log.warn(`⚠️  Could not cache STIX bundle:`, cacheErr);
     }
   }
 
@@ -54,7 +56,7 @@ export async function bootstrapAttackData(): Promise<void> {
   const start = Date.now();
   const stats = await importSTIXBundle(bundle);
   const seconds = ((Date.now() - start) / 1000).toFixed(1);
-  console.log(
+  log.info(
     `✅ ATT&CK import complete in ${seconds}s — ` +
       `${stats.tactics} tactics, ${stats.techniques} techniques, ${stats.relationships} relationships` +
       (stats.errors.length ? ` (${stats.errors.length} errors)` : "")

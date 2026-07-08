@@ -27,6 +27,8 @@ import {
   slugifyId,
   type SkillRegistry,
 } from "./skills/skill-paths";
+import { createLogger } from '../lib/logger';
+const log = createLogger("skill-generator");
 
 export interface GenerateOptions {
   force?: boolean;
@@ -230,7 +232,7 @@ export async function generateSkillForRegistry(
       durationMs: Date.now() - started,
     };
   } catch (err: any) {
-    console.error(`[skill-generator] ${registry}/${meta.stableId} failed:`, err);
+    log.error(`[skill-generator] ${registry}/${meta.stableId} failed:`, err);
     return {
       registry,
       toolId: meta.stableId,
@@ -259,7 +261,7 @@ export function enqueueSkillGeneration(registry: SkillRegistry, rowId: string): 
     generateSkillForRegistry(registry, rowId)
       .then(async (result) => {
         if (result.status === "generated") {
-          console.log(
+          log.info(
             `[skill-generator] ${registry}/${result.toolId} → ${result.skillPath} (${result.generatedBy}, ${result.durationMs}ms)`,
           );
           try {
@@ -270,16 +272,16 @@ export function enqueueSkillGeneration(registry: SkillRegistry, rowId: string): 
               reason: "skill_regenerated",
             });
             if (sync.changed > 0 || sync.errors > 0) {
-              console.log(
+              log.info(
                 `[skill-generator] post-sync: scanned=${sync.scanned} changed=${sync.changed} errors=${sync.errors}`,
               );
             }
           } catch (err) {
-            console.error(`[skill-generator] post-sync trigger failed:`, err);
+            log.error(`[skill-generator] post-sync trigger failed:`, err);
           }
         }
       })
-      .catch((err) => console.error(`[skill-generator] ${registry}/${rowId} failed:`, err));
+      .catch((err) => log.error(`[skill-generator] ${registry}/${rowId} failed:`, err));
   }, 1000);
 }
 

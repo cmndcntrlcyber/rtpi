@@ -11,6 +11,8 @@ import { vulnerabilities, operations, targets } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { sysReptorClient, type HealthResult } from "../../services/sysreptor-client";
 import { ensureAuthenticated } from "../../auth/middleware";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("sysreptor");
 
 const router = Router();
 router.use(ensureAuthenticated);
@@ -195,7 +197,7 @@ router.post("/export", async (req, res) => {
       name || `${operation.name} - Pentest Report`;
     const projectTags = tags || ["rtpi", "automated"];
 
-    console.log(`[SysReptor] Creating project: ${projectName}`);
+    log.info(`[SysReptor] Creating project: ${projectName}`);
     const project = await sysReptorClient.createProject(
       projectName,
       designId,
@@ -236,14 +238,14 @@ router.post("/export", async (req, res) => {
           });
           findingsExported++;
         } catch (err) {
-          console.error(
+          log.error(
             `[SysReptor] Failed to add finding "${vuln.title}":`,
             err instanceof Error ? err.message : err,
           );
         }
       }
 
-      console.log(
+      log.info(
         `[SysReptor] Exported ${findingsExported}/${validFindings.length} findings`,
       );
     }
@@ -270,7 +272,7 @@ router.post("/export", async (req, res) => {
         }
       }
     } catch (err) {
-      console.warn("[SysReptor] Could not populate sections:", err instanceof Error ? err.message : err);
+      log.warn("[SysReptor] Could not populate sections:", err instanceof Error ? err.message : err);
     }
 
     const projectUrl = `${process.env.SYSREPTOR_URL || "http://rtpi-sysreptor-app:8000"}/projects/${project.id}`;
@@ -286,7 +288,7 @@ router.post("/export", async (req, res) => {
       message: `Exported operation "${operation.name}" with ${findingsExported} findings`,
     });
   } catch (error) {
-    console.error("[SysReptor] Export failed:", error);
+    log.error("[SysReptor] Export failed:", error);
     res.status(500).json({
       error: "Export failed",
       message: error instanceof Error ? error.message : "Unknown error",
@@ -350,7 +352,7 @@ router.post("/projects/:id/sync", async (req, res) => {
         });
         added++;
       } catch (err) {
-        console.error(
+        log.error(
           `[SysReptor] Sync failed for "${vuln.title}":`,
           err instanceof Error ? err.message : err,
         );

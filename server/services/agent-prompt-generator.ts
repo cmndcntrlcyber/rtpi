@@ -1,4 +1,6 @@
 import { routeReasoning, NoInferenceProviderAvailable } from "./inference/inference-router";
+import { createLogger } from '../lib/logger';
+const log = createLogger("agent-prompt-generator");
 
 export interface ToolSkillSummary {
   registry: "mcp" | "registry" | "security";
@@ -85,7 +87,7 @@ Generate ONLY the system prompt text, without any additional explanation or form
       // router's choice diverges from the caller's hint so we can spot
       // operators with stale assumptions.
       if (agentType && agentType !== generatedBy && (generatedBy === "anthropic" || generatedBy === "openai")) {
-        console.log(
+        log.info(
           `[agent-prompt-generator] agentType hint=${agentType} but router served=${result.provider}/${result.model}`,
         );
       }
@@ -93,9 +95,9 @@ Generate ONLY the system prompt text, without any additional explanation or form
     }
   } catch (error) {
     if (error instanceof NoInferenceProviderAvailable) {
-      console.error("Agent prompt generation: all providers exhausted, using template:", error.message);
+      log.error("Agent prompt generation: all providers exhausted, using template:", error.message);
     } else {
-      console.error("Agent prompt generation router failed:", error);
+      log.error("Agent prompt generation router failed:", error);
     }
   }
 

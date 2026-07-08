@@ -8,8 +8,13 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import { checkDatabaseConnection } from "./db";
-import { sessionMiddleware } from "./auth/session";
+import { writeFileSync, unlinkSync } from "fs";
+import { logger } from "./lib/logger";
+import { requestIdMiddleware } from "./middleware/request-id";
+import { metricsRegistry, httpRequestDuration } from "./lib/metrics";
+import { waitForDatabase } from "./db";
+import { client as dbClient } from "./db";
+import { sessionMiddleware, redisClient, connectRedis } from "./auth/session";
 import passport from "./auth/strategies/local";
 import "./auth/strategies/google";
 import "./auth/strategies/apikey";
@@ -35,10 +40,12 @@ import settingsRoutes from "./api/v1/settings";
 import agentLoopsRoutes from "./api/v1/agent-loops";
 import agentMcpRoutes from "./api/v1/agent-mcp";
 import agentWorkflowsRoutes from "./api/v1/agent-workflows";
+import agentFlowsRoutes from "./api/v1/agent-flows";
 import metasploitRoutes from "./api/v1/metasploit";
 import surfaceAssessmentRoutes from "./api/v1/surface-assessment";
 import usersRoutes from "./api/v1/users";
 import empireRoutes from "./api/v1/empire";
+import sliverRoutes from "./api/v1/sliver";
 import attackRoutes from "./api/v1/attack";
 import attackFlowsRoutes from "./api/v1/attack-flows";
 import workbenchRoutes from "./api/v1/workbench";
@@ -99,6 +106,7 @@ import { initializeDefaultAdmin } from "./services/admin-initialization";
 import { opsManagerScheduler } from "./services/ops-manager-scheduler";
 import { scanScheduler } from "./services/scan-scheduler";
 import { initializeAgentSystem, shutdownAgentSystem } from "./services/workflow-event-handlers";
+import { startAuditLogCleanup, stopAuditLogCleanup } from "./services/audit-log-cleanup";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -107,7 +115,25 @@ const PORT = Number(process.env.PORT) || 3000;
 app.set("trust proxy", 1);
 
 // Middleware
-app.use(helmet());
+app.use(requestIdMiddleware);
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "blob:"],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+      },
+    },
+  })
+);
 app.use(cors({
   origin: process.env.CORS_ORIGIN || "http://0.0.0.0:5000",
   credentials: true,
@@ -125,14 +151,46 @@ app.use(passport.session());
 // Rate limiting
 app.use(apiLimiter);
 
-// Health check endpoint
+// HTTP request duration tracking
+app.use((req, res, next) => {
+  const end = httpRequestDuration.startTimer();
+  res.on("finish", () => {
+    const route = req.route?.path || req.path;
+    end({ method: req.method, route, status_code: res.statusCode });
+  });
+  next();
+});
+
+// Prometheus metrics endpoint (no session auth — scrapers don't carry cookies)
+app.get("/metrics", async (req, res) => {
+  const token = process.env.METRICS_AUTH_TOKEN;
+  if (token && req.headers.authorization !== `Bearer ${token}`) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  res.set("Content-Type", metricsRegistry.contentType);
+  res.end(await metricsRegistry.metrics());
+});
+
+// Health endpoints (unauthenticated — probed by Docker, K8s, rtpi-watcher)
 app.get("/api/v1/health", async (_req, res) => {
-  const dbHealthy = await checkDatabaseConnection();
-  
-  res.status(dbHealthy ? 200 : 503).json({
-    status: dbHealthy ? "healthy" : "unhealthy",
-    timestamp: new Date().toISOString(),
-    database: dbHealthy ? "connected" : "disconnected",
+  const { fullHealthCheck } = await import("./lib/health");
+  const result = await fullHealthCheck();
+  res.status(result.status === "unhealthy" ? 503 : 200).json(result);
+});
+
+app.get("/api/v1/health/live", (_req, res) => {
+  res.json({ status: "alive" });
+});
+
+app.get("/api/v1/health/ready", async (_req, res) => {
+  const { checkDB, checkRedis } = await import("./lib/health");
+  const [db, redis] = await Promise.all([checkDB(), checkRedis()]);
+  const ready = db.ok && redis.ok;
+  res.status(ready ? 200 : 503).json({
+    ready,
+    database: db,
+    redis,
   });
 });
 
@@ -161,10 +219,12 @@ app.use("/api/v1/settings", settingsRoutes);
 app.use("/api/v1/agent-loops", agentLoopsRoutes);
 app.use("/api/v1/agents", agentMcpRoutes);
 app.use("/api/v1/agent-workflows", agentWorkflowsRoutes);
+app.use("/api/v1/agent-flows", agentFlowsRoutes);
 app.use("/api/v1/metasploit", metasploitRoutes);
 app.use("/api/v1/surface-assessment", surfaceAssessmentRoutes);
 app.use("/api/v1/users", usersRoutes);
 app.use("/api/v1/empire", empireRoutes);
+app.use("/api/v1/sliver", sliverRoutes);
 app.use("/api/v1/c2-warroom", c2WarroomRoutes);
 app.use("/api/v1/sysreptor", sysreptorRoutes);
 app.use("/api/v1/inference", inferenceRoutes);
@@ -287,23 +347,26 @@ app.use((req, res) => {
 
 // Error handler
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error(err.stack);
+  logger.error({ err, requestId: _req.id }, "Unhandled error");
   res.status(500).json({
     error: "Internal Server Error",
     message: process.env.NODE_ENV === "development" ? err.message : undefined,
+    requestId: _req.id,
   });
 });
 
 // Initialize database and default admin user
 async function initializeServer() {
+  const READY_FILE = process.env.RTPI_READY_FILE || "/tmp/rtpi-ready";
+
   try {
-    // Check database connection
-    const dbHealthy = await checkDatabaseConnection();
-    if (!dbHealthy) {
-      console.error("❌ Database connection failed");
-      process.exit(1);
-    }
-    console.log("✅ Database connection successful");
+    // Wait for database with retry (tolerates infra still starting)
+    await waitForDatabase();
+    logger.info("Database connection successful");
+
+    // Wait for Redis with retry
+    await connectRedis();
+    logger.info("Redis connection successful");
 
     // Initialize default admin user
     await initializeDefaultAdmin();
@@ -314,7 +377,7 @@ async function initializeServer() {
       const { repairToolRegistryConfigs } = await import("./services/tool-executor");
       await repairToolRegistryConfigs();
     } catch (repairErr) {
-      console.warn("⚠️  tool_registry self-repair skipped:", repairErr);
+      logger.warn({ err: repairErr }, "tool_registry self-repair skipped");
     }
 
     // Bootstrap MITRE ATT&CK data if the DB is empty. Non-fatal.
@@ -322,13 +385,22 @@ async function initializeServer() {
       const { bootstrapAttackData } = await import("./services/attack-bootstrap");
       await bootstrapAttackData();
     } catch (attackErr) {
-      console.warn("⚠️  MITRE ATT&CK bootstrap skipped:", attackErr);
+      logger.warn({ err: attackErr }, "MITRE ATT&CK bootstrap skipped");
     }
 
     // Start server
     const server = app.listen(PORT, "0.0.0.0", () => {
-      console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
-      console.log(`📚 API documentation: http://0.0.0.0:${PORT}/api/v1`);
+      logger.info({ port: PORT, url: `http://0.0.0.0:${PORT}` }, "Server started");
+      logger.info({ docs: `http://0.0.0.0:${PORT}/api/v1` }, "API documentation available");
+
+      // Write readiness file so external probes (rtpi-watcher) can distinguish
+      // "still booting" from "crashed"
+      try {
+        writeFileSync(READY_FILE, String(process.pid));
+        logger.info({ readyFile: READY_FILE }, "Readiness file written");
+      } catch (err) {
+        logger.warn({ err }, "Could not write readiness file");
+      }
     });
 
     // Configure timeouts for long-running scan operations
@@ -336,27 +408,30 @@ async function initializeServer() {
     server.requestTimeout = 7200000; // Node 18+ explicit request timeout
     server.headersTimeout = 7210000; // Slightly higher than request timeout
     server.keepAliveTimeout = 65000; // Keep connections alive
-    console.log(`⏱️  Server timeouts configured for long-running scans (2 hour limit)`);
+    logger.info({ timeoutMs: 7200000 }, "Server timeouts configured for long-running scans");
 
     // Initialize unified Agent WebSocket manager (handles agent events + scan streaming + approval gates)
     const { initializeAgentWebSocketManager } = await import("./services/agent-websocket-manager");
     initializeAgentWebSocketManager(server);
-    console.log(`🔌 Agent WebSocket server ready (agent events + scan streaming + approval gates)`);
+    logger.info("Agent WebSocket server ready");
 
     // Start Operations Manager Scheduler
     opsManagerScheduler.start();
-    console.log(`⏰ Operations Manager Scheduler started (runs hourly)`);
+    logger.info("Operations Manager Scheduler started");
 
     // Start Scan Scheduler
     await scanScheduler.start();
-    console.log(`⏰ Scan Scheduler started for scheduled security scans`);
+    logger.info("Scan Scheduler started");
+
+    // Start Audit Log Cleanup (daily at 03:00 UTC)
+    startAuditLogCleanup();
 
     // B10: auto-seed the bug-hunter skill corpus into knowledge_base
     // (FF_BUG_HUNTER). Self-gated + count-gated + delayed; fully detached so it
     // never blocks or crashes boot. See services/knowledge/skill-seed-startup.ts.
     import("./services/knowledge/skill-seed-startup")
       .then(({ scheduleBugHunterSkillSeed }) => scheduleBugHunterSkillSeed())
-      .catch((err) => console.warn(`⚠️  Skill seed scheduling failed:`, err?.message ?? err));
+      .catch((err) => logger.warn({ err }, "Skill seed scheduling failed"));
     // Warm the inference model cache so the router can validate Settings-
     // chosen models against actual provider availability on the first call.
     // Fire-and-forget — failure here just means router falls back to
@@ -364,8 +439,8 @@ async function initializeServer() {
     setTimeout(() => {
       import("./services/inference/model-cache")
         .then(({ modelCache }) => modelCache.refresh())
-        .then(() => console.log(`🤖 Inference model cache warmed`))
-        .catch((err) => console.warn(`⚠️  Inference model cache warm failed:`, err?.message ?? err));
+        .then(() => logger.info("Inference model cache warmed"))
+        .catch((err) => logger.warn({ err }, "Inference model cache warm failed"));
     }, 2000);
 
     // Start the Agent-MCP connector: live tool discovery + rehydrate the
@@ -375,52 +450,76 @@ async function initializeServer() {
     setTimeout(() => {
       import("./services/agent-mcp-connector")
         .then(({ agentMCPConnector }) => agentMCPConnector.start())
-        .catch((err) => console.warn(`⚠️  Agent-MCP connector start failed:`, err?.message ?? err));
+        .catch((err) => logger.warn({ err }, "Agent-MCP connector start failed"));
     }, 6000);
 
     // Initialize v2.1 Autonomous Agent System
     if (process.env.AGENT_AUTO_INITIALIZE !== "false") {
       try {
         await initializeAgentSystem();
-        console.log(`🤖 Agent System initialized (Tool Connector, Surface Assessment, Web Hacker)`);
+        logger.info("Agent System initialized");
       } catch (agentError) {
-        // Non-fatal - agents can be initialized later via API
-        console.warn(`⚠️  Agent System initialization failed (non-fatal):`, agentError);
+        logger.warn({ err: agentError }, "Agent System initialization failed (non-fatal)");
       }
     } else {
-      console.log(`🤖 Agent System auto-initialization disabled (AGENT_AUTO_INITIALIZE=false)`);
+      logger.info("Agent System auto-initialization disabled");
     }
 
     // Graceful shutdown
     const shutdown = async () => {
-      console.log("\n🛑 Shutting down gracefully...");
+      logger.info("Shutting down gracefully...");
+
+      // Stop accepting new connections first
+      server.close(() => logger.info("HTTP server closed"));
+
       opsManagerScheduler.shutdown();
       await scanScheduler.stop();
+      stopAuditLogCleanup();
 
       // Shutdown v2.1 Agent System
       try {
         await shutdownAgentSystem();
-        console.log("🤖 Agent System shutdown complete");
+        logger.info("Agent System shutdown complete");
       } catch (agentError) {
-        console.warn("⚠️  Agent System shutdown error:", agentError);
+        logger.warn({ err: agentError }, "Agent System shutdown error");
       }
 
-      server.close(() => {
-        console.log("✅ Server closed");
-        process.exit(0);
-      });
+      // Close Redis
+      try {
+        await redisClient.quit();
+        logger.info("Redis client closed");
+      } catch (redisErr) {
+        logger.warn({ err: redisErr }, "Redis client close error");
+      }
 
-      // Force shutdown after 10 seconds
-      setTimeout(() => {
-        console.error("⚠️  Forced shutdown after timeout");
-        process.exit(1);
-      }, 10000);
+      // Drain database connection pool
+      try {
+        await dbClient.end({ timeout: 5 });
+        logger.info("Database connection pool closed");
+      } catch (dbErr) {
+        logger.warn({ err: dbErr }, "Database pool close error");
+      }
+
+      // Remove readiness file
+      try {
+        unlinkSync(READY_FILE);
+      } catch {}
+
+      process.exit(0);
     };
 
-    process.on("SIGTERM", shutdown);
-    process.on("SIGINT", shutdown);
+    // Safety net: force exit if graceful shutdown hangs
+    const forceExit = () => {
+      setTimeout(() => {
+        logger.error("Forced shutdown after timeout");
+        process.exit(1);
+      }, 10000).unref();
+    };
+
+    process.on("SIGTERM", () => { forceExit(); shutdown(); });
+    process.on("SIGINT", () => { forceExit(); shutdown(); });
   } catch (error) {
-    console.error("❌ Server initialization failed:", error);
+    logger.fatal({ err: error }, "Server initialization failed");
     process.exit(1);
   }
 }

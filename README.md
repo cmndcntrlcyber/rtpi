@@ -108,11 +108,81 @@ npm run lint             # Run ESLint
 npm run format           # Format code with Prettier
 ```
 
+## Agent Harness Optimization
+
+RTPI includes a 5-phase harness optimization system that reduces wasted agent cycles, makes reasoning inspectable, and enables agents to learn across sessions. All features are opt-in via feature flags.
+
+### Enabling
+
+Add to `.env` and restart the backend:
+
+```bash
+# Phase 1: Intent Accuracy — probe targets before LLM, classify errors, gate premature completion
+FF_INTENT_ACCURACY_ENGINE=true
+
+# Phase 2: Knowledge — unified memory router, experiential learning, periodic curation
+FF_MEMORY_ROUTER=true
+
+# Phase 3: Judgment — structured reasoning state, multi-tier escalation, operator steering
+FF_JUDGMENT_SPACE=true
+
+# Phase 4: Personas — persistent agent profiles that evolve with performance
+FF_AGENT_PERSONAS=true
+
+# Phase 4: Skills — track skill usage outcomes, auto-improve underperformers
+FF_SKILL_SELF_IMPROVEMENT=true
+
+# Phase 4: Sessions — index completed sessions for cross-task recall
+FF_CROSS_SESSION_LEARNING=true
+
+# Phase 5: Loop Engineering — context framing, maker/checker, budget planning, dead-loop detection
+FF_LOOP_ENGINEERING=true
+```
+
+After enabling, apply schema and seed data:
+
+```bash
+npm run db:push                              # Create 4 new tables
+npx tsx server/scripts/data/seed-personas.ts # Seed 7 agent personas (idempotent)
+```
+
+### Architecture
+
+```
+Intent Engine (pre-LLM) → Judgment Space → Memory Router → Persona Manager
+         │                      │                │                │
+         v                      v                v                v
+   Loop Engine: context framing, maker/checker, budget planning, safety controls
+         │                      │
+         v                      v
+   Tool Execution Loop          Agent Workflow Orchestrator
+```
+
+### Steering API
+
+Operators can steer agents mid-task via the REST API:
+
+```bash
+# Inject a constraint
+curl -X POST /api/v1/agent-workflows/:id/steer \
+  -d '{"action":"inject_constraint","value":"avoid exploitation","reason":"scope change"}'
+
+# Force next tool selection
+curl -X POST /api/v1/agent-workflows/:id/steer \
+  -d '{"action":"force_tool","value":"nmap","reason":"need port scan first"}'
+
+# View steering state
+curl /api/v1/agent-workflows/:id/steering-state
+```
+
+See [docs/optimization/harness-optimization.md](docs/optimization/harness-optimization.md) for the full plan, research sources, and implementation details.
+
 ## Documentation
 
 - [Development Guide](docs/DEVELOPMENT.md)
 - [API Documentation](docs/API.md)
 - [Deployment Guide](docs/DEPLOYMENT.md)
+- [Harness Optimization Plan](docs/optimization/harness-optimization.md)
 
 ## License
 

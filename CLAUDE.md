@@ -59,10 +59,16 @@ server/                 # Backend Express application
   api/v1/              # REST API route handlers
   auth/                # Authentication (local, Google OAuth, API key strategies)
   services/            # Business logic (agent orchestration, tool execution, report generation)
+    agents/            # Agent execution loop, specialized agents, harness optimization
+    judgment/          # Judgment space, arbitration, reasoning traces, steering
+    memory/            # Unified memory router, adapters, experience, nudge, sessions
+    knowledge/         # Knowledge base, CTI feeds, search optimizer
+    skills/            # Skill loader, generator, feedback, self-improvement
+    inference/         # LLM inference routing, model resolution
   middleware/          # Rate limiting, CSRF protection
   scripts/             # Administrative & operational scripts
     admin/             # User account management (create/unlock admin)
-    data/              # ATT&CK data pipeline & database seeding
+    data/              # ATT&CK data pipeline, persona seeding
     tools/             # Tool registry & migration
     infra/             # Infrastructure, Docker, SSL, environment setup
     kasm/              # Kasm workspace operations & load testing
@@ -87,6 +93,56 @@ shared/                # Shared code between frontend and backend
 - `bbot-executor.ts`: Runs BBOT reconnaissance scans
 - `report-generator.ts`: AI-powered penetration test report generation
 
+### Harness Optimization Subsystems
+
+The agent harness includes 5 optimization layers, each gated by feature flags (all default `false`). See `docs/optimization/harness-optimization.md` for the full plan and research sources.
+
+```
+server/services/
+  agents/
+    error-triage.ts          # Classify tool errors before LLM feedback
+    deterministic-probe.ts   # Pre-LLM HTTP probe for ground truth
+    probe-cache.ts           # TTL cache for probe results
+    completion-reviewer.ts   # Anti-premature-victory gate
+    voting-panel.ts          # Multi-agent deterministic voting
+    maker-checker-gate.ts    # Independent finding validation
+    context-framer.ts        # Stage-specific context scoping
+    stage-context-frames.ts  # Frame definitions per pipeline stage
+    persona-manager.ts       # Persistent agent persona profiles
+    budget-planner.ts        # Cost-optimized agent mix planning
+    loop-safety.ts           # Dead-loop detection + token budgets
+    loop-checkpoint.ts       # Loop state checkpoint/resume
+    behavior-baseline.ts     # Statistical behavioral drift detection
+    revalidator.ts           # Finding revalidation + dedup
+  judgment/
+    judgment-space.ts        # Per-agent reasoning state tracker
+    judgment-lens.ts         # Human-readable judgment renderer
+    escalation-policy.ts     # Multi-tier decision escalation rules
+    arbiter.ts               # Escalation handler (model/vote/human)
+    reasoning-trace.ts       # Persistent reasoning trace recorder
+    steering.ts              # Mid-task operator steering interface
+  memory/
+    memory-router.ts         # Unified query across 3 memory backends
+    adapters/                # Native, Mem0, KB adapters
+    experience-extractor.ts  # Post-task experiential memory
+    memory-nudger.ts         # Periodic memory curation prompts
+    session-index.ts         # Cross-session search + learning
+  knowledge/
+    kb-search-optimizer.ts   # Category-scoped search + reranking
+  skills/
+    skill-feedback.ts        # Skill usage outcome tracking
+    skill-improver.ts        # Feedback-driven skill regeneration
+```
+
+Feature flags controlling the optimization layers:
+- `FF_INTENT_ACCURACY_ENGINE`: Deterministic probe, error triage, completion gate
+- `FF_MEMORY_ROUTER`: Unified memory, experiential memory, memory nudge
+- `FF_JUDGMENT_SPACE`: Judgment space, arbitration, reasoning traces
+- `FF_AGENT_PERSONAS`: Persistent agent persona profiles
+- `FF_LOOP_ENGINEERING`: Context framing, maker/checker, budget planner, loop safety, revalidation
+- `FF_CROSS_SESSION_LEARNING`: Cross-session search and recall
+- `FF_SKILL_SELF_IMPROVEMENT`: Skill feedback and self-improvement loop
+
 ### Database Schema
 The schema in `shared/schema.ts` defines all tables using Drizzle ORM including:
 - User authentication and RBAC (users, sessions, apiKeys)
@@ -95,6 +151,7 @@ The schema in `shared/schema.ts` defines all tables using Drizzle ORM including:
 - MCP orchestration (devices, mcpServers, certificates)
 - Security tools (securityTools, toolUploads)
 - Surface assessment (discoveredAssets, discoveredServices, axScanResults)
+- Harness optimization (personaProfiles, reasoningTraces, sessionSummaries, skillUsageLog)
 
 ### API Structure
 All API routes are versioned under `/api/v1/`. Routes follow RESTful conventions with session-based authentication via Redis.

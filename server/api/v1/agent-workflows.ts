@@ -466,6 +466,47 @@ router.post("/:id/cancel", ensureRole("admin", "operator"), async (req, res) => 
 });
 
 /**
+ * POST /api/v1/agent-workflows/:id/steer
+ * Apply a steering directive to an active workflow's judgment space
+ */
+router.post("/:id/steer", ensureRole("admin", "operator"), async (req, res) => {
+  const user = req.user as any;
+  const { action, target, value, reason } = req.body;
+
+  if (!action || !reason) {
+    return res.status(400).json({ error: "action and reason are required" });
+  }
+
+  try {
+    const { steeringController } = await import("../../services/judgment/steering");
+    const directive = steeringController.applyDirective({
+      action,
+      target,
+      value,
+      reason,
+      operatorId: user.id,
+    });
+
+    res.json({ success: true, directive });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to apply steering directive", details: error?.message });
+  }
+});
+
+/**
+ * GET /api/v1/agent-workflows/:id/steering-state
+ * Get current steering state for monitoring
+ */
+router.get("/:id/steering-state", async (req, res) => {
+  try {
+    const { steeringController } = await import("../../services/judgment/steering");
+    res.json({ state: steeringController.getState(), history: steeringController.getHistory() });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to get steering state" });
+  }
+});
+
+/**
  * DELETE /api/v1/agent-workflows/:id
  * Delete a workflow and its associated tasks and logs
  */

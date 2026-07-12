@@ -134,8 +134,11 @@ app.use(
     },
   })
 );
+const corsOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(",").map(s => s.trim()).filter(Boolean)
+  : ["http://0.0.0.0:5000"];
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || "http://0.0.0.0:5000",
+  origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
   credentials: true,
 }));
 app.use(express.json({ limit: '10mb' }));

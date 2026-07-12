@@ -30,6 +30,13 @@ export const FEATURE_FLAGS = {
   uiV3Graphite: "FF_UI_V3_GRAPHITE",
   uiV3DensityToggle: "FF_UI_V3_DENSITY_TOGGLE",
   uiV3LazyRoutes: "FF_UI_V3_LAZY_ROUTES",
+  intentAccuracyEngine: "FF_INTENT_ACCURACY_ENGINE",
+  memoryRouter: "FF_MEMORY_ROUTER",
+  judgmentSpace: "FF_JUDGMENT_SPACE",
+  agentPersonas: "FF_AGENT_PERSONAS",
+  loopEngineering: "FF_LOOP_ENGINEERING",
+  crossSessionLearning: "FF_CROSS_SESSION_LEARNING",
+  skillSelfImprovement: "FF_SKILL_SELF_IMPROVEMENT",
 } as const;
 
 export type FeatureFlagKey = keyof typeof FEATURE_FLAGS;

@@ -239,8 +239,9 @@ print_summary() {
                 -kasm)     label="Kasm Workspaces:" ;;
                 -wiki)     label="Docmost Wiki:" ;;
                 -vscode)   label="Kasm VS Code:" ;;
-                -kali)     label="Kasm Kali:" ;;
-                *)         label="${m_suffix#-}:" ;;
+                -kali)      label="Kasm Kali:" ;;
+                -workbench) label="ATT&CK Workbench:" ;;
+                *)          label="${m_suffix#-}:" ;;
             esac
             printf "  %-25s %s\n" "$label" "https://${SLUG}${m_suffix}.${CF_DOMAIN}"
         done < <(iterate_manifest "$MANIFEST_PATH" "$PROFILES")

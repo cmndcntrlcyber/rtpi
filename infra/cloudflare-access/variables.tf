@@ -46,6 +46,8 @@ variable "applications" {
     auto_redirect      = optional(bool, true)
 
     # Authorization policy. Each entry becomes one cloudflare_zero_trust_access_policy.
+    same_site_cookie = optional(string, "lax")
+
     policies = optional(list(object({
       name           = string
       decision       = string                 # "allow" | "deny" | "non_identity" | "bypass"

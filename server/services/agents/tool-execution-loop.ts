@@ -23,6 +23,20 @@ import { metasploitExecutor } from "../metasploit-executor";
 import { empireExecutor } from "../empire-executor";
 import { mcpInvoker } from "./mcp-invoker";
 import { resolveAgentMcpServerIds } from "./mcp-resolve";
+import { readFeatureFlags } from '../../../shared/feature-flags';
+import { triageError, formatTriagedError } from './error-triage';
+import { runDeterministicProbe, formatProbeForPrompt } from './deterministic-probe';
+import { probeCache } from './probe-cache';
+import { reviewCompletion, MAX_REJECTIONS } from './completion-reviewer';
+import { JudgmentSpace } from '../judgment/judgment-space';
+import { judgmentLens } from '../judgment/judgment-lens';
+import { shouldEscalate, policyForAutonomyLevel } from '../judgment/escalation-policy';
+import { arbiter } from '../judgment/arbiter';
+import { makerCheckerGate } from './maker-checker-gate';
+import { DeadLoopDetector, TokenBudgetTracker } from './loop-safety';
+import { loopCheckpoint } from './loop-checkpoint';
+import { reasoningTraceRecorder } from '../judgment/reasoning-trace';
+import { steeringController } from '../judgment/steering';
 import { createLogger } from '../../lib/logger';
 const log = createLogger("tool-execution-loop");
 
@@ -45,6 +59,14 @@ export interface LoopConstraints {
   aiProvider?: "ollama" | "openai" | "anthropic" | "auto";
   /** AI model override */
   aiModel?: string;
+  /** Token budget for the entire loop (0 = unlimited) */
+  tokenBudget?: number;
+  /** Cost budget in USD for the entire loop (0 = unlimited) */
+  costBudgetUsd?: number;
+  /** Enable checkpoint/resume */
+  enableCheckpoints?: boolean;
+  /** Checkpoint save interval in iterations (default: 3) */
+  checkpointIntervalIterations?: number;
 }
 
 export interface ToolIterationResult {
@@ -285,12 +307,15 @@ export class ToolExecutionLoop extends EventEmitter {
   private discoveredFindings: Finding[] = [];
   /** Latest chain proposals from tool-chain-proposer (refreshed when new findings land). */
   private chainProposals: ChainProposal[] = [];
-  /** Optional extra-context generator, called once per iteration before the prompt is sent. */
-  private prePromptHook: PrePromptHook | null = null;
+  /** Extra-context generators, called per iteration before the prompt is sent. */
+  private prePromptHooks: PrePromptHook[] = [];
   /** Tracks iteration counter so the hook can decorate context appropriately. */
   private currentIteration = 0;
   /** Per-agent scope (tool allowlist + prompt + synthetic tools). Null = global/unscoped. */
   private scope: AgentToolScope | null = null;
+  private judgmentSpace: JudgmentSpace | null = null;
+  private completionRejections = 0;
+  private probeContext = "";
 
   constructor(
     agentId: string,
@@ -309,6 +334,9 @@ export class ToolExecutionLoop extends EventEmitter {
     this.objective = objective;
     this.constraints = { ...DEFAULT_CONSTRAINTS, ...constraints };
     this.scope = scope;
+    if (readFeatureFlags(process.env).judgmentSpace) {
+      this.judgmentSpace = new JudgmentSpace(agentId, operationId);
+    }
   }
 
   /** Set the approval callback (wired by AgentWebSocketManager in B4) */
@@ -316,14 +344,12 @@ export class ToolExecutionLoop extends EventEmitter {
     this.approvalCallback = cb;
   }
 
-  /**
-   * Register an async hook that returns extra context (e.g. RAG-retrieved
-   * skill chunks) to splice into the per-iteration user prompt. Used by the
-   * bug-hunter HuntAgent to inject hunt-* skill bodies based on the current
-   * findings without forking the loop. Returning null/undefined is a no-op.
-   */
   setPrePromptHook(hook: PrePromptHook): void {
-    this.prePromptHook = hook;
+    this.prePromptHooks.push(hook);
+  }
+
+  addPrePromptHook(hook: PrePromptHook): void {
+    this.prePromptHooks.push(hook);
   }
 
   /** Abort the loop externally */
@@ -346,6 +372,26 @@ export class ToolExecutionLoop extends EventEmitter {
         this.getAvailableTools(),
         this.getRelevantMemories(),
       ]);
+
+      const flags = readFeatureFlags(process.env);
+
+      const deadLoopDetector = flags.loopEngineering ? new DeadLoopDetector() : null;
+      const budgetTracker = flags.loopEngineering
+        ? new TokenBudgetTracker(this.constraints.tokenBudget || 0, this.constraints.costBudgetUsd || 0)
+        : null;
+
+      if (flags.intentAccuracyEngine) {
+        try {
+          let probeResult = probeCache.get(this.targetId);
+          if (!probeResult) {
+            probeResult = await runDeterministicProbe(this.targetId);
+            probeCache.set(this.targetId, probeResult);
+          }
+          this.probeContext = formatProbeForPrompt(probeResult);
+        } catch (err) {
+          log.warn("[tool-execution-loop] probe failed (non-fatal):", err);
+        }
+      }
 
       if (availableTools.length === 0) {
         return {
@@ -371,17 +417,78 @@ export class ToolExecutionLoop extends EventEmitter {
           return this.buildResult(iterations, memoryIds, toolsUsed, startTime, "timeout");
         }
 
+        if (budgetTracker) {
+          const budget = budgetTracker.isExhausted();
+          if (budget.exhausted) {
+            return this.buildResult(iterations, memoryIds, toolsUsed, startTime, "max_iterations", budget.reason);
+          }
+        }
+
         const iterStart = Date.now();
 
         // 2a. Call AI for decision
-        const decision = await this.getAIDecision(
+        let decision = await this.getAIDecision(
           availableTools,
           relevantMemories,
           iterations,
         );
 
+        const forcedTool = steeringController.getForcedTool();
+        if (forcedTool && decision.action === "execute_tool") {
+          decision = { ...decision, tool: forcedTool, reasoning: `[STEERED] Operator forced tool: ${forcedTool}. Original: ${decision.tool}` };
+        }
+
+        if (flags.judgmentSpace && this.judgmentSpace) {
+          const escalation = shouldEscalate(
+            this.judgmentSpace.getSnapshot(),
+            decision,
+            policyForAutonomyLevel(this.constraints.autonomyLevel),
+          );
+          if (escalation.escalate) {
+            try {
+              const result = await arbiter.arbitrate({
+                decision,
+                snapshot: this.judgmentSpace.getSnapshot(),
+                policy: policyForAutonomyLevel(this.constraints.autonomyLevel),
+                availableTools: availableTools.map((t) => ({ toolId: t.toolId, name: t.name, category: t.category })),
+                approvalCallback: this.approvalCallback || undefined,
+              });
+              if (result.escalated) {
+                decision = result.finalDecision as AIDecision;
+                log.info(`[ToolExecutionLoop] decision escalated via ${result.escalationRoute}: ${result.overrideReason || "no reason"}`);
+              }
+            } catch (arbErr) {
+              log.warn("[ToolExecutionLoop] arbitration failed (using original decision):", arbErr);
+            }
+          }
+        }
+
         // 2b. Handle decision
         if (decision.action === "complete") {
+          if (flags.intentAccuracyEngine && this.completionRejections < MAX_REJECTIONS) {
+            const review = reviewCompletion({
+              iterations,
+              findings: this.discoveredFindings,
+              objective: this.objective,
+              toolsUsed,
+              availableTools,
+            });
+            if (!review.accepted) {
+              this.completionRejections++;
+              iterations.push({
+                iteration: i + 1,
+                reasoning: `COMPLETION REJECTED (${this.completionRejections}/${MAX_REJECTIONS}): ${review.reason}. Required: ${review.requiredActions?.join(", ") || "none"}`,
+                toolUsed: null,
+                args: [],
+                executionResult: null,
+                parsedOutput: null,
+                memoryId: null,
+                durationMs: Date.now() - iterStart,
+              });
+              continue;
+            }
+          }
+
           iterations.push({
             iteration: i + 1,
             reasoning: decision.reasoning,
@@ -494,6 +601,19 @@ export class ToolExecutionLoop extends EventEmitter {
           };
         }
 
+        if (flags.intentAccuracyEngine && (execResult.exitCode !== 0 || execResult.timedOut)) {
+          const triage = triageError(
+            execResult.stderr || "",
+            execResult.exitCode,
+            toolInfo.toolId,
+            execResult.timedOut,
+          );
+          execResult = {
+            ...execResult,
+            stderr: formatTriagedError(triage, execResult.stderr || ""),
+          };
+        }
+
         // 2f. Truncate output
         const truncatedOutput = this.truncateOutput(execResult.stdout || execResult.stderr);
         if (!toolsUsed.includes(toolName)) {
@@ -506,6 +626,55 @@ export class ToolExecutionLoop extends EventEmitter {
           exitCode: execResult.exitCode,
           outputLength: (execResult.stdout || "").length,
         });
+
+        if (this.judgmentSpace) {
+          const decisionRecord = {
+            iteration: i + 1,
+            action: "execute_tool",
+            tool: toolName,
+            confidence: this.judgmentSpace.getConfidence(),
+            outcome: (execResult.exitCode === 0 ? "success" : "failure") as "success" | "failure",
+            durationMs: Date.now() - iterStart,
+          };
+          this.judgmentSpace.recordDecision(decisionRecord);
+          this.emit("judgment_update", this.judgmentSpace.getSnapshot());
+
+          if (flags.judgmentSpace) {
+            reasoningTraceRecorder.record({
+              operationId: this.operationId,
+              agentId: this.agentId,
+              agentName: this.agentName,
+              decision: decisionRecord,
+              findingsThisIteration: 0,
+            });
+          }
+        }
+
+        if (deadLoopDetector) {
+          deadLoopDetector.recordIteration(toolName, decision.args || [], 0);
+          const stall = deadLoopDetector.isStalled();
+          if (stall.stalled) {
+            log.warn(`[ToolExecutionLoop] Dead loop detected: ${stall.reason}. Reducing autonomy.`);
+            this.constraints.autonomyLevel = Math.max(1, this.constraints.autonomyLevel - 2);
+          }
+        }
+
+        if (budgetTracker && this.judgmentSpace) {
+          budgetTracker.record(2048, 0);
+        }
+
+        if (flags.loopEngineering && this.constraints.enableCheckpoints) {
+          const interval = this.constraints.checkpointIntervalIterations || 3;
+          if ((i + 1) % interval === 0) {
+            loopCheckpoint.save(this.agentId, this.operationId, {
+              iteration: i + 1,
+              findings: this.discoveredFindings,
+              toolsUsed,
+              memoryIds,
+              judgmentSnapshot: this.judgmentSpace?.getSnapshot(),
+            }).catch(() => {});
+          }
+        }
 
         // 2g. Store result in memory
         let memoryId: string | null = null;
@@ -549,6 +718,25 @@ export class ToolExecutionLoop extends EventEmitter {
         if (execResult.exitCode === 0 && (execResult.stdout || "").length > 0) {
           try {
             findings = await this.extractFindings(toolInfo, decision.args || [], execResult.stdout);
+            if (findings.length > 0 && flags.loopEngineering) {
+              const verified: Finding[] = [];
+              for (const f of findings) {
+                try {
+                  const checkResult = await makerCheckerGate.check({
+                    source: this.agentName,
+                    content: `[${f.kind}] ${f.value}${f.evidence ? ` — ${f.evidence}` : ""}`,
+                    contentType: "finding",
+                    rawEvidence: [truncatedOutput],
+                    confidence: 1.0,
+                  });
+                  if (checkResult.checkerVerdict.accepted) verified.push(f);
+                  else log.info(`[ToolExecutionLoop] checker rejected finding: ${f.value} — ${checkResult.checkerVerdict.reason}`);
+                } catch (checkErr) {
+                  verified.push(f);
+                }
+              }
+              findings = verified;
+            }
             if (findings.length > 0) {
               await this.persistFindings(findings, toolInfo, decision.args || [], i + 1);
               this.discoveredFindings.push(...findings);
@@ -616,24 +804,27 @@ export class ToolExecutionLoop extends EventEmitter {
     const systemPrompt = this.buildSystemPrompt(tools);
     let userPrompt = this.buildUserPrompt(memories, previousIterations);
 
-    // Pre-prompt hook injects per-iteration context (e.g. bug-hunter RAG).
-    // Failure here must not break the loop — log and continue.
-    if (this.prePromptHook) {
-      try {
-        const extra = await this.prePromptHook({
-          iteration: this.currentIteration,
-          objective: this.objective,
-          operationId: this.operationId,
-          targetId: this.targetId,
-          agentName: this.agentName,
-          discoveredFindings: this.discoveredFindings,
-          previousIterations,
-        });
-        if (extra && extra.trim()) {
-          userPrompt = `${userPrompt}\n\n--- ADDITIONAL CONTEXT ---\n${extra.trim()}`;
+    if (this.prePromptHooks.length > 0) {
+      const hookCtx: PrePromptHookContext = {
+        iteration: this.currentIteration,
+        objective: this.objective,
+        operationId: this.operationId,
+        targetId: this.targetId,
+        agentName: this.agentName,
+        discoveredFindings: this.discoveredFindings,
+        previousIterations,
+      };
+      const extras: string[] = [];
+      for (const hook of this.prePromptHooks) {
+        try {
+          const extra = await hook(hookCtx);
+          if (extra && extra.trim()) extras.push(extra.trim());
+        } catch (err) {
+          log.warn(`[tool-execution-loop] pre-prompt hook failed:`, err);
         }
-      } catch (err) {
-        log.warn(`[tool-execution-loop] pre-prompt hook failed:`, err);
+      }
+      if (extras.length > 0) {
+        userPrompt = `${userPrompt}\n\n--- ADDITIONAL CONTEXT ---\n${extras.join("\n\n")}`;
       }
     }
 
@@ -732,6 +923,25 @@ ${protocol}`;
     parts.push(`OBJECTIVE: ${this.objective}`);
     parts.push(`TARGET: ${this.targetId}`);
     parts.push(`OPERATION: ${this.operationId}`);
+
+    if (this.probeContext) {
+      parts.push("");
+      parts.push(this.probeContext);
+    }
+
+    if (this.judgmentSpace) {
+      const snapshot = this.judgmentSpace.getSnapshot();
+      if (snapshot.activeHypotheses.length > 0 || snapshot.decisionHistory.length > 0) {
+        parts.push("");
+        parts.push(judgmentLens.formatForPrompt(snapshot));
+      }
+    }
+
+    const steeringPrompt = steeringController.formatForPrompt();
+    if (steeringPrompt) {
+      parts.push("");
+      parts.push(steeringPrompt);
+    }
 
     // Relevant memories
     if (memories.length > 0) {

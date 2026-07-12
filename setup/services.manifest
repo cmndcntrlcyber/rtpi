@@ -37,3 +37,4 @@
 -wiki       | docmost      | http://localhost:13000  | false     | false
 -vscode     | kasm         | https://localhost:6901  | true      | true
 -kali       | kasm         | https://localhost:6902  | true      | true
+-workbench  |              | http://localhost:3020  | false     | false

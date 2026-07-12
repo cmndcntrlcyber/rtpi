@@ -27,9 +27,8 @@ resource "cloudflare_zero_trust_access_application" "app" {
     each.value.auto_redirect && length(each.value.allowed_tenant_ids) == 1
   )
 
-  # Tighten common defaults — adjust if RTPI later embeds in iframes or needs CORS.
   http_only_cookie_attribute = true
-  same_site_cookie_attribute = "lax"
+  same_site_cookie_attribute = each.value.same_site_cookie
   app_launcher_visible       = false
 }
 

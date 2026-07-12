@@ -25,7 +25,7 @@ const log = createLogger("agent-websocket-manager");
 
 /** Events sent from server to clients */
 export interface AgentEvent {
-  type: "agent_activity" | "tool_execution" | "approval_request" | "workflow_update" | "scan_output" | "error";
+  type: "agent_activity" | "tool_execution" | "approval_request" | "workflow_update" | "scan_output" | "judgment_update" | "error";
   eventId: string;
   agentId?: string;
   agentName?: string;

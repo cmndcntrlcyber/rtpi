@@ -136,6 +136,17 @@ applications = [
     auto_redirect      = true
     policies           = []
   },
+  # ── ATT&CK Workbench (always-on, suffix=-workbench) ──────────────────────
+  {
+    id                 = "rtpi-workbench-attck"
+    name               = "ATT&CK Workbench (attck)"
+    domain             = "c3s-workbench.attck.nexus"
+    allowed_tenant_ids = ["attck"]
+    session_duration   = "24h"
+    auto_redirect      = true
+    same_site_cookie   = "none"
+    policies           = []
+  },
   # ── Cross-tenant admin console (NOT slug-based — illustrative only) ──────
   # Accepts logins from all three Workspaces; gated by a platform-admins group.
   # Provision its DNS and cert outside build.sh (this hostname is not in the manifest).

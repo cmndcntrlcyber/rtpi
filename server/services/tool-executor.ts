@@ -69,8 +69,20 @@ export async function executeTool(
 
   const config = (tool.config as any) || {};
 
+  // Resolve binaryPath early — needed for the full command record.
+  const containerName = (tool as any).containerName || 'rtpi-tools';
+  const containerUser = (tool as any).containerUser || 'rtpi-tools';
+  const binaryPath = (tool as any).binaryPath || config.binaryPath || tool.toolId;
+
   // Build command with parameters (self-repairs registry if config is malformed)
-  const command = await buildCommand(tool, request.parameters);
+  const commandArgs = await buildCommand(tool, request.parameters);
+
+  // The full command reflects what actually executes in the container:
+  // <binaryPath> <args>. Stored in the DB and returned to callers so the
+  // evidence gate and UI show the real invocation, not just the args portion.
+  const command = commandArgs
+    ? `${binaryPath} ${commandArgs}`.trim()
+    : binaryPath;
 
   // Defensive guard: never hand a nullish command to Drizzle, which would
   // serialize as `default` and fail the NOT NULL constraint with a cryptic SQL error.
@@ -100,14 +112,10 @@ export async function executeTool(
     // Update status to running
     await updateExecutionStatus(executionId, 'running');
 
-    // Execute the command in the tool's container
-    const containerName = (tool as any).containerName || 'rtpi-tools';
-    const containerUser = (tool as any).containerUser || 'rtpi-tools';
-    // binaryPath is a top-level column on toolRegistry; config.binaryPath is vestigial.
-    const binaryPath = (tool as any).binaryPath || config.binaryPath || tool.toolId;
+    // Execute: runCommand prepends binaryPath, so pass args only.
     const result = await runCommand(
       binaryPath,
-      command,
+      commandArgs,
       request.timeout || DEFAULT_TIMEOUT,
       containerName,
       containerUser,
@@ -464,11 +472,18 @@ function validateParameter(paramDef: any, value: any): void {
  * services. Use buildCommand() / buildCommandFromConfig() instead.
  */
 export function formatParameter(paramDef: any, value: any): string {
-  const { name, type, flag, positional } = paramDef;
+  const { name, type, flag, positional, valuePrefix, valueSuffix } = paramDef;
+
+  // Apply optional value transformations (e.g., prepend "http://", append "/FUZZ")
+  let transformed = value;
+  if (typeof transformed === 'string') {
+    if (typeof valuePrefix === 'string') transformed = `${valuePrefix}${transformed}`;
+    if (typeof valueSuffix === 'string') transformed = `${transformed}${valueSuffix}`;
+  }
 
   if (positional) {
-    if (type === 'array') return (value as any[]).map((v) => String(v)).join(' ');
-    return String(value);
+    if (type === 'array') return (transformed as any[]).map((v) => String(v)).join(' ');
+    return String(transformed);
   }
 
   const switchToken = (typeof flag === 'string' && flag.length > 0) ? flag : `--${name}`;
@@ -478,10 +493,10 @@ export function formatParameter(paramDef: any, value: any): string {
   }
 
   if (type === 'array') {
-    return (value as any[]).map((v) => `${switchToken} ${v}`).join(' ');
+    return (transformed as any[]).map((v) => `${switchToken} ${v}`).join(' ');
   }
 
-  return `${switchToken} ${value}`;
+  return `${switchToken} ${transformed}`;
 }
 
 /**
@@ -586,39 +601,34 @@ export async function repairToolRegistryConfigs(): Promise<{ scanned: number; pa
   try {
     const rows = await db.select().from(toolRegistry);
     scanned = rows.length;
+    const needsDerivation: string[] = [];
     for (const row of rows) {
       const config = ((row as any).config as any) || {};
       const hasBase = typeof config.baseCommand === 'string' && config.baseCommand.trim().length > 0;
       const hasParams = Array.isArray(config.parameters) && config.parameters.length > 0;
       if (hasBase || hasParams) continue;
 
-      const repaired = {
-        ...config,
-        baseCommand: config.baseCommand || '',
-        parameters: [
-          {
-            name: 'target',
-            type: 'string',
-            required: false,
-            description: 'Target host/URL/IP (positional, auto-seeded by self-repair).',
-            positional: true,
-          },
-        ],
-      };
-      try {
-        await db
-          .update(toolRegistry)
-          .set({ config: repaired, updatedAt: new Date() })
-          .where(eq(toolRegistry.id, row.id));
-        patched++;
-      } catch (e: any) {
-        log.warn({ err: e, toolId: row.toolId }, "Repair: failed to patch tool");
+      // Don't patch with a bare positional stub — that produces broken
+      // commands and blocks the SKILL.md deriver. Just ensure the config
+      // column is a valid object (for NOT NULL) and leave derivation to
+      // the runtime buildCommand fallback which tries SKILL.md first.
+      if (!config || typeof config !== 'object') {
+        try {
+          await db
+            .update(toolRegistry)
+            .set({ config: {}, updatedAt: new Date() })
+            .where(eq(toolRegistry.id, row.id));
+          patched++;
+        } catch (e: any) {
+          log.warn({ err: e, toolId: row.toolId }, "Repair: failed to patch tool");
+        }
       }
+      needsDerivation.push(row.toolId);
     }
-    if (patched > 0) {
-      log.info({ scanned, patched }, "tool_registry self-repair completed");
+    if (needsDerivation.length > 0) {
+      log.info({ scanned, patched, needsDerivation }, "tool_registry: tools without config will derive from SKILL.md at first use");
     } else {
-      log.info({ scanned }, "tool_registry healthy, no repairs needed");
+      log.info({ scanned }, "tool_registry healthy, all tools have configs");
     }
   } catch (e: any) {
     log.warn({ err: e }, "repairToolRegistryConfigs failed (non-fatal)");

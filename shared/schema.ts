@@ -3738,3 +3738,61 @@ export const a2aCapabilityMatrix = pgTable("a2a_capability_matrix", {
   index("a2a_caps_skill_idx").on(table.skillId),
 ]);
 
+export const personaProfiles = pgTable("persona_profiles", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  agentType: text("agent_type").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  methodology: text("methodology").notNull(),
+  expertiseDomains: json("expertise_domains").$type<string[]>().default([]),
+  behavioralConstraints: json("behavioral_constraints").$type<Record<string, unknown>>().default({}),
+  performanceHistory: json("performance_history").$type<Record<string, unknown>>().default({}),
+  version: integer("version").notNull().default(1),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const reasoningTraces = pgTable("reasoning_traces", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workflowId: uuid("workflow_id").references(() => agentWorkflows.id, { onDelete: "cascade" }),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "set null" }),
+  agentId: uuid("agent_id").references(() => agents.id, { onDelete: "set null" }),
+  agentName: text("agent_name"),
+  iteration: integer("iteration").notNull(),
+  action: text("action").notNull(),
+  tool: text("tool"),
+  confidence: real("confidence").notNull(),
+  outcome: text("outcome"),
+  durationMs: integer("duration_ms"),
+  hypothesis: text("hypothesis"),
+  findingsCount: integer("findings_count").default(0),
+  metadata: json("metadata"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const sessionSummaries = pgTable("session_summaries", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  conversationId: uuid("conversation_id").references(() => agentConversations.id, { onDelete: "cascade" }),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "set null" }),
+  agentType: text("agent_type").notNull(),
+  targetType: text("target_type"),
+  summary: text("summary").notNull(),
+  toolsUsed: json("tools_used").$type<string[]>().default([]),
+  findingsCount: integer("findings_count").default(0),
+  outcome: text("outcome").notNull(),
+  lessonsLearned: json("lessons_learned").$type<string[]>().default([]),
+  searchVector: text("search_vector"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const skillUsageLog = pgTable("skill_usage_log", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  skillPath: text("skill_path").notNull(),
+  agentId: uuid("agent_id").references(() => agents.id, { onDelete: "set null" }),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "set null" }),
+  outcome: text("outcome").notNull(),
+  iterationsUsed: integer("iterations_used"),
+  findingsProduced: integer("findings_produced").default(0),
+  feedbackText: text("feedback_text"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+

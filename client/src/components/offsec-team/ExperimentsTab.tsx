@@ -40,7 +40,9 @@ import {
   MessageSquare,
   Clock,
   ArrowRight,
+  Trash2,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { api } from "@/lib/api";
 
 // ============================================================================
@@ -120,6 +122,9 @@ export default function ExperimentsTab({ projectFilter, onClearFilter }: Experim
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [artifacts, setArtifacts] = useState<Record<string, Artifact[]>>({});
   const [executing, setExecuting] = useState<Set<string>>(new Set());
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // Promote dialog
   const [promoteDialogOpen, setPromoteDialogOpen] = useState(false);
@@ -243,6 +248,55 @@ export default function ExperimentsTab({ projectFilter, onClearFilter }: Experim
       fetchExperiments();
     } catch (error: any) {
       toast.error(error?.message || "Failed to cancel experiment");
+    }
+  };
+
+  const handleDeleteExperiment = async (experiment: Experiment) => {
+    if (!window.confirm(`Delete "${experiment.name}"? All artifacts will also be deleted. This cannot be undone.`)) return;
+    setDeletingId(experiment.id);
+    try {
+      await api.delete(`/offsec-rd/experiments/${experiment.id}`);
+      toast.success("Experiment deleted");
+      setExperiments((prev) => prev.filter((e) => e.id !== experiment.id));
+    } catch (error: any) {
+      toast.error(error?.data?.message || error?.message || "Failed to delete experiment");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectableExperiments = experiments.filter((e) => e.status !== "running");
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === selectableExperiments.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(selectableExperiments.map((e) => e.id)));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    const count = selectedIds.size;
+    if (!window.confirm(`Delete ${count} experiment${count !== 1 ? "s" : ""}? All artifacts will also be deleted. This cannot be undone.`)) return;
+    setBulkDeleting(true);
+    try {
+      await Promise.all(Array.from(selectedIds).map((id) => api.delete(`/offsec-rd/experiments/${id}`)));
+      toast.success(`${count} experiment${count !== 1 ? "s" : ""} deleted`);
+      setExperiments((prev) => prev.filter((e) => !selectedIds.has(e.id)));
+      setSelectedIds(new Set());
+    } catch (error: any) {
+      toast.error(error?.data?.message || error?.message || "Failed to delete experiments");
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -378,7 +432,7 @@ export default function ExperimentsTab({ projectFilter, onClearFilter }: Experim
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <div>
+        <div className="flex items-center gap-3">
           {projectFilter && (
             <Badge variant="secondary" className="flex items-center gap-2 w-fit py-1.5 px-3">
               <span>Project: {projectFilter.name}</span>
@@ -393,11 +447,37 @@ export default function ExperimentsTab({ projectFilter, onClearFilter }: Experim
               )}
             </Badge>
           )}
+          {selectableExperiments.length > 0 && (
+            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+              <Checkbox
+                checked={selectedIds.size === selectableExperiments.length && selectableExperiments.length > 0}
+                onCheckedChange={toggleSelectAll}
+              />
+              Select all
+            </label>
+          )}
         </div>
-        <Button onClick={() => setCreateOpen(true)} disabled={projects.length === 0}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Experiment
-        </Button>
+        <div className="flex items-center gap-2">
+          {selectedIds.size > 0 && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleBulkDelete}
+              disabled={bulkDeleting}
+            >
+              {bulkDeleting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Delete Selected ({selectedIds.size})
+            </Button>
+          )}
+          <Button onClick={() => setCreateOpen(true)} disabled={projects.length === 0}>
+            <Plus className="h-4 w-4 mr-2" />
+            New Experiment
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -459,10 +539,17 @@ export default function ExperimentsTab({ projectFilter, onClearFilter }: Experim
           const expArtifacts = artifacts[experiment.id] || [];
 
           return (
-            <Card key={experiment.id} className="overflow-hidden">
+            <Card key={experiment.id} className={`overflow-hidden ${selectedIds.has(experiment.id) ? "ring-2 ring-primary" : ""}`}>
               <CardContent className="pt-6">
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-4 flex-1">
+                    {experiment.status !== "running" && (
+                      <Checkbox
+                        checked={selectedIds.has(experiment.id)}
+                        onCheckedChange={() => toggleSelection(experiment.id)}
+                        className="mt-3"
+                      />
+                    )}
                     <div className="bg-teal-100 dark:bg-teal-900 p-3 rounded-lg">
                       <FlaskConical className="h-6 w-6 text-teal-600 dark:text-teal-400" />
                     </div>
@@ -538,6 +625,21 @@ export default function ExperimentsTab({ projectFilter, onClearFilter }: Experim
                           <ChevronDown className="h-4 w-4 mr-2" />
                         )}
                         {isExpanded ? "Hide" : "Artifacts"}
+                      </Button>
+                    )}
+                    {experiment.status !== "running" && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDeleteExperiment(experiment)}
+                        disabled={deletingId === experiment.id}
+                        title="Delete experiment"
+                      >
+                        {deletingId === experiment.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        )}
                       </Button>
                     )}
                   </div>

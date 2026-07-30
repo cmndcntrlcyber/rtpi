@@ -547,4 +547,40 @@ router.get("/:id/agent-log", async (req, res) => {
   }
 });
 
+// DELETE /api/v1/offsec-rd/experiments/:id - Delete experiment
+router.delete("/:id", ensureRole("admin"), async (req, res) => {
+  const { id } = req.params;
+  const user = req.user as any;
+
+  try {
+    const existing = await db
+      .select()
+      .from(rdExperiments)
+      .where(eq(rdExperiments.id, id))
+      .limit(1);
+
+    if (!existing || existing.length === 0) {
+      return res.status(404).json({ error: "Experiment not found" });
+    }
+
+    await db.delete(rdExperiments).where(eq(rdExperiments.id, id));
+
+    await logAudit(
+      user.id,
+      "offsec_rd_experiment_delete",
+      `/offsec-rd/experiments/${id}`,
+      id,
+      true,
+      req
+    );
+
+    res.json({ message: "Experiment deleted successfully" });
+  } catch (error: any) {
+    res.status(500).json({
+      error: "Failed to delete experiment",
+      details: error.message,
+    });
+  }
+});
+
 export default router;

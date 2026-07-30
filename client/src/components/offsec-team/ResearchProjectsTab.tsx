@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, FolderOpen, Activity, Calendar, PlayCircle, Loader2, FlaskConical } from "lucide-react";
+import { Plus, FolderOpen, Activity, Calendar, PlayCircle, Loader2, FlaskConical, Trash2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { api } from "@/lib/api";
 
 interface ResearchProject {
@@ -43,6 +44,9 @@ export default function ResearchProjectsTab({ onViewExperiments }: ResearchProje
     objectives: "",
   });
   const [executingProjects, setExecutingProjects] = useState<Set<string>>(new Set());
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   useEffect(() => {
     fetchProjects();
@@ -93,6 +97,53 @@ export default function ResearchProjectsTab({ onViewExperiments }: ResearchProje
         next.delete(projectId);
         return next;
       });
+    }
+  };
+
+  const handleDeleteProject = async (project: ResearchProject) => {
+    if (!window.confirm(`Delete "${project.name}"? All experiments and artifacts will also be deleted. This cannot be undone.`)) return;
+    setDeletingId(project.id);
+    try {
+      await api.delete(`/offsec-rd/projects/${project.id}`);
+      toast.success("Project deleted");
+      setProjects((prev) => prev.filter((p) => p.id !== project.id));
+    } catch (error: any) {
+      toast.error(error?.data?.message || error?.message || "Failed to delete project");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === projects.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(projects.map((p) => p.id)));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    const count = selectedIds.size;
+    if (!window.confirm(`Delete ${count} project${count !== 1 ? "s" : ""}? All experiments and artifacts will also be deleted. This cannot be undone.`)) return;
+    setBulkDeleting(true);
+    try {
+      await Promise.all(Array.from(selectedIds).map((id) => api.delete(`/offsec-rd/projects/${id}`)));
+      toast.success(`${count} project${count !== 1 ? "s" : ""} deleted`);
+      setProjects((prev) => prev.filter((p) => !selectedIds.has(p.id)));
+      setSelectedIds(new Set());
+    } catch (error: any) {
+      toast.error(error?.data?.message || error?.message || "Failed to delete projects");
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -190,20 +241,53 @@ export default function ResearchProjectsTab({ onViewExperiments }: ResearchProje
 
       {/* Header with Create Button */}
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-foreground">Research Projects</h2>
-        <Button onClick={() => setDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Create Project
-        </Button>
+        <div className="flex items-center gap-3">
+          <h2 className="text-2xl font-bold text-foreground">Research Projects</h2>
+          {projects.length > 0 && (
+            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+              <Checkbox
+                checked={selectedIds.size === projects.length && projects.length > 0}
+                onCheckedChange={toggleSelectAll}
+              />
+              Select all
+            </label>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {selectedIds.size > 0 && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleBulkDelete}
+              disabled={bulkDeleting}
+            >
+              {bulkDeleting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Delete Selected ({selectedIds.size})
+            </Button>
+          )}
+          <Button onClick={() => setDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Create Project
+          </Button>
+        </div>
       </div>
 
       {/* Projects Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {projects.map((project) => (
-          <Card key={project.id} className="hover:shadow-lg transition-shadow">
+          <Card key={project.id} className={`hover:shadow-lg transition-shadow ${selectedIds.has(project.id) ? "ring-2 ring-primary" : ""}`}>
             <CardHeader>
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3 flex-1">
+                  <Checkbox
+                    checked={selectedIds.has(project.id)}
+                    onCheckedChange={() => toggleSelection(project.id)}
+                    className="mt-1"
+                  />
                   <div className="bg-purple-100 p-3 rounded-lg">
                     <FolderOpen className="h-6 w-6 text-purple-600" />
                   </div>
@@ -214,9 +298,24 @@ export default function ResearchProjectsTab({ onViewExperiments }: ResearchProje
                     </p>
                   </div>
                 </div>
-                <Badge className={getStatusColor(project.status)}>
-                  {project.status}
-                </Badge>
+                <div className="flex items-center gap-1">
+                  <Badge className={getStatusColor(project.status)}>
+                    {project.status}
+                  </Badge>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleDeleteProject(project)}
+                    disabled={deletingId === project.id}
+                    title="Delete project"
+                  >
+                    {deletingId === project.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    )}
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>

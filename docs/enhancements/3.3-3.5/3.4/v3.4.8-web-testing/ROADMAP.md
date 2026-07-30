@@ -1,7 +1,7 @@
 # v3.4.8 — Web Testing Skills
 
 **Priority:** P3
-**Status:** Planning
+**Status:** Dockerfile Updated, Skills Pending
 **Skill Category:** `skills/offense/web/`
 **Tools:** 6
 **Parent:** [v3.4 Tool Catalogue](../v3.4.md)
@@ -50,7 +50,7 @@ Standard sections per SKILL.md:
 
 - [ ] 6 SKILL.md files created under `skills/offense/web/`
 - [ ] Each skill works standalone via `nexus` CLI inside nexus-kali
-- [ ] All 6 tools installed in nexus-kali image (see nexus-kali build manifest)
+- [x] All 6 tools installed in nexus-kali image (`docker/Dockerfile` updated 2026-07-30 — wapiti, mitmproxy via kali-linux-everything; mitmproxy2swagger via pip; graphw00f, Astra via git clone)
 - [ ] Results output to `/results/$ENGAGEMENT/web/<tool>/`
 - [ ] Scope enforcement: all skills check target against engagement scope before execution
 - [ ] Skills reference MITRE ATT&CK techniques where applicable (Reconnaissance TA0043, Initial Access TA0001)

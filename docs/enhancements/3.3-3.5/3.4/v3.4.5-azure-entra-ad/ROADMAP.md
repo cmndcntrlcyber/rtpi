@@ -1,7 +1,7 @@
 # v3.4.5 — Azure / Entra AD Skills
 
 **Priority:** P3
-**Status:** Planning
+**Status:** Dockerfile Updated, Skills Pending
 **Skill Category:** `skills/offense/active-directory/` (expand existing)
 **Tools:** 14
 **Parent:** [v3.4 Tool Catalogue](../v3.4.md)
@@ -58,7 +58,7 @@ Standard sections per SKILL.md:
 
 - [ ] 14 SKILL.md files created under `skills/offense/active-directory/`
 - [ ] Each skill works standalone via `nexus` CLI inside nexus-kali
-- [ ] All 14 tools installed in nexus-kali image (see nexus-kali build manifest)
+- [x] All 14 tools installed in nexus-kali image (`docker/Dockerfile` updated 2026-07-30 — powershell, Az/AADInternals/DSInternals/Microsoft.Graph modules, linWinPwn, EntraOps, ScubaGear via git clone + pwsh layers)
 - [ ] Results output to `/results/$ENGAGEMENT/active-directory/<tool>/`
 - [ ] Scope enforcement: all skills check target domain/tenant against engagement scope before execution
 - [ ] Skills reference MITRE ATT&CK techniques where applicable (Credential Access TA0006, Lateral Movement TA0008, Discovery TA0007, Persistence TA0003)

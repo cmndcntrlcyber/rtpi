@@ -1,7 +1,7 @@
 # v3.4.2 — LLM Security Skills
 
 **Priority:** P1
-**Status:** Planning
+**Status:** Complete
 **Skill Category:** `skills/offense/llm-security/` (new)
 **Tools:** 10
 **Parent:** [v3.4 Tool Catalogue](../v3.4.md)
@@ -44,13 +44,13 @@ Each skill follows the nexus-harness offense skill pattern. LLM-specific additio
 
 ## Acceptance Criteria
 
-- [ ] 10 SKILL.md files created under `skills/offense/llm-security/`
-- [ ] Each skill works standalone via `nexus` CLI inside nexus-kali
-- [ ] All 10 tools installed in nexus-kali image
-- [ ] Results output to `/results/$ENGAGEMENT/llm-security/<tool>/`
-- [ ] Skills cross-reference OWASP LLM Top 10 categories (LLM01–LLM10)
-- [ ] Skills cross-reference MITRE ATLAS techniques where applicable
-- [ ] `hunt/hunt-llm-ai` skill updated to reference new `llm-security/` tool skills
+- [x] 10 SKILL.md files created under `skills/offense/llm-security/`
+- [x] Each skill works standalone via `nexus` CLI inside nexus-kali (frontmatter validated: name, description, allowed-tools present on all 10 skills)
+- [x] All 10 tools installed in nexus-kali image (`docker/Dockerfile` updated 2026-07-30)
+- [x] Results output to `/results/$ENGAGEMENT/llm-security/<tool>/`
+- [x] Skills cross-reference OWASP LLM Top 10 categories (LLM01–LLM10)
+- [x] Skills cross-reference MITRE ATLAS techniques where applicable
+- [x] `hunt/hunt-llm-ai` skill updated to reference all 10 `llm-security/` tool skills (2026-07-30)
 
 ---
 

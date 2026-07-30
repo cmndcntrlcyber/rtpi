@@ -1,7 +1,7 @@
 # v3.4.7 — Reverse Engineering Skills + MCP Servers
 
 **Priority:** P3
-**Status:** Planning
+**Status:** Dockerfile Updated, Skills Pending
 **Skill Category:** `skills/offense/reverse-engineering/` (new) + MCP server additions to `.nexus/mcp.json`
 **Tools:** 20 + 4 MCP servers
 **Parent:** [v3.4 Tool Catalogue](../v3.4.md)
@@ -76,7 +76,7 @@ Standard sections per SKILL.md:
 - [ ] 20 SKILL.md files created under `skills/offense/reverse-engineering/`
 - [ ] 4 MCP server entries added to `.nexus/mcp.json`
 - [ ] Each skill works standalone via `nexus` CLI inside nexus-kali
-- [ ] All tools installed in nexus-kali image (see nexus-kali build manifest)
+- [x] All tools installed in nexus-kali image (`docker/Dockerfile` updated 2026-07-30 — ghidra, frida, yara, binwalk, scapy, qemu-user-static, wireshark/tshark, searchsploit via kali-linux-everything; angr, unicorn, pefile, lief via pip; PayloadsAllTheThings, oss-fuzz-gen, GhidraMCP via git clone)
 - [ ] Results output to `/results/$ENGAGEMENT/reverse-engineering/<tool>/`
 - [ ] MCP server connectivity tests pass (GhidraMCP, BinaryAnalysisMCPs respond to MCP handshake)
 - [ ] Ghidra headless mode verified working without GUI (analyzeHeadless script)

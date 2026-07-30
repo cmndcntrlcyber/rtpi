@@ -1,7 +1,7 @@
 # v3.4.6 — Recon & ProjectDiscovery Skills
 
 **Priority:** P3
-**Status:** Planning
+**Status:** Dockerfile Updated, Skills Pending
 **Skill Category:** `skills/offense/recon/` (expand existing)
 **Tools:** 16
 **Parent:** [v3.4 Tool Catalogue](../v3.4.md)
@@ -60,7 +60,7 @@ Standard sections per SKILL.md:
 
 - [ ] 16 SKILL.md files created under `skills/offense/recon/`
 - [ ] Each skill works standalone via `nexus` CLI inside nexus-kali
-- [ ] All 16 tools installed in nexus-kali image (see nexus-kali build manifest)
+- [x] All 16 tools installed in nexus-kali image (`docker/Dockerfile` updated 2026-07-30 — arjun via kali-linux-everything; gau, waybackurls pre-existing; alterx, mapcidr, tlsx, cdncheck, asnmap, cloudlist, proxify, interactsh, notify, cvemap, anew, gf, qsreplace, unfurl via go install; x8 via cargo; paramspider via pip)
 - [ ] Results output to `/results/$ENGAGEMENT/recon/<tool>/`
 - [ ] Scope enforcement: all skills check target domain/IP against engagement scope before execution
 - [ ] Skills reference MITRE ATT&CK techniques where applicable (Reconnaissance TA0043, Resource Development TA0042)

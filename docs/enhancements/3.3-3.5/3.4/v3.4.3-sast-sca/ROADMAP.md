@@ -1,7 +1,7 @@
 # v3.4.3 — SAST & SCA Skills
 
 **Priority:** P2
-**Status:** Planning
+**Status:** Dockerfile Updated, Skills Pending
 **Skill Category:** `skills/offense/sast-sca/` (new)
 **Tools:** 14
 **Parent:** [v3.4 Tool Catalogue](../v3.4.md)
@@ -64,7 +64,7 @@ SAST/SCA-specific additions:
 
 - [ ] 14 SKILL.md files created under `skills/offense/sast-sca/`
 - [ ] Each skill works standalone via `nexus` CLI inside nexus-kali
-- [ ] All 14 tools installed in nexus-kali image (see nexus-kali build manifest)
+- [x] All 14 tools installed in nexus-kali image (`docker/Dockerfile` updated 2026-07-30 — semgrep, bandit, trivy, sslyze, testssl.sh via kali-linux-everything; grype, osv-scanner, safety, pip-audit, owasp-depscan, shcheck, brakeman, snyk, retire via new layers)
 - [ ] Results output to `/results/$ENGAGEMENT/sast-sca/<tool>/`
 - [ ] Scope enforcement: all skills check target against engagement scope before execution
 - [ ] Findings include CWE identifiers and CVSS scores where available

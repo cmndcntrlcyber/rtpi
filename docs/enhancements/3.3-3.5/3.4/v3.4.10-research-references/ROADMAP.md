@@ -1,7 +1,7 @@
 # v3.4.10 — Research References & Fuzzing Runner
 
 **Priority:** P3
-**Status:** Planning
+**Status:** Dockerfile Updated, Skills Pending
 **Skill Category:** `skills/offense/exploit-dev/` (expand existing)
 **Tools:** 3
 **Parent:** [v3.4 Tool Catalogue](../v3.4.md)
@@ -74,11 +74,13 @@ Standard sections per SKILL.md:
 
 ## Nexus-Kali Image Requirements
 
+> **Status:** All 3 tools present in nexus-kali (`docker/Dockerfile` updated 2026-07-30). ExploitDB and AFL++ via `kali-linux-everything`; PayloadsAllTheThings via git clone.
+
 | Tool | Size Impact | Image Layer Notes |
 |------|-------------|-------------------|
-| ExploitDB (searchsploit) | ~700 MB | Large git clone. The repository includes exploit source files, papers, and shellcodes. Clone to `/opt/exploitdb/` and symlink `searchsploit` to `/usr/local/bin/`. Consider shallow clone (`--depth 1`) for initial build with full clone available on demand. |
-| PayloadsAllTheThings | ~150 MB | Reference repository. Clone to `/opt/PayloadsAllTheThings/`. Shallow clone acceptable since history is not needed. |
-| AFL++ | ~50 MB | Install via `apt install aflplusplus` (includes `afl-fuzz`, `afl-cc`, `afl-c++`, `afl-tmin`, `afl-cmin`, `afl-showmap`). Alternatively, build from source for latest features. Requires `build-essential`, `llvm`, `clang` as build dependencies (likely already present in nexus-kali). |
+| ExploitDB (searchsploit) | ~700 MB | **Already in kali-linux-everything** (`exploitdb` package). Provides `searchsploit` and `/usr/share/exploitdb/`. |
+| PayloadsAllTheThings | ~150 MB | **Added via git clone** to `/opt/tools/PayloadsAllTheThings/`. Shallow clone (`--depth 1`). |
+| AFL++ | ~50 MB | **Already in kali-linux-everything** (`afl++` package). Provides `afl-fuzz`, `afl-cc`, `afl-c++`, `afl-tmin`, `afl-cmin`, `afl-showmap`. |
 
 **Total additional image size:** ~900 MB (dominated by ExploitDB clone)
 

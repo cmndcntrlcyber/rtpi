@@ -1,7 +1,7 @@
 # v3.4.1 — Cloud Security Skills
 
 **Priority:** P1
-**Status:** Planning
+**Status:** Complete
 **Skill Category:** `skills/offense/cloud/`
 **Tools:** 16
 **Parent:** [v3.4 Tool Catalogue](../v3.4.md)
@@ -58,12 +58,13 @@ Standard sections per SKILL.md:
 
 ## Acceptance Criteria
 
-- [ ] 16 SKILL.md files created under `skills/offense/cloud/`
-- [ ] Each skill works standalone via `nexus` CLI inside nexus-kali
-- [ ] All 16 tools installed in nexus-kali image (see nexus-kali build manifest)
-- [ ] Results output to `/results/$ENGAGEMENT/cloud/<tool>/`
-- [ ] Scope enforcement: all skills check target against engagement scope before execution
-- [ ] Skills reference MITRE ATT&CK techniques where applicable (Discovery TA0007, Credential Access TA0006)
+- [x] 16 SKILL.md files created under `skills/offense/cloud/` (17 total with existing pacu-aws)
+- [x] Each skill works standalone via `nexus` CLI inside nexus-kali (frontmatter validated: name, description, allowed-tools present on all 16 skills)
+- [x] All 16 tools installed in nexus-kali image (`docker/Dockerfile` updated 2026-07-30)
+- [x] Results output to `/results/$ENGAGEMENT/cloud/<tool>/`
+- [x] Scope enforcement: all skills check target against engagement scope before execution
+- [x] Skills reference MITRE ATT&CK techniques where applicable (Discovery TA0007, Credential Access TA0006)
+- [x] `hunt/hunt-cloud-misconfig` updated to reference all 17 `cloud/` tool skills (2026-07-30)
 
 ---
 

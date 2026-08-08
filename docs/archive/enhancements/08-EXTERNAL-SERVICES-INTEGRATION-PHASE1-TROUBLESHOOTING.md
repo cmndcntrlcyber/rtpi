@@ -196,7 +196,7 @@ docker compose restart empire-server
 ### 5. Proxy Routing Not Working
 
 **Symptoms:**
-- Can't connect to `listener-xxx.kasm.attck.nexus`
+- Can't connect to `listener-xxx.kasm.onoiroi.us`
 - Nginx 404 or 502 errors
 - Proxy subdomain resolves but times out
 
@@ -271,7 +271,7 @@ curl -X POST "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/d
   -d '{
     "type": "CNAME",
     "name": "listener-test",
-    "content": "kasm.attck.nexus",
+    "content": "kasm.onoiroi.us",
     "proxied": true
   }'
 ```

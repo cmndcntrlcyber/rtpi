@@ -23,7 +23,7 @@ This guide provides testing procedures for the Kasm Nginx Proxy Manager, which h
    ```bash
    export KASM_PROXY_ENABLED=true
    export KASM_NGINX_CONTAINER=rtpi-kasm-proxy
-   export KASM_DOMAIN=kasm.attck.nexus
+   export KASM_DOMAIN=kasm.onoiroi.us
    export EMPIRE_HOST=empire-server
    export KASM_GUAC_HOST=kasm-guac
    ```
@@ -68,13 +68,13 @@ This guide provides testing procedures for the Kasm Nginx Proxy Manager, which h
 
 4. Test proxy route:
    ```bash
-   curl -k https://listener-abc123.kasm.attck.nexus:8443/
+   curl -k https://listener-abc123.kasm.onoiroi.us:8443/
    ```
 
 **Expected Results:**
 - Proxy route appears in API response
 - Nginx config file created
-- Subdomain format: `listener-{listenerId}.kasm.attck.nexus`
+- Subdomain format: `listener-{listenerId}.kasm.onoiroi.us`
 - HTTPS working with SSL
 - Traffic proxied to Empire listener
 
@@ -108,13 +108,13 @@ This guide provides testing procedures for the Kasm Nginx Proxy Manager, which h
 
 4. Test workspace access:
    ```bash
-   curl -k https://workspace-def456.kasm.attck.nexus:8443/health
+   curl -k https://workspace-def456.kasm.onoiroi.us:8443/health
    ```
 
 **Expected Results:**
 - Workspace route in API response
 - Nginx config with WebSocket support
-- Subdomain format: `workspace-{workspaceId}.kasm.attck.nexus`
+- Subdomain format: `workspace-{workspaceId}.kasm.onoiroi.us`
 - Health endpoint returns 200
 - Custom headers present: `X-Kasm-Workspace-Proxy: true`
 
@@ -139,7 +139,7 @@ This guide provides testing procedures for the Kasm Nginx Proxy Manager, which h
    curl -X PUT http://localhost:3001/api/v1/kasm-proxy/callbacks/{listenerId} \
      -H "Content-Type: application/json" \
      -d '{
-       "callbackUrl": "https://new-listener.kasm.attck.nexus:8443"
+       "callbackUrl": "https://new-listener.kasm.onoiroi.us:8443"
      }'
    ```
 
@@ -198,7 +198,7 @@ This guide provides testing procedures for the Kasm Nginx Proxy Manager, which h
 1. Generate traffic:
    ```bash
    for i in {1..10}; do
-     curl -k https://listener-abc123.kasm.attck.nexus:8443/health
+     curl -k https://listener-abc123.kasm.onoiroi.us:8443/health
    done
    ```
 
@@ -209,7 +209,7 @@ This guide provides testing procedures for the Kasm Nginx Proxy Manager, which h
 
 3. Get logs for specific subdomain:
    ```bash
-   curl http://localhost:3001/api/v1/kasm-proxy/logs/listener-abc123.kasm.attck.nexus
+   curl http://localhost:3001/api/v1/kasm-proxy/logs/listener-abc123.kasm.onoiroi.us
    ```
 
 4. Check log file directly:
@@ -316,7 +316,7 @@ This guide provides testing procedures for the Kasm Nginx Proxy Manager, which h
    curl http://localhost:3001/api/v1/kasm-proxy/routes/kasm-workspace/${WORKSPACE_ID}
 
    # 3. Access workspace (manual browser test)
-   # Open browser to: https://workspace-{id}.kasm.attck.nexus:8443
+   # Open browser to: https://workspace-{id}.kasm.onoiroi.us:8443
 
    # 4. Verify access logs
    curl http://localhost:3001/api/v1/kasm-proxy/logs?limit=5

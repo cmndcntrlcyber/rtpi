@@ -50,9 +50,9 @@ __B. User Sync from Google Workspace__
 
 - __Question:__ How do we map Google Workspace groups to RTPI roles?
 
-  - `rtpi-admins@attck.nexus` → role: admin
-  - `rtpi-operators@attck.nexus` → role: operator
-  - `rtpi-viewers@attck.nexus` → role: viewer
+  - `rtpi-admins@onoiroi.us` → role: admin
+  - `rtpi-operators@onoiroi.us` → role: operator
+  - `rtpi-viewers@onoiroi.us` → role: viewer
   - __Answer:__ These roles are fine for now
 
 __C. Service-to-Service Authentication__

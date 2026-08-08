@@ -16,7 +16,7 @@ variable "tenants" {
   type = list(object({
     id               = string # short slug, e.g. "attck"
     name             = string # display name in Cloudflare, e.g. "attck-workspace"
-    workspace_domain = string # Google Workspace domain, e.g. "attck.nexus"
+    workspace_domain = string # Google Workspace domain, e.g. "onoiroi.us"
     client_id        = string # Google OAuth Web client App ID
     client_secret    = string # Google OAuth Web client secret (sensitive)
     enable_scim      = optional(bool, false)
@@ -39,8 +39,8 @@ variable "applications" {
 
   type = list(object({
     id                 = string       # slug, e.g. "rtpi-ui-attck"
-    name               = string       # display name, e.g. "RTPI UI (attck.nexus)"
-    domain             = string       # public hostname, e.g. "rtpi.attck.nexus"
+    name               = string       # display name, e.g. "RTPI UI (onoiroi.us)"
+    domain             = string       # public hostname, e.g. "rtpi.onoiroi.us"
     allowed_tenant_ids = list(string) # subset of var.tenants[*].id
     session_duration   = optional(string, "24h")
     auto_redirect      = optional(bool, true)

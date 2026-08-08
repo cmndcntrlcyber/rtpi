@@ -677,7 +677,7 @@
   - Dynamic proxy route registration for Empire listeners
   - Nginx configuration generation and management
   - Support for containerized and standalone nginx
-  - Subdomain routing: `listener-{id}.kasm.attck.nexus:8443` → Empire listener
+  - Subdomain routing: `listener-{id}.kasm.onoiroi.us:8443` → Empire listener
 - ✅ Auto-Token Generation: Integrated into user creation workflows
   - Google OAuth strategy: Auto-generates tokens for new OAuth users
   - Seed test user endpoint: Auto-generates tokens for development users

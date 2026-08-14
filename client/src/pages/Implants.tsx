@@ -4,13 +4,18 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageHeader } from "@/components/ui/page-header";
 import { api } from "@/lib/api";
+import { useFeatureFlag } from "@/lib/feature-flags";
 import ImplantsTab from "@/components/implants/ImplantsTab";
 import DeployAgentDialog from "@/components/implants/DeployAgentDialog";
+import TaskQueueView from "@/components/implants/TaskQueueView";
+import CertificatesTab from "@/components/implants/CertificatesTab";
+import DistributedWorkflowDialog from "@/components/implants/DistributedWorkflowDialog";
 
 export default function Implants() {
   const [deployDialogOpen, setDeployDialogOpen] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState<"windows" | "linux">("linux");
   const [bundlesRefreshTrigger, setBundlesRefreshTrigger] = useState(0);
+  const ferryEnabled = useFeatureFlag("ferryBridge");
   const [operations, setOperations] = useState<any[]>([]);
   const [selectedOperation, setSelectedOperation] = useState<string>("all");
 
@@ -71,6 +76,19 @@ export default function Implants() {
       />
 
       <ImplantsTab bundlesRefreshTrigger={bundlesRefreshTrigger} operationId={selectedOperation === "all" ? undefined : selectedOperation} />
+
+      {ferryEnabled && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+          <TaskQueueView />
+          <CertificatesTab />
+        </div>
+      )}
+
+      {ferryEnabled && (
+        <div className="mt-6">
+          <DistributedWorkflowDialog implants={[]} />
+        </div>
+      )}
 
       {/* Deploy Agent Dialog */}
       <DeployAgentDialog

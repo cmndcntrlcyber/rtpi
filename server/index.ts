@@ -101,6 +101,9 @@ import stixRoutes from "./api/v1/stix";
 import docmostRoutes from "./api/v1/docmost";
 import frameworkDeployRoutes from "./api/v1/framework-deploy";
 import infrastructureCertificatesRoutes from "./api/v1/infrastructure-certificates";
+import harnessEvaluationsRoutes from "./api/v1/harness-evaluations";
+import ferryRoutes from "./api/v1/ferry";
+import { readFeatureFlags } from "@shared/feature-flags";
 import "./services/rd-feedback-loop"; // Activate R&D tool testing feedback loop
 import { initializeDefaultAdmin } from "./services/admin-initialization";
 import { opsManagerScheduler } from "./services/ops-manager-scheduler";
@@ -282,6 +285,8 @@ app.use("/api/v1/scan-import", scanImportRoutes);
 app.use("/api/v1/vulnerability-investigation", vulnerabilityInvestigationRoutes);
 app.use("/api/v1/bug-bounty-import", bugBountyImportRoutes);
 app.use("/api/v1/agent-chat", agentChatRoutes);
+app.use("/api/v1/harness-evaluations", harnessEvaluationsRoutes);
+app.use("/api/v1/ferry", ferryRoutes);
 
 // Bug-hunter admin/introspection routes (FF_BUG_HUNTER). Workflow + query
 // endpoints land in subsequent PRs (workflows.ts, queries.ts, memory.ts).
@@ -455,6 +460,19 @@ async function initializeServer() {
         .then(({ agentMCPConnector }) => agentMCPConnector.start())
         .catch((err) => logger.warn({ err }, "Agent-MCP connector start failed"));
     }, 6000);
+
+    // Start ferry stream bridge (FF_FERRY_BRIDGE) — SSE→WebSocket relay
+    import("./services/ferry-stream-bridge")
+      .then(({ ferryStreamBridge }) => ferryStreamBridge.start())
+      .catch((err) => logger.warn({ err }, "Ferry stream bridge start failed (non-fatal)"));
+
+    // Start rust-nexus implant controller (FF_NEXUS_MESH)
+    if (readFeatureFlags(process.env).nexusMesh) {
+      import("./services/rust-nexus-controller")
+        .then(({ rustNexusController }) => rustNexusController.start())
+        .then(() => logger.info("rust-nexus controller started"))
+        .catch((err) => logger.warn({ err }, "rust-nexus controller start failed (non-fatal)"));
+    }
 
     // Initialize v2.1 Autonomous Agent System
     if (process.env.AGENT_AUTO_INITIALIZE !== "false") {

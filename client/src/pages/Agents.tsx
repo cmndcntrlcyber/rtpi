@@ -31,7 +31,9 @@ import { RestoreBackupsDialog } from "@/components/agents/RestoreBackupsDialog";
 import WorkflowBuilder from "@/components/agents/WorkflowBuilder";
 import WorkflowEditDialog from "@/components/agents/WorkflowEditDialog";
 import { AgentsTablePanel } from "@/components/agents/AgentsTablePanel";
+import HarnessEvaluationPanel from "@/components/agents/HarnessEvaluationPanel";
 import { DefaultServersPanel } from "@/components/mcp/DefaultServersPanel";
+import { useFeatureFlag } from "@/lib/feature-flags";
 import AgentFlowCanvas from "@/components/flows/AgentFlowCanvas";
 import AgentMcpPanel from "@/components/flows/AgentMcpPanel";
 import { DualListbox } from "@/components/ui/DualListbox";
@@ -1445,6 +1447,7 @@ export default function Agents() {
             <TabsList>
               <TabsTrigger value="ai">AI Agents</TabsTrigger>
               <TabsTrigger value="mcp">MCP Servers</TabsTrigger>
+              <TabsTrigger value="harness">Harness</TabsTrigger>
             </TabsList>
             <div className="relative flex-1 max-w-xs">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -1590,6 +1593,10 @@ export default function Agents() {
             searchQuery={agentMcpSearch}
           />
         </TabsContent>
+
+          <TabsContent value="harness" className="space-y-4">
+            <HarnessEvaluationPanel />
+          </TabsContent>
       </Tabs>
           </CardContent>}
         </Card>
@@ -2171,6 +2178,34 @@ export default function Agents() {
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+              )}
+            </div>
+
+            {/* Nexus Integration (mesh/A2A) */}
+            <div className="space-y-3 border-t pt-4">
+              <h4 className="text-sm font-medium">Nexus Integration</h4>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  checked={newAgent.config?.meshEnabled || false}
+                  onCheckedChange={(checked) =>
+                    setNewAgent({ ...newAgent, config: { ...newAgent.config, meshEnabled: checked } })
+                  }
+                />
+                <Label className="text-sm">Mesh Enabled</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  checked={newAgent.config?.isA2aEnabled || false}
+                  onCheckedChange={(checked) =>
+                    setNewAgent({ ...newAgent, config: { ...newAgent.config, isA2aEnabled: checked } })
+                  }
+                />
+                <Label className="text-sm">A2A Enabled</Label>
+              </div>
+              {editingAgent?.peerId && (
+                <div className="text-xs text-muted-foreground">
+                  Peer ID: <code className="bg-muted px-1 rounded">{editingAgent.peerId}</code>
                 </div>
               )}
             </div>

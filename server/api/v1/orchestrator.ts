@@ -10,20 +10,21 @@ import { Router, Request, Response } from "express";
 import { ensureAuthenticated, logAudit } from "../../auth/middleware";
 import { z } from "zod";
 import {
-  startEngagement,
-  getEngagementStatus,
-  listEngagements,
-  advanceEngagement,
-  approveExploitation,
-  checkOrchestratorHealth,
-  executeTool,
-  executeToolsBatch,
-  getToolRegistry,
-  checkAllContainerHealth,
-  checkAgentContainerHealth,
-} from "../../services/langgraph-client";
+  checkFerryHealth,
+  startEngagementViaFerry,
+  getEngagementStatusViaFerry,
+  listEngagementsViaFerry,
+  advanceEngagementViaFerry,
+  approveExploitationViaFerry,
+  executeToolViaFerry,
+} from "../../services/ferry-orchestrator-client";
+import { readFeatureFlags } from "@shared/feature-flags";
 import { createLogger } from '../../lib/logger';
 const log = createLogger("orchestrator");
+
+async function getLegacyClient() {
+  return import("../../services/langgraph-client");
+}
 
 const router = Router();
 
@@ -54,7 +55,9 @@ const approvalSchema = z.object({
  */
 router.get("/health", async (_req: Request, res: Response) => {
   try {
-    const health = await checkOrchestratorHealth();
+    const health = readFeatureFlags(process.env).ferryBridge
+      ? await checkFerryHealth()
+      : await getLegacyClient().then((c) => c.checkOrchestratorHealth());
     res.json(health);
   } catch (error) {
     res.status(502).json({ status: "unreachable", error: "Orchestrator service unavailable" });
@@ -67,7 +70,9 @@ router.get("/health", async (_req: Request, res: Response) => {
  */
 router.get("/engagements", async (_req: Request, res: Response) => {
   try {
-    const result = await listEngagements();
+    const result = readFeatureFlags(process.env).ferryBridge
+      ? await listEngagementsViaFerry()
+      : await getLegacyClient().then((c) => c.listEngagements());
     res.json(result);
   } catch (error) {
     log.error("[Orchestrator] List engagements error:", error);
@@ -83,7 +88,9 @@ router.post("/engagements/start", async (req: Request, res: Response) => {
   const user = req.user as any;
   try {
     const parsed = startEngagementSchema.parse(req.body);
-    const result = await startEngagement(parsed);
+    const result = readFeatureFlags(process.env).ferryBridge
+      ? await startEngagementViaFerry(parsed)
+      : await getLegacyClient().then((c) => c.startEngagement(parsed));
     await logAudit(user.id, "engagement:start", "/orchestrator/engagements/start", (result as any)?.engagement_id ?? null, true, req);
     res.status(201).json(result);
   } catch (error) {
@@ -103,7 +110,9 @@ router.post("/engagements/start", async (req: Request, res: Response) => {
  */
 router.get("/engagements/:id", async (req: Request, res: Response) => {
   try {
-    const result = await getEngagementStatus(req.params.id);
+    const result = readFeatureFlags(process.env).ferryBridge
+      ? await getEngagementStatusViaFerry(req.params.id)
+      : await getLegacyClient().then((c) => c.getEngagementStatus(req.params.id));
     res.json(result);
   } catch (error) {
     log.error("[Orchestrator] Get status error:", error);
@@ -118,7 +127,9 @@ router.get("/engagements/:id", async (req: Request, res: Response) => {
 router.post("/engagements/:id/advance", async (req: Request, res: Response) => {
   const user = req.user as any;
   try {
-    const result = await advanceEngagement(req.params.id);
+    const result = readFeatureFlags(process.env).ferryBridge
+      ? await advanceEngagementViaFerry(req.params.id)
+      : await getLegacyClient().then((c) => c.advanceEngagement(req.params.id));
     await logAudit(user.id, "engagement:advance", `/orchestrator/engagements/${req.params.id}/advance`, req.params.id, true, req);
     res.json(result);
   } catch (error) {
@@ -136,10 +147,9 @@ router.post("/engagements/:id/approve", async (req: Request, res: Response) => {
   const user = req.user as any;
   try {
     const parsed = approvalSchema.parse(req.body);
-    const result = await approveExploitation({
-      engagement_id: req.params.id,
-      ...parsed,
-    });
+    const result = readFeatureFlags(process.env).ferryBridge
+      ? await approveExploitationViaFerry({ engagement_id: req.params.id, ...parsed })
+      : await getLegacyClient().then((c) => c.approveExploitation({ engagement_id: req.params.id, ...parsed }));
     await logAudit(user.id, "engagement:approve", `/orchestrator/engagements/${req.params.id}/approve`, req.params.id, true, req);
     res.json(result);
   } catch (error) {
@@ -181,7 +191,9 @@ router.post("/tools/execute", async (req: Request, res: Response) => {
   const user = req.user as any;
   try {
     const parsed = toolExecSchema.parse(req.body);
-    const result = await executeTool(parsed);
+    const result = readFeatureFlags(process.env).ferryBridge
+      ? await executeToolViaFerry(parsed)
+      : await getLegacyClient().then((c) => c.executeTool(parsed));
     await logAudit(user.id, "tool:execute", "/orchestrator/tools/execute", parsed.tool_name, true, req);
     res.json(result);
   } catch (error) {
@@ -203,7 +215,7 @@ router.post("/tools/execute-batch", async (req: Request, res: Response) => {
   const user = req.user as any;
   try {
     const parsed = batchToolExecSchema.parse(req.body);
-    const result = await executeToolsBatch(parsed);
+    const result = await getLegacyClient().then((c) => c.executeToolsBatch(parsed));
     await logAudit(user.id, "tool:execute-batch", "/orchestrator/tools/execute-batch", null, true, req);
     res.json(result);
   } catch (error) {
@@ -223,7 +235,7 @@ router.post("/tools/execute-batch", async (req: Request, res: Response) => {
  */
 router.get("/tools/registry", async (_req: Request, res: Response) => {
   try {
-    const registry = await getToolRegistry();
+    const registry = await getLegacyClient().then((c) => c.getToolRegistry());
     res.json(registry);
   } catch (error) {
     log.error("[Orchestrator] Registry error:", error);
@@ -237,7 +249,7 @@ router.get("/tools/registry", async (_req: Request, res: Response) => {
  */
 router.get("/tools/containers/health", async (_req: Request, res: Response) => {
   try {
-    const health = await checkAllContainerHealth();
+    const health = await getLegacyClient().then((c) => c.checkAllContainerHealth());
     res.json(health);
   } catch (error) {
     log.error("[Orchestrator] Container health error:", error);
@@ -251,7 +263,7 @@ router.get("/tools/containers/health", async (_req: Request, res: Response) => {
  */
 router.get("/tools/containers/:agentRole/health", async (req: Request, res: Response) => {
   try {
-    const health = await checkAgentContainerHealth(req.params.agentRole as any);
+    const health = await getLegacyClient().then((c) => c.checkAgentContainerHealth(req.params.agentRole as any));
     res.json(health);
   } catch (error) {
     log.error("[Orchestrator] Agent container health error:", error);

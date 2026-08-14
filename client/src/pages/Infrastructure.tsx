@@ -10,6 +10,10 @@ import WorkspaceTab from "@/components/kasm/WorkspaceTab";
 import DeploymentsPanel from "@/components/deployments/DeploymentsPanel";
 import C2FrameworksPanel from "@/components/c2/C2FrameworksPanel";
 import { useInfrastructure } from "@/hooks/useInfrastructure";
+import { useFeatureFlag } from "@/lib/feature-flags";
+import FerryStatusPanel from "@/components/ferry/FerryStatusPanel";
+import MeshStatusCard from "@/components/ferry/MeshStatusCard";
+import GmlAnomalyPanel from "@/components/ferry/GmlAnomalyPanel";
 
 function fmtTime(value?: string | null): string {
   if (!value) return "—";
@@ -19,6 +23,7 @@ function fmtTime(value?: string | null): string {
 
 export default function Infrastructure() {
   const { containers, mcpServers, devices, healthChecks, loading, error, refetch } = useInfrastructure();
+  const nexusMeshEnabled = useFeatureFlag("nexusMesh");
 
   const stats = {
     containers: containers.length,
@@ -62,6 +67,14 @@ export default function Infrastructure() {
           <p className="text-3xl font-bold text-green-600 tabular-nums">{stats.healthy}</p>
         </div>
       </div>
+
+      {nexusMeshEnabled && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <FerryStatusPanel />
+          <MeshStatusCard />
+          <GmlAnomalyPanel />
+        </div>
+      )}
 
       <Tabs defaultValue="containers" className="space-y-6">
         <TabsList>

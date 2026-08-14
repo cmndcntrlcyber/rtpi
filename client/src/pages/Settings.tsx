@@ -17,7 +17,9 @@ import {
   RefreshCw,
   Loader2,
   Cpu,
+  Gauge,
 } from "lucide-react";
+import { useFeatureFlags } from "@/lib/feature-flags";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
 
@@ -689,7 +691,55 @@ export default function Settings() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Harness Optimization Flags (read-only) */}
+        <HarnessOptimizationFlags />
       </div>
     </div>
+  );
+}
+
+function HarnessOptimizationFlags() {
+  const flags = useFeatureFlags();
+  if (!flags) return null;
+
+  const harnessFlags = [
+    { key: "ferryBridge" as const, label: "Ferry Bridge", desc: "Route tool execution through nexus-harness via ferry gateway" },
+    { key: "nexusMesh" as const, label: "Nexus Mesh", desc: "libp2p mesh transport for agent communication" },
+    { key: "matrixA2a" as const, label: "Matrix A2A", desc: "Agent-to-agent gRPC channel routing" },
+    { key: "gmlTelemetry" as const, label: "GML Telemetry", desc: "Forward execution telemetry to GML anomaly detection" },
+    { key: "a2aCapabilityGate" as const, label: "A2A Capability Gate", desc: "Enforce inter-agent skill authorization matrix" },
+    { key: "intentAccuracyEngine" as const, label: "Intent Accuracy Engine", desc: "Deterministic probe, error triage, completion gate" },
+    { key: "memoryRouter" as const, label: "Memory Router", desc: "Unified memory, experiential memory, nudge" },
+    { key: "judgmentSpace" as const, label: "Judgment Space", desc: "Judgment space, arbitration, reasoning traces" },
+    { key: "agentPersonas" as const, label: "Agent Personas", desc: "Persistent agent persona profiles" },
+    { key: "loopEngineering" as const, label: "Loop Engineering", desc: "Context framing, maker/checker, budget, loop safety" },
+    { key: "crossSessionLearning" as const, label: "Cross-Session Learning", desc: "Cross-session search and recall" },
+    { key: "skillSelfImprovement" as const, label: "Skill Self-Improvement", desc: "Skill feedback and self-improvement loop" },
+  ];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Gauge className="h-5 w-5" />
+          Harness Optimization
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground mb-3">
+          Server-side feature flags controlling nexus-harness integration and optimization layers. Set via environment variables.
+        </p>
+        {harnessFlags.map(({ key, label, desc }) => (
+          <div key={key} className="flex items-center justify-between py-1">
+            <div>
+              <Label className="text-sm">{label}</Label>
+              <p className="text-xs text-muted-foreground">{desc}</p>
+            </div>
+            <Switch checked={flags[key] || false} disabled />
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }

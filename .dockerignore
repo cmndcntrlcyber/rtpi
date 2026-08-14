@@ -1,0 +1,14 @@
+node_modules
+.git
+dist
+docs
+uploads
+*.md
+.claude
+.github
+docker/offsec-agents
+kasm-images
+services/orchestrator
+services/mem0
+services/frida
+services/qemu

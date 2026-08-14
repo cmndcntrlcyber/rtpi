@@ -32,6 +32,7 @@ import { getAnthropicClient } from "./ai-clients";
 import { executeTool as executeRegisteredTool } from "./tool-executor";
 import { assessToolEvidence } from "./tool-evidence";
 import { multiContainerExecutor } from "./agents/multi-container-executor";
+import { harnessToolExecutor } from "./harness-tool-executor";
 import { ToolExecutionLoop, LoopConstraints, AgentToolScope, ATTACK_SYNTHETIC_TOOLS } from "./agents/tool-execution-loop";
 import { readFeatureFlags } from "@shared/feature-flags";
 import { agentWebSocketManager } from "./agent-websocket-manager";
@@ -2038,6 +2039,51 @@ Respond with your analysis.`;
         `Executing "${tool.name}" (${tool.toolId}) in ${containerName}...`,
         { toolId: tool.id, toolStringId: tool.toolId }
       );
+
+      // Ferry dispatch: when FF_FERRY_BRIDGE is enabled and the tool has a
+      // harness skill mapping, route through nexus-harness instead of Docker.
+      if (readFeatureFlags(process.env).ferryBridge &&
+          harnessToolExecutor.hasSkillMapping(tool.toolId)) {
+        try {
+          const ferryResult = await harnessToolExecutor.executeViaHarness(
+            tool.toolId,
+            { target: target.value },
+            workflowId,
+            agent.id,
+          );
+          toolResults.push({
+            toolId: tool.id,
+            toolStringId: tool.toolId,
+            toolName: tool.name,
+            category: tool.category,
+            containerName: "ferry",
+            execution: {
+              success: ferryResult.success,
+              exitCode: ferryResult.success ? 0 : 1,
+              stdout: ferryResult.output,
+              stderr: ferryResult.success ? "" : ferryResult.output,
+              parsedOutput: null,
+              duration: ferryResult.executionTimeMs,
+              timestamp: new Date().toISOString(),
+              executionId: ferryResult.taskId,
+              command: `ferry:${ferryResult.skillName}`,
+            },
+            error: ferryResult.success ? null : ferryResult.output,
+            status: ferryResult.success ? "completed" : "failed",
+            skillPath: tool.skillPath ?? null,
+            skillBody: skillBodyMap.get(tool.id) ?? null,
+            failureDetail: null,
+          });
+          await this.log(workflowId, taskId, ferryResult.success ? "info" : "warn",
+            `"${tool.name}" via ferry/harness: skill=${ferryResult.skillName} duration=${ferryResult.executionTimeMs}ms`,
+          );
+          continue;
+        } catch (ferryErr) {
+          await this.log(workflowId, taskId, "warn",
+            `Ferry dispatch failed for "${tool.name}", falling back to Docker: ${ferryErr}`,
+          );
+        }
+      }
 
       try {
         const result = await executeRegisteredTool({

@@ -20,6 +20,9 @@ export interface Agent {
   tasksCompleted: number;
   tasksFailed: number;
   tactic?: AgentTactic | null;
+  peerId?: string | null;
+  meshEnabled?: boolean;
+  isA2aEnabled?: boolean;
   createdAt: string;
   updatedAt: string;
 }

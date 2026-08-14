@@ -8,8 +8,36 @@ import { mcpInvoker } from "./agents/mcp-invoker";
 import { resolveAgentMcpServerIds } from "./agents/mcp-resolve";
 import { resolveTool, type AgentToolResult } from "./agents/tool-resolve";
 import type { ToolConfiguration } from "../../shared/types/tool-config";
+import { harnessToolExecutor } from "./harness-tool-executor";
+import { readFeatureFlags } from "@shared/feature-flags";
+import { ferryClient } from "./ferry-client";
 import { createLogger } from '../lib/logger';
 const log = createLogger("agent-tool-connector");
+
+async function forwardTelemetryIfEnabled(
+  peerId: string | null | undefined,
+  durationMs: number,
+) {
+  if (!readFeatureFlags(process.env).gmlTelemetry || !peerId) return;
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    await ferryClient.submitTelemetry({
+      window_start: now - 60,
+      window_end: now,
+      node_features: {
+        [peerId]: {
+          peer_id: peerId,
+          message_count: 1,
+          task_count: 1,
+          error_count: 0,
+          mean_latency_ms: durationMs,
+        },
+      },
+    });
+  } catch {
+    // Non-fatal: telemetry forwarding is best-effort
+  }
+}
 
 /**
  * Generic Agent-Tool Connector
@@ -63,10 +91,15 @@ export class AgentToolConnector {
     }
 
     // Dispatch to the single real executor for this tool.
+    let result: AgentToolResult;
     if (resolved.source === "registry" && resolved.installed) {
-      return await this.executeWithNewFramework(agent, tool, target, input);
+      result = await this.executeWithNewFramework(agent, tool, target, input);
+    } else {
+      result = await this.executeAgentWithTool(agent, tool, target, input);
     }
-    return await this.executeAgentWithTool(agent, tool, target, input);
+
+    forwardTelemetryIfEnabled((agent as any).peerId, result.durationMs ?? 0);
+    return result;
   }
 
   /**
@@ -336,6 +369,43 @@ export class AgentToolConnector {
       },
       input,
     };
+
+    // Ferry dispatch: when FF_FERRY_BRIDGE is enabled and the tool has a
+    // harness skill mapping, route through nexus-harness via the ferry
+    // gateway. Falls back to Docker on failure.
+    const flags = readFeatureFlags(process.env);
+    const toolName = tool.toolId || tool.name;
+    if (flags.ferryBridge && harnessToolExecutor.hasSkillMapping(toolName)) {
+      try {
+        const harnessResult = await harnessToolExecutor.executeViaHarness(
+          toolName,
+          this.parseInputParameters(input, {}),
+          undefined,
+          agentId,
+        );
+        return {
+          success: harnessResult.success,
+          exitCode: harnessResult.success ? 0 : 1,
+          stdout: harnessResult.output,
+          stderr: harnessResult.success ? "" : harnessResult.output,
+          durationMs: harnessResult.executionTimeMs,
+          formatted: [
+            `[Agent: ${agent.name}]`,
+            `[Tool: ${tool.name}]`,
+            `[Backend: Ferry/Harness]`,
+            `[Skill: ${harnessResult.skillName}]`,
+            `[Status: ${harnessResult.success ? "SUCCESS" : "FAILED"}]`,
+            `[Duration: ${harnessResult.executionTimeMs}ms]`,
+            "",
+            harnessResult.output,
+          ].join("\n"),
+        };
+      } catch (ferryErr) {
+        log.warn(
+          `[ferry dispatch] Failed for ${toolName}, falling back to Docker: ${ferryErr}`
+        );
+      }
+    }
 
     // If tool has Docker configuration, execute via Docker
     if (tool.dockerImage === "rtpi-tools") {

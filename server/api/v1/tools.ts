@@ -537,6 +537,41 @@ router.post("/:id/execute-docker", ensureRole("admin", "operator"), async (req, 
   }
 });
 
+// POST /api/v1/tools/:id/execute-harness - Execute tool via nexus-harness ferry
+router.post("/:id/execute-harness", ensureRole("admin", "operator"), async (req, res) => {
+  const { id } = req.params;
+  const { parameters, sessionId, agentId } = req.body;
+  const user = req.user as any;
+
+  try {
+    const { harnessToolExecutor } = await import("../../services/harness-tool-executor");
+
+    const tool = await db
+      .select()
+      .from(securityTools)
+      .where(eq(securityTools.id, id))
+      .limit(1)
+      .then((rows) => rows[0]);
+
+    const toolName = tool?.toolId || tool?.name || id;
+    if (!harnessToolExecutor.hasSkillMapping(toolName)) {
+      return res.status(400).json({ error: `No harness skill mapping for "${toolName}"` });
+    }
+
+    const result = await harnessToolExecutor.executeViaHarness(
+      toolName,
+      parameters || {},
+      sessionId,
+      agentId,
+    );
+
+    await logAudit(user.id, "tool:execute-harness", `/tools/${id}/execute-harness`, toolName, result.success, req);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || "Harness execution failed" });
+  }
+});
+
 // GET /api/v1/tools/categories - Get tools by category
 router.get("/categories", async (_req, res) => {
   try {

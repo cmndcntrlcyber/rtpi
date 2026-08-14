@@ -7,12 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAgentWebSocket, type AgentEvent, type ApprovalRequest } from "@/hooks/useAgentWebSocket";
+import { useFeatureFlag } from "@/lib/feature-flags";
 
 export default function EngagementDashboard() {
   const [operations, setOperations] = useState<any[]>([]);
   const [selectedOperation, setSelectedOperation] = useState<string>("");
   const [workflows, setWorkflows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const ferryBridgeEnabled = useFeatureFlag("ferryBridge");
 
   const { connected, events, pendingApprovals, approve, deny, subscribe } = useAgentWebSocket({
     autoConnect: true,
@@ -104,6 +107,12 @@ export default function EngagementDashboard() {
           <p className="text-muted-foreground">Real-time agent activity and workflow monitoring</p>
         </div>
         <div className="flex items-center gap-3">
+          {ferryBridgeEnabled && (
+            <Badge variant="outline" className="flex items-center gap-1 text-green-600 border-green-600/30 dark:text-green-400 dark:border-green-400/30">
+              <Activity className="h-3 w-3" />
+              Ferry Bridge
+            </Badge>
+          )}
           <Badge variant={connected ? "default" : "destructive"} className="flex items-center gap-1">
             {connected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
             {connected ? "Live" : "Disconnected"}

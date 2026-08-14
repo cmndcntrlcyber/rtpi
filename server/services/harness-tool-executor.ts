@@ -15,7 +15,7 @@ const log = createLogger('harness-tool-executor');
 // Tool → Skill mapping
 // ---------------------------------------------------------------------------
 
-const TOOL_SKILL_MAP: Record<string, string> = {
+export const TOOL_SKILL_MAP: Record<string, string> = {
   'nmap': 'offense/recon/nmap-scan',
   'nuclei': 'offense/web/nuclei-scan',
   'nikto': 'offense/web/nikto-scan',
@@ -34,11 +34,11 @@ const TOOL_SKILL_MAP: Record<string, string> = {
   'burpsuite': 'offense/web/burpsuite-pro',
   'masscan': 'offense/recon/masscan-sweep',
   'ffuf': 'offense/web/dir-bruteforce',
-  'wpscan': 'offense/web/wordpress-scan',
-  'bloodhound': 'offense/active-directory/bloodhound-collect',
-  'kerbrute': 'offense/active-directory/kerberos-attack',
-  'responder': 'offense/active-directory/responder-poison',
-  'impacket': 'offense/active-directory/impacket-suite',
+  'wpscan': 'offense/web/cms-scanner',
+  'bloodhound': 'offense/active-directory/bloodhound-enum',
+  'kerbrute': 'offense/active-directory/kerberoasting',
+  'responder': 'offense/infrastructure/responder-relay',
+  'impacket': 'offense/infrastructure/impacket-suite',
   'john': 'offense/passwords/john-crack',
 };
 

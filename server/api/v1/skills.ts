@@ -8,7 +8,12 @@
 import { Router, Request, Response } from "express";
 import { ensureAuthenticated } from "../../auth/middleware";
 import { z } from "zod";
-import { searchSkills, getSkillContent } from "../../services/langgraph-client";
+import { searchFerrySkills } from "../../services/ferry-skill-catalog";
+import { readFeatureFlags } from "@shared/feature-flags";
+
+async function getLegacySkillClient() {
+  return import("../../services/langgraph-client");
+}
 import { clearSkillCache } from "../../services/skill-discovery-service";
 import { createLogger } from '../../lib/logger';
 const log = createLogger("skills");
@@ -39,7 +44,22 @@ const skillSearchSchema = z.object({
 router.post("/search", async (req: Request, res: Response) => {
   try {
     const parsed = skillSearchSchema.parse(req.body);
-    const results = await searchSkills(parsed);
+    if (readFeatureFlags(process.env).ferryBridge) {
+      const ferryResults = searchFerrySkills(parsed.query);
+      let legacyResults: any = { skills: [] };
+      try {
+        const client = await getLegacySkillClient();
+        legacyResults = await client.searchSkills(parsed);
+      } catch { /* LangGraph may be down */ }
+      const merged = [
+        ...ferryResults.map((s) => ({ ...s, source: "harness" as const })),
+        ...((legacyResults as any).skills || []),
+      ];
+      res.json({ skills: merged });
+      return;
+    }
+    const client = await getLegacySkillClient();
+    const results = await client.searchSkills(parsed);
     res.json(results);
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -57,7 +77,8 @@ router.post("/search", async (req: Request, res: Response) => {
  */
 router.get("/:skillName", async (req: Request, res: Response) => {
   try {
-    const result = await getSkillContent(req.params.skillName);
+    const client = await getLegacySkillClient();
+    const result = await client.getSkillContent(req.params.skillName);
     res.json(result);
   } catch (error) {
     log.error("[Skills] Get skill error:", error);

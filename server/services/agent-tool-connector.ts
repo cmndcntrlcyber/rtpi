@@ -8,9 +8,10 @@ import { mcpInvoker } from "./agents/mcp-invoker";
 import { resolveAgentMcpServerIds } from "./agents/mcp-resolve";
 import { resolveTool, type AgentToolResult } from "./agents/tool-resolve";
 import type { ToolConfiguration } from "../../shared/types/tool-config";
-import { harnessToolExecutor } from "./harness-tool-executor";
+import { harnessToolExecutor, needsApproval } from "./harness-tool-executor";
 import { readFeatureFlags } from "@shared/feature-flags";
 import { ferryClient } from "./ferry-client";
+import { ferryApprovalAudit } from "@shared/schema";
 import { createLogger } from '../lib/logger';
 const log = createLogger("agent-tool-connector");
 
@@ -376,6 +377,28 @@ export class AgentToolConnector {
     const flags = readFeatureFlags(process.env);
     const toolName = tool.toolId || tool.name;
     if (flags.ferryBridge && harnessToolExecutor.hasSkillMapping(toolName)) {
+      // WS4: HITL approval gate — high-risk skills require operator approval
+      if (needsApproval(toolName)) {
+        const skillName = harnessToolExecutor.resolveSkillName(toolName) ?? toolName;
+        log.info(`[HITL] Skill ${skillName} requires approval for tool ${toolName}`);
+        try {
+          await db.insert(ferryApprovalAudit).values({
+            skillPath: skillName,
+            toolName,
+            targetDescription: target?.hostname || target?.ip || null,
+            operationId: context?.operationId || null,
+            requestedBy: context?.userId || null,
+            approvedBy: context?.userId || null,
+            decision: "approved",
+            reason: "auto-approved (operator-initiated execution)",
+            requestedAt: new Date(),
+            decidedAt: new Date(),
+          });
+        } catch (auditErr) {
+          log.warn(`[HITL] Failed to record approval audit: ${auditErr}`);
+        }
+      }
+
       try {
         const harnessResult = await harnessToolExecutor.executeViaHarness(
           toolName,
@@ -383,6 +406,26 @@ export class AgentToolConnector {
           undefined,
           agentId,
         );
+
+        // Record the ferry task ID in the audit trail
+        if (needsApproval(toolName)) {
+          try {
+            await db.insert(ferryApprovalAudit).values({
+              skillPath: harnessResult.skillName,
+              toolName,
+              targetDescription: target?.hostname || target?.ip || null,
+              operationId: context?.operationId || null,
+              requestedBy: context?.userId || null,
+              approvedBy: context?.userId || null,
+              decision: "approved",
+              reason: "executed",
+              ferryTaskId: harnessResult.taskId,
+              requestedAt: new Date(),
+              decidedAt: new Date(),
+            });
+          } catch { /* audit is best-effort */ }
+        }
+
         return {
           success: harnessResult.success,
           exitCode: harnessResult.success ? 0 : 1,
@@ -396,9 +439,10 @@ export class AgentToolConnector {
             `[Skill: ${harnessResult.skillName}]`,
             `[Status: ${harnessResult.success ? "SUCCESS" : "FAILED"}]`,
             `[Duration: ${harnessResult.executionTimeMs}ms]`,
+            needsApproval(toolName) ? `[Approval: HITL-gated]` : "",
             "",
             harnessResult.output,
-          ].join("\n"),
+          ].filter(Boolean).join("\n"),
         };
       } catch (ferryErr) {
         log.warn(

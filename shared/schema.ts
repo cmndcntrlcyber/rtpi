@@ -3796,3 +3796,21 @@ export const skillUsageLog = pgTable("skill_usage_log", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// v3.10 WS4 — HITL approval audit trail for ferry skill execution
+export const ferryApprovalAuditEnum = pgEnum("ferry_approval_decision", ["approved", "denied"]);
+
+export const ferryApprovalAudit = pgTable("ferry_approval_audit", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  skillPath: text("skill_path").notNull(),
+  toolName: text("tool_name").notNull(),
+  targetDescription: text("target_description"),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "set null" }),
+  requestedBy: uuid("requested_by").references(() => users.id, { onDelete: "set null" }),
+  approvedBy: uuid("approved_by").references(() => users.id, { onDelete: "set null" }),
+  decision: ferryApprovalAuditEnum("decision").notNull(),
+  reason: text("reason"),
+  ferryTaskId: text("ferry_task_id"),
+  requestedAt: timestamp("requested_at").notNull().defaultNow(),
+  decidedAt: timestamp("decided_at"),
+});
+

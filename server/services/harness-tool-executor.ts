@@ -15,43 +15,56 @@ const log = createLogger('harness-tool-executor');
 // Tool → Skill mapping
 // ---------------------------------------------------------------------------
 
-export const TOOL_SKILL_MAP: Record<string, string> = {
-  'nmap': 'offense/recon/nmap-scan',
-  'nuclei': 'offense/web/nuclei-scan',
-  'nikto': 'offense/web/nikto-scan',
-  'sqlmap': 'offense/web/sqlmap-inject',
-  'gobuster': 'offense/web/dir-bruteforce',
-  'dirb': 'offense/web/dir-bruteforce',
-  'subfinder': 'offense/recon/subdomain-enum',
-  'amass': 'offense/recon/subdomain-enum',
-  'bbot': 'offense/recon/asset-discovery',
-  'netexec': 'offense/infrastructure/netexec-enum',
-  'crackmapexec': 'offense/infrastructure/netexec-enum',
-  'hydra': 'offense/passwords/hydra-bruteforce',
-  'hashcat': 'offense/passwords/hashcat-crack',
-  'metasploit': 'offense/infrastructure/metasploit-exploit',
-  'msfconsole': 'offense/infrastructure/metasploit-exploit',
-  'burpsuite': 'offense/web/burpsuite-pro',
-  'masscan': 'offense/recon/masscan-sweep',
-  'ffuf': 'offense/web/dir-bruteforce',
-  'wpscan': 'offense/web/cms-scanner',
-  'bloodhound': 'offense/active-directory/bloodhound-enum',
-  'kerbrute': 'offense/active-directory/kerberoasting',
-  'responder': 'offense/infrastructure/responder-relay',
-  'impacket': 'offense/infrastructure/impacket-suite',
-  'john': 'offense/passwords/john-crack',
+interface SkillMapping {
+  skillPath: string;
+  requiresApproval: boolean;
+}
+
+export const TOOL_SKILL_MAP: Record<string, SkillMapping> = {
+  'nmap': { skillPath: 'offense/recon/nmap-scan', requiresApproval: false },
+  'nuclei': { skillPath: 'offense/web/nuclei-scan', requiresApproval: false },
+  'nikto': { skillPath: 'offense/web/nikto-scan', requiresApproval: false },
+  'sqlmap': { skillPath: 'offense/web/sqlmap-inject', requiresApproval: true },
+  'gobuster': { skillPath: 'offense/web/dir-bruteforce', requiresApproval: false },
+  'dirb': { skillPath: 'offense/web/dir-bruteforce', requiresApproval: false },
+  'subfinder': { skillPath: 'offense/recon/subdomain-enum', requiresApproval: false },
+  'amass': { skillPath: 'offense/recon/subdomain-enum', requiresApproval: false },
+  'bbot': { skillPath: 'offense/recon/asset-discovery', requiresApproval: false },
+  'netexec': { skillPath: 'offense/infrastructure/netexec-enum', requiresApproval: false },
+  'crackmapexec': { skillPath: 'offense/infrastructure/netexec-enum', requiresApproval: false },
+  'hydra': { skillPath: 'offense/passwords/hydra-bruteforce', requiresApproval: true },
+  'hashcat': { skillPath: 'offense/passwords/hashcat-crack', requiresApproval: true },
+  'metasploit': { skillPath: 'offense/infrastructure/metasploit-exploit', requiresApproval: true },
+  'msfconsole': { skillPath: 'offense/infrastructure/metasploit-exploit', requiresApproval: true },
+  'burpsuite': { skillPath: 'offense/web/burpsuite-pro', requiresApproval: false },
+  'masscan': { skillPath: 'offense/recon/masscan-sweep', requiresApproval: false },
+  'ffuf': { skillPath: 'offense/web/dir-bruteforce', requiresApproval: false },
+  'wpscan': { skillPath: 'offense/web/cms-scanner', requiresApproval: false },
+  'bloodhound': { skillPath: 'offense/active-directory/bloodhound-enum', requiresApproval: false },
+  'kerbrute': { skillPath: 'offense/active-directory/kerberoasting', requiresApproval: true },
+  'responder': { skillPath: 'offense/infrastructure/responder-relay', requiresApproval: true },
+  'impacket': { skillPath: 'offense/infrastructure/impacket-suite', requiresApproval: true },
+  'john': { skillPath: 'offense/passwords/john-crack', requiresApproval: true },
 };
 
 export function resolveSkillName(toolName: string): string | null {
   const normalized = toolName.toLowerCase().replace(/[^a-z0-9]/g, '');
-  for (const [key, skill] of Object.entries(TOOL_SKILL_MAP)) {
-    if (normalized.includes(key)) return skill;
+  for (const [key, mapping] of Object.entries(TOOL_SKILL_MAP)) {
+    if (normalized.includes(key)) return mapping.skillPath;
   }
   return null;
 }
 
 export function hasSkillMapping(toolName: string): boolean {
   return resolveSkillName(toolName) !== null;
+}
+
+export function needsApproval(toolName: string): boolean {
+  const normalized = toolName.toLowerCase().replace(/[^a-z0-9]/g, '');
+  for (const [key, mapping] of Object.entries(TOOL_SKILL_MAP)) {
+    if (normalized.includes(key)) return mapping.requiresApproval;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------

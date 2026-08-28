@@ -17,11 +17,11 @@ export interface FerrySkill {
 }
 
 export function listFerrySkills(): FerrySkill[] {
-  return Object.entries(TOOL_SKILL_MAP).map(([name, path]) => {
-    const parts = path.split("/");
+  return Object.entries(TOOL_SKILL_MAP).map(([name, mapping]) => {
+    const parts = mapping.skillPath.split("/");
     return {
       name,
-      skillPath: path,
+      skillPath: mapping.skillPath,
       domain: parts[0] || "general",
       category: parts[1] || "unknown",
       source: "harness" as const,

@@ -10,6 +10,9 @@ import { Router } from "express";
 import { ensureAuthenticated } from "../../auth/middleware";
 import { ferryClient } from "../../services/ferry-client";
 import { readFeatureFlags } from "@shared/feature-flags";
+import { db } from "../../db";
+import { ferryApprovalAudit } from "@shared/schema";
+import { desc } from "drizzle-orm";
 
 const router = Router();
 router.use(ensureAuthenticated);
@@ -55,6 +58,19 @@ router.post("/rate-adjust", async (req, res) => {
     res.json(await ferryClient.adjustRate(req.body.agent_id));
   } catch (e) {
     res.status(502).json({ error: "Ferry unreachable" });
+  }
+});
+
+router.get("/approvals", async (_req, res) => {
+  try {
+    const approvals = await db
+      .select()
+      .from(ferryApprovalAudit)
+      .orderBy(desc(ferryApprovalAudit.requestedAt))
+      .limit(100);
+    res.json({ approvals });
+  } catch (e) {
+    res.status(500).json({ error: "Failed to query approval audit trail" });
   }
 });
 

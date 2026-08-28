@@ -1,19 +1,16 @@
 /**
  * Skill Discovery Service — v3.10.3a
  *
- * Provides skill search with caching. Routes through the ferry-based
- * skill catalog when FF_FERRY_BRIDGE is enabled, falling back to the
- * legacy LangGraph orchestrator when disabled.
+ * Provides skill search and content loading with caching. Routes
+ * through the ferry-based skill catalog backed by nexus-harness.
  */
 
 import type {
   SkillSearchRequest,
   SkillSearchResult,
-  SkillSearchResponse,
-  SkillContentResponse,
 } from "../../shared/types/skill-types";
 import { searchFerrySkills, listFerrySkills } from "./ferry-skill-catalog";
-import { readFeatureFlags } from "@shared/feature-flags";
+import { ferryClient } from "./ferry-client";
 import { createLogger } from '../lib/logger';
 const log = createLogger("skill-discovery-service");
 
@@ -31,40 +28,35 @@ export async function findSkills(req: SkillSearchRequest): Promise<SkillSearchRe
     return cached.data;
   }
 
-  let results: SkillSearchResult[] = [];
-
-  if (readFeatureFlags(process.env).ferryBridge) {
-    const ferryResults = searchFerrySkills(req.query);
-    results = ferryResults.map((s) => ({
-      name: s.name,
-      skill_path: s.skillPath,
-      domain: s.domain,
-      score: 1.0,
-      snippet: `Harness skill: ${s.skillPath}`,
-    }));
-  }
-
-  if (results.length === 0) {
-    try {
-      const { searchSkills } = await import("./langgraph-client");
-      const response = await searchSkills(req);
-      results = response.results;
-    } catch (error) {
-      log.error("[SkillDiscovery] Search failed:", error);
-      return [];
-    }
-  }
+  const ferryResults = searchFerrySkills(req.query);
+  const results: SkillSearchResult[] = ferryResults.map((s) => ({
+    name: s.name,
+    skill_path: s.skillPath,
+    domain: s.domain,
+    score: 1.0,
+    snippet: `Harness skill: ${s.skillPath}`,
+  }));
 
   searchCache.set(key, { data: results, expires: Date.now() + CACHE_TTL_MS });
   return results;
 }
 
 export async function loadSkill(skillName: string): Promise<string | null> {
+  const skills = listFerrySkills();
+  const match = skills.find(
+    (s) => s.name === skillName || s.skillPath.endsWith(`/${skillName}`),
+  );
+  if (!match) return null;
+
   try {
-    const { getSkillContent } = await import("./langgraph-client");
-    const response = await getSkillContent(skillName);
-    return response.content;
-  } catch {
+    const result = await ferryClient.submitTask({
+      task_id: `skill-load-${skillName}-${Date.now()}`,
+      tool_name: match.skillPath,
+      json_arguments: JSON.stringify({ action: "describe" }),
+    });
+    return result.output;
+  } catch (err) {
+    log.error(`[SkillDiscovery] Failed to load skill ${skillName}:`, err);
     return null;
   }
 }

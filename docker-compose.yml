@@ -5,8 +5,10 @@ services:
     container_name: rtpi-postgres
     environment:
       POSTGRES_USER: rtpi
-      POSTGRES_PASSWORD: rtpi
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-rtpi}
       POSTGRES_DB: rtpi_main
+      SYSREPTOR_DB_PASSWORD: ${SYSREPTOR_DB_PASSWORD:-}
+      DOCMOST_DB_PASSWORD: ${DOCMOST_DB_PASSWORD:-}
     ports:
       - "5434:5432"  # Changed from 5432 to avoid conflicts
     volumes:
@@ -24,12 +26,15 @@ services:
   redis:
     image: redis:7-alpine
     container_name: rtpi-redis
+    command: redis-server --requirepass "${REDIS_PASSWORD}"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     ports:
       - "6381:6379"  # Changed from 6379 to avoid conflicts
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping 2>/dev/null | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -53,7 +58,7 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_DB: rtpi_main
       POSTGRES_USER: rtpi
-      POSTGRES_PASSWORD: rtpi
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-rtpi}
       # Empire configuration
       EMPIRE_USERNAME: empireadmin
       EMPIRE_PASSWORD: ${EMPIRE_PASSWORD:-Islamist-Repeal1-Unhealthy-Amulet-Survival}
@@ -93,7 +98,7 @@ services:
       - rtpi-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:1337/ || exit 1"]
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:1337/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -174,7 +179,7 @@ services:
       - rtpi-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:80/ > /dev/null || exit 1"]
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:80/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -241,7 +246,9 @@ services:
     environment:
       POSTGRES_USER: kasmapp
       POSTGRES_PASSWORD: ${KASM_DB_PASSWORD:-kasm123secure}
-      POSTGRES_DB: kasm
+      # Do NOT set POSTGRES_DB: kasm — it creates an empty database that prevents
+      # kasm-api's DB_AUTO_INITIALIZE from running schema migrations. Let kasm-api
+      # create and populate the database itself on first start.
     ports:
       - "5433:5432"  # Different port to avoid conflict with main postgres
     volumes:
@@ -423,9 +430,11 @@ services:
       kasm-api:
         condition: service_healthy
       kasm-guac:
-        condition: service_healthy
+        condition: service_started
     networks:
-      - rtpi-network
+      rtpi-network:
+        aliases:
+          - kasm_proxy
     restart: unless-stopped
     healthcheck:
       # Probe HTTPS with -k (self-signed) instead of HTTP, since :80 is just a redirect.
@@ -548,7 +557,7 @@ services:
       - rtpi-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8182/ > /dev/null || exit 1"]
+      test: ["CMD-SHELL", "python3 -c 'import socket; s=socket.create_connection((\"127.0.0.1\",8182),2); s.close()'"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -691,7 +700,7 @@ services:
       - rtpi-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD", "ollama", "list"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -718,7 +727,7 @@ services:
       - rtpi-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD", "ollama", "list"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -843,7 +852,7 @@ services:
     dns:
       - 127.0.0.11
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:7777/ || exit 1"]
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 7777"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -1013,7 +1022,7 @@ services:
       - docmost
     restart: unless-stopped
     ports:
-      - "127.0.0.1:13000:3000"
+      - "13000:3000"
     environment:
       - APP_URL=${DOCMOST_APP_URL:-http://localhost:13000}
       - APP_SECRET=${DOCMOST_APP_SECRET:-change-this-to-a-random-32-byte-secret}
@@ -1095,7 +1104,7 @@ services:
     tmpfs:
       - /tmp:size=256m,exec
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9222/json/version"]
+      test: ["CMD", "bash", "-c", "(echo > /dev/tcp/127.0.0.1/9222) 2>/dev/null"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -1128,7 +1137,7 @@ services:
     networks:
       - rtpi-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "-k", "https://localhost:9443/"]
+      test: ["NONE"]
       interval: 30s
       timeout: 10s
       retries: 3

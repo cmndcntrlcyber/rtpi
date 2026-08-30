@@ -70,8 +70,17 @@ fail() { echo "  [fail]  $*" >&2; exit "${2:-3}"; }
 # Tuples of: role | database | env-var-holding-password | extensions(csv)
 # Add a new line here to manage additional shared-postgres roles.
 MANAGED=(
+  "rtpi|rtpi_main|DB_PASSWORD|"
   "sysreptor|sysreptor|SYSREPTOR_DB_PASSWORD|uuid-ossp"
   "docmost|docmost|DOCMOST_DB_PASSWORD|uuid-ossp"
+)
+
+# ─── External Postgres instances ────────────────────────────────────────────
+# Separate containers (not sub-roles of rtpi-postgres).
+# Tuples of: container | super_user | super_db | role | env-var-holding-password
+# When role == super_user, ALTER ROLE updates the superuser's own password.
+EXTERNAL_PG=(
+  "rtpi-kasm-db|kasmapp|postgres|kasmapp|KASM_DB_PASSWORD"
 )
 
 # ─── Pre-flight ─────────────────────────────────────────────────────────────
@@ -207,6 +216,55 @@ SQL
   fi
 
   ok "$role / $db reconciled"
+  ((RECONCILED++))
+done
+
+# ─── Reconcile external Postgres instances ──────────────────────────────────
+for spec in "${EXTERNAL_PG[@]}"; do
+  IFS='|' read -r ext_container ext_super ext_superdb role env_var <<<"$spec"
+
+  if [[ -n "$ONLY" && "$ONLY" != "$role" ]]; then
+    continue
+  fi
+
+  pw="$(read_env "$env_var")"
+  if [[ -z "$pw" ]]; then
+    warn "$env_var not set in $ENV_FILE — skipping role '$role' on $ext_container"
+    ((SKIPPED++))
+    continue
+  fi
+
+  if ! docker inspect -f '{{.State.Running}}' "$ext_container" 2>/dev/null | grep -q true; then
+    warn "container '$ext_container' not running — skipping"
+    ((SKIPPED++))
+    continue
+  fi
+
+  for _ in 1 2 3 4 5; do
+    docker exec "$ext_container" pg_isready -U "$ext_super" -d "$ext_superdb" >/dev/null 2>&1 && break
+    sleep 2
+  done
+
+  info "reconciling role=$role on $ext_container (password from \$$env_var)"
+  pw_sql="$(sql_quote "$pw")"
+
+  if ! docker exec -i "$ext_container" psql -v ON_ERROR_STOP=1 -X -q \
+       -U "$ext_super" -d "$ext_superdb" <<SQL
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '$role') THEN
+    EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', '$role', '$pw_sql');
+  ELSE
+    EXECUTE format('ALTER ROLE %I WITH LOGIN PASSWORD %L', '$role', '$pw_sql');
+  END IF;
+END
+\$\$;
+SQL
+  then
+    fail "failed to alter role '$role' on $ext_container" 3
+  fi
+
+  ok "$role on $ext_container reconciled"
   ((RECONCILED++))
 done
 

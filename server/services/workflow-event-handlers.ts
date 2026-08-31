@@ -702,16 +702,6 @@ class WorkflowEventHandlers extends EventEmitter {
     await this.seedWorkflowTemplates();
 
     try {
-      // Initialize Tool Connector Agent (background polling)
-      const { toolConnectorAgent } = await import('./agents/tool-connector-agent');
-      await toolConnectorAgent.initialize();
-      await toolConnectorAgent.start();
-      log.info('Tool Connector Agent initialized and started');
-    } catch (error) {
-      log.error('Failed to initialize Tool Connector Agent:', error);
-    }
-
-    try {
       // Initialize Surface Assessment Agent
       const { surfaceAssessmentAgent } = await import('./agents/surface-assessment-agent');
       await surfaceAssessmentAgent.initialize();
@@ -861,13 +851,6 @@ class WorkflowEventHandlers extends EventEmitter {
    */
   async shutdownAgentSystem(): Promise<void> {
     log.info('Shutting down Agent System...');
-
-    try {
-      const { toolConnectorAgent } = await import('./agents/tool-connector-agent');
-      await toolConnectorAgent.stop();
-    } catch (error) {
-      log.error('Error stopping Tool Connector Agent:', error);
-    }
 
     try {
       const { dynamicWorkflowOrchestrator } = await import('./dynamic-workflow-orchestrator');

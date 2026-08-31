@@ -8,6 +8,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import path from "path";
 import { writeFileSync, unlinkSync } from "fs";
 import { logger } from "./lib/logger";
 import { requestIdMiddleware } from "./middleware/request-id";
@@ -345,8 +346,17 @@ app.get("/api/v1", (_req, res) => {
   });
 });
 
-// 404 handler
-app.use((req, res) => {
+// Production static file serving — Vite build output
+if (process.env.NODE_ENV === "production") {
+  const clientDir = path.join(import.meta.dirname, "../dist/client");
+  app.use(express.static(clientDir));
+  app.get("*", (_req, res) => {
+    res.sendFile(path.join(clientDir, "index.html"));
+  });
+}
+
+// 404 handler for unmatched API routes
+app.use("/api", (req, res) => {
   res.status(404).json({
     error: "Not Found",
     path: req.path,

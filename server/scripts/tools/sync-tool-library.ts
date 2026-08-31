@@ -91,7 +91,7 @@ async function syncToolLibrary() {
           metadata: {
             toolId: tool.toolId,
             registryId: tool.id,
-            source: 'tool-connector-agent',
+            source: 'tool-discovery-service',
           },
         });
         securityToolsCreated++;

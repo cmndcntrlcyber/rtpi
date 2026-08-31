@@ -1027,35 +1027,6 @@ router.get("/web-hacker/status", async (_req, res) => {
   }
 });
 
-// POST /api/v1/agents/tool-connector/poll - Manually trigger Tool Connector poll
-router.post("/tool-connector/poll", ensureRole("admin", "operator"), async (req, res) => {
-  const user = req.user as any;
-
-  try {
-    const { toolConnectorAgent } = await import("../../services/agents/tool-connector-agent");
-
-    const tools = await toolConnectorAgent.poll();
-
-    await logAudit(user.id, "trigger_tool_connector_poll", "/agents/tool-connector/poll", null, true, req);
-
-    res.json({ message: "Tool registry updated", toolsFound: tools.length, tools });
-  } catch (error: any) {
-    await logAudit(user.id, "trigger_tool_connector_poll", "/agents/tool-connector/poll", null, false, req);
-    res.status(500).json({ error: "Failed to poll tools", details: error?.message });
-  }
-});
-
-// GET /api/v1/agents/tool-connector/status - Get Tool Connector Agent status
-router.get("/tool-connector/status", async (_req, res) => {
-  try {
-    const { toolConnectorAgent } = await import("../../services/agents/tool-connector-agent");
-    const status = toolConnectorAgent.getStatus();
-    res.json({ status });
-  } catch (error: any) {
-    res.status(500).json({ error: "Failed to get status", details: error?.message });
-  }
-});
-
 // ============================================================================
 // Workflow Management Routes
 // ============================================================================
@@ -1214,7 +1185,6 @@ router.get("/system/status", async (_req, res) => {
     // Get individual agent statuses
     let surfaceAssessmentStatus = null;
     let webHackerStatus = null;
-    let toolConnectorStatus = null;
 
     try {
       const { surfaceAssessmentAgent } = await import("../../services/agents/surface-assessment-agent");
@@ -1230,20 +1200,12 @@ router.get("/system/status", async (_req, res) => {
       // Agent not loaded
     }
 
-    try {
-      const { toolConnectorAgent } = await import("../../services/agents/tool-connector-agent");
-      toolConnectorStatus = toolConnectorAgent.getStatus();
-    } catch (e) {
-      // Agent not loaded
-    }
-
     res.json({
       isInitialized,
       config,
       agents: {
         surfaceAssessment: surfaceAssessmentStatus,
         webHacker: webHackerStatus,
-        toolConnector: toolConnectorStatus,
       },
     });
   } catch (error: any) {

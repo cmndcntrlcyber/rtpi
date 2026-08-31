@@ -2,7 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import https from 'https';
 import fs from 'fs';
 import { db } from '../db';
-import { kasmWorkspaces, kasmSessions } from '@shared/schema';
+import { kasmWorkspaces, kasmSessions, users } from '@shared/schema';
 import { eq, and, lt, isNull, sql, desc } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { kasmNginxManager } from './kasm-nginx-manager';
@@ -97,7 +97,7 @@ function buildDockerOpts(): { host?: string; port?: number; protocol?: 'http' | 
 // Type Definitions
 // ============================================================================
 
-export type WorkspaceType = 'vscode' | 'burp' | 'kali' | 'firefox' | 'empire';
+export type WorkspaceType = 'vscode' | 'burp' | 'kali' | 'firefox' | 'empire' | 'nexus-console' | 'nexus-kali';
 
 export type WorkspaceStatus = 'starting' | 'running' | 'stopped' | 'failed';
 
@@ -205,7 +205,12 @@ export class KasmWorkspaceManager {
     kali: 'kasmweb/kali-rolling-desktop:1.17.0',
     firefox: 'kasmweb/firefox:1.17.0',
     empire: 'kasmweb/empire-client:1.17.0',
+    'nexus-console': 'cmndcntrl/nexus-console-kasm:latest',
+    'nexus-kali': 'nexus-offense:latest',
   };
+
+  private static readonly CERT_STAGE_PATH = '/opt/kasm/operator-certs';
+  private static readonly CONSOLE_STAGE_PATH = '/opt/kasm/nexus-console';
 
   constructor(options?: {
     kasmApiUrl?: string;
@@ -343,6 +348,46 @@ export class KasmWorkspaceManager {
   }
 
   // ============================================================================
+  // Per-User Certificate Injection
+  // ============================================================================
+
+  private async getOperatorCertOverride(
+    userId: string,
+    workspaceType: WorkspaceType,
+  ): Promise<Record<string, any> | undefined> {
+    try {
+      const [user] = await db
+        .select({ username: users.username })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      if (!user?.username) return undefined;
+
+      const operatorName = user.username;
+      const certPath = `${KasmWorkspaceManager.CERT_STAGE_PATH}/${operatorName}`;
+      const volumes: Record<string, { bind: string; mode: string }> = {
+        [certPath]: {
+          bind: '/home/kasm-user/.nexus/certs',
+          mode: 'ro',
+        },
+      };
+
+      if (workspaceType === 'nexus-console' || workspaceType === 'nexus-kali') {
+        volumes[KasmWorkspaceManager.CONSOLE_STAGE_PATH] = {
+          bind: '/opt/nexus-console',
+          mode: 'ro',
+        };
+      }
+
+      return { volumes };
+    } catch (err) {
+      log.warn(`[KasmWorkspaceManager] Failed to resolve operator cert override for user ${userId}:`, err);
+      return undefined;
+    }
+  }
+
+  // ============================================================================
   // Workspace Provisioning (#KW-23)
   // ============================================================================
 
@@ -370,12 +415,19 @@ export class KasmWorkspaceManager {
       const expiryHours = config.expiryHours || this.defaultExpiryHours;
       const expiresAt = new Date(Date.now() + expiryHours * 60 * 60 * 1000);
 
+      // Resolve per-user cert volume mounts for operator workspaces
+      const dockerRunOverride = await this.getOperatorCertOverride(
+        config.userId,
+        config.workspaceType,
+      );
+
       // Create Kasm session via API
       const sessionCreateStart = Date.now();
       const kasmSession = await this.createKasmSession({
         image: this.imageMapping[config.workspaceType],
         cpuLimit: config.cpuLimit || '2',
         memoryLimit: config.memoryLimit || '4096M',
+        dockerRunConfigOverride: dockerRunOverride,
       });
       const sessionCreateDuration = Date.now() - sessionCreateStart;
 
@@ -449,16 +501,21 @@ export class KasmWorkspaceManager {
     image: string;
     cpuLimit: string;
     memoryLimit: string;
+    dockerRunConfigOverride?: Record<string, any>;
   }): Promise<KasmSession> {
     try {
-      const response = await this.apiClient.post('/api/sessions', {
+      const payload: Record<string, any> = {
         image_src: config.image,
         enable_sharing: false,
         environment: {
           CPU_LIMIT: config.cpuLimit,
           MEMORY_LIMIT: config.memoryLimit,
         },
-      });
+      };
+      if (config.dockerRunConfigOverride) {
+        payload.docker_run_config_override = config.dockerRunConfigOverride;
+      }
+      const response = await this.apiClient.post('/api/sessions', payload);
 
       return response.data.session as KasmSession;
     } catch (error) {

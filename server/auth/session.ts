@@ -47,7 +47,9 @@ export const sessionMiddleware = session({
   saveUninitialized: false,
   name: "rtpi.sid",
   cookie: {
-    secure: process.env.NODE_ENV === "production", // HTTPS only in production
+    secure: process.env.COOKIE_SECURE !== undefined
+      ? process.env.COOKIE_SECURE === "true"
+      : process.env.NODE_ENV === "production",
     httpOnly: true,
     maxAge: 1000 * 60 * 60 * 24, // 24 hours
     sameSite: "lax",

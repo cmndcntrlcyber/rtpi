@@ -237,6 +237,24 @@ services:
     networks:
       - rtpi-network
 
+  # Kasm Web UI Init — extracts the Angular SPA from the official proxy image
+  # into a shared volume. Idempotent: skips if index.html already exists.
+  kasm-web-init:
+    image: kasmweb/proxy:1.19.0-rolling
+    container_name: rtpi-kasm-web-init
+    profiles:
+      - kasm
+    volumes:
+      - kasm-www:/www
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ -f /www/index.html ]; then echo "[kasm-web-init] Web UI already extracted"; exit 0; fi
+        cp -r /srv/www/* /www/
+        echo "[kasm-web-init] Web UI extracted to /www"
+    networks:
+      - rtpi-network
+
   # Kasm PostgreSQL Database (separate from main RTPI database)
   kasm-db:
     image: postgres:16-alpine
@@ -253,6 +271,12 @@ services:
       - ssl_cert_file=/etc/ssl/certs/kasm/db_server.crt
       - -c
       - ssl_key_file=/etc/ssl/certs/kasm/db_server.key
+      - -c
+      - statement_timeout=120000
+      - -c
+      - idle_in_transaction_session_timeout=60000
+      - -c
+      - lock_timeout=30000
     environment:
       POSTGRES_USER: kasmapp
       POSTGRES_PASSWORD: ${KASM_DB_PASSWORD:-kasm123secure}
@@ -321,6 +345,10 @@ services:
       POSTGRES_PASSWORD: ${KASM_DB_PASSWORD:-kasm123secure}
       POSTGRES_DB: kasm
       DB_AUTO_INITIALIZE: "1"   # tells startup.sh to create schema if absent
+      DEFAULT_ADMIN_PASSWORD: ${KASM_ADMIN_PASSWORD:-kasmadmin}
+      DEFAULT_USER_PASSWORD: ${KASM_USER_PASSWORD:-kasmuser}
+      DEFAULT_MANAGER_TOKEN: ${KASM_MANAGER_TOKEN}
+      DEFAULT_REGISTRATION_TOKEN: ${KASM_REGISTRATION_TOKEN}
       # API configuration
       API_SERVER_ID: ${KASM_API_SERVER_ID:-default}
       SERVER_HOSTNAME: ${KASM_SERVER_HOSTNAME:-localhost}
@@ -342,6 +370,15 @@ services:
           sed -i "s|^  password: .*|  password: $${POSTGRES_PASSWORD}|" "$$CFG"
           sed -i 's|^  redis_password: .*|  redis_password: ""|' "$$CFG"
           echo "[kasm-api] Patched $$CFG"
+        fi
+        if command -v psql >/dev/null 2>&1; then
+          echo "[kasm-api] Clearing stale DB connections..."
+          PGPASSWORD="$${POSTGRES_PASSWORD}" psql \
+            -h "$${POSTGRES_HOST:-db}" -p "$${POSTGRES_PORT:-5432}" \
+            -U "$${POSTGRES_USER:-kasmapp}" -d "$${POSTGRES_DB:-kasm}" -tAc \
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$${POSTGRES_DB:-kasm}' AND pid != pg_backend_pid() AND state != 'active';" \
+            2>/dev/null && echo "[kasm-api] Stale connections cleared" \
+            || echo "[kasm-api] Stale connection cleanup skipped (DB not ready)"
         fi
         exec /usr/bin/startup.sh
     # No host port mapping — kasm-proxy fronts the API on the internal network.
@@ -434,8 +471,11 @@ services:
       - ./docker/kasm-proxy/default.conf.template:/etc/nginx/templates/default.conf.template:ro
       - kasm-proxy-config:/etc/nginx/conf.d/containers.d
       - kasm-certs:/etc/nginx/certs:ro
+      - kasm-www:/srv/www:ro
     depends_on:
       kasm-proxy-init:
+        condition: service_completed_successfully
+      kasm-web-init:
         condition: service_completed_successfully
       kasm-api:
         condition: service_healthy
@@ -1098,9 +1138,10 @@ services:
     profiles:
       - pdf
     restart: unless-stopped
-    # Defaults expose CDP on :9222 with no auth — keep on the rtpi-network only.
+    # CDP port — use 9223 to avoid conflict with nexus-kali's 9222 binding.
+    # Internal network services access this container via rtpi-chromium-shell:9222.
     ports:
-      - "127.0.0.1:9222:9222"
+      - "127.0.0.1:9223:9222"
     networks:
       - rtpi-network
     dns:
@@ -1390,6 +1431,7 @@ volumes:
   kasm-api-data:
   kasm-manager-data:
   kasm-proxy-config:
+  kasm-www:
   kasm-guac-data:
   kasm-agent-data:
   kasm-share-data:

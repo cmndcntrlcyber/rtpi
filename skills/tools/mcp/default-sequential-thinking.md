@@ -1,48 +1,50 @@
 ---
 name: MCP Sequential Thinking
-description: MCP server that enables structured step-by-step reasoning and
-  branching thought processes for complex problem decomposition and analysis.
+description: MCP server that provides structured, step-by-step reasoning
+  capability for complex problem-solving, planning, and analysis with revision
+  and branching support.
 registry: mcp
 tool_id: default:sequential-thinking
 category: mcp-server
 tags:
   - mcp-server
   - reasoning
-  - problem-solving
+  - planning
   - analysis
-  - structured-thinking
-  - nodejs
-summary: "MCP Sequential Thinking enables AI agents to break complex problems
-  into manageable steps with revision and branching capabilities. Invoke via npx
-  -y @modelcontextprotocol/server-sequential-thinking. The server exposes a
-  single tool: sequential_thinking with inputs thought (string),
-  nextThoughtNeeded (boolean), thoughtNumber (integer), totalThoughts (integer),
-  and optional isRevision, revisesThought, branchFromThought, branchId,
-  needsMoreThoughts. Use for multi-step problem decomposition, planning that
-  requires course correction, analysis where full scope is unclear initially,
-  and situations requiring context across multiple reasoning steps. The agent
-  typically calls this tool multiple times in sequence—not invoked manually. The
-  server maintains internal thought history and handles persistence
-  automatically. Outputs are implicit (stored server-side); no JSON returned to
-  parse. Key limitation: this is a reasoning scaffold, not an information
-  retrieval or execution tool. No authentication required. Useful for red-team
-  scenarios involving multi-stage attack planning, vulnerability chain analysis,
-  or phased reconnaissance strategy development where explicit step
-  documentation aids orchestration and review."
+  - reflection
+  - problem-solving
+  - cognitive-tool
+summary: Use sequential-thinking when you need to break down complex attack
+  paths, plan multi-stage operations, or analyze problems where the full scope
+  is unclear at the start. Invoke the `sequential_thinking` tool (your MCP host
+  calls it automatically when you reason step-by-step) to record thoughts,
+  revise earlier reasoning, branch into hypotheticals, and maintain context
+  across a chain of analysis. Each invocation appends to
+  `~/.mcp_sequential_thinking/current_session.jsonl` (override with
+  `MCP_STORAGE_DIR`), creating an audit trail. The tool does NOT execute attacks
+  or run commands—it structures your reasoning process so you can track
+  hypotheses, adjust estimates, and backtrack when assumptions fail. Expect the
+  tool to persist state between calls; you can revise thought N, branch from
+  thought M, and dynamically extend `totalThoughts` if the problem proves deeper
+  than estimated. Output is minimal acknowledgment; the value is in forcing
+  disciplined, traceable reasoning that won't be lost if a long operation is
+  interrupted. Do not use for simple one-shot queries; use for planning database
+  migrations, debugging production-only failures, comparing architecture
+  trade-offs, or mapping attack trees where you may need to backtrack.
 sources:
-  - https://mcpservers.org/servers/arben-adm/mcp-sequential-thinking
-  - https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking
-  - https://www.npmjs.com/package/@modelcontextprotocol/server-sequential-thinking
-  - https://www.youtube.com/watch?v=RCFe1L9qm3E
-  - https://scottspence.com/posts/using-mcp-tools-with-claude-and-cline
-  - https://docs.typingmind.com/model-context-protocol-(mcp)-in-typingmind/typingmind-mcp-sequential-thinking
   - https://github.com/arben-adm/mcp-sequential-thinking
-  - https://forum.cursor.com/t/guide-maximizing-coding-efficiency-with-mcp-sequential-thinking-openrouter-ai/66461
-  - https://www.reddit.com/r/ClaudeAI/comments/1jf4hnt/setting_up_mcp_servers_in_claude_code_a_tech/
-  - https://fast.io/resources/red-teaming-mcp-servers/
-  - https://arxiv.org/html/2511.15998v1
-  - https://www.penligent.ai/hackinglabs/anthropic-mcp-vulnerability-7000-servers-and-the-case-for-continuous-red-teaming/
-generated_at: 2026-05-19T10:55:19.300Z
+  - https://mcpservers.org/servers/modelcontextprotocol/sequentialthinking
+  - https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking
+  - https://mcpservers.org/servers/arben-adm/mcp-sequential-thinking
+  - https://www.npmjs.com/package/@modelcontextprotocol/server-sequential-thinking
+  - https://mcp.so/servers/sequentialthinking
+  - https://www.npmjs.com/package/@iflow-mcp/sequential-thinking-mcp
+  - https://mcpmarket.com/server/redteam-1
+  - https://www.cycognito.com/learn/red-teaming/red-teaming-vs-pentesting
+  - https://github.com/ibrahimsaleem/PentestThinkingMCP
+  - https://www.cycognito.com/learn/red-teaming
+  - https://pentest.qa/blog/mcp-server-security-testing-red-team-guide
+generated_at: 2026-09-03T12:38:40.018Z
 generated_by: anthropic
 source_hash: ec64c95057c2e6b53aac2cb8a5126ba2e2a561e8a7471a3393835473887b1613
 ---
@@ -51,37 +53,36 @@ source_hash: ec64c95057c2e6b53aac2cb8a5126ba2e2a561e8a7471a3393835473887b1613
 
 ## Overview
 
-MCP Sequential Thinking is a Node.js-based MCP server that provides structured reasoning capabilities to AI agents. It maintains a history of thought steps, validates them through a structured workflow, and supports revision and branching. The server runs as a lightweight npx package and exposes a single tool (sequential_thinking) that agents invoke iteratively to work through complex problems step-by-step. Unlike servers that fetch data or execute commands, this server scaffolds the reasoning process itself, making implicit AI thinking explicit and auditable. The server handles data persistence and backup creation automatically. Thought logging can be disabled via DISABLE_THOUGHT_LOGGING=true environment variable.
+MCP Sequential Thinking (`@modelcontextprotocol/server-sequential-thinking`) is a Model Context Protocol server that exposes a single tool—`sequential_thinking`—to structure multi-step reasoning. It is designed for problems that require breaking down complexity, planning with room for revision, course correction during analysis, and maintaining context over many steps. The server persists a session log as an append-only JSONL file at `~/.mcp_sequential_thinking/current_session.jsonl` (configurable via `MCP_STORAGE_DIR`). Each tool invocation appends one fsynced line, so interrupted writes self-recover and you get a complete audit trail. Sessions from older JSON-based versions are migrated automatically. The tool does not perform actions—it records and structures your reasoning so you can revise, branch, and extend your thought process dynamically.
 
 ## When to use
 
-Deploy Sequential Thinking when agents must decompose complex problems into discrete steps, plan multi-phase operations where requirements may change mid-execution, analyze situations where full scope is initially unclear, maintain context across multiple reasoning steps, or filter irrelevant information from complex scenarios. In red-team contexts, use for: multi-stage attack path planning, vulnerability chain analysis where one exploit enables another, phased reconnaissance strategy development, complex lateral movement planning, or any operation requiring explicit step documentation for review and orchestration. Do NOT use for simple queries, information retrieval, command execution, or single-step decisions—overhead outweighs benefit.
+Use sequential-thinking when your task involves: breaking complex red-team operations into discrete steps; planning multi-stage attacks or migrations where scope may expand; debugging issues that require hypothesis generation and verification; comparing multiple approaches and needing to branch if an assumption fails; maintaining context over long chains of reasoning (e.g., privilege escalation paths, network traversal); filtering irrelevant recon data while preserving what matters. DO NOT use for simple enumeration, single-command execution, or tasks where the full solution is obvious upfront. Example scenarios: 'Plan a privilege escalation path from web shell to domain admin, revising if a technique fails'; 'Compare three C2 infrastructure designs and branch if egress filtering assumptions are wrong'; 'Debug why an exploit works in dev but fails in production, showing step-by-step reasoning.'
 
 ## Authentication & setup
 
-No authentication required. Install via npx (automatically fetches latest version) or Docker. For Claude Desktop, add to claude_desktop_config.json: {"mcpServers": {"sequential-thinking": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]}}}. On Windows, prefix with cmd /c. For Cursor, similar configuration in MCP settings. For Docker: docker run --rm -i mcp/sequentialthinking. Server runs in-process; no external network dependencies. To disable thought logging (operational security consideration), set environment variable DISABLE_THOUGHT_LOGGING=true in server configuration. Node.js/npx must be available in PATH.
+No authentication required. The server is invoked via `npx -y @modelcontextprotocol/server-sequential-thinking` and auto-started by your MCP host (Claude Desktop, Cursor, etc.). Session data is written to `~/.mcp_sequential_thinking/current_session.jsonl` by default; override the directory by setting the `MCP_STORAGE_DIR` environment variable before launch (e.g., `MCP_STORAGE_DIR=/secure/logs npx -y @modelcontextprotocol/server-sequential-thinking`). Verify the tool appears in your host's MCP inspector after restart. No API keys, tokens, or network access needed—purely local state persistence.
 
 ## Key commands / parameters
 
-The server exposes ONE tool: sequential_thinking. Required inputs: thought (string, the current reasoning step content), nextThoughtNeeded (boolean, whether another step follows), thoughtNumber (integer, current step number in sequence), totalThoughts (integer, estimated total steps needed). Optional inputs: isRevision (boolean, whether this step revises prior thinking), revisesThought (integer, which thought number is being reconsidered), branchFromThought (integer, branching point for alternate reasoning path), branchId (string, identifier for branch), needsMoreThoughts (boolean, if scope expansion required). Agents typically invoke this tool multiple times per task—once per reasoning step. The tool does not return data for agent consumption; it stores thoughts server-side and provides implicit continuity. No manual invocation needed; MCP-aware hosts call automatically when prompted for structured reasoning.
+The server exposes one tool: `sequential_thinking`. Your MCP host invokes it automatically when you reason step-by-step; you typically do not call it by hand. Parameters: `thought` (string, required): the current thinking step or hypothesis. `nextThoughtNeeded` (boolean, required): true if more reasoning is required. `thoughtNumber` (integer, required): current step number in the sequence. `totalThoughts` (integer, required): estimated total steps needed (can be revised upward/downward). `isRevision` (boolean, optional): true if this step revises earlier reasoning. `revisesThought` (integer, optional): which thought number is being reconsidered (required if `isRevision` is true). `branchFromThought` (integer, optional): the step number from which you are branching into a hypothetical or alternative path. `branchId` (string, optional): identifier for the branch (e.g., 'assume-fw-disabled'). `needsMoreThoughts` (boolean, optional): true if you reach the estimated end but realize more steps are needed. The tool returns minimal acknowledgment; the value is the persistent session log, not the response text.
 
 ## Example workflows
 
-Red-team attack planning: Agent invokes sequential_thinking with thoughtNumber=1, thought="Enumerate externally-facing services on target subnet", stage would be implicit, nextThoughtNeeded=true, totalThoughts=5. Subsequent calls increment thoughtNumber, chain context ("Given services found, identify unpatched versions" as thought 2, etc.). If scope expands mid-operation, agent sets needsMoreThoughts=true and increases totalThoughts. If initial approach fails, agent uses isRevision=true and revisesThought=2 to backtrack and try alternate exploit path. Branching example: thoughtNumber=3 branches with branchFromThought=2, branchId="alternate-vector" to explore parallel attack surfaces without losing original reasoning chain. Typical prompt: 'Use sequential thinking to plan a multi-stage phishing campaign targeting this organization.' Agent will invoke tool 5-10 times, building coherent plan step-by-step. Another use: 'Analyze this vulnerability scan output and prioritize exploitation paths'—agent structures analysis across multiple thought steps rather than single monolithic response.
+1. Multi-stage attack planning: Start with `thought='Enumerate SMB shares on 10.0.1.0/24', thoughtNumber=1, totalThoughts=5, nextThoughtNeeded=true`. Continue with `thought='Found admin$ accessible on .15, .22; test null session', thoughtNumber=2, totalThoughts=5, nextThoughtNeeded=true`. If null session fails, revise: `thought='Null session blocked; pivot to LLMNR poisoning', thoughtNumber=3, totalThoughts=6, isRevision=true, revisesThought=2, nextThoughtNeeded=true`. 2. Branching on assumptions: `thought='Assume port 445 filtered at perimeter', thoughtNumber=4, totalThoughts=6, branchFromThought=3, branchId='fw-filtered', nextThoughtNeeded=true`. Later, `thought='Confirmed 445 open; discard fw-filtered branch', thoughtNumber=5, totalThoughts=6, nextThoughtNeeded=false`. 3. Extending scope: Reach `thoughtNumber=6, totalThoughts=6, nextThoughtNeeded=false`, then realize you need more: `thought='Discovered nested AD trusts; need to map', thoughtNumber=7, totalThoughts=10, needsMoreThoughts=true, nextThoughtNeeded=true`.
 
 ## Output format
 
-Sequential Thinking does NOT produce parseable output for agent consumption. Thought steps are stored server-side in thread-safe storage; agents receive implicit confirmation that thought was recorded. The value is in the structured reasoning process itself—forcing explicit step articulation, enabling revision/branching, and creating auditable thought history. If you need to extract the full reasoning chain, that would require separate tooling to query the server's internal storage (not exposed via standard MCP interface). For operational review, check server logs (if DISABLE_THOUGHT_LOGGING=false) or implement separate export functionality. The agent benefits from maintained context across calls but does not parse returned JSON schemas—this is reasoning infrastructure, not data retrieval.
+The tool returns a brief acknowledgment (e.g., 'Thought recorded'). The operational output is the session log file at `~/.mcp_sequential_thinking/current_session.jsonl`, one JSON object per line: `{"thought": "...", "thoughtNumber": N, "totalThoughts": M, "nextThoughtNeeded": true, "timestamp": "...", ...}`. Each line is fsynced immediately, so the file is safe to read mid-operation and serves as a forensic audit trail. Interrupted writes (truncated final line) are ignored on next load. To inspect the session, `tail -f ~/.mcp_sequential_thinking/current_session.jsonl` or parse with `jq`. Old JSON sessions (`current_session.json`) are migrated to JSONL on first run and renamed to `current_session.json.migrated-to-v2`.
 
 ## Common pitfalls
 
-Misunderstanding purpose: This is NOT a research tool, command executor, or data source. It scaffolds reasoning only. Agents may over-invoke for simple tasks—reserve for genuinely complex multi-step problems where explicit decomposition adds value. Forgetting to increment thoughtNumber causes confusion in stored history. Setting totalThoughts too low forces needsMoreThoughts expansion; setting too high wastes iterations. The isRevision and branching parameters require careful logic—agents may struggle to correctly identify when backtracking is needed versus when to continue forward. Thought logging defaults to ON; disable in sensitive environments to avoid exposing reasoning chains in logs. The server maintains persistent state; if restarted mid-operation, context is lost unless export/import functionality is used. Do not expect this tool to produce actionable data—it structures the thinking that leads to using OTHER tools for execution. Over-reliance can slow agent responsiveness; balance structured reasoning with direct problem-solving.
+1. Over-use on trivial tasks: invoking sequential-thinking for simple one-shot commands wastes overhead and clutters the session log. 2. Forgetting to set `MCP_STORAGE_DIR` in shared/containerized environments: sessions may collide or be lost. 3. Not revising when assumptions fail: the tool's value is in `isRevision` and `branchFromThought`; if you never backtrack, you're just appending a linear list. 4. Ignoring the session log: the `.jsonl` file is the ground truth; if your host crashes, you can resume by reading the log and continuing from the last `thoughtNumber`. 5. Confusing the tool with an execution engine: sequential-thinking records reasoning, it does NOT run exploits, call APIs, or perform recon. Pair it with execution tools (e.g., `subprocess`, `http-fetch`) but keep reasoning and action separate. 6. Not adjusting `totalThoughts`: if scope expands or contracts, update the estimate so the log reflects your revised mental model.
 
 ## References
 
-• https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking
-• https://www.npmjs.com/package/@modelcontextprotocol/server-sequential-thinking
-• https://mcpservers.org/servers/arben-adm/mcp-sequential-thinking
-• https://docs.typingmind.com/model-context-protocol-(mcp)-in-typingmind/typingmind-mcp-sequential-thinking
-• https://scottspence.com/posts/using-mcp-tools-with-claude-and-cline
-• https://arxiv.org/html/2511.15998v1
+https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking
+https://www.npmjs.com/package/@modelcontextprotocol/server-sequential-thinking
+https://mcpservers.org/servers/modelcontextprotocol/sequentialthinking
+https://github.com/arben-adm/mcp-sequential-thinking
+https://mcp.so/servers/sequentialthinking

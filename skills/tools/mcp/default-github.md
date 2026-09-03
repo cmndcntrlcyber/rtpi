@@ -1,59 +1,51 @@
 ---
 name: MCP GitHub
-description: MCP server enabling AI agents to query GitHub repos, issues, PRs,
-  and workflows via Model Context Protocol without local Docker or token
-  rotation.
+description: Model Context Protocol server providing GitHub API integration for
+  repository, issue, PR, actions, and security operations via LLM tool calls.
 registry: mcp
 tool_id: default:github
 category: mcp-server
 tags:
-  - mcp
-  - github
-  - reconnaissance
-  - api
-  - read-only
+  - mcp-server
+  - github-api
+  - source-control
+  - issue-tracking
+  - ci-cd
   - code-review
-  - osint
-  - context-gathering
+  - llm-integration
 mitre_techniques:
   - T1213.003
-  - T1087.004
-summary: Use MCP GitHub when you need to gather intelligence from GitHub
-  repositories, issues, pull requests, or workflows through an AI-friendly
-  interface. The server runs via `npx -y @modelcontextprotocol/server-github`
-  and requires a GitHub personal access token (PAT). It offers read-only and
-  read-write toolsets—read-only is safer for reconnaissance and avoids
-  permission prompts. Specify toolsets via `--toolsets` flag or
-  `GITHUB_TOOLSETS` env var (e.g., `repos,issues,pull_requests`); default
-  toolset includes repos, issues, PRs, commits, branches, files, and releases.
-  Tools include `listPullRequests`, `getPullRequest`, `searchPullRequests`,
-  `getIssue`, `listIssues`, `getFile`, `searchCode`, and many others. For RTPI,
-  prefer read-only variants to minimize detection risk and avoid write-side
-  logging. The server communicates over stdio; output is structured JSON
-  suitable for LLM parsing. Authentication requires
-  `GITHUB_PERSONAL_ACCESS_TOKEN` env var or Docker volume mount. Watch for rate
-  limits (5,000 req/hr authenticated), repository access restrictions, and
-  potential secret leakage in prompts (future versions will block AI-generated
-  secrets). Always validate that tools match your scope—default toolset may
-  include write operations unless explicitly constrained. For stealth, limit
-  toolset to only required capabilities (e.g., `repos,files` for code recon).
-  Combine with Tavily or web MCP servers for cross-platform OSINT. Do not invoke
-  if target org has MCP registry allowlist policies that may log unrecognized
-  server usage.
+summary: "MCP GitHub server exposes GitHub's API as structured tools callable by
+  LLMs and AI agents. Launch with 'npx -y @modelcontextprotocol/server-github'
+  via stdio transport. Requires GITHUB_PERSONAL_ACCESS_TOKEN environment
+  variable (fine-grained PAT recommended). Server organizes capabilities into
+  toolsets: repos (file access, search), issues, pull_requests, actions
+  (workflow read), code_security (GHAS findings). Use --toolsets flag or
+  GITHUB_TOOLSETS env var to limit scope. Default provides CLI-safe subset;
+  --tools allows granular tool selection. Read-only deployments skip permission
+  prompts. GitHub also offers hosted remote variant for device-independent
+  workflows. Authentication via OAuth or PAT; GitHub App auth available for
+  non-interactive scenarios. Tools return structured JSON. Ideal for automating
+  code review, security triage, CI inspection, repository enumeration. In
+  red-team context: reconnaissance against GitHub orgs, identifying exposed
+  secrets in issues/PRs, mapping CI pipelines, enumerating collaborators/repos.
+  Watch token scope—overly permissive PATs leak org structure and code. MCP
+  servers extend IDE/CLI tooling; this one is official from GitHub, maintained
+  and documented."
 sources:
-  - https://github.blog/ai-and-ml/generative-ai/a-practical-guide-on-how-to-use-the-github-mcp-server/
+  - https://github.blog/ai-and-ml/generative-ai/a-practical-guide-on-how-to-use-the-github-mcp-server
+  - https://github.com/microsoft/mcp-for-beginners
   - https://docs.github.com/en/copilot/concepts/context/mcp
-  - https://github.com/modelcontextprotocol
+  - https://apidog.com/blog/github-mcp-server
   - https://docs.github.com/en/copilot/how-tos/provide-context/use-mcp-in-your-ide/use-the-github-mcp-server
-  - https://github.com/microsoft/mcp-for-beginners/
+  - https://docs.github.com/enterprise-cloud@latest/copilot/reference/copilot-cli-reference/cli-command-reference
   - https://github.com/IBM/mcp-cli
-  - https://github.com/MladenSU/cli-mcp-server
-  - https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers
   - https://github.com/github/github-mcp-server
-  - https://codingbutterbot.github.io/gh_cli_mcp/
-  - https://vulnerablemcp.info/security.html
-  - https://www.penligent.ai/hackinglabs/es/anthropic-mcp-vulnerability-7000-servers-and-the-case-for-continuous-red-teaming/
-generated_at: 2026-05-19T10:53:07.213Z
+  - https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers
+  - https://github.com/TensorBlock/awesome-mcp-servers/blob/main/docs/operating-system--command-line.md
+  - https://github.com/rcvassis/CS_RedTeam-Tools
+  - https://github.com/RELIAX1212221/RedTeam-MCP
+generated_at: 2026-09-03T12:39:06.377Z
 generated_by: anthropic
 source_hash: 4609141c08b57b12156c0466622df290f299b4ef1593e0031d287167b3bf2dff
 ---
@@ -62,43 +54,41 @@ source_hash: 4609141c08b57b12156c0466622df290f299b4ef1593e0031d287167b3bf2dff
 
 ## Overview
 
-MCP GitHub is a Model Context Protocol server maintained by GitHub that exposes GitHub API operations (repos, issues, PRs, commits, files, workflows, releases, projects) as MCP tools. It eliminates the need for manual API calls, token rotation, or Docker container management. The server runs locally via `npx` or remotely through supported IDEs (VS Code, JetBrains) and communicates over stdio. It supports both read-only and read-write toolsets, with read-only being preferred for reconnaissance to avoid permission prompts and minimize footprint. The server is open-source and located at `github/github-mcp-server`.
+MCP GitHub is an official Model Context Protocol server from GitHub that bridges LLMs and the GitHub API. It runs as a local or remote MCP server, exposing GitHub operations—reading files, listing issues, fetching PRs, inspecting Actions workflows, querying code security alerts—as callable tools for AI agents. The server is written in Go, distributed via npm (@modelcontextprotocol/server-github), and invoked using npx with stdio transport. It integrates into MCP-compatible hosts like VS Code, JetBrains IDEs, Copilot CLI, and custom AI workflows. GitHub provides both self-hosted (local) and cloud-hosted (remote) variants; the hosted version requires no local token setup and works across devices. The server is open-source and designed for safe read-heavy workflows, with optional write capabilities gated by toolset configuration.
 
 ## When to use
 
-Deploy MCP GitHub for: (1) Enumerating public or accessible private repositories without manual API scripting. (2) Reviewing pull requests, issues, or commit history for OSINT or vulnerability research. (3) Searching code across repos (`searchCode` tool) for secrets, misconfigurations, or vulnerable patterns. (4) Mapping GitHub organizations, teams, and repository structures. (5) Monitoring CI/CD workflows and Actions for pipeline abuse opportunities. (6) Gathering context on target codebases before exploitation. Use read-only toolsets (`pull_requests_read_only`, `repos_read_only`) when you want to minimize detection surface and avoid write-side audit logs. Do not use if target has MCP allowlist policies or if you lack a valid PAT with appropriate scopes.
+Use MCP GitHub when you need an LLM or AI agent to interact programmatically with GitHub repositories, issues, pull requests, CI/CD workflows, or security findings. Ideal for: automated code review (fetching PR diffs, comments, file contents); security triage (reading Dependabot alerts, code scanning results if GHAS enabled); CI/CD inspection (listing workflow runs, checking build status); repository reconnaissance (enumerating repos, collaborators, branches); issue/PR management via AI assistant. In red-team operations: gather intelligence on target GitHub organizations (public repos, contributor lists, workflow configs that may leak infrastructure details, exposed secrets in issues/comments); map CI pipelines for supply-chain analysis; identify overly permissive collaborators or stale tokens. Use read-only toolsets when you want context without modification risk. Use full toolsets only when actively managing GitHub resources through an agent. NOT suitable for: direct CLI git operations (use git tool instead); large-scale data exfiltration (API rate limits apply); tasks requiring repository write access unless explicitly configured and scoped.
 
 ## Authentication & setup
 
-**Prerequisites**: Node.js, npm/npx, and GitHub CLI authenticated OR a GitHub personal access token (PAT). **Setup**: (1) Generate a PAT at https://github.com/settings/tokens with scopes `repo` (full control of private repos), `read:org` (read org data), `workflow` (update GitHub Actions), or limit to `public_repo` for public-only access. (2) Set `GITHUB_PERSONAL_ACCESS_TOKEN` env var: `export GITHUB_PERSONAL_ACCESS_TOKEN=ghp_...`. (3) Invoke via `npx -y @modelcontextprotocol/server-github`. **Toolset selection**: Use `--toolsets` flag or `GITHUB_TOOLSETS` env var to specify enabled tools. Examples: `--toolsets repos,issues,pull_requests` (additive), `--toolsets pull_requests_read_only` (read-only variant), `--toolsets all` (all tools, risky). Default toolset (`default`) includes repos, issues, PRs, commits, branches, files, releases. **Docker alternative**: `docker run -e GITHUB_PERSONAL_ACCESS_TOKEN=ghp_... ghcr.io/github/github-mcp-server:latest`. **Individual tools**: Use `--tools get_gist,search_code` to enable specific tools; combines additively with toolsets.
+Authentication requires a GitHub Personal Access Token (PAT). Generate a fine-grained PAT: GitHub Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token. Set repository access scope (all repos or selected) and permissions based on toolsets: repos (Contents: Read), issues (Issues: Read/Write), pull_requests (Pull Requests: Read/Write), actions (Actions: Read), code_security (Security events: Read, requires GHAS). Store token securely. Set environment variable GITHUB_PERSONAL_ACCESS_TOKEN. For MCP clients: if using VS Code/JetBrains, configure in IDE's MCP settings; if using Copilot CLI, run 'copilot mcp add github -- npx -y @modelcontextprotocol/server-github' and provide token when prompted. Alternatively use OAuth flow (interactive) or GitHub App authentication (non-interactive deployments). Remote hosted variant: install from GitHub MCP server repo → Remote Server section → choose read-only or full variant; no local token required, uses GitHub's cloud auth. Toolset/tool filtering: pass --toolsets repos,issues,pull_requests or set GITHUB_TOOLSETS env var; use --tools for granular selection (e.g., --tools get_file_contents,issue_read). Environment variable takes precedence. For Docker: 'docker run -i --rm -e GITHUB_PERSONAL_ACCESS_TOKEN=<token> ghcr.io/github/github-mcp-server'. Verify setup: in MCP client, list available tools; should see listPullRequests, getFileContents, etc., based on toolsets enabled.
 
 ## Key commands / parameters
 
-The server is invoked as `npx -y @modelcontextprotocol/server-github [flags]`. **Flags**: `--toolsets <list>` (comma-separated toolset names, e.g., `repos,issues,pull_requests_read_only`), `--tools <list>` (comma-separated individual tool names, additive with toolsets), `--insiders` (enable experimental features). **Environment variables**: `GITHUB_PERSONAL_ACCESS_TOKEN` (required), `GITHUB_TOOLSETS` (alternative to `--toolsets` flag, takes precedence). **Available toolsets**: `repos`, `issues`, `pull_requests`, `pull_requests_read_only`, `commits`, `branches`, `files`, `releases`, `workflows`, `projects`, `gists`, `search`, `organizations`, `teams`, `all`, `default`. **Read-only toolsets**: Append `_read_only` suffix where available (e.g., `pull_requests_read_only`) to exclude write operations. **Tool examples**: `listPullRequests`, `getPullRequest`, `searchPullRequests`, `getIssue`, `listIssues`, `searchIssues`, `getFile`, `searchCode`, `listCommits`, `getBranch`, `listWorkflowRuns`, `getWorkflowRun`, `listOrganizationRepos`, `getRepository`. **CLI utilities**: `github-mcp-server tool-search "<query>"` to discover available tools (requires local build).
+Invocation: 'npx -y @modelcontextprotocol/server-github' (stdio transport, default). Flags: --toolsets <csv> (enable toolset groups: repos, issues, pull_requests, actions, code_security); --tools <csv> (enable specific tools, additive with toolsets). Environment variables: GITHUB_PERSONAL_ACCESS_TOKEN (required for auth); GITHUB_TOOLSETS (comma-separated toolsets, overrides --toolsets flag); GITHUB_TOOLS (comma-separated tool names, overrides --tools flag). MCP client commands (Copilot CLI): 'copilot mcp add github -- npx -y @modelcontextprotocol/server-github' (add server); 'copilot mcp list' (show configured servers); 'copilot mcp get github' (show tools for this server); 'copilot mcp remove github' (delete config). Tool examples (invoked via LLM/agent, not direct CLI): listPullRequests (repo, state, head, base); getPullRequest (repo, pr_number); getFileContents (repo, path, ref); searchRepositories (query); listIssues (repo, state, labels); getWorkflowRuns (repo, workflow_id). Tools return JSON responses. Read-only variant omits write tools (create_issue, update_pull_request, etc.). CLI flag in Copilot: --enable-all-github-mcp-tools (use full toolset instead of CLI-safe default). Transport options: stdio (default, local), http/sse (remote hosted). Timeout: default 30s for tool discovery/calls; override with --timeout <ms> in mcp add. Token replacement in config: ${TOKEN:bearer:github} for secure vaults.
 
 ## Example workflows
 
-(1) **Repository enumeration**: Invoke with `--toolsets repos,organizations` and query `listOrganizationRepos` for target org; parse output for private repo names, descriptions, topics, and last-push dates. (2) **Secret scanning**: Use `--toolsets search,files` and call `searchCode` with queries like `password`, `api_key`, `BEGIN RSA PRIVATE KEY`; retrieve file contents with `getFile` for match lines. (3) **PR review for vulns**: Enable `pull_requests_read_only` toolset, call `listPullRequests` filtered by state=open, then `getPullRequest` with diff=true to analyze code changes for injection points or misconfigurations. (4) **CI/CD recon**: Use `workflows` toolset, call `listWorkflowRuns` to enumerate Actions runs, `getWorkflowRun` for logs, and `listWorkflows` to map pipeline definitions for potential command injection or secret exposure. (5) **Cross-repo code search**: Invoke `searchCode` across org with query `extension:yaml secrets` to find hardcoded credentials in config files. (6) **Commit history analysis**: Use `commits` toolset and `listCommits` with author or date filters to map developer activity and identify patterns (e.g., late-night commits with reduced review).
+Code review automation: Agent invokes listPullRequests(repo='org/project', state='open') → iterates results → for each PR, calls getPullRequest(pr_number=N) to fetch diff, comments → calls getFileContents for changed files → LLM analyzes code, flags issues, optionally posts comments (if write enabled). Security triage: Agent calls code_security tools (list alerts, get alert details) for GHAS-enabled repo → correlates with recent commits via getCommit → prioritizes findings → generates report. CI/CD inspection: listWorkflows(repo) → getWorkflowRuns(workflow_id, status='failure') → analyze logs/configs to diagnose build failures. Reconnaissance (red-team): searchRepositories(query='org:target-org') → extract repo names → listIssues per repo to mine for leaked credentials, internal hostnames, API endpoints mentioned in comments → getFileContents on .github/workflows/*.yml to map CI pipeline, identify secrets usage, find deployment targets. Repository enumeration: listRepositories(org='target') → map collaborators, languages, topics → identify high-value targets (e.g., infra-as-code repos). Read-only PR viewer: Install read-only variant → agent uses listPullRequests, getPullRequest, searchPullRequests to browse changes, gather context without risk of accidental pushes. Multi-agent orchestration: Assign GitHub issues directly to Copilot agent → agent reads issue via getIssue → generates code → (if integrated) creates PR.
 
 ## Output format
 
-All tools return structured JSON objects suitable for LLM parsing. Typical fields: `{"success": true, "data": {...}, "error": null}`. **Repository objects**: `{"name", "full_name", "private", "description", "html_url", "created_at", "updated_at", "pushed_at", "size", "language", "topics": []}`. **Issue/PR objects**: `{"number", "title", "state", "user": {"login"}, "body", "html_url", "created_at", "updated_at", "labels": [], "comments": int}`. **File objects**: `{"name", "path", "sha", "size", "url", "html_url", "content": "base64-encoded", "encoding": "base64"}`. **Search results**: `{"total_count": int, "items": [{"name", "path", "repository": {"full_name", "html_url"}, "html_url", "score"}]}`. **Error responses**: `{"success": false, "error": {"message", "status": 404/403/401}}`. Decode base64 content with standard tools; search results include relevance scores. Rate-limit headers are not exposed via MCP; monitor for 403 responses indicating limit exhaustion.
+All MCP GitHub tools return structured JSON. Common fields: success (boolean), data (object/array), error (string if failed). Example getFileContents response: {content: '<base64 or text>', encoding: 'base64', size: 1234, name: 'file.py', path: 'src/file.py', sha: '<commit_sha>'}. listPullRequests returns array of PR objects: [{number, title, state, user, created_at, updated_at, head, base, ...}]. getPullRequest adds diff, commits, files_changed arrays. searchRepositories: [{full_name, description, stargazers_count, html_url, ...}]. Error responses include error message and HTTP status context. Security tools (code_security toolset) return alert objects with severity, rule, location, state. Actions tools return workflow/run metadata: {id, name, status, conclusion, created_at, html_url}. Responses align with GitHub REST API v3 schemas. The MCP client (IDE/CLI) presents these to the LLM; agent interprets JSON, optionally reformats for user. No direct CLI output—tools invoked programmatically by MCP host or LLM.
 
 ## Common pitfalls
 
-(1) **Rate limiting**: Authenticated requests allow 5,000/hr; unauthenticated only 60/hr. Exhaust limits quickly with broad searches or recursive repo enumeration. Spread requests over time or rotate PATs. (2) **Scope creep**: Default toolset includes write operations (create issue, update PR); accidentally invoking these generates audit logs. Always specify read-only toolsets for stealth. (3) **Secret exposure**: Prompts containing PATs or API keys may be logged by MCP host or LLM provider. Future versions will block AI-generated secrets, but current versions do not. Use env vars, never inline tokens in prompts. (4) **Allowlist policies**: Orgs with MCP registry allowlists will block unrecognized servers; verify target environment before deployment. (5) **Tool discovery mismatch**: Available tools depend on selected toolsets; invoking a tool outside enabled toolsets returns error. Use `tool-search` CLI utility to confirm. (6) **Content size limits**: Large file responses (>1MB) may timeout or truncate; chunk requests or filter by file size. (7) **Authentication failure**: If PAT lacks required scopes (e.g., `repo` for private repos), tools return 404 instead of 403, masking permission issues. Validate scopes before operation. (8) **Logging exposure**: GitHub audit logs capture API calls tied to PAT; consider using burner accounts or short-lived tokens for sensitive ops.
+Token scope too narrow: if PAT lacks required permissions for chosen toolsets, tools fail silently or return 403/404. Always match token scopes to enabled toolsets. Token leakage: storing GITHUB_PERSONAL_ACCESS_TOKEN in plaintext config files or command history; use secure vaults or ${TOKEN:...} placeholders. Rate limiting: GitHub API enforces rate limits (5000 req/hr authenticated); aggressive automation or enumeration triggers 429 errors; implement backoff. Overly permissive toolsets: enabling all toolsets in red-team scenario exposes write capabilities if token has write scope; prefer read-only variants or explicit --tools filtering. Misconfigured transport: attempting to use remote server URL with stdio transport (or vice versa) causes connection failures; verify transport type in mcp add. Timeout issues: large repos or slow network cause tool timeouts (default 30s); increase --timeout for complex queries. Missing GHAS license: code_security tools require GitHub Advanced Security; fail or return empty on repos without GHAS. Confusing MCP server with git CLI: MCP GitHub does not execute git commands; it calls GitHub API; for local git ops, use separate git MCP server or shell tools. IDE permission prompts: write-enabled tools trigger user confirmation dialogs in VS Code; disable prompts by using read-only toolsets. Stale tokens: PATs expire; rotation required; expired tokens cause 401 errors. Exposing org structure: in adversarial context, querying public repos/issues leaks org hierarchy, tech stack, contributor identities; opsec risk if not anonymized.
 
 ## References
 
-• https://github.blog/ai-and-ml/generative-ai/a-practical-guide-on-how-to-use-the-github-mcp-server/
+• https://github.blog/ai-and-ml/generative-ai/a-practical-guide-on-how-to-use-the-github-mcp-server
+• https://github.com/microsoft/mcp-for-beginners
 • https://docs.github.com/en/copilot/concepts/context/mcp
-• https://github.com/modelcontextprotocol
+• https://apidog.com/blog/github-mcp-server
 • https://docs.github.com/en/copilot/how-tos/provide-context/use-mcp-in-your-ide/use-the-github-mcp-server
-• https://github.com/microsoft/mcp-for-beginners/
+• https://docs.github.com/enterprise-cloud@latest/copilot/reference/copilot-cli-reference/cli-command-reference
 • https://github.com/IBM/mcp-cli
-• https://github.com/MladenSU/cli-mcp-server
-• https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers
 • https://github.com/github/github-mcp-server
-• https://codingbutterbot.github.io/gh_cli_mcp/
-• https://vulnerablemcp.info/security.html
-• https://www.penligent.ai/hackinglabs/es/anthropic-mcp-vulnerability-7000-servers-and-the-case-for-continuous-red-teaming/
+• https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers
+• https://github.com/RELIAX1212221/RedTeam-MCP

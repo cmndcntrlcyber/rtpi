@@ -16,18 +16,35 @@ vi.mock('../../../server/db', () => ({
     }),
     query: {
       attackTactics: {
+        findFirst: vi.fn().mockResolvedValue(null),
         findMany: vi.fn().mockResolvedValue([]),
       },
       attackTechniques: {
+        findFirst: vi.fn().mockResolvedValue(null),
         findMany: vi.fn().mockResolvedValue([]),
       },
       attackGroups: {
+        findFirst: vi.fn().mockResolvedValue(null),
         findMany: vi.fn().mockResolvedValue([]),
       },
       attackSoftware: {
+        findFirst: vi.fn().mockResolvedValue(null),
         findMany: vi.fn().mockResolvedValue([]),
       },
       attackMitigations: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      attackDataSources: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      attackCampaigns: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      attackRelationships: {
+        findFirst: vi.fn().mockResolvedValue(null),
         findMany: vi.fn().mockResolvedValue([]),
       },
     },
@@ -280,6 +297,73 @@ describe('STIX Parser Service', () => {
       // Should continue processing despite errors
       expect(stats.errors.length).toBeGreaterThan(0);
     });
+
+    it('should filter unknown platforms without erroring', async () => {
+      const bundle: STIXBundle = {
+        type: 'bundle',
+        id: 'bundle--test-platforms',
+        objects: [
+          {
+            type: 'attack-pattern',
+            id: 'attack-pattern--test-platform-filter',
+            created: '2024-01-01T00:00:00.000Z',
+            modified: '2024-01-01T00:00:00.000Z',
+            name: 'Platform Filter Test',
+            description: 'Technique with unknown platform values',
+            x_mitre_is_subtechnique: false,
+            x_mitre_platforms: ['Windows', 'FutureOS', 'Linux', 'QuantumNet'],
+            kill_chain_phases: [
+              {
+                kill_chain_name: 'mitre-attack',
+                phase_name: 'execution',
+              },
+            ],
+            external_references: [
+              {
+                source_name: 'mitre-attack',
+                external_id: 'T9999',
+                url: 'https://attack.mitre.org/techniques/T9999',
+              },
+            ],
+          },
+        ],
+      };
+
+      const stats = await importSTIXBundle(bundle);
+
+      expect(stats.techniques).toBe(1);
+      expect(stats.errors).toHaveLength(0);
+    });
+
+    it('should import objects with new platform values like Android and ESXi', async () => {
+      const bundle: STIXBundle = {
+        type: 'bundle',
+        id: 'bundle--test-new-platforms',
+        objects: [
+          {
+            type: 'malware',
+            id: 'malware--test-android',
+            created: '2024-01-01T00:00:00.000Z',
+            modified: '2024-01-01T00:00:00.000Z',
+            name: 'Android Malware Test',
+            description: 'Malware targeting Android',
+            x_mitre_platforms: ['Android', 'iOS'],
+            external_references: [
+              {
+                source_name: 'mitre-attack',
+                external_id: 'S9998',
+                url: 'https://attack.mitre.org/software/S9998',
+              },
+            ],
+          },
+        ],
+      };
+
+      const stats = await importSTIXBundle(bundle);
+
+      expect(stats.software).toBe(1);
+      expect(stats.errors).toHaveLength(0);
+    });
   });
 
   describe('getImportStatistics', () => {
@@ -294,3 +378,4 @@ describe('STIX Parser Service', () => {
     });
   });
 });
+

@@ -19,6 +19,26 @@ import { eq, sql } from "drizzle-orm";
 import { createLogger } from '../lib/logger';
 const log = createLogger("stix-parser");
 
+const VALID_PLATFORMS = new Set([
+  "Windows", "macOS", "Linux", "Cloud", "Network", "Containers",
+  "IaaS", "SaaS", "Office 365", "Azure AD", "Google Workspace", "PRE",
+  "Android", "iOS", "ESXi", "Network Devices", "Office Suite",
+  "Identity Provider", "Engineering Workstation", "Field Controller/RTU/PLC/IED",
+]);
+
+function filterPlatforms(platforms: string[] | null | undefined, objectId: string): string[] | null {
+  if (!platforms || platforms.length === 0) return null;
+  const valid: string[] = [];
+  for (const p of platforms) {
+    if (VALID_PLATFORMS.has(p)) {
+      valid.push(p);
+    } else {
+      log.warn(`Unknown platform "${p}" on ${objectId} — skipping for enum column`);
+    }
+  }
+  return valid.length > 0 ? valid : null;
+}
+
 /**
  * STIX 2.1 Bundle interface
  */
@@ -223,7 +243,7 @@ async function importTechnique(obj: STIXObject): Promise<void> {
   });
 
   // Extract platforms
-  const platforms = obj.x_mitre_platforms || [];
+  const platforms = filterPlatforms(obj.x_mitre_platforms, obj.id);
 
   // Extract kill chain phases
   const killChainPhases = (obj.kill_chain_phases || []).map(
@@ -237,7 +257,7 @@ async function importTechnique(obj: STIXObject): Promise<void> {
     isSubtechnique,
     stixId: obj.id,
     killChainPhases,
-    platforms: platforms.length > 0 ? platforms : null,
+    platforms,
     permissionsRequired: obj.x_mitre_permissions_required || null,
     effectivePermissions: obj.x_mitre_effective_permissions || null,
     defenseBypassed: obj.x_mitre_defense_bypassed || null,
@@ -347,7 +367,7 @@ async function importSoftware(obj: STIXObject): Promise<void> {
     description: obj.description || null,
     softwareType: obj.type, // "malware" or "tool"
     aliases: obj.x_mitre_aliases || null,
-    platforms: obj.x_mitre_platforms || null,
+    platforms: filterPlatforms(obj.x_mitre_platforms, obj.id),
     stixId: obj.id,
     version: obj.x_mitre_version || null,
     created: new Date(obj.created),
@@ -431,7 +451,7 @@ async function importDataSource(obj: STIXObject): Promise<void> {
     name: obj.name || "",
     description: obj.description || null,
     stixId: obj.id,
-    platforms: obj.x_mitre_platforms || null,
+    platforms: filterPlatforms(obj.x_mitre_platforms, obj.id),
     collectionLayers: obj.x_mitre_collection_layers || null,
     dataComponents: obj.x_mitre_data_source_ref || [],
     version: obj.x_mitre_version || null,

@@ -44,6 +44,11 @@ in_denylist() {
 repair_action() {
     local name="$1"
     case "$name" in
+        rtpi-kasm-api|rtpi-kasm-manager|rtpi-kasm-share)
+            docker exec rtpi-kasm-db psql -U kasmapp -d kasm -tAc \
+              "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='kasm' AND pid != pg_backend_pid() AND (state = 'idle in transaction' OR (state = 'active' AND query_start < NOW() - INTERVAL '2 minutes'));" \
+              2>/dev/null && echo "  Cleared stale kasm-db connections before restart" || true
+            docker restart "$name" >/dev/null ;;
         rtpi-sysreptor-app|rtpi-sysreptor-redis|rtpi-sysreptor-caddy)
             ( cd "$RTPI_DIR" && docker compose --profile sysreptor up -d --force-recreate \
                 "${name#rtpi-}" ) ;;

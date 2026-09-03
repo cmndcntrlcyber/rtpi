@@ -30,7 +30,7 @@
 
 # suffix    | profile_gate | upstream_url            | websocket | tls_upstream
             | kasm         | https://0.0.0.0:8443  | true      | true
--admin      |              | http://0.0.0.0:5000   | false     | false
+-admin      |              | http://0.0.0.0:3001   | false     | false
 -reports    | sysreptor    | http://0.0.0.0:7777   | false     | false
 -empire     |              | http://0.0.0.0:1337   | false     | false
 -mgmt       | management   | https://0.0.0.0:9443  | false     | true

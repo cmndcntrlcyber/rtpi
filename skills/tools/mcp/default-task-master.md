@@ -1,54 +1,50 @@
 ---
 name: Claude Task Master
-description: "MCP server enabling AI-driven task management: parse PRDs into
-  subtasks, track progress, manage dependencies, and coordinate development
-  workflow within Cursor/Claude."
+description: AI-powered task management system for decomposing PRDs into
+  structured, trackable development tasks with dependency tracking and git
+  integration.
 registry: mcp
 tool_id: default:task-master
 category: mcp-server
 tags:
   - task-management
-  - mcp-server
-  - development-workflow
-  - ai-coordination
   - project-planning
+  - ai-orchestration
+  - development-workflow
   - prd-parsing
-  - cursor-integration
-summary: "Task Master is an MCP server that structures AI-assisted development
-  through hierarchical task management. Use it when building complex
-  applications with AI assistance to maintain coherent progress tracking and
-  prevent context loss. The server exposes ~36 tools (configurable to 7-15 core
-  tools to reduce token overhead). Initialize in project root with `task-master
-  init`, place PRD at `.taskmaster/docs/prd.txt`, then prompt AI to parse PRD
-  into subtasks. AI reads task context from `.taskmaster/` directory structure
-  and invokes tools like `parse-prd`, `list-tasks`, `next-task`,
-  `complete-task`. Typical workflow: write requirements → parse into tasks →
-  work task-by-task → mark complete → proceed to next. Supports tag-based
-  isolation matching git branches (`add-tag --from-branch`). Requires API keys
-  in `.mcp.json` (for MCP invocation) or `.env` (for CLI usage). Configure
-  models via `models setup` command; supports Claude, GPT-4, local Ollama. Tools
-  consume 21k tokens by default; set `TASK_MASTER_TOOLS=core` to reduce to ~5k
-  tokens for essential workflow. Designed for Cursor IDE but compatible with
-  Windsurf, VS Code, Claude Code. AI agent should prompt user to initialize if
-  `.taskmaster/` absent, guide PRD creation, then orchestrate task execution by
-  invoking MCP tools through natural language. Watch for: large files (break
-  down >500 lines), context drift (re-check task details), superficial AI fixes
-  on complex bugs (create dedicated task). Not for penetration testing task
-  tracking—this is software development project management."
+  - mcp-server
+  - claude
+  - cursor-ide
+summary: "Use task-master to decompose complex development requirements into
+  structured JSON tasks. Initialize with `task-master init`, place PRD in
+  `.taskmaster/docs/`, run `task-master parse-prd` to generate tasks.json.
+  Operates within tag contexts for isolated workstreams (use `--tag=<name>` or
+  `task-master use-tag`). Supports natural language via MCP: 'implement next
+  task', 'show pending tasks'. Requires at least one AI provider (Anthropic,
+  OpenAI, Gemini, Perplexity, xAI, OpenRouter) OR Claude Code CLI (no API key).
+  Store API keys in `.env` for CLI, in MCP config for editor integration. Core
+  commands: `list-tasks`, `show-next`, `set-status -i <id> -s <status>`,
+  `update-task -i <id> -p '<changes>'`, `expand-task -i <id>` (breaks complex
+  tasks into subtasks), `research -q '<query>'` (investigates technical
+  questions). Task states: pending, in-progress, done, review, cancelled. Tasks
+  reference by ID (e.g., '5') or subtask ID (e.g., '5.2'). Tags isolate work
+  contexts—create from branch with `add-tag --from-branch`. All operations
+  respect active tag unless `--tag` overrides. Not for vulnerability tracking or
+  offensive tasking—purely development project management."
 sources:
   - https://github.com/eyaltoledano/claude-task-master/blob/main/docs/tutorial.md
+  - https://glama.ai/mcp/servers/eyaltoledano/claude-task-master
+  - https://www.youtube.com/watch?v=ZFcAwdMyiw4
   - https://github.com/eyaltoledano/claude-task-master
-  - https://pageai.pro/blog/claude-code-taskmaster-ai-tutorial
-  - https://shipixen.com/tutorials/reduce-ai-coding-errors-with-taskmaster-ai
-  - https://www.youtube.com/watch?v=47UW2XXpxms
+  - https://medium.com/@abhishek.bhattacharya04/from-requirement-to-reality-how-claude-task-master-cursor-transformed-a-complex-feature-request-c8ec735d6096
+  - https://deepwiki.com/athif23/claude-task-master/7.1-cli-commands
+  - https://github.com/DevDreed/claude-task-master-extension
   - https://github.com/eyaltoledano/claude-task-master/blob/main/docs/command-reference.md
-  - https://code.claude.com/docs/en/commands
-  - https://www.penligent.ai/hackinglabs/where-claude-4-7-actually-fits-in-a-pentest-or-red-team-workflow/
-  - https://www.mindstudio.ai/blog/ai-security-auditing-vs-human-pen-testing-claude-mythos/
-  - https://arxiv.org/html/2501.06963v1
-  - https://samelogic.com/blog/claude-task-master-just-fixed-our-vibe-coding-workflow-heres-what-happened
-  - https://github.com/eyaltoledano/claude-task-master/blob/main/README.md
-generated_at: 2026-05-19T10:53:13.027Z
+  - https://github.com/khulnasoft-bot/claude-task/blob/main/docs/command-reference.md
+  - https://gist.github.com/hardchor/b6b47dd32067b71c8c95ae4b22812f4b
+  - https://www.penligent.ai/hackinglabs/where-claude-4-7-actually-fits-in-a-pentest-or-red-team-workflow
+  - https://snyk.io/articles/top-claude-skills-cybersecurity-hacking-vulnerability-scanning
+generated_at: 2026-09-03T12:39:01.828Z
 generated_by: anthropic
 source_hash: be3166de9b8678202338ff841d2f920a8e540d5c76e669f6f2d4001ea325e12f
 ---
@@ -57,39 +53,105 @@ source_hash: be3166de9b8678202338ff841d2f920a8e540d5c76e669f6f2d4001ea325e12f
 
 ## Overview
 
-Claude Task Master is an MCP (Model Control Protocol) server that provides structured task management for AI-driven development workflows. It parses Product Requirement Documents (PRDs) into hierarchical task trees, tracks completion state, manages dependencies, and maintains development context across sessions. The system is optimized for use with Cursor AI editor but supports Windsurf, VS Code, and Claude Code. It exposes 36 MCP tools (configurable down to 7 core tools) that AI agents invoke to coordinate multi-step development projects without losing context or duplicating work.
+Claude Task Master is an MCP server (invoked via `npx -y task-master-ai`) that provides AI-driven task decomposition and management for software development projects. It parses Product Requirement Documents (PRDs) into structured tasks stored in `.taskmaster/tasks.json`, tracks dependencies, manages workstream isolation via git-integrated tags, and exposes both CLI commands and natural-language MCP tools for task CRUD operations. Designed for use inside AI-enabled editors (Cursor, Windsurf, VS Code with Copilot, Roo) where the agent can invoke task-master commands directly or via chat. The system maintains task state (pending, in-progress, done, review, cancelled), handles parent-child subtask relationships, and supports AI-powered task expansion and research.
 
 ## When to use
 
-Use Task Master when coordinating AI-assisted development of complex applications that span multiple files, components, or features. Essential for projects where: (1) requirements are detailed enough to warrant structured breakdown, (2) task dependencies matter and need tracking, (3) development spans multiple sessions and context must persist, (4) multiple feature branches run in parallel (tag-based isolation), (5) AI-generated code volume is high and human review must be systematic. Do NOT use for: ad-hoc scripting, single-file utilities, exploratory prototyping, or actual security testing/red-teaming task management (this tool manages software development tasks, not operational security engagements).
+Use task-master when an agent needs to manage multi-step development projects with complex dependencies. Invoke during planning phases to decompose a PRD into actionable tasks, during execution to track progress and retrieve next-available work items, or when switching between feature branches to isolate task contexts. Ideal for scenarios where the agent must maintain long-running context across sessions (tasks.json persists state), coordinate parallel workstreams (tags), or research technical questions before implementation (research command). Do NOT use for operational security tasking, vulnerability tracking, or red-team mission planning—task-master is a development workflow tool with no built-in OPSEC, compartmentalization, or data sanitization for sensitive operations.
 
 ## Authentication & setup
 
-**Prerequisites**: Node.js/npx installed; at least one AI provider API key (Anthropic, OpenAI, Google, or local Ollama). **Installation**: Run `npm i -g task-master-ai` globally. **MCP Configuration**: Add server config to editor's MCP settings file: `~/.cursor/mcp.json` (Cursor), `~/.codeium/windsurf/mcp_config.json` (Windsurf), `<project>/.vscode/mcp.json` (VS Code), or Claude Code settings. Config specifies `npx -y task-master-ai` as command and includes API keys as environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`). For Cursor 1.0+: use one-click install link then replace placeholder keys. **API Keys**: Store in `.mcp.json` for MCP tool invocation OR `.env` for CLI usage. Add `.mcp.json` to `.gitignore`. **Model config**: Run `task-master models setup` interactively or configure main/research/fallback models. Claude Code users: all requests route through subscription (no separate API key needed). **Cursor-specific**: Enable MCP server in Cursor Settings → MCP tab → toggle task-master-ai.
+Requires Node.js and npx. Install globally: `npm i -g task-master-ai`. For MCP integration, add to editor's MCP config (e.g., Cursor settings or `.cursor/mcp.json`, VS Code `settings.json` under `mcp.servers`): `{"command": "npx", "args": ["-y", "task-master-ai"], "env": {"ANTHROPIC_API_KEY": "...", "OPENAI_API_KEY": "...", ...}}`. At least one AI provider API key required UNLESS using Claude Code CLI (run `claude mcp add taskmaster-ai -- npx -y task-master-ai` and authenticate via Claude subscription—no API key needed). Supported providers: Anthropic (Claude), OpenAI, Google Gemini, Perplexity, xAI, OpenRouter, Codex CLI (ChatGPT OAuth). Store keys in project root `.env` for CLI usage AND in MCP config `env` section for editor integration. Recommended: add `.mcp.json` and `.env` to `.gitignore`. Initialize project: cd into repo, run `task-master init` (interactive setup) or have agent prompt 'initialize taskmaster-ai in my project'. Creates `.taskmaster/` directory structure. Optional: specify rule profiles with `--rules=cursor,roo` (defaults to all: claude, cline, codex, cursor, roo, trae, vscode, windsurf).
 
 ## Key commands / parameters
 
-**Initialization**: `task-master init` creates `.taskmaster/` directory structure, config files, and optionally sets up rules for Cursor/Windsurf. **PRD Management**: Place requirements document at `.taskmaster/docs/prd.txt`. Run `task-master parse prd` to generate task tree; can also run via migration `task-master migrate` if using legacy `scripts/prd.txt`. **Task Operations**: `task-master list` shows all tasks; `task-master next` advances to next incomplete task; `task-master complete <id>` marks task done. **Tag/Branch Isolation**: `task-master add-tag --from-branch` creates tag matching current git branch; `task-master use-tag <name>` switches context; `task-master delete-tag <name>` removes tag after merge. **Rules Management**: `task-master rules setup` launches interactive profile selection (Cursor, Roo, Windsurf); `task-master rules add <profile>` adds specific profile; `task-master rules remove <profile>` deletes it. **Model Config**: `task-master models setup` for interactive configuration. **MCP Tool Optimization**: Set `TASK_MASTER_TOOLS` env var to `core` (7 tools, ~5k tokens), `standard` (15 tools, ~10k tokens), `all` (36 tools, ~21k tokens default), or comma-separated custom list. **Help**: `task-master help` lists all commands.
+**CLI Commands:**
+- `task-master init [--rules=<profile,profile>]` — initialize project structure
+- `task-master parse-prd [--num-tasks=<n>]` — parse PRD from `.taskmaster/docs/` into tasks.json (default 10 tasks; omit flag for AI-determined count)
+- `task-master list-tasks [-s <status>] [--subtasks] [--tag=<name>]` — list tasks, optionally filter by status (pending|in-progress|done|review|cancelled)
+- `task-master show-next` — show next available task based on dependencies and status
+- `task-master show-task -i <id> [--tag=<name>]` — display task by ID (e.g., '5' or '5.2' for subtask)
+- `task-master set-status -i <id> -s <status> [--tag=<name>]` — update task status (supports comma-separated IDs: '16,17.1')
+- `task-master update-task -i <id> -p '<prompt>' [--append] [-r] [--tag=<name>]` — modify task; use `--append` to add timestamped notes instead of replacing; `-r` enables research model
+- `task-master add-task -p '<description>' [--tag=<name>]` — create new task
+- `task-master remove-task -i <id> [-y] [--tag=<name>]` — delete task; `-y` skips confirmation
+- `task-master expand-task -i <id> [--tag=<name>]` — AI breaks complex task into subtasks with implementation details
+- `task-master research -q '<query>' [-r]` — interactive research session with follow-up questions; save to task/subtask or file
+- `task-master add-tag --from-branch` — create tag matching current git branch
+- `task-master use-tag <name>` — switch active tag context
+- `task-master delete-tag <name>` — remove tag
+
+**MCP Natural Language:** After initialization, agent can invoke via chat: 'implement next task', 'mark task 5 as done', 'expand task 3', 'research how to implement OAuth2 flow'. Task-master auto-selects appropriate command. All task operations respect active tag unless `--tag` flag overrides.
 
 ## Example workflows
 
-**Greenfield Project**: (1) Create project directory, initialize git repo. (2) Prompt AI: "Initialize taskmaster-ai into my project". (3) AI runs `init`, creates `.taskmaster/` structure. (4) Write PRD at `.taskmaster/docs/prd.txt` describing features, requirements, architecture. (5) Prompt AI: "Parse the PRD and generate tasks". AI invokes `parse-prd` tool, creates task hierarchy. (6) Prompt AI: "List all tasks" to review breakdown. (7) Prompt AI: "Work on the next task" repeatedly. AI invokes `next-task`, reads context, implements, invokes `complete-task`, proceeds. (8) For new feature branch: `git checkout -b feature/auth` then prompt AI: "Add a tag from this branch". AI runs `add-tag --from-branch`, isolates task context. (9) Switch branches: `git checkout main`, prompt AI: "Use the main tag" to restore main task context. **Bug Fix as Task**: Encounter complex bug requiring architectural change. Prompt AI: "Create a new task for this bug: [description]", work it as a structured task to avoid circular superficial fixes. **File Breakdown**: If AI generates file >500 lines, prompt: "Break down this file into logical modules with domain-driven structure". **Context Injection**: When running task, provide extra context: "Work on next task. For UI, use Tailwind with dark mode. Reference the Stripe API docs I attached."
+**Typical flow:**
+1. Place PRD in `.taskmaster/docs/prd.txt` (ask agent to generate if needed)
+2. Agent runs `task-master parse-prd` → generates `.taskmaster/tasks.json` with structured task list
+3. Agent queries `task-master show-next` → retrieves first unblocked pending task
+4. Agent implements task, then `task-master set-status -i 1 -s done`
+5. Repeat step 3-4 for subsequent tasks
+
+**Multi-feature workflow with tags:**
+1. `git checkout -b feature/user-auth`
+2. Agent runs `task-master add-tag --from-branch` → creates 'feature/user-auth' tag, isolates tasks
+3. Work on auth tasks in this context
+4. `git checkout -b feature/billing`
+5. `task-master add-tag --from-branch` → new isolated context
+6. `task-master use-tag feature/user-auth` → switch back to auth tasks
+7. After merge, `task-master delete-tag feature/user-auth` (optional cleanup)
+
+**Research-driven development:**
+1. Agent encounters complex task: 'Implement OAuth2 PKCE flow'
+2. `task-master research -q 'OAuth2 PKCE implementation best practices for Node.js' -r`
+3. Interactive session: agent asks follow-ups, explores edge cases
+4. Save findings to task: choose 'Save to task/subtask' option, specify task ID
+5. Agent retrieves task with `show-task -i <id>`, now includes research notes
+6. Implement with informed context
+
+**Task expansion:**
+1. PRD generates high-level task: 'Build user authentication system'
+2. `task-master expand-task -i 5` → AI decomposes into subtasks 5.1 (session management), 5.2 (password hashing), 5.3 (token refresh), etc.
+3. Agent works through subtasks: `set-status -i 5.1 -s in-progress`
 
 ## Output format
 
-Task Master maintains state in `.taskmaster/` directory as JSON files. **Task Structure**: Each task has `id`, `title`, `description`, `status` (pending/in-progress/completed), `dependencies` array, optional `subtasks`. **MCP Tool Responses**: Tools return structured JSON to AI agent (not directly to user). Example: `list-tasks` returns array of task objects; `next-task` returns single task object with full context; `parse-prd` returns confirmation with task count. **Human-Facing Output**: Task lists displayed via AI agent's natural language summary. Use `task-master list` CLI command for direct terminal output showing task IDs, titles, status. **Rules Files**: Generated rules placed in `.roo/rules`, `.windsurf/rules`, or `.cursorrules` depending on profile selected. **Logs**: Operations logged to `.taskmaster/logs/` for debugging. Agents should surface task titles, IDs, and status in conversational summaries, not raw JSON.
+**tasks.json structure (read from `.taskmaster/tasks.json`):**
+```json
+{
+  "tasks": [
+    {
+      "id": "1",
+      "title": "Setup database schema",
+      "description": "...",
+      "status": "done",
+      "dependencies": [],
+      "subtasks": [
+        {"id": "1.1", "title": "...", "status": "done"},
+        {"id": "1.2", "title": "...", "status": "pending"}
+      ]
+    },
+    {
+      "id": "2",
+      "title": "Implement API routes",
+      "status": "pending",
+      "dependencies": ["1"]
+    }
+  ]
+}
+```
+Task IDs are strings ('5', '5.2'). Status values: 'pending', 'in-progress', 'done', 'review', 'cancelled'. Dependencies block tasks until referenced IDs are 'done'. CLI list commands output text tables; MCP tools return structured data to agent context. Research command saves conversations as markdown in `.taskmaster/research/` with timestamp and query-based filename.
 
 ## Common pitfalls
 
-**Missing PRD**: Agent cannot parse tasks without PRD at `.taskmaster/docs/prd.txt`. If absent, agent must prompt user to create it or provide requirements inline. **API Key Location Mismatch**: Keys in `.env` work for CLI but not MCP; keys in `.mcp.json` work for MCP but not CLI. Solution: maintain both, gitignore `.mcp.json`. **Token Overhead**: Default 36 tools consume ~21k tokens per request. For long conversations, set `TASK_MASTER_TOOLS=core` in MCP config to reduce to 7 essential tools (~5k tokens). **Large File Generation**: AI generates monolithic 1000+ line files that become unmaintainable. Mitigation: explicitly prompt to break files >500 lines into modules. **Context Drift**: AI loses track of current task after long conversation. Mitigation: periodically prompt "What task are we working on?" or "Show current task status". **Superficial Bug Fixes**: AI applies quick patches to complex bugs instead of addressing root cause. Mitigation: create dedicated task for architectural bugs. **Tag/Branch Confusion**: Forgetting to switch tags when switching branches causes task context bleed. Always run `use-tag` or prompt AI to switch context when changing branches. **Uninitialized Project**: Invoking task commands before `init` fails silently. Agent should detect missing `.taskmaster/` and guide initialization first. **Model Config for Claude Code**: Users may add unnecessary API keys; Claude Code routes through subscription. **Rules Overwrite**: Running `init` again can overwrite custom rules. Use `rules setup` instead to manage rules post-initialization.
+**API key confusion:** Claude Pro subscription ≠ Anthropic API key. For Claude Pro users, select 'claude-code' provider during init (requires Claude Code CLI), NOT 'anthropic'. Anthropic provider expects separate pay-per-use API key. Agent must verify which credential type user has before initialization. **Tag isolation overlooked:** Forgetting active tag context causes task collisions when switching branches. Always create tag from branch (`add-tag --from-branch`) before starting isolated work. Operations default to active tag; use `--tag=<name>` to override. **Blocked dependencies:** `show-next` returns nothing if all pending tasks have unmet dependencies. Check `list-tasks -s pending` and verify dependency chain. **PRD location:** `parse-prd` expects PRD file in `.taskmaster/docs/`, not project root. Agent must ensure correct placement. **MCP config vs .env:** API keys must exist in BOTH `.env` (for CLI) and MCP config's `env` section (for editor integration). Missing either breaks respective interface. **No built-in OPSEC:** Tasks stored in plaintext JSON, no encryption, no compartmentalization. Never use for red-team operations, exploit development, or sensitive security workflows—use dedicated C2 tasking or OPSEC-aware tools instead. **Research model optional but recommended:** Omitting research model (`-r` flag or separate research key) limits quality of `research` and `expand-task` commands. Configure Perplexity, xAI, or OpenRouter key for better results.
 
 ## References
 
-- https://github.com/eyaltoledano/claude-task-master/blob/main/docs/tutorial.md
 - https://github.com/eyaltoledano/claude-task-master
+- https://github.com/eyaltoledano/claude-task-master/blob/main/docs/tutorial.md
 - https://github.com/eyaltoledano/claude-task-master/blob/main/docs/command-reference.md
-- https://pageai.pro/blog/claude-code-taskmaster-ai-tutorial
-- https://shipixen.com/tutorials/reduce-ai-coding-errors-with-taskmaster-ai
-- https://www.youtube.com/watch?v=47UW2XXpxms
-- https://samelogic.com/blog/claude-task-master-just-fixed-our-vibe-coding-workflow-heres-what-happened
-- https://github.com/eyaltoledano/claude-task-master/blob/main/README.md
+- https://glama.ai/mcp/servers/eyaltoledano/claude-task-master
+- https://www.youtube.com/watch?v=ZFcAwdMyiw4
+- https://medium.com/@abhishek.bhattacharya04/from-requirement-to-reality-how-claude-task-master-cursor-transformed-a-complex-feature-request-c8ec735d6096
+- https://github.com/DevDreed/claude-task-master-extension

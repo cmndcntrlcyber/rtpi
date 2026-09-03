@@ -3,17 +3,17 @@
 # rtpi/setup/services.manifest and re-run build.sh.
 #
 # Template variables (resolved by build.sh):
-#   __TUNNEL_ID__    → CF_TUNNEL_NAME from .env
-#   __SLUG__         → RTPI_SLUG from .env
-#   __DOMAIN__       → RTPI_DOMAIN from .env
+#   rtpi-${RTPI_SLUG}    → CF_TUNNEL_NAME from .env
+#   c3s         → RTPI_SLUG from .env
+#   onoiroi.us       → RTPI_DOMAIN from .env
 
-tunnel: __TUNNEL_ID__
-credentials-file: /etc/cloudflared/__TUNNEL_ID__.json
+tunnel: rtpi-${RTPI_SLUG}
+credentials-file: /etc/cloudflared/rtpi-${RTPI_SLUG}.json
 
 ingress:
   # ── Primary entry point ──────────────────────────────────────────────────────
   # Kasm Workspace Portal (bare slug — reassigned from RTPI frontend in v4.3)
-  - hostname: __SLUG__.__DOMAIN__
+  - hostname: c3s.onoiroi.us
     service: https://localhost:8443
     originRequest:
       noTLSVerify: true
@@ -23,65 +23,65 @@ ingress:
   # Note: In v4.4+, the SPA is served from Cloudflare Pages. This tunnel route
   # handles the API backend only. The -admin hostname may resolve to Pages for
   # static assets and fall through to tunnel for /api/* via split DNS.
-  - hostname: __SLUG__-admin.__DOMAIN__
-    service: http://localhost:5000
+  - hostname: c3s-admin.onoiroi.us
+    service: http://localhost:3001
     originRequest:
       connectTimeout: 10s
 
   # ── RTPI Express API (split DNS for Pages SPA) ──────────────────────────────
-  - hostname: __SLUG__-api.__DOMAIN__
+  - hostname: c3s-api.onoiroi.us
     service: http://localhost:3001
     originRequest:
       connectTimeout: 10s
 
   # ── Kasm Admin Console ──────────────────────────────────────────────────────
-  - hostname: __SLUG__-kasm.__DOMAIN__
+  - hostname: c3s-kasm.onoiroi.us
     service: https://localhost:8443
     originRequest:
       noTLSVerify: true
       connectTimeout: 30s
 
   # ── SysReptor (Caddy proxy) ─────────────────────────────────────────────────
-  - hostname: __SLUG__-reports.__DOMAIN__
+  - hostname: c3s-reports.onoiroi.us
     service: http://localhost:7777
     originRequest:
       connectTimeout: 10s
 
   # ── Empire Starkiller ───────────────────────────────────────────────────────
-  - hostname: __SLUG__-empire.__DOMAIN__
+  - hostname: c3s-empire.onoiroi.us
     service: http://localhost:1337
     originRequest:
       connectTimeout: 10s
 
   # ── Portainer ───────────────────────────────────────────────────────────────
-  - hostname: __SLUG__-mgmt.__DOMAIN__
+  - hostname: c3s-mgmt.onoiroi.us
     service: https://localhost:9443
     originRequest:
       noTLSVerify: true
       connectTimeout: 10s
 
   # ── Docmost ─────────────────────────────────────────────────────────────────
-  - hostname: __SLUG__-wiki.__DOMAIN__
+  - hostname: c3s-wiki.onoiroi.us
     service: http://localhost:13000
     originRequest:
       connectTimeout: 10s
 
   # ── KasmVNC VS Code ─────────────────────────────────────────────────────────
-  - hostname: __SLUG__-vscode.__DOMAIN__
+  - hostname: c3s-vscode.onoiroi.us
     service: https://localhost:6901
     originRequest:
       noTLSVerify: true
       connectTimeout: 30s
 
   # ── KasmVNC Kali ────────────────────────────────────────────────────────────
-  - hostname: __SLUG__-kali.__DOMAIN__
+  - hostname: c3s-kali.onoiroi.us
     service: https://localhost:6902
     originRequest:
       noTLSVerify: true
       connectTimeout: 30s
 
   # ── ATT&CK Workbench ───────────────────────────────────────────────────────
-  - hostname: __SLUG__-workbench.__DOMAIN__
+  - hostname: c3s-workbench.onoiroi.us
     service: http://localhost:3020
     originRequest:
       connectTimeout: 10s

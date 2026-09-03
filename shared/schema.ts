@@ -133,6 +133,14 @@ export const attackPlatformEnum = pgEnum("attack_platform", [
   "Azure AD",
   "Google Workspace",
   "PRE",
+  "Android",
+  "iOS",
+  "ESXi",
+  "Network Devices",
+  "Office Suite",
+  "Identity Provider",
+  "Engineering Workstation",
+  "Field Controller/RTU/PLC/IED",
 ]);
 
 // Notification enums

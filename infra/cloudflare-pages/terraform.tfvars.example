@@ -1,0 +1,4 @@
+cloudflare_account_id = "REPLACE_WITH_32_CHAR_HEX_ACCOUNT_ID"
+project_name          = "rtpi-c3s"
+production_branch     = "production"
+custom_domain         = "c3s-admin.onoiroi.us"

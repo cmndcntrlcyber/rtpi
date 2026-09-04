@@ -210,7 +210,7 @@ update_service_configs() {
     # Update SysReptor ALLOWED_HOSTS
     local sysreptor_env="$PROJECT_ROOT/configs/rtpi-sysreptor/app.env"
     if [ -f "$sysreptor_env" ]; then
-        local allowed_hosts="$slug-reports.$DOMAIN,sysreptor,sysreptor-app,0.0.0.0,127.0.0.1,localhost"
+        local allowed_hosts="localhost,127.0.0.1,$slug.$DOMAIN,*.$DOMAIN,$slug-reports.$DOMAIN,sysreptor,sysreptor-app"
         if grep -q "^ALLOWED_HOSTS=" "$sysreptor_env"; then
             sed -i "s|^ALLOWED_HOSTS=.*|ALLOWED_HOSTS=$allowed_hosts|" "$sysreptor_env"
         else

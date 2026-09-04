@@ -1,7 +1,7 @@
 ---
 name: searchcode
-description: MCP server for searching public source code across GitHub, GitLab,
-  Bitbucket via searchcode.com API
+description: MCP server providing code search across GitHub, GitLab, Bitbucket
+  and other public repositories via searchcode.com API
 registry: mcp
 tool_id: default:searchcode
 category: mcp-server
@@ -9,44 +9,44 @@ tags:
   - code-search
   - osint
   - reconnaissance
-  - mcp-server
-  - searchcode
-  - source-code
+  - mcp
   - api
+  - github
+  - gitlab
+  - source-code
 mitre_techniques:
-  - T1594
-  - T1213
-summary: searchcode-mcp is an MCP (Model Context Protocol) server that wraps the
-  searchcode.com API for searching billions of lines of open-source code. Use it
-  to find code patterns, credentials, API keys, configuration files, and
-  vulnerability indicators across public repositories on GitHub, GitLab, and
-  Bitbucket. Invoke via MCP tools exposed by the server; typically you will call
-  search functions with query strings and optional filters (language:, license:,
-  site:). Expect JSON responses containing code snippets, file paths, repository
-  URLs, and metadata. The tool operates entirely via searchcode.com's public
-  API—no local indexing, no authentication required, but rate limits apply per
-  IP. Ideal for OSINT reconnaissance to discover exposed secrets, understand
-  target technology stacks, find reusable exploit code, or map an organization's
-  public code footprint. Do NOT use for proprietary or private code analysis
-  (use searchcode-server self-hosted for that). Watch for API rate limits and
-  ensure you do not spam the service; the author requests a referrer header and
-  link-back courtesy. Results are syntax-highlighted and ranked by relevance and
-  popularity. No direct integration with GitHub search; searchcode indexes
-  independently.
+  - T1593.003
+  - T1595.002
+summary: searchcode MCP server queries searchcode.com to find public source code
+  across 243 languages and 10+ code hosts including GitHub, GitLab, and
+  Bitbucket. Use this for OSINT reconnaissance to find exposed secrets, API
+  keys, configuration files, security flaws, or code patterns in target
+  organizations' public repositories. Invoke via MCP client (Claude Desktop,
+  Cursor, VS Code Copilot) after adding the server with 'npx -y searchcode-mcp'.
+  The server uses searchcode.com's REST API to search billions of lines of
+  indexed code. Supports filters including language:, license:, site:, and
+  special character searches. Returns structured JSON with file paths,
+  repository URLs, matching code snippets, and metadata. Provides immediate
+  reconnaissance capability without cloning repositories—single query replaces
+  ~30 tool calls and 50k tokens. Watch for rate limiting (be excellent, don't
+  spam per API guidelines). Results may lag 2-3 days behind latest commits. No
+  authentication required for basic searches. Ideal for finding credential
+  leaks, vulnerable code patterns, technology stack enumeration, and dependency
+  analysis during initial target profiling.
 sources:
   - https://daily.dev/blog/search-engines-for-developers-a-comparative-guide
   - https://news.ycombinator.com/item?id=7947075
+  - https://www.supermonitoring.com/blog/find-code-snippets-easily-searchcode
   - https://pypi.org/project/searchcode
-  - https://searchcode.com
-  - https://github.com/boyter/searchcode-server
-  - https://scancode-toolkit.readthedocs.io/en/latest/reference/scancode-cli/index.html
+  - https://swimm.io/learn/software-development/what-is-a-code-search-engine-and-7-tools-to-know-in-2025
   - https://ast-grep.github.io/reference/cli
   - https://lobehub.com/skills/aaddrick-gh-cli-search-gh-search-code
-  - https://searchcode.com/file/53785310/doc/manual/Command-Index.html
+  - https://searchcode.com
+  - https://cli.github.com/manual/gh_search_code
+  - https://developer.mozilla.org/en-US/blog/searching-code-with-grep
   - https://www.yash.com/blog/red-team-assessment-and-penetration-testing
-  - https://blog.securelayer7.net/red-team-assessment
-  - https://www.cycognito.com/learn/red-teaming/red-teaming-vs-pentesting
-generated_at: 2026-09-03T12:38:39.841Z
+  - https://www.themissinglink.com.au/news/red-team-penetration-testing
+generated_at: 2026-09-04T02:29:55.236Z
 generated_by: anthropic
 source_hash: e1782f87a59c433da4b0fe9383e2dda315ba562f589225ac19ac9b1a8b539a87
 ---
@@ -55,80 +55,76 @@ source_hash: e1782f87a59c433da4b0fe9383e2dda315ba562f589225ac19ac9b1a8b539a87
 
 ## Overview
 
-searchcode-mcp is an MCP server (invoked via `npx -y searchcode-mcp`) that provides AI agents access to searchcode.com, a public source code search engine indexing billions of lines from GitHub, GitLab, and Bitbucket. It exposes MCP tools for searching code by keyword, filtering by language/license/site, and retrieving real-world code examples. The service is read-only, API-based, and requires no authentication. It is NOT affiliated with GitHub search and operates its own independent index. Searchcode.com is maintained as a community resource with a 'be excellent to each other' ethos—do not abuse the API.
+searchcode is an MCP (Model Context Protocol) server that provides programmatic access to searchcode.com, a comprehensive source code search engine indexing billions of lines of code from public repositories. The server wraps the searchcode.com REST API and exposes it to MCP-compatible AI clients like Claude Desktop, Cursor, VS Code Copilot, and others. SearchCode indexes code from GitHub, GitLab, Bitbucket, and other public code hosts across 243 programming languages. The MCP server is distributed as 'searchcode-mcp' via npm and runs via 'npx -y searchcode-mcp'. Unlike GitHub's native search, searchcode indexes special characters and provides cross-platform search capabilities. The tool is designed for code intelligence, OSINT reconnaissance, and vulnerability research without requiring repository clones or direct API authentication.
 
 ## When to use
 
-Use searchcode-mcp during OSINT and reconnaissance phases to: discover exposed credentials, API keys, or secrets in public repos; identify technology stack and dependencies of target organizations; find proof-of-concept exploit code or vulnerable code patterns; map an organization's public code footprint by owner/repo filters; research common misconfigurations or insecure coding practices. Prefer this over manual GitHub searches when you need cross-platform coverage (GitLab, Bitbucket) or when you want AI-agent-driven automated queries. Do NOT use for private/internal code—deploy searchcode-server self-hosted for enterprise use cases. Do NOT use if you need real-time code execution or IDE integration; this is search-only.
+Use searchcode MCP during reconnaissance phases to enumerate target organization code repositories, identify exposed secrets or credentials, find vulnerable code patterns, analyze technology stacks, discover API usage examples, locate configuration files, audit licensing compliance, or search for specific functions/methods. Particularly valuable when you need to search across multiple code hosting platforms simultaneously (GitHub + GitLab + Bitbucket) or when searching for special characters that traditional search engines ignore. Effective for finding 'language:python site:github.com org:targetname' patterns or 'filename:config.yml' across all public repos. Replaces manual GitHub/GitLab searches and reduces token consumption by ~100x compared to cloning and parsing repositories directly (500 tokens vs 50,000 tokens per investigation). Ideal for initial target profiling, supply chain analysis, and identifying publicly exposed attack surface.
 
 ## Authentication & setup
 
-No authentication required. The MCP server is started with `npx -y searchcode-mcp` (npx will auto-download on first run). Configuration in Claude Desktop: add to `claude_desktop_config.json` under `mcpServers` with `{"command": "npx", "args": ["-y", "searchcode-mcp"]}`. For other MCP clients (VS Code, Cursor, etc.), consult searchcode.com setup guide. The server communicates with searchcode.com API over HTTPS; ensure outbound HTTPS is allowed. Optional: pass a referrer header in API requests to identify your usage (courtesy, not required). No API key needed but rate limits apply per source IP—unknown exact limit, assume standard web API throttling. If self-hosting is required for private code, deploy searchcode-server (separate Java application, Fair Source licensed).
+No API key or authentication required for basic searchcode.com usage. The MCP server connects to searchcode.com as a free public service. To add to Claude Desktop, edit claude_desktop_config.json and add: {"mcpServers": {"searchcode": {"command": "npx", "args": ["-y", "searchcode-mcp"]}}}. For Cursor, add to .cursor/mcp.json: {"mcpServers": {"searchcode": {"command": "npx", "args": ["-y", "searchcode-mcp"]}}}. For VS Code Copilot, add to .vscode/settings.json: {"mcp": {"servers": {"searchcode": {"command": "npx", "args": ["-y", "searchcode-mcp"]}}}}. The server can also connect via HTTP transport for remote MCP servers. After configuration, restart your MCP client. The searchcode.com API creator requests that users 'be excellent to each other' and avoid spamming. Optional: pass a referrer in API requests to identify your usage. No rate limits are publicly documented but abuse will likely be blocked per IP.
 
 ## Key commands / parameters
 
-The MCP server exposes tools (exact names depend on server implementation, typically MCP `call_tool` requests). Common search parameters based on searchcode.com API and web interface:
+The MCP server exposes searchcode.com API capabilities through MCP tools. Primary search supports these qualifiers:
 
-- **query**: freetext search string (required)
-- **language:X**: filter by programming language (e.g., `language:python`)
-- **license:X**: filter by license type (e.g., `license:MIT`)
-- **site:X**: restrict to specific domain (e.g., `site:github.com` or `site:stackoverflow.com` for docs)
-- **repo:owner/name**: limit to specific repository (if supported by MCP wrapper)
-- **filename:X** or **path:X**: target specific file patterns (non-standard, verify MCP tool schema)
+- language: filter by programming language (e.g., 'language:python', 'language:javascript')
+- license: filter by code license (e.g., 'license:mit')
+- site: limit to specific code host (e.g., 'site:github.com')
+- filename: target specific filenames (e.g., 'filename:package.json', 'filename:config')
+- Special character search: unlike most engines, searchcode indexes operators, braces, etc.
 
-Query syntax is simple keyword-based; boolean operators and regex may not be supported. Results are ranked by relevance and popularity. New code typically indexed within days. No direct code execution or file download—only metadata and snippets returned.
+Search syntax supports boolean operators and exact phrases. Queries return: file path, repository URL, SHA/commit reference, language, matching code snippets with highlights, and textMatches array. The MCP server returns structured JSON containing these fields. No CLI flags are passed to the MCP server itself (invoked via npx); all parameters are sent through MCP tool calls from the AI client. Limit results per query (typically 30 default in API). Combine multiple qualifiers: 'api_key language:python site:github.com' to find Python files on GitHub containing 'api_key'.
 
 ## Example workflows
 
-**Workflow 1: Find exposed AWS keys in target org**
-Call searchcode MCP tool with query `'AWS_SECRET_ACCESS_KEY' language:python site:github.com owner:targetcorp`. Review results for hardcoded credentials in config files or scripts.
+**Credential leak reconnaissance**: Search 'aws_secret_access_key language:python site:github.com' to find exposed AWS credentials in Python code. Follow up with 'filename:.env' or 'filename:config.yml' to find configuration files.
 
-**Workflow 2: Identify target's tech stack**
-Search for `package.json` or `requirements.txt` scoped to target repos: `filename:package.json owner:targetcorp`. Parse dependencies to map frameworks and libraries.
+**Technology stack enumeration**: Query 'import flask site:github.com org:targetcompany' to identify Flask usage, then 'package.json site:github.com org:targetcompany' to enumerate Node.js dependencies. Search for specific framework versions: 'django==2.0 language:python'.
 
-**Workflow 3: Locate vulnerable code patterns**
-Query `eval( language:javascript` to find dangerous `eval()` usage. Combine with `owner:` filter to scope to specific organization.
+**Vulnerability pattern detection**: Search for known vulnerable patterns like 'eval(request language:python' or 'innerHTML = language:javascript' to find injection vulnerabilities. Use 'SELECT * FROM language:sql -filename:test' to find potential SQL injection points excluding tests.
 
-**Workflow 4: Research exploit code**
-Search `CVE-2024-1234 proof of concept` to find public PoCs or vulnerable code samples for a known CVE.
+**Supply chain analysis**: Find all repos using a specific library: 'import requests language:python site:github.com' or check for vulnerable versions: 'log4j-core 2.14 language:java'.
 
-**Workflow 5: Map public repos of an org**
-Use `owner:targetcorp` with broad queries to enumerate all indexed repositories and file types, building a reconnaissance map of public code assets.
+**License compliance audit**: Search 'license:gpl site:github.com org:yourorg' to find GPL-licensed code that may require disclosure.
 
 ## Output format
 
-Expect JSON responses from MCP tool calls containing arrays of search results. Each result typically includes:
-- **file path** and **filename**
-- **repository URL** (GitHub/GitLab/Bitbucket)
-- **code snippet** (syntax-highlighted, truncated)
-- **language** and **license** metadata
-- **relevance score** or rank
-- **last updated** timestamp (index freshness)
+The MCP server returns structured JSON responses from the searchcode.com API. Each result contains:
 
-Results are paginated (default limits unknown, likely 10-50 per call). Snippets are color-coded for readability but returned as text/JSON, not executable code. No raw file download—only previews. Links provided to view full file in source repo. Cross-reference URLs before using code in operations.
+- **path**: relative file path within repository
+- **repository**: repository name and location
+- **url**: direct link to file on source code host
+- **sha**: commit hash or identifier
+- **language**: detected programming language
+- **textMatches**: array of matching code snippets with surrounding context
+
+Code snippets are syntax-highlighted in the web UI but returned as plain text via API. Matching terms are indicated in textMatches. Responses include metadata like total result count. Results are ordered by relevance considering popularity, recency, and match quality. Official documentation and widely-used projects rank higher. Index lag is typically 2-3 days for new content. The MCP client (Claude, Cursor, etc.) will present this data in a conversational format, but the underlying structure is JSON. When multiple results exist, the agent receives a list of matches with enough context to identify relevant files without clicking through.
 
 ## Common pitfalls
 
-**Rate limiting**: unknown exact limits but API is IP-based; avoid rapid-fire queries or you will be throttled. Space out requests and cache results.
+**Rate limiting**: searchcode.com is a free service. Excessive automated queries from a single IP will likely be throttled or blocked. Space out requests and cache results. The API motto is 'be excellent to each other'—respect the service.
 
-**No private code**: searchcode.com only indexes public repos. Do not expect internal or private org code unless it was accidentally published.
+**Index lag**: New repositories or recent commits may not appear for 2-3 days. Don't assume code is absent if you know it was just pushed.
 
-**Index lag**: new code appears within days, not real-time. Fresh commits may not be searchable immediately.
+**No private repository access**: searchcode.com only indexes public code. It cannot search private GitHub/GitLab repos or internal code hosting.
 
-**No regex or advanced boolean**: query syntax is basic keyword-based. Complex patterns may require multiple queries or post-processing.
+**Special character quirks**: While searchcode handles special characters better than most engines, complex regex patterns are not supported. Use simple literal searches for operators.
 
-**Legal/ethical**: searching public code is legal, but scraping credentials or exploiting found secrets without authorization is not. Always verify scope and rules of engagement.
+**Result scope confusion**: searchcode is independent of GitHub search. It does NOT use GitHub's API or search backend. Results may differ from github.com search.
 
-**False positives**: keyword searches return many irrelevant results. Manually review snippets; do not assume every match is exploitable.
+**False negatives on exclusions**: Using negative qualifiers like '-language:javascript' may not work as expected. Explicitly filter positive matches instead.
 
-**No GitHub integration**: searchcode.com runs its own index, separate from GitHub search. Results may differ; use GitHub API directly if you need GitHub-specific features.
+**No code execution**: You cannot run found code snippets directly. This is a search engine only.
 
-**Courtesy violation**: the API is free and community-supported. Do not spam, do not use for commercial scraping without permission, do provide referrer/link-back if possible.
+**Context window with large result sets**: If searching for very common patterns, the AI agent may receive hundreds of matches, consuming tokens. Narrow searches with specific qualifiers.
 
 ## References
 
-- https://searchcode.com
-- https://daily.dev/blog/search-engines-for-developers-a-comparative-guide
-- https://news.ycombinator.com/item?id=7947075
-- https://pypi.org/project/searchcode
-- https://github.com/boyter/searchcode-server
+• https://searchcode.com
+• https://daily.dev/blog/search-engines-for-developers-a-comparative-guide
+• https://news.ycombinator.com/item?id=7947075
+• https://www.supermonitoring.com/blog/find-code-snippets-easily-searchcode
+• https://pypi.org/project/searchcode
+• https://swimm.io/learn/software-development/what-is-a-code-search-engine-and-7-tools-to-know-in-2025

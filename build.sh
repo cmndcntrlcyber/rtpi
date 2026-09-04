@@ -223,6 +223,119 @@ start_services() {
     docker compose $compose_flags ps
 }
 
+# ─── Post-Deploy Self-Healing ────────────────────────────────────────────────
+# Structural repairs that deploy-verify.sh's state-only checks can't catch.
+# Each repair is idempotent — safe to run on every deploy.
+post_deploy_heal() {
+    section "Post-Deploy Self-Healing"
+    local healed=0 checks=0
+
+    # ── 1. Cloudflared tunnel connectivity ────────────────────────────
+    checks=$((checks + 1))
+    log "Checking cloudflared tunnel registration..."
+    if docker ps --format '{{.Names}}' | grep -q '^rtpi-cloudflared$'; then
+        local cf_ok=false
+        for _ in 1 2 3 4 5 6; do
+            if docker logs --tail 30 rtpi-cloudflared 2>&1 | grep -q 'Registered tunnel connection'; then
+                cf_ok=true
+                break
+            fi
+            sleep 5
+        done
+        if [ "$cf_ok" = true ]; then
+            if docker logs --tail 20 rtpi-cloudflared 2>&1 | grep -q 'No ingress rules'; then
+                warn "cloudflared registered but has no ingress rules (all requests → 503)"
+                warn "  Configure ingress in Cloudflare Zero Trust dashboard:"
+                warn "  Networks → Tunnels → rtpi-${RTPI_SLUG:-c3s} → Public Hostname"
+            else
+                log "cloudflared: tunnel registered, ingress OK ✅"
+            fi
+        else
+            warn "cloudflared did not register within 30s — restarting..."
+            docker restart rtpi-cloudflared >/dev/null 2>&1
+            sleep 10
+            if docker logs --tail 10 rtpi-cloudflared 2>&1 | grep -q 'Registered tunnel connection'; then
+                log "cloudflared: recovered after restart ✅"
+                healed=$((healed + 1))
+            else
+                error "cloudflared: tunnel still not registered — check CF_TUNNEL_TOKEN"
+            fi
+        fi
+    else
+        info "cloudflared not running (skipped)"
+    fi
+
+    # ── 2. Kasm guac APIHOSTNAME placeholder ──────────────────────────
+    checks=$((checks + 1))
+    log "Checking kasm-guac API hostname resolution..."
+    if docker ps --format '{{.Names}}' | grep -q '^rtpi-kasm-guac$'; then
+        sleep 5
+        if docker logs --tail 30 rtpi-kasm-guac 2>&1 | grep -q 'ENOTFOUND apihostname'; then
+            warn "kasm-guac has unresolved APIHOSTNAME — patching..."
+            docker exec rtpi-kasm-guac sh -c '
+                SRC=/opt/kasm/current/conf/app/guac/kasmguac.app.config.yaml
+                TMP=/tmp/kasmguac.app.config.yaml
+                if [ -f "$TMP" ]; then
+                    sed -i "s|APIHOSTNAME|kasm_proxy|g" "$TMP"
+                elif [ -f "$SRC" ]; then
+                    cp "$SRC" "$TMP"
+                    sed -i "s|APIHOSTNAME|kasm_proxy|g" "$TMP"
+                fi
+            ' 2>/dev/null
+            docker restart rtpi-kasm-guac >/dev/null 2>&1
+            sleep 8
+            if docker logs --tail 10 rtpi-kasm-guac 2>&1 | grep -q 'ENOTFOUND apihostname'; then
+                error "kasm-guac: APIHOSTNAME still unresolved after patch"
+            else
+                log "kasm-guac: patched APIHOSTNAME → kasm_proxy ✅"
+                healed=$((healed + 1))
+            fi
+        else
+            log "kasm-guac: API hostname OK ✅"
+        fi
+    else
+        info "kasm-guac not running (skipped)"
+    fi
+
+    # ── 3. Kasm manager healthcheck port ──────────────────────────────
+    checks=$((checks + 1))
+    log "Checking kasm-manager healthcheck..."
+    if docker ps --format '{{.Names}}' | grep -q '^rtpi-kasm-manager$'; then
+        local hc_test
+        hc_test=$(docker inspect rtpi-kasm-manager --format '{{json .Config.Healthcheck.Test}}' 2>/dev/null)
+        if echo "$hc_test" | grep -q 'localhost:8080'; then
+            warn "kasm-manager healthcheck targets 8080 instead of 8181"
+            warn "  Fix docker-compose.yml — container-healer.sh will handle restarts"
+        else
+            log "kasm-manager: healthcheck port OK ✅"
+        fi
+    else
+        info "kasm-manager not running (skipped)"
+    fi
+
+    # ── 4. Deploy verification gate ───────────────────────────────────
+    checks=$((checks + 1))
+    log "Running deploy verification gate..."
+    local verify_script="${PROJECT_ROOT}/scripts/deploy-verify.sh"
+    if [ -x "$verify_script" ]; then
+        if "$verify_script" --timeout 180 --stability 15; then
+            log "Deploy verification passed ✅"
+        else
+            local rc=$?
+            if [ $rc -eq 3 ]; then
+                warn "Verification timed out — container-healer.sh will continue monitoring"
+            else
+                error "Deploy verification failed (exit $rc) — check logs above"
+            fi
+        fi
+    else
+        warn "deploy-verify.sh not found or not executable — skipping"
+    fi
+
+    echo ""
+    log "Self-healing complete: ${checks} checks, ${healed} repairs applied"
+}
+
 # ─── Post-Deploy Summary ─────────────────────────────────────────────────────
 print_summary() {
     section "Deployment Summary"
@@ -308,6 +421,7 @@ main() {
     fi
 
     start_services
+    post_deploy_heal
     print_summary
 }
 

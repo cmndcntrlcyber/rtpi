@@ -1,51 +1,49 @@
 ---
 name: MCP Fetch
-description: MCP server that fetches and converts web content (HTML, JSON,
-  Markdown, plain text) from remote URLs via HTTP/HTTPS.
+description: MCP server that fetches web content and converts HTML to markdown
+  for LLM consumption with chunking support
 registry: mcp
 tool_id: default:fetch
 category: mcp-server
 tags:
-  - reconnaissance
-  - osint
   - web-scraping
+  - osint
+  - reconnaissance
   - content-extraction
-  - http
+  - http-client
+  - markdown-conversion
   - mcp-server
-  - data-collection
 mitre_techniques:
   - T1595.002
-summary: "Invoke MCP Fetch to retrieve public web resources and convert them to
-  machine-readable formats. Use when you need to download HTML pages, API
-  responses, or documentation and convert them to Markdown or plain text for
-  analysis. The tool runs as an MCP server (via `uvx mcp-server-fetch`) and
-  exposes a `fetch` tool. Invoke with `url` (required), optional `max_length`
-  (default 5000 chars), `start_index` (for pagination, default 0), and `raw`
-  (boolean, default false; when true, skips Markdown conversion). By default,
-  HTML is converted to Markdown. The server respects robots.txt unless
-  `--ignore-robots-txt` is set. **Security warning**: The server can access
-  internal/local IPs; never point it at internal infrastructure or metadata
-  endpoints (169.254.169.254, localhost, RFC1918 ranges) without explicit
-  authorization. Expect Markdown output by default; use `raw=true` for
-  unprocessed HTML. Paginate large pages by incrementing `start_index`. Supports
-  custom User-Agent (`--user-agent`) and HTTP proxies (`--proxy-url`). The
-  server uses stdio for MCP communication. For YouTube transcripts or article
-  extraction, other variants (fetch_youtube_transcript, fetch_readable) exist
-  but are not guaranteed in the default mcp-server-fetch package."
+  - T1590
+summary: "Use mcp-server-fetch to retrieve web pages, APIs, or documentation
+  during reconnaissance. Invoke the `fetch` tool with a target URL; content
+  returns as markdown by default (raw HTML available via `raw=true`). Essential
+  for gathering intelligence from public-facing sites, documentation, pricing
+  pages, or blog posts. The tool automatically truncates at 5000 chars but
+  supports pagination via `start_index` to read long pages in chunks. OPSEC:
+  This server can reach internal/RFC1918 addresses—do NOT use in environments
+  where SSRF poses a risk. Does NOT respect robots.txt by default in the Python
+  implementation; the Rust variant offers `--ignore-robots-txt` flag. No
+  built-in proxy support in the canonical Python version, but Rust version
+  supports `--proxy-url`. Expect markdown output unless `raw=true` is set. For
+  article extraction (stripped of navigation/ads), use the Readability-based
+  `fetch_readable` tool if available (zcaceres/fetch-mcp fork). Always validate
+  URLs and sanitize output before passing to downstream tools."
 sources:
-  - https://apidog.com/blog/fetch-mcp-server
-  - https://glama.ai/mcp/servers/tokenizin-agency/mcp-npx-fetch
-  - https://mcp.so/server/fetch/modelcontextprotocol
   - https://glama.ai/mcp/servers/modelcontextprotocol/fetch
-  - https://mcpservers.org/servers/goswamig/fetch-mcp
-  - https://crates.io/crates/mcp-server-fetch
-  - https://lib.rs/crates/mcp-server-fetch
   - https://github.com/zcaceres/fetch-mcp
+  - https://github.com/modelcontextprotocol/servers/tree/main/src/fetch
+  - https://mcp.so/server/fetch/test
+  - https://agentskillshub.dev/skills/fetch
+  - https://lib.rs/crates/mcp-server-fetch
   - https://mcp.so/servers/mcp_server_fetch
   - https://mcpservers.org/servers/wolfyy970/docs-fetch-mcp
-  - https://mcpmarket.com/server/redteam-1
   - https://arxiv.org/html/2511.15998v1
-generated_at: 2026-09-03T12:38:44.593Z
+  - https://mcp.so/servers/read-team-mcp-server
+  - https://www.promptfoo.dev/docs/red-team/mcp-security-testing
+  - https://redcanary.com/blog/testing-and-validation/ai-security-testing
+generated_at: 2026-09-04T02:29:52.212Z
 generated_by: anthropic
 source_hash: 4195fc904223cce05bd98d6e5426a11af915e4d3cf644d1df266c8cbf511443e
 ---
@@ -54,157 +52,66 @@ source_hash: 4195fc904223cce05bd98d6e5426a11af915e4d3cf644d1df266c8cbf511443e
 
 ## Overview
 
-MCP Fetch is a Model Context Protocol server that retrieves web content over HTTP/HTTPS and transforms it into Markdown, plain text, JSON, or raw HTML. It is designed to give AI agents the ability to fetch live public web data, documentation, and API responses. The server is part of Anthropic's MCP ecosystem and communicates over stdio. It runs via `uvx mcp-server-fetch` (no installation required) or can be installed via `pip install mcp-server-fetch`. The primary tool exposed is `fetch`, which accepts a URL and optional parameters to control output length, format, and pagination.
+MCP Fetch is a Model Context Protocol server that retrieves web content and converts it to markdown. Deployed via `uvx mcp-server-fetch`, it exposes a `fetch` tool and a `fetch` prompt. The canonical implementation (modelcontextprotocol/servers) supports HTML-to-markdown conversion with optional raw output, truncation, and pagination. Alternative implementations (zcaceres/fetch-mcp, Rust mcp-server-fetch) add JSON fetching, YouTube transcript extraction, Mozilla Readability integration, and robots.txt compliance options. In RTPI, this tool enables automated OSINT collection, competitive analysis, and documentation scraping without manual browsing.
 
 ## When to use
 
-Use MCP Fetch when you need to:
-- Retrieve public documentation, blog posts, or reference material during reconnaissance
-- Download HTML pages and convert them to Markdown for easier parsing
-- Fetch JSON APIs and inspect responses
-- Collect data from multiple pages in a structured way
-- Bypass the need for manual copy-paste of web content
-
-Do NOT use when:
-- The target is an internal IP, localhost, or cloud metadata endpoint (169.254.169.254) unless explicitly authorized
-- You need JavaScript rendering (use a browser-based MCP tool instead)
-- The site blocks automated requests and you lack permission to bypass
-- You need to exfiltrate data covertly (MCP traffic is logged by the host client)
+Use mcp-server-fetch when you need to programmatically retrieve public web content during reconnaissance (T1595.002) or gather victim organization information (T1590). Ideal for fetching competitor pricing pages, technical documentation, blog posts, or API responses. Use it to scrape multiple pages in sequence, extract changelogs, or pull threat intelligence feeds. Do NOT use if the target may be internal/private infrastructure (SSRF risk), if you need JavaScript rendering (canonical version has limited JS support; check for node.js install or use Rust version with `--render=always`), or if you need to respect crawl politeness (no rate-limiting or robots.txt by default). Prefer browser automation (Puppeteer/Playwright MCP) for SPAs or login-protected content.
 
 ## Authentication & setup
 
-No authentication is required for public URLs. The tool is invoked by the MCP client (e.g., Claude Desktop, RTPI agent) which spawns the server process.
-
-**Configuration in MCP client:**
-```json
-{
-  "mcpServers": {
-    "fetch": {
-      "command": "uvx",
-      "args": ["mcp-server-fetch"]
-    }
-  }
-}
-```
-
-**Optional server arguments:**
-- `--user-agent <string>`: Custom User-Agent header
-- `--ignore-robots-txt`: Bypass robots.txt restrictions (use with caution)
-- `--proxy-url <URL>`: Route requests through an HTTP proxy
-- Environment variable `LOG_LEVEL=debug` for verbose logging
-
-**Installation alternatives:**
-- `pip install mcp-server-fetch` then run `python -m mcp_server_fetch`
-- Docker: `docker run mcp/fetch`
-
-The server automatically checks robots.txt for autonomous fetching unless `--ignore-robots-txt` is set. The User-Agent will indicate 'Autonomous' or 'User-Specified' mode.
+No authentication required for the tool itself. Install via `uvx mcp-server-fetch` (recommended) or `pip install mcp-server-fetch && python -m mcp_server_fetch`. The server communicates over stdio. To add to an MCP client, include in config JSON: `{"mcpServers": {"fetch": {"command": "uvx", "args": ["mcp-server-fetch"]}}}`. Optionally install node.js to enable a more robust HTML simplifier in the Python version. For Rust version: `cargo install mcp-server-fetch`, supports CLI flags `--user-agent`, `--proxy-url`, `--ignore-robots-txt`. Docker option: `docker run mcp/fetch`. No API keys or credentials needed unless fetching from authenticated endpoints (pass custom headers via `headers` parameter in zcaceres fork).
 
 ## Key commands / parameters
 
-**Tool:** `fetch`
+**Tool**: `fetch`
 
-**Required parameter:**
-- `url` (string): HTTP or HTTPS URL to retrieve
+**Required parameters**:
+- `url` (string): Target URL (HTTP/HTTPS only)
 
-**Optional parameters:**
-- `max_length` (integer, default 5000): Maximum characters to return; prevents oversized responses
-- `start_index` (integer, default 0): Character offset for pagination; fetch large pages in chunks
-- `raw` (boolean, default false): If true, returns raw HTML instead of Markdown
-- `headers` (object, optional): Custom HTTP headers for authentication or API keys (implementation-dependent; some variants support this)
+**Optional parameters**:
+- `max_length` (integer, default 5000): Maximum characters returned; range 1000–50000 in some forks
+- `start_index` (integer, default 0): Character offset for pagination; increment by `max_length` to read next chunk
+- `raw` (boolean, default false): Return raw HTML instead of markdown
+- `headers` (object, zcaceres fork only): Custom HTTP headers as key-value pairs
+- `proxy` (string, zcaceres/Rust only): Proxy URL, e.g., `http://proxy:8080`
 
-**Server-level flags (set at startup, not per-request):**
-- `--user-agent <string>`: Override default User-Agent
-- `--ignore-robots-txt`: Disable robots.txt compliance
-- `--proxy-url <URL>`: HTTP proxy for all requests
+**Additional tools (zcaceres fork)**:
+- `fetch_json`: Parse and return JSON response
+- `fetch_readable`: Extract article content via Mozilla Readability, strips ads/nav
+- `fetch_youtube_transcript`: Extract captions, optional `lang` parameter (default `en`)
 
-**Example invocation (via agent):**
-Ask the MCP client: "Use the fetch tool to get https://example.com/api/status"
-
-**Pagination example:**
-First call: `fetch(url="https://long-page.com", max_length=5000, start_index=0)`
-Next call: `fetch(url="https://long-page.com", max_length=5000, start_index=5000)`
+**Rust CLI flags**: `--user-agent <UA>`, `--proxy-url <URL>`, `--ignore-robots-txt`, `LOG_LEVEL=debug`
 
 ## Example workflows
 
-**1. Reconnaissance - enumerate subdomains from a known DNS enumeration tool output page:**
-- Fetch the HTML page: `fetch(url="https://dnsdumpster.com/results/target.com")`
-- Extract subdomain list from returned Markdown
-- Feed results to further enumeration tools
+**1. Reconnaissance on competitor pricing**: `fetch(url="https://target.com/pricing")` → returns markdown; parse tables, feature lists. Repeat with `start_index=5000` if truncated.
 
-**2. OSINT - download public Pastebin or GitHub gist:**
-- `fetch(url="https://pastebin.com/raw/abc123", raw=true)` to get plaintext content
-- Analyze for leaked credentials or configuration
+**2. Scrape documentation in chunks**: Page is 20k chars. Call `fetch(url="https://docs.target.com/api", max_length=5000, start_index=0)`, then `start_index=5000`, `10000`, `15000` until EOF.
 
-**3. API enumeration:**
-- `fetch(url="https://api.target.com/v1/users")` to retrieve JSON
-- Inspect structure and identify endpoints
+**3. Extract clean article content**: Use zcaceres fork: `fetch_readable(url="https://blog.target.com/post")` strips navigation, ads, returns only article body as markdown.
 
-**4. Documentation scraping:**
-- Fetch internal documentation if accessible: `fetch(url="https://internal-docs.target.com/admin-api")`
-- Convert to Markdown and search for API keys, endpoints, or architecture details
+**4. Fetch JSON API**: `fetch_json(url="https://api.target.com/v1/endpoints")` returns parsed JSON object.
 
-**5. Paginated content extraction:**
-- Large page: `fetch(url="...", max_length=5000, start_index=0)` → store
-- Continue: `fetch(url="...", start_index=5000)` until end of content
+**5. OPSEC-aware fetch via proxy (Rust)**: `mcp-server-fetch --proxy-url http://127.0.0.1:8080 --user-agent "Mozilla/5.0"` then invoke `fetch` tool.
 
-**6. Proxy rotation:**
-- Start server with `--proxy-url http://proxy.local:8080`
-- All fetches route through proxy for anonymity or IP rotation
+**6. YouTube transcript for phishing lure research**: `fetch_youtube_transcript(url="https://youtube.com/watch?v=xyz", lang="en")` extracts captions without downloading video.
 
 ## Output format
 
-**Default (Markdown conversion):**
-Returns the page content converted to Markdown. Links, headings, and text structure are preserved. Navigation, ads, and boilerplate are not automatically stripped unless using a variant like `fetch_readable`.
-
-**Raw mode (`raw=true`):**
-Returns unprocessed HTML as a string. Useful for custom parsing or when Markdown conversion loses critical structure.
-
-**JSON APIs:**
-If the URL returns JSON, the content is returned as a JSON string (not parsed). You must parse it in subsequent steps.
-
-**Truncation:**
-If the content exceeds `max_length`, it is truncated. Use `start_index` to paginate through the full document.
-
-**Errors:**
-- HTTP errors (404, 500, etc.) are returned as error messages.
-- Network failures, timeouts, or DNS issues will raise exceptions visible to the agent.
-- Robots.txt violations (if enforced) will block the request and return an error.
+Default: Markdown string, truncated at `max_length` characters (default 5000). If content exceeds limit, use `start_index` to paginate. Response includes the extracted text only; metadata (title, links) not included in canonical version. With `raw=true`, returns unprocessed HTML. zcaceres `fetch_readable` returns cleaner markdown (main content only). `fetch_json` returns parsed JSON object. `fetch_youtube_transcript` returns plain text transcript. Expect UTF-8 encoding. No structured metadata envelope in the response—just the content string. If node.js is installed, HTML-to-markdown conversion is more accurate (Python version). Check for truncation by comparing returned length to `max_length`; if equal, content likely continues.
 
 ## Common pitfalls
 
-**1. Accessing internal IPs:**
-The server can fetch localhost, 127.0.0.1, 169.254.169.254 (cloud metadata), and RFC1918 ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16). This is a **critical SSRF risk**. Always validate URLs before fetching. Do not fetch user-controlled URLs without allowlisting.
-
-**2. Ignoring robots.txt:**
-Using `--ignore-robots-txt` can expose you legally and operationally. Only use during authorized engagements and document the decision.
-
-**3. Large responses:**
-Default `max_length=5000` is very short. Large pages will be truncated silently. Always check if content ends mid-sentence and paginate if necessary.
-
-**4. JavaScript-rendered content:**
-This tool does NOT execute JavaScript. Single-page apps (SPAs) or dynamic content will return skeleton HTML. Use a browser-based tool for such targets.
-
-**5. Custom headers:**
-Not all implementations support the `headers` parameter. Test your specific MCP Fetch variant. If unsupported, use `--user-agent` for simple User-Agent overrides.
-
-**6. Logging and attribution:**
-MCP clients (e.g., Claude Desktop) log all tool invocations. Fetches are visible in client logs and may be sent to Anthropic or other vendors. Assume no operational anonymity unless you control the entire stack.
-
-**7. Proxy misconfiguration:**
-If `--proxy-url` is set incorrectly, all requests will fail. Test connectivity before operational use.
-
-**8. Robots.txt User-Agent fingerprinting:**
-The default User-Agent includes 'ModelContextProtocol/1.0', which is highly attributable. Customize with `--user-agent` for lower-profile requests.
+**SSRF risk**: The server can access local/internal IPs (127.0.0.1, 10.0.0.0/8, 192.168.0.0/16, 172.16.0.0/12). In RTPI, ensure network segmentation or block private ranges at the firewall. **Truncation surprises**: Default 5000-char limit catches users off-guard; always check if `len(output) == max_length` and paginate. **No robots.txt respect (Python)**: Canonical version does not honor robots.txt; Rust version does by default unless `--ignore-robots-txt` is set. **JavaScript rendering**: Python version has limited JS support; install node.js for better results or use Rust `--render=always`, but this slows fetches significantly. **No rate limiting**: Rapid-fire requests may trigger WAFs or IP bans; implement delays between calls. **Markdown conversion quirks**: Complex tables, embedded media, or dynamic content may render poorly; use `raw=true` and parse manually if needed. **No error detail**: Failed fetches return generic errors; enable `LOG_LEVEL=debug` (Rust) for troubleshooting. **Version fragmentation**: MCP Python SDK 1.x required; SDK 2.0 port in progress—check compatibility.
 
 ## References
 
-- https://apidog.com/blog/fetch-mcp-server
-- https://glama.ai/mcp/servers/tokenizin-agency/mcp-npx-fetch
-- https://mcp.so/server/fetch/modelcontextprotocol
 - https://glama.ai/mcp/servers/modelcontextprotocol/fetch
-- https://mcpservers.org/servers/goswamig/fetch-mcp
-- https://crates.io/crates/mcp-server-fetch
-- https://lib.rs/crates/mcp-server-fetch
+- https://github.com/modelcontextprotocol/servers/tree/main/src/fetch
 - https://github.com/zcaceres/fetch-mcp
+- https://lib.rs/crates/mcp-server-fetch
 - https://mcp.so/servers/mcp_server_fetch
+- https://agentskillshub.dev/skills/fetch
 - https://arxiv.org/html/2511.15998v1
+- https://www.promptfoo.dev/docs/red-team/mcp-security-testing

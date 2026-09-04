@@ -1,54 +1,56 @@
 ---
 name: Chrome DevTools
-description: MCP server exposing Chrome DevTools Protocol for browser
-  automation, debugging, and web application inspection during red team
-  engagements.
+description: MCP server exposing Chrome DevTools Protocol for programmatic
+  browser inspection, DOM manipulation, network interception, and JavaScript
+  execution.
 registry: mcp
 tool_id: default:chrome-devtools
 category: mcp-server
 tags:
   - browser
   - devtools
+  - chrome
   - javascript
   - dom
-  - mcp-server
-  - web-debugging
+  - network-analysis
+  - reconnaissance
   - automation
 mitre_techniques:
+  - T1217
   - T1185
   - T1539
-  - T1213.002
-summary: This MCP server wraps Chrome DevTools Protocol (CDP) capabilities for
-  programmatic browser control. Invoke via `npx -y chrome-devtools-mcp@latest`
-  to expose DevTools functions through MCP. Use this when you need to inspect
-  web application internals, modify DOM/CSS/JavaScript in real-time, intercept
-  network traffic, access storage/cookies, or automate browser-based
-  reconnaissance without manual clicking. The server provides programmatic
-  access to the same capabilities available in Chrome's built-in DevTools (F12
-  console). Expect responses containing DOM trees, network request data,
-  JavaScript execution results, and storage contents. Critical for testing
-  authentication flows, session hijacking scenarios, and identifying client-side
-  vulnerabilities. During red team ops, this enables headless browser automation
-  for credential harvesting, cookie extraction, and JavaScript-based
-  enumeration. The tool runs as a Node.js MCP server—ensure Chrome/Chromium is
-  installed and accessible. Agent should request DOM inspection, script
-  execution, network monitoring, or storage access through MCP tool calls. Watch
-  for anti-automation detection on target sites. Combine with other MCP tools
-  for multi-stage attacks involving browser state.
+  - T1005
+summary: "chrome-devtools-mcp exposes Chrome DevTools Protocol (CDP) over MCP
+  for programmatic browser control. Use it to inspect live web application
+  state, manipulate DOM/CSS, intercept network traffic, extract
+  cookies/localStorage, execute arbitrary JavaScript in page context, and
+  automate reconnaissance workflows. Invoke via npx -y
+  chrome-devtools-mcp@latest. The server requires a running Chrome instance with
+  remote debugging enabled (--remote-debugging-port=9222). CDP operates over
+  WebSocket/HTTP; expect JSON responses containing DOM trees, network HAR data,
+  console logs, and execution results. Key for post-exploitation cookie theft,
+  client-side code analysis, and repeatable assessment automation. Watch for
+  same-origin restrictions when accessing cross-domain frames; CDP has full
+  access to all browser contexts including extensions. Cookies and tokens are
+  cleartext-accessible via Runtime.evaluate or Network.getAllCookies. Output is
+  structured JSON suitable for further parsing. Common errors: Chrome not
+  launched with debugging port, port conflicts (9222 in use), WebSocket
+  connection timeouts. Always verify target Chrome instance is reachable before
+  invoking MCP tools."
 sources:
   - https://www.headspin.io/blog/chrome-devtools-a-complete-guide
+  - https://www.youtube.com/watch?v=fxplz32rgEQ
   - https://www.microverse.org/blog/a-helpful-guide-to-learn-and-maximize-chrome-devtools
   - https://www.debugbear.com/blog/use-chrome-devtools
   - https://medium.com/swlh/the-basics-of-chrome-devtools-4d69a102a699
-  - https://x-team.com/magazine/7-powerful-chrome-devtools-features-every-web-developer-should-know-about
   - https://github.com/GoogleChrome/devtools-docs/blob/master/docs/commandline-api.md
   - https://developer.chrome.com/docs/devtools/console/reference
   - https://developer.chrome.com/docs/devtools/console/utilities
   - https://developer.chrome.com/docs/devtools/open
-  - https://peter.sh/experiments/chromium-command-line-switches
-  - https://bishopfox.com/blog/9-red-team-tools
-  - https://www.praetorian.com/security-101/red-team-vs-penetration-testing
-generated_at: 2026-09-03T12:39:04.938Z
+  - https://developer.chrome.com/docs/devtools/settings
+  - https://systemweakness.com/from-debugging-to-hacking-using-chrome-devtools-like-a-bug-hunter-838949adf76b
+  - https://courses.redteamleaders.com/courses/e79d5f5c-181d-4a90-bedd-58d3320eabf3
+generated_at: 2026-09-04T02:30:04.084Z
 generated_by: anthropic
 source_hash: adce2514b3aa6da536b6221b9bc85a4eaecf5a0422a3b22808e9ca3844183e32
 ---
@@ -57,79 +59,39 @@ source_hash: adce2514b3aa6da536b6221b9bc85a4eaecf5a0422a3b22808e9ca3844183e32
 
 ## Overview
 
-chrome-devtools-mcp is an MCP server that exposes Chrome DevTools Protocol capabilities through the Model Context Protocol interface. It provides programmatic access to browser debugging and inspection features normally accessed via Chrome's built-in developer tools (F12). The server enables DOM/CSS manipulation, JavaScript execution, network traffic inspection, cookie/storage access, and performance profiling. In RTPI, this tool bridges the gap between traditional CLI-based red team tools and browser-based attack surfaces. Unlike manual DevTools usage, this MCP server allows AI agents to automate browser inspection and manipulation tasks. The underlying Chrome DevTools Protocol is the same interface used by browser automation frameworks and remote debugging tools.
+chrome-devtools-mcp is an MCP server that wraps the Chrome DevTools Protocol (CDP), providing programmatic access to Chrome's debugging and inspection capabilities. CDP is the same API powering the visual DevTools UI. Through this server, agents can inspect DOM structures, monitor network traffic, execute JavaScript in page context, extract cookies/localStorage, manipulate CSS, set breakpoints, and capture performance traces. This is equivalent to having full DevTools access in an automated, scriptable format. The protocol communicates over WebSocket (typically ws://localhost:9222) once Chrome is launched with --remote-debugging-port=9222. The MCP server translates agent requests into CDP commands and returns structured results.
 
 ## When to use
 
-Use chrome-devtools-mcp when the engagement requires browser-based reconnaissance, client-side vulnerability identification, or session/credential extraction. Specific scenarios: (1) Inspecting JavaScript code and DOM structure to identify hidden endpoints, API keys, or authentication logic. (2) Extracting cookies, localStorage, sessionStorage, or IndexedDB contents for session hijacking or offline analysis. (3) Monitoring network requests to map API endpoints, identify unencrypted data transmission, or capture authentication tokens. (4) Modifying DOM elements or CSS to bypass client-side security controls or test UI redressing attacks. (5) Executing arbitrary JavaScript in the context of a target page to enumerate objects, call functions, or extract data. (6) Emulating browser extensions that exfiltrate data (similar to CursedChrome attacks mentioned in red team tool lists). (7) Testing multi-factor authentication flows by inspecting browser state between authentication steps. Do NOT use for general web requests (use curl/httpx instead) or when headless detection would compromise the engagement. This tool is for deep inspection, not simple HTTP interactions.
+Use chrome-devtools-mcp when you need to interact with live browser state during web application assessments. Primary scenarios: (1) Extract session tokens, cookies, and localStorage from authenticated sessions for credential harvesting (T1539). (2) Analyze client-side JavaScript behavior, including obfuscated code, XSS sinks, and API endpoints not visible in static analysis. (3) Intercept and inspect network requests/responses to identify hidden parameters, API keys in headers, or GraphQL introspection endpoints. (4) Modify DOM and CSS on-the-fly to test client-side validation bypasses or UI redressing attacks. (5) Automate reconnaissance workflows requiring JavaScript rendering (SPA crawling, dynamic content enumeration). (6) Post-exploitation on compromised workstations where Chrome is running with debugging enabled—CDP becomes a C2-like channel for data exfiltration. Do NOT use for static HTML analysis (use curl/wget) or when browser automation frameworks like Puppeteer are overkill; this is for targeted, programmatic DevTools access.
 
 ## Authentication & setup
 
-Installation: The MCP server is invoked via `npx -y chrome-devtools-mcp@latest`, which auto-downloads the latest version. Requires Node.js runtime in RTPI environment. Chrome or Chromium browser must be installed and accessible on the system—the server will launch or attach to Chrome instances. No API keys or cloud authentication required; this is a local tool. Setup steps: (1) Verify Node.js is available (`node --version`). (2) Ensure Chrome/Chromium binary is in PATH or set CHROME_PATH environment variable. (3) The MCP server will handle browser instance management—it can launch new Chrome instances with remote debugging enabled (typically on port 9222) or attach to existing instances. (4) For red team stealth, consider using existing user profiles to inherit cookies/sessions: Chrome can be launched with `--user-data-dir` flag pointing to victim profile. (5) If testing requires specific browser configurations (disable CORS, ignore certificate errors), these are set via Chrome launch flags, not MCP parameters. The agent should not need to manage Chrome lifecycle directly—the MCP server abstracts this. Firewall note: If Chrome remote debugging port (9222) is blocked, the server cannot function.
+No built-in authentication mechanism. Security depends entirely on network-level access control to the debugging port. Setup: (1) Launch Chrome with remote debugging: chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug (use a temporary profile to avoid interference). (2) Verify Chrome is listening: curl http://localhost:9222/json/version should return JSON with WebSocket debugger URL. (3) Invoke MCP server: npx -y chrome-devtools-mcp@latest. The server will attempt to connect to ws://localhost:9222 by default. (4) If Chrome runs on a different host/port, set CDP_ENDPOINT environment variable: CDP_ENDPOINT=ws://192.168.1.100:9222 npx -y chrome-devtools-mcp@latest. OPSEC: The debugging port exposes full browser control to any network client; in red team scenarios, only enable on localhost or over encrypted tunnels (SSH forward remote port 9222 to local). If target workstation already has Chrome running with --remote-debugging-port (some malware/developer configs), you can attach directly without relaunch.
 
 ## Key commands / parameters
 
-The MCP server exposes DevTools capabilities as MCP tools/resources. Based on Chrome DevTools Protocol domains, expect these tool categories:
-
-**DOM Inspection**: Query selectors (equivalent to $() and $$() console utilities), retrieve element properties, modify attributes, inject HTML. Console Utilities API functions like $(selector), $$(selector), $x(xpath), $0-$4 (last selected elements) are accessible.
-
-**JavaScript Execution**: Execute arbitrary JS in page context (Runtime.evaluate), access console output, set breakpoints, debug functions. The debug(function) and undebug(function) utilities for setting breakpoints programmatically.
-
-**Network Monitoring**: Enable network tracking, filter by URL, inspect request/response headers and bodies, block requests. Filter syntax: `url:example.com` or `-url:ads.com`.
-
-**Storage Access**: Read/write cookies, localStorage, sessionStorage, IndexedDB. Extract all storage for session hijacking.
-
-**Console API**: Run console commands (console.log, console.dir, console.table), inspect objects with dir(object), pretty-print XML with dirxml(object).
-
-**Performance**: Capture coverage analysis to identify unused CSS/JS, profile runtime performance.
-
-Parameters: MCP tool calls will use JSON parameters specifying selectors, script code, URLs to monitor, or storage keys. The server translates these to CDP commands. No direct command-line flags for the agent—configuration happens through MCP protocol messages.
+The MCP server exposes CDP domains as callable tools. Exact tool names depend on server implementation, but expect these patterns based on standard CDP domains: (1) Runtime.evaluate({expression: 'document.cookie'}) - execute JavaScript and return result; use for cookie theft, localStorage access (localStorage.getItem('token')), or triggering application logic. (2) Network.getAllCookies() - retrieve all cookies for current browser session; returns array of {name, value, domain, path, httpOnly, secure}. (3) DOM.getDocument() - fetch entire DOM tree as JSON; parse for hidden fields, CSRF tokens, or API keys in data attributes. (4) Network.enable() + Network.setRequestInterception({patterns: [{urlPattern: '*'}]}) - intercept all requests; modify headers, block requests, or log traffic. (5) Page.captureScreenshot() - take screenshot of current page state; useful for proof-of-exploit or content extraction. (6) Debugger.setBreakpoint() - set breakpoints in JavaScript for dynamic analysis. (7) DOMStorage.getDOMStorageItems({storageId: {isLocalStorage: true}}) - extract localStorage key-value pairs. (8) Console API calls ($0-$4 for recently inspected elements, $('selector') for jQuery-like selection). Parameters are JSON objects matching CDP spec. Most commands require a target (tab/page ID); use Target.getTargets() to list available contexts.
 
 ## Example workflows
 
-**Workflow 1 - Session Hijacking**: (1) Connect to chrome-devtools-mcp server. (2) Navigate to target application (or attach to existing tab). (3) Use storage inspection tool to extract all cookies: `{"action": "getCookies", "url": "https://target.com"}`. (4) Extract localStorage/sessionStorage contents. (5) Export cookie JSON for use with curl or import into attacker browser profile. (6) Identify JWT tokens or session IDs in storage or network traffic.
-
-**Workflow 2 - API Endpoint Enumeration**: (1) Enable network monitoring: `{"action": "enableNetwork"}`. (2) Navigate to target SPA (single-page application). (3) Interact with UI elements (or script interactions). (4) Filter network log for API calls: `{"filter": "url:api"}`. (5) Extract all unique endpoints, methods, and parameters from captured requests. (6) Identify unauthenticated or weakly protected endpoints.
-
-**Workflow 3 - Client-Side Bypass**: (1) Inspect DOM to locate client-side validation logic: `{"action": "querySelector", "selector": "form#login"}`. (2) Execute JS to disable validation: `{"action": "evaluate", "script": "document.querySelector('form').removeAttribute('onsubmit')"}`. (3) Modify hidden input fields or disabled buttons. (4) Bypass role-based UI restrictions by directly calling JavaScript functions exposed in global scope.
-
-**Workflow 4 - Credential Harvesting**: (1) Inject JavaScript to hook form submission: `{"action": "evaluate", "script": "document.forms[0].addEventListener('submit', e => console.log(new FormData(e.target)))"}`. (2) Monitor console output for captured credentials. (3) Alternatively, use monitorEvents(element, 'submit') to log form data.
-
-All workflows assume the agent issues MCP tool calls with appropriate JSON payloads—exact schema depends on server implementation.
+Workflow 1 - Session hijacking: (1) Attach to running Chrome with active web session. (2) Call Runtime.evaluate({expression: 'document.cookie', returnByValue: true}) to extract cookies. (3) Call DOMStorage.getDOMStorageItems() to get localStorage tokens (common in SPAs). (4) Exfiltrate via MCP response; use cookies/tokens in separate requests to impersonate user. Workflow 2 - Hidden endpoint discovery: (1) Enable Network.enable(). (2) Navigate to target SPA via Page.navigate({url: 'https://target.com/app'}). (3) Interact with page via Runtime.evaluate() to trigger API calls (click buttons: document.querySelector('#submit').click()). (4) Call Network.getResponseBody() on captured request IDs to see full API responses, including undocumented parameters. Workflow 3 - XSS sink identification: (1) Load target page. (2) Use DOM.getDocument() to retrieve full DOM. (3) Parse JSON for innerHTML sinks: search nodes where attributes contain user-controlled input. (4) Use Runtime.evaluate() to inject test payloads (document.querySelector('#sink').innerHTML='<img src=x onerror=alert(1)>') and observe Console for errors. Workflow 4 - Post-exploitation data theft: (1) On compromised workstation, identify Chrome process with --remote-debugging-port. (2) Connect MCP server to that port. (3) Iterate through Target.getTargets() to find banking/email tabs. (4) Extract credentials via Runtime.evaluate() on password managers' autofill data or form fields (document.querySelector('input[type=password]').value).
 
 ## Output format
 
-Responses from chrome-devtools-mcp are JSON-formatted MCP messages containing Chrome DevTools Protocol data. Structure varies by operation:
-
-**DOM queries**: Returns element objects with properties (tagName, attributes, innerHTML, computedStyles). Similar to Elements panel view.
-
-**JavaScript execution**: Returns result value (primitive or object), plus any console output, exceptions, or errors. Format matches Console panel output: `{"type": "string", "value": "result"}`.
-
-**Network requests**: Array of request/response objects with URL, method, status, headers (as key-value pairs), body (base64 or text), timing data. Filter results based on request.
-
-**Storage data**: Cookies as array of objects with name, value, domain, path, expiry, httpOnly, secure flags. localStorage/sessionStorage as key-value JSON. IndexedDB as structured object trees.
-
-**Console logs**: Array of log entries with level (log/warn/error), message, timestamp, stack trace if error.
-
-**Coverage reports**: Per-file breakdown showing total bytes, used bytes, unused ranges. Helps identify dead code.
-
-Agent should parse JSON responses to extract actionable data (credentials, tokens, endpoints). Large outputs (full DOM trees) may require pagination or filtering. Binary data (images, fonts) typically returned as base64. Error responses include CDP error codes and messages—common errors: selector not found, script execution timeout, navigation failure.
+All CDP responses are JSON. Structure varies by command but follows pattern: {id: <request_id>, result: {...}} on success or {id: <request_id>, error: {code: <int>, message: <string>}} on failure. Runtime.evaluate returns {result: {type: 'string'|'object'|'undefined', value: <actual_value>}}. Network.getAllCookies returns {cookies: [{name, value, domain, path, expires, size, httpOnly, secure, session, sameSite}]}. DOM.getDocument returns {root: {nodeId, nodeType, nodeName, children: [...]}}—a recursive tree. Network captured bodies are base64-encoded if binary (images), plaintext otherwise. Console messages appear as {method: 'Console.messageAdded', params: {message: {level, text, url, lineNumber}}}. Parse JSON responses in agent code; for credential extraction, filter cookies array for session-related names (PHPSESSID, token, auth). For DOM analysis, recursively walk children nodes. CDP protocol spec defines exact schemas: https://chromedevtools.github.io/devtools-protocol/. The MCP server should pass through raw CDP JSON with minimal transformation.
 
 ## Common pitfalls
 
-**Anti-automation detection**: Many sites detect headless Chrome via navigator.webdriver flag, missing plugins, or behavioral signatures. The MCP server may expose you unless Chrome is launched with evasion flags (--disable-blink-features=AutomationControlled). Request the server configure stealth mode if available. **Remote debugging port exposure**: Chrome's debugging port (9222) has full browser control—ensure it's not exposed to networks outside RTPI. Firewall appropriately. **Session contamination**: Using the same Chrome instance across multiple targets leaks cookies/storage. Request fresh profiles or incognito contexts per target. **CORS and CSP blocking**: Injected scripts may fail due to Content Security Policy. DevTools has privileges that bypass some restrictions, but not all. Test script injection thoroughly. **Performance overhead**: Enabling all DevTools domains (Network, Performance, Coverage) simultaneously consumes significant resources. Enable only needed domains. **Navigation timing**: Scripts executing before page load may fail. Wait for DOMContentLoaded or load events before DOM manipulation. Use CDP's Page.loadEventFired to synchronize. **Output size limits**: Full DOM or network logs can be massive. Apply filters aggressively (URL patterns, element selectors) to avoid overwhelming MCP transport. **Credential logging**: Be cautious logging sensitive data to console—it may persist in Chrome's DevTools history or crash dumps. Clear data post-engagement. **Version mismatches**: CDP protocol evolves with Chrome versions. Ensure chrome-devtools-mcp server supports your Chrome version. Check compatibility if tools fail unexpectedly.
+(1) Chrome not launched with --remote-debugging-port: MCP server fails to connect; always verify chrome://version shows command-line flag. (2) Port 9222 already in use: Another Chrome/process bound to port; kill existing debugger or choose alternate port (--remote-debugging-port=9223). (3) WebSocket connection timeout: Firewall or Chrome crash; check Chrome process is alive (ps aux | grep chrome). (4) Cross-origin frame access: CDP can access cross-origin iframes if same browsing context, but document.cookie in evaluate may return empty for HttpOnly cookies—use Network.getAllCookies instead. (5) Executing code in wrong context: Multi-tab scenarios require specifying Target ID; list targets first via Target.getTargets(), then attach to correct one with Target.attachToTarget(). (6) JavaScript evaluation returns {type: 'undefined'}: Expression had no return value or error; check Console domain for exception messages. (7) Rate limiting: Rapid CDP calls can cause Chrome to throttle or crash; add delays in automation loops. (8) Missing --user-data-dir: Chrome reuses default profile with existing extensions/state; use isolated profile for clean testing. (9) OPSEC failure: Debugging port exposed on 0.0.0.0 instead of 127.0.0.1; anyone on network can control browser. Always bind to localhost unless tunneling. (10) Binary response parsing: Network bodies for images/PDFs are base64; decode before processing.
 
 ## References
 
-• https://www.headspin.io/blog/chrome-devtools-a-complete-guide
-• https://www.microverse.org/blog/a-helpful-guide-to-learn-and-maximize-chrome-devtools
-• https://www.debugbear.com/blog/use-chrome-devtools
-• https://medium.com/swlh/the-basics-of-chrome-devtools-4d69a102a699
-• https://x-team.com/magazine/7-powerful-chrome-devtools-features-every-web-developer-should-know-about
-• https://github.com/GoogleChrome/devtools-docs/blob/master/docs/commandline-api.md
-• https://developer.chrome.com/docs/devtools/console/reference
-• https://developer.chrome.com/docs/devtools/console/utilities
-• https://developer.chrome.com/docs/devtools/open
-• https://peter.sh/experiments/chromium-command-line-switches
-• https://bishopfox.com/blog/9-red-team-tools
-• https://www.praetorian.com/security-101/red-team-vs-penetration-testing
+- https://developer.chrome.com/docs/devtools/console/reference
+- https://developer.chrome.com/docs/devtools/console/utilities
+- https://github.com/GoogleChrome/devtools-docs/blob/master/docs/commandline-api.md
+- https://www.debugbear.com/blog/use-chrome-devtools
+- https://systemweakness.com/from-debugging-to-hacking-using-chrome-devtools-like-a-bug-hunter-838949adf76b
+- https://courses.redteamleaders.com/courses/e79d5f5c-181d-4a90-bedd-58d3320eabf3
+- https://developer.chrome.com/docs/devtools/open
+- https://chromedevtools.github.io/devtools-protocol/

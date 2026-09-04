@@ -47,7 +47,7 @@ const tsvector = customType<{ data: string }>({
 // ============================================================================
 
 export const userRoleEnum = pgEnum("user_role", ["admin", "operator", "viewer"]);
-export const authMethodEnum = pgEnum("auth_method", ["local", "google_oauth", "certificate", "api_key"]);
+export const authMethodEnum = pgEnum("auth_method", ["local", "google_oauth", "certificate", "api_key", "cloudflare_access"]);
 export const operationStatusEnum = pgEnum("operation_status", ["planning", "active", "paused", "completed", "cancelled"]);
 export const targetTypeEnum = pgEnum("target_type", ["ip", "domain", "url", "network", "range"]);
 export const severityEnum = pgEnum("severity", ["critical", "high", "medium", "low", "informational"]);

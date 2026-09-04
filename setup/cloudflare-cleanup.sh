@@ -126,6 +126,14 @@ cleanup_tunnel() {
     local tunnel_name="rtpi-${SLUG}"
     log "Cleaning tunnel '${tunnel_name}'..."
 
+    # Stop cloudflared before tunnel deletion — active connections block the API
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q 'rtpi-cloudflared'; then
+        log "Stopping rtpi-cloudflared container (required before tunnel deletion)..."
+        docker stop rtpi-cloudflared >/dev/null 2>&1 && log "  cloudflared stopped" || true
+        docker rm rtpi-cloudflared >/dev/null 2>&1 || true
+        sleep 2
+    fi
+
     local response
     response=$(curl -sf \
         -H "Authorization: Bearer ${ACCOUNT_TOKEN}" \
@@ -145,6 +153,13 @@ cleanup_tunnel() {
     fi
 
     log "Deleting tunnel '${tunnel_name}' (${tunnel_id})..."
+
+    # Force-clean any lingering connections via API before deletion
+    curl -sf -X DELETE \
+        -H "Authorization: Bearer ${ACCOUNT_TOKEN}" \
+        "${CF_API}/accounts/${ACCOUNT_ID}/cfd_tunnel/${tunnel_id}/connections" >/dev/null 2>&1 || true
+    sleep 2
+
     local del_resp
     del_resp=$(curl -sf -X DELETE \
         -H "Authorization: Bearer ${ACCOUNT_TOKEN}" \
@@ -155,7 +170,27 @@ cleanup_tunnel() {
     if [ "$success" = "true" ]; then
         log "  Tunnel deleted"
     else
-        warn "  Failed to delete tunnel (may have active connections — stop cloudflared first)"
+        local err_msg
+        err_msg=$(echo "$del_resp" | jq -r '.errors[0].message // "unknown error"' 2>/dev/null)
+        if echo "$err_msg" | grep -qi 'active connection'; then
+            warn "  Tunnel still has active connections — retrying after connection cleanup..."
+            sleep 5
+            curl -sf -X DELETE \
+                -H "Authorization: Bearer ${ACCOUNT_TOKEN}" \
+                "${CF_API}/accounts/${ACCOUNT_ID}/cfd_tunnel/${tunnel_id}/connections" >/dev/null 2>&1 || true
+            sleep 3
+            del_resp=$(curl -sf -X DELETE \
+                -H "Authorization: Bearer ${ACCOUNT_TOKEN}" \
+                "${CF_API}/accounts/${ACCOUNT_ID}/cfd_tunnel/${tunnel_id}" 2>/dev/null || echo "")
+            success=$(echo "$del_resp" | jq -r '.success // false' 2>/dev/null)
+            if [ "$success" = "true" ]; then
+                log "  Tunnel deleted (retry succeeded)"
+            else
+                warn "  Tunnel deletion still failing — it will be cleaned up by Cloudflare after connections expire"
+            fi
+        else
+            warn "  Failed to delete tunnel: ${err_msg}"
+        fi
     fi
 }
 

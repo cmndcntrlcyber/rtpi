@@ -442,7 +442,7 @@ services:
       - rtpi-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/ > /dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -so /dev/null -w '%{http_code}' http://localhost:8181/ | grep -qE '^[2-4]' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -509,6 +509,20 @@ services:
       # Guacamole configuration
       GUACD_HOSTNAME: localhost
       GUACD_PORT: 4822
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        SRC=/opt/kasm/current/conf/app/guac/kasmguac.app.config.yaml
+        TMP=/tmp/kasmguac.app.config.yaml
+        cp "$$SRC" "$$TMP"
+        sed -i "s|APIHOSTNAME|kasm_proxy|g" "$$TMP"
+        sed -i "s|SERVER_ADDRESS|kasm_proxy|g" "$$TMP"
+        echo "[kasm-guac] Patched $$TMP — resolved APIHOSTNAME → kasm_proxy"
+        export KASM_CONFIG_FILE="$$TMP"
+        /usr/sbin/guacd -f -b 0.0.0.0 -l 4822 -L debug 2>&1 | grep -v 'guacd Handler not found for ""' &
+        cd /gclient
+        exec node app.js
     ports:
       - "4822:4822"  # Guacamole daemon port
     volumes:
@@ -520,7 +534,7 @@ services:
       - rtpi-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "(echo > /dev/tcp/localhost/4822) 2>/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -so /dev/null -w '%{http_code}' http://localhost:3000/ | grep -qE '^[2-4]' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5

@@ -1,55 +1,56 @@
 ---
 name: Tavily Search
-description: MCP server for AI-optimized web search via Tavily API; returns
-  clean, LLM-ready content and images
+description: Web search API with AI-synthesized answers and cited sources;
+  deployed as MCP server via npx -y tavily-mcp@latest
 registry: mcp
 tool_id: default:tavily
 category: mcp-server
 tags:
   - search
   - osint
-  - reconnaissance
-  - web-scraping
-  - llm-tool
+  - research
   - mcp-server
-  - tavily
+  - api
+  - web-intelligence
+  - real-time
 mitre_techniques:
   - T1595.002
-summary: "Tavily MCP provides AI-optimized web search returning clean,
-  contextual snippets ready for LLM ingestion. Invoked via npx -y
-  tavily-mcp@latest. Requires TAVILY_API_KEY environment variable (free tier:
-  1,000 requests). Use for real-time intelligence gathering, domain
-  reconnaissance, news monitoring, and content extraction. Returns JSON with
-  AI-summarized answers plus source URLs. Key parameters: search_depth
-  (basic|advanced), max_results (1-20), topic (general|news|finance), time_range
-  (day|week|month|year), include_domains/exclude_domains for scoping,
-  include_images for visual OSINT. Advanced depth slower but more comprehensive.
-  News topic supports days filter. Unlike raw SERP APIs, Tavily pre-processes
-  HTML into clean context, eliminating crawl/scrape/clean pipeline. Typical
-  workflow: craft focused query → set filters (domain, date) → invoke search →
-  parse JSON response → extract URLs/content for follow-on analysis. Output
-  includes answer field (AI summary), results array (title, url, content
-  snippet, score), images array if requested. Watch for: API rate limits
-  (upgrade plan if exceeded), queries too broad (refine with domain/date
-  filters), basic vs advanced depth trade-off (speed vs comprehensiveness). Not
-  a replacement for deep crawling—use extract/crawl tools for full-page content.
-  Integrates with LangChain, CrewAI frameworks. Operational value: rapidly
-  surface public intelligence on targets, technologies, or threat actors without
-  manual search/scrape loops."
+summary: "Tavily is an AI-powered web search API exposed as an MCP (Model
+  Context Protocol) server. Invoke using npx -y tavily-mcp@latest to spawn the
+  server; your MCP client will then offer Tavily tools for search, extract,
+  crawl, map, and research operations. Requires TAVILY_API_KEY environment
+  variable. Free tier: 1,000 requests; monitor usage via dashboard at
+  tavily.com. Returns structured JSON with an AI-generated answer field
+  (synthesized from search results) plus an array of result objects (title, url,
+  content excerpt, relevance score). Use for real-time OSINT, fact-checking,
+  competitor research, or enriching LLM context with current web data. Key
+  search parameters: search_depth (ultra-fast | fast | basic | advanced),
+  max_results (1–20), topic (general | news | finance), time_range (day | week |
+  month | year), include_domains / exclude_domains (domain filters),
+  include_answer (boolean or 'basic'/'advanced'), include_raw_content (boolean
+  or 'markdown'/'text'), include_images. Higher depth = slower, more credits.
+  Extract endpoint pulls full content from specific URLs. Crawl/map endpoints
+  discover and extract sitemaps (max_depth, max_breadth, instructions for
+  filtering). Research endpoint performs deep multi-query analysis. Output is
+  always JSON; parse the 'answer' field for LLM-ready summaries and 'results'
+  array for citation trails. Pitfalls: API key leakage (always use env vars),
+  rate-limit exhaustion on free tier, over-reliance on 'answer' field without
+  validating sources, timeout on advanced depth without adjusting limits,
+  ignoring domain filters leading to low-quality results."
 sources:
   - https://www.tavily.com/blog/getting-started-with-the-tavily-search-api
   - https://www.linkedin.com/posts/tavily_best-practices-for-search-tavily-docs-activity-7344061189343051777-d-7o
-  - https://shankar-k.medium.com/tavily-introduction-to-agentic-search-tool-8720b9d6aa19
   - https://www.freecodecamp.org/news/how-to-add-real-time-web-search-to-your-llm-using-tavily
   - https://docs.crewai.com/v1.15.3/en/tools/search-research/tavilysearchtool
-  - https://clawdaddy.run/skills/tavily-search
-  - https://aiprompt.co/mcp/tomatio13-mcp-server-tavily
+  - https://docs.tavily.com/documentation/api-reference/introduction
+  - https://lobehub.com/de/skills/kyopark2014-agent-skills-tavily-search
   - https://docs.tavily.com/documentation/tavily-cli
-  - https://docs.tavily.com/documentation/agent-skills
-  - https://pkg.go.dev/github.com/y7ut/mcp-tavily-search
+  - https://github.com/tavily-ai/tavily-cli
+  - https://github.com/tavily-ai/langchain-tavily
+  - https://mcpservers.org/agent-skills/tavily-ai/tavily-search
   - https://www.synack.com/knowledge-base/red-teaming-vs-penetration-testing-understanding-the-differences
   - https://www.offsec.com/blog/red-teaming-vs-pentesting
-generated_at: 2026-09-03T12:38:58.057Z
+generated_at: 2026-09-04T02:30:15.933Z
 generated_by: anthropic
 source_hash: 44a4931b9d7e8188278db2000cb24e4240b08d275140d2f40a8bb20de245dbe0
 ---
@@ -58,136 +59,175 @@ source_hash: 44a4931b9d7e8188278db2000cb24e4240b08d275140d2f40a8bb20de245dbe0
 
 ## Overview
 
-Tavily MCP server transforms web search into LLM-ready intelligence. Unlike traditional SERP APIs that return raw links requiring separate crawl/scrape/clean steps, Tavily performs the full pipeline (search → crawl → scrape → clean → summarize) and returns structured, contextual snippets optimized for AI agents. Supports text search, image retrieval, domain filtering, time-based queries, and multi-topic optimization (general, news, finance). Designed for red team reconnaissance, OSINT collection, and real-time threat intelligence gathering. Free tier provides 1,000 API calls; paid plans available for sustained operations.
+Tavily Search is a commercial web search API optimized for LLM and agent workflows, delivered as an MCP server. Unlike raw Google or Bing APIs, Tavily synthesizes search results into citation-backed answers and structured excerpts. The MCP server (tavily-mcp) exposes multiple tools: search (web queries), extract (URL content extraction), crawl (recursive site scraping), map (sitemap discovery), and research (multi-query deep analysis). Designed for real-time data retrieval in red-team reconnaissance, OSINT collection, and competitive intelligence workflows.
 
 ## When to use
 
-Use Tavily MCP when you need:
-- Real-time web intelligence on targets, technologies, or threat actors without manual browsing
-- Clean, summarized content for LLM analysis (eliminates HTML parsing overhead)
-- Domain-scoped reconnaissance (e.g., search only within target.com or exclude noise domains)
-- Time-bounded intelligence (recent news, weekly updates, month-long trend analysis)
-- Image/visual OSINT alongside text results
-- Quick validation of public exposure (leaked credentials, disclosed vulnerabilities, public documentation)
+Deploy Tavily when you need:
+- Real-time web intelligence beyond the LLM's training cutoff (news, CVEs, vendor disclosures).
+- Citation-backed answers for fact-checking or compliance documentation.
+- Domain-scoped OSINT (include_domains for target org research; exclude_domains to filter noise).
+- Competitive analysis or market research (finance topic, date filters).
+- Automated research reports (research endpoint with multi-step synthesis).
+- Content extraction from specific URLs (extract) or full-site crawls (crawl/map for documentation, pricing pages).
 
-Do NOT use when:
-- You need full-page content (use extract/crawl tools instead; Tavily returns snippets)
-- You require deep subdomain enumeration (use dedicated DNS/subdomain tools)
-- Target blocks or monitors search engine crawlers (Tavily uses standard search infrastructure)
-- You need authenticated or non-public content (Tavily indexes public web only)
+Avoid for:
+- Stealth reconnaissance (API calls are logged; leaves billing trail).
+- Queries requiring anonymity (use Tor + direct search scraping instead).
+- High-volume brute-force searches (free tier = 1,000 requests; paid plans required for scale).
+- Static/historical data already in LLM knowledge (wastes credits).
 
 ## Authentication & setup
 
-1. Obtain API key: Sign up at tavily.com → Dashboard → API Keys (1,000 free requests per account)
-2. Set environment variable: export TAVILY_API_KEY='tvly-xxxxxxxxxx'
-3. Invoke MCP server: npx -y tavily-mcp@latest
-4. Verify connectivity: MCP server exposes 'search' tool; test with simple query
-5. Security considerations:
-   - Store API key in environment variable, never hardcode
-   - Monitor usage via Tavily dashboard to avoid unexpected overage
-   - Create separate API keys per operation/team for usage tracking and revocation
-   - API keys are rate-limited; respect limits to avoid service disruption
-6. Alternative invocation for persistent use: Install locally (npm install -g tavily-mcp) to avoid npx download latency on each invocation
+1. Obtain API key: Sign up at tavily.com; dashboard provides key + usage tracking. Free tier = 1,000 requests.
+2. Export key: export TAVILY_API_KEY='tvly-YOUR_API_KEY' (never hardcode in scripts).
+3. Launch MCP server: npx -y tavily-mcp@latest (npx auto-installs latest version; -y skips prompts). Server listens for MCP client connections.
+4. Configure MCP client (e.g., Claude Desktop, custom agent): Point to the Tavily MCP server endpoint. Client will auto-discover available tools (search, extract, crawl, map, research).
+5. Optional: Set TAVILY_PROJECT env var or pass X-Project-ID header to track usage by project in dashboard.
+6. Verify: Check dashboard at tavily.com for request counts; test with a basic search query.
+
+Security: Store keys in secrets manager or .env files excluded from version control. Rotate keys if exposed. Monitor /logs endpoint for anomalous usage.
 
 ## Key commands / parameters
 
-MCP tool: 'search'
+MCP server exposes tools via JSON-RPC; your client invokes them by name. Core parameters:
 
-Core parameters:
-- query (string, required): Search query; craft focused queries for best results (e.g., 'site:target.com filetype:pdf' style syntax)
-- search_depth (string): 'basic' (default, fast) | 'advanced' (slower, more comprehensive for complex research)
-- max_results (integer, 1-20): Number of results; default 5, max 20
-- topic (string): 'general' (default, broad web) | 'news' (recent news sources) | 'finance' (financial data)
-- time_range (string): 'day' | 'week' | 'month' | 'year' - filters results to relative time window
-- days (integer): For topic='news', limit to last N days (default 7)
-- include_domains (array): Whitelist domains (e.g., ['target.com', 'subsidiary.net'])
-- exclude_domains (array): Blacklist domains to reduce noise (e.g., ['pinterest.com', 'youtube.com'])
-- include_answer (boolean): Return AI-generated summary answer (default false; enable for quick triage)
-- include_raw_content (boolean): Include full raw content (default false; increases payload size)
-- include_images (boolean): Return image URLs from search results (default false; enable for visual OSINT)
-- timeout (integer): Request timeout in seconds (default 60)
+**search tool:**
+- query (string, required): Search terms. Be specific (e.g., 'CVE-2024-1234 exploit PoC' not 'vulnerability').
+- search_depth (string): 'ultra-fast' | 'fast' | 'basic' (default) | 'advanced'. Higher = more results, slower, more credits.
+- max_results (int, 1–20, default 5): Number of result objects returned.
+- topic (string): 'general' (default) | 'news' | 'finance'. Optimizes ranking.
+- time_range (string): 'day' | 'week' | 'month' | 'year'. Filters by publish date.
+- start_date / end_date (YYYY-MM-DD): Explicit date bounds.
+- include_domains (array): ['example.com', 'target.org'] restricts results.
+- exclude_domains (array): ['spam.com'] filters out domains.
+- country (string): Boosts results from specific country.
+- include_answer (boolean | 'basic' | 'advanced'): AI-synthesized answer in response. 'advanced' = detailed.
+- include_raw_content (boolean | 'markdown' | 'text'): Full page content. 'markdown' preferred for parsing.
+- include_images (boolean): Returns image URLs.
+- include_image_descriptions (boolean): AI-generated image captions.
 
-Best practices:
-- Use include_domains to scope reconnaissance to target infrastructure
-- Combine time_range with topic='news' for breaking intelligence
-- Set search_depth='advanced' only when basic results insufficient (performance cost)
-- Increase max_results for broader coverage, but review API rate limits
+**extract tool:**
+- urls (array): ['https://example.com/page'] to extract content from.
+- extract_depth ('basic' | 'advanced'): Content detail level.
+- format ('markdown' | 'text'): Output format.
+
+**crawl tool:**
+- url (string): Starting URL.
+- max_depth (int, 1–5): Link recursion depth.
+- max_breadth (int, default 20): Links per page.
+- limit (int, default 50): Total page cap.
+- instructions (string): Natural language filter (e.g., 'only documentation pages').
+- select_paths / exclude_paths (regex): Path filters.
+
+**map tool:** Same as crawl but returns sitemap structure, not content.
+
+**research tool:**
+- question (string): Research query for deep multi-source analysis.
+- (returns request_id for async polling)
 
 ## Example workflows
 
-1. Target domain reconnaissance:
-   {"query": "site:target.com", "include_domains": ["target.com"], "max_results": 20, "include_answer": false}
-   → Returns indexed pages, subdomains, public documents from target domain
+**OSINT on target org:**
+1. Use search with include_domains=['target.com'], time_range='month', max_results=10 to find recent announcements, press releases.
+2. Parse results array for URLs; feed to extract tool for full content.
+3. Use include_answer='advanced' to get AI summary of findings.
 
-2. Recent vulnerability disclosure monitoring:
-   {"query": "CVE-2024 [technology stack]", "topic": "news", "time_range": "week", "max_results": 10}
-   → Surfaces recent CVE announcements, vendor advisories, exploit discussions
+**CVE research:**
+1. Query 'CVE-2024-5678 exploit proof-of-concept' with topic='general', search_depth='advanced'.
+2. Check include_raw_content='markdown' for code snippets in results.
+3. Cross-reference 'answer' field with results[].url for citation trail.
 
-3. Competitor/third-party integration research:
-   {"query": "API integration [target company]", "search_depth": "advanced", "include_answer": true}
-   → Identifies public API documentation, integration guides, partner disclosures
+**Competitor pricing intel:**
+1. crawl url='https://competitor.com', instructions='focus on pricing and product pages', max_depth=2.
+2. Extract structured pricing from returned markdown.
 
-4. Leaked credential/data exposure check:
-   {"query": "[target domain] password OR credentials site:pastebin.com OR site:github.com", "max_results": 15, "exclude_domains": ["linkedin.com", "indeed.com"]}
-   → Hunts paste sites and code repos for exposed credentials (exclude job boards)
+**News monitoring:**
+1. Scheduled search with topic='news', time_range='day', query='data breach OR ransomware'.
+2. Parse results, alert on new incidents.
 
-5. Visual OSINT for infrastructure:
-   {"query": "[target company] data center OR office", "include_images": true, "max_results": 10}
-   → Collects images of physical infrastructure, office layouts, server rooms
+**Deep research report:**
+1. research tool with question='What are emerging attack vectors in cloud infrastructure?'
+2. Poll async endpoint for completion; retrieve multi-page synthesized report with citations.
 
-6. Technology stack fingerprinting:
-   {"query": "powered by OR built with site:target.com", "include_domains": ["target.com"], "include_raw_content": true}
-   → Extracts technology disclosures from footers, meta tags, public pages
+**Domain recon (cautiously):**
+1. map url='https://target.com', max_depth=3, allow_external=False to build sitemap.
+2. Identify hidden endpoints, admin panels, docs.
 
 ## Output format
 
-JSON response structure:
+All tools return JSON. **search** response schema:
 {
-  "answer": "AI-generated summary of search results (if include_answer=true)",
+  "answer": "AI-synthesized answer string (if include_answer=true)",
   "results": [
     {
       "title": "Page title",
-      "url": "https://example.com/page",
-      "content": "Clean, LLM-ready snippet (500-1000 chars)",
-      "score": 0.95,  // Relevance score (0-1)
-      "published_date": "2024-01-15"  // If available
+      "url": "https://source.com/page",
+      "content": "Relevant excerpt (200–500 chars)",
+      "score": 0.95,  // relevance score 0–1
+      "raw_content": "Full markdown/text (if include_raw_content)",
+      "published_date": "2024-01-15" // if available
     }
   ],
-  "images": [  // If include_images=true
-    {"url": "https://example.com/image.jpg", "description": "Alt text or caption"}
-  ],
-  "query": "Original query string",
-  "response_time": 1.23  // Seconds
+  "query": "original query string",
+  "response_time": 1.23,  // seconds
+  "images": [  // if include_images=true
+    {"url": "https://...", "description": "..."}
+  ]
 }
 
-Key fields:
-- results[].content: Pre-cleaned, HTML-stripped snippet ready for LLM context injection
-- results[].score: Use to filter low-relevance results (threshold ~0.5+)
-- results[].url: Extract for follow-on deep crawling/extraction with other tools
-- answer: Quick-triage summary; verify with source URLs before operationalizing
+**extract** response:
+{
+  "results": [
+    {"url": "...", "content": "markdown or text", "success": true}
+  ]
+}
 
-Parse JSON, iterate results array, extract URLs for downstream tools (waybackurls, gospider, nuclei). Store content snippets for embedding/vector search in knowledge base.
+**crawl/map** response:
+{
+  "pages": [
+    {"url": "...", "title": "...", "content": "...", "depth": 1}
+  ],
+  "total_pages": 47
+}
+
+**research** (async):
+Initial: {"request_id": "abc123"}
+Polling: {"status": "in_progress" | "completed", "result": "...markdown report..."}
+
+Parse 'answer' for quick summaries; iterate 'results' for source validation. Always check 'score' to prioritize high-confidence results. Use 'raw_content' for deeper analysis (increases latency and response size).
 
 ## Common pitfalls
 
-1. Overly broad queries → Refine with domain filters, time constraints, or exclude irrelevant domains (social media, aggregators)
-2. Ignoring rate limits → Monitor Tavily dashboard usage; 1,000 free requests exhausted quickly in automated workflows; upgrade plan or implement query batching
-3. Assuming completeness → Tavily indexes public web via search engines; does not guarantee 100% coverage of target domain (supplement with direct crawling, DNS enumeration)
-4. Using basic depth for complex research → Advanced depth required for nuanced queries (e.g., technical documentation, obscure disclosures); basic depth optimized for speed, may miss depth
-5. Not validating AI-generated answers → The 'answer' field is LLM-synthesized; always cross-reference with source URLs before acting on intelligence
-6. Large include_raw_content payloads → Enabling raw content for max_results=20 creates multi-MB responses; use selectively or reduce max_results
-7. Forgetting to scope domain filters → Generic queries ("login page") return noise; always include_domains or exclude_domains for targeted reconnaissance
-8. Time zone assumptions → Time filters (day/week) use UTC; adjust queries for local time zone context
-9. Overlooking image OSINT → Many operators forget include_images; visual intelligence (logos, diagrams, screenshots) valuable for social engineering, physical security assessments
-10. API key exposure → Tavily keys often committed to repos, logged in scripts; treat as sensitive credential, rotate periodically, use secret management
+1. **API key leakage:** Hardcoding keys in scripts committed to repos. Always use environment variables; rotate keys if exposed. Check Tavily dashboard /logs for unexpected IPs.
+
+2. **Free-tier exhaustion:** 1,000 requests burn fast in loops or broad crawls. Monitor usage in dashboard; set max_results and max_depth conservatively. Upgrade plan before red-team engagements.
+
+3. **Ignoring domain filters:** Generic queries return SEO spam. Use include_domains for targeted recon; exclude_domains to filter content farms.
+
+4. **Over-relying on 'answer' field:** AI synthesis can hallucinate or miss nuance. Always validate against results[].url and raw_content for ground truth.
+
+5. **Timeout on advanced depth:** search_depth='advanced' can take 10–30s; may hit client timeouts. Increase timeout param or use 'basic'/'fast' for iterative queries.
+
+6. **Crawl scope creep:** crawl without max_depth/limit can retrieve thousands of pages, burning credits and causing timeouts. Start with max_depth=1, limit=10; expand incrementally.
+
+7. **Attributable activity:** API calls log source IP, queries, timestamps in Tavily's systems. For red-team OPSEC, consider this a 'noisy' technique (vendor has logs). Use for pre-engagement research, not active intrusion.
+
+8. **Date filter confusion:** time_range='day' vs. start_date. Use time_range for relative windows (last 7 days); start_date/end_date for absolute bounds. Mixing both can yield empty results.
+
+9. **Ignoring response_time:** High latency queries (>5s) indicate depth/result-count too high. Optimize to keep agent workflows responsive.
+
+10. **No error handling:** API can return 4xx (auth fail, rate limit) or 5xx (service error). Wrap calls in try/catch; check HTTP status before parsing JSON.
 
 ## References
 
 - https://www.tavily.com/blog/getting-started-with-the-tavily-search-api
+- https://docs.tavily.com/documentation/api-reference/introduction
 - https://docs.tavily.com/documentation/tavily-cli
-- https://docs.tavily.com/documentation/agent-skills
 - https://www.freecodecamp.org/news/how-to-add-real-time-web-search-to-your-llm-using-tavily
 - https://docs.crewai.com/v1.15.3/en/tools/search-research/tavilysearchtool
-- https://shankar-k.medium.com/tavily-introduction-to-agentic-search-tool-8720b9d6aa19
-- https://aiprompt.co/mcp/tomatio13-mcp-server-tavily
-- https://clawdaddy.run/skills/tavily-search
+- https://github.com/tavily-ai/tavily-cli
+- https://github.com/tavily-ai/langchain-tavily
+- https://www.linkedin.com/posts/tavily_best-practices-for-search-tavily-docs-activity-7344061189343051777-d-7o
+- https://lobehub.com/de/skills/kyopark2014-agent-skills-tavily-search
+- https://mcpservers.org/agent-skills/tavily-ai/tavily-search

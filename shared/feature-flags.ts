@@ -37,6 +37,7 @@ export const FEATURE_FLAGS = {
   loopEngineering: "FF_LOOP_ENGINEERING",
   crossSessionLearning: "FF_CROSS_SESSION_LEARNING",
   skillSelfImprovement: "FF_SKILL_SELF_IMPROVEMENT",
+  cloudflareAccess: "FF_CLOUDFLARE_ACCESS",
   ferryBridge: "FF_FERRY_BRIDGE",
 } as const;
 

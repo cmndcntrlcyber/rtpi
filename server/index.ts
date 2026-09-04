@@ -19,6 +19,7 @@ import { sessionMiddleware, redisClient, connectRedis } from "./auth/session";
 import passport from "./auth/strategies/local";
 import "./auth/strategies/google";
 import "./auth/strategies/apikey";
+import { verifyCloudflareJWT } from "./auth/strategies/cloudflare-access";
 import { apiLimiter } from "./middleware/rate-limit";
 import authRoutes from "./api/v1/auth";
 import operationsRoutes from "./api/v1/operations";
@@ -147,6 +148,9 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Cloudflare Access JWT verification (before session — populates req.user from CF header)
+app.use(verifyCloudflareJWT);
 
 // Session management
 app.use(sessionMiddleware);

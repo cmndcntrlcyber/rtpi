@@ -1,43 +1,49 @@
 ---
 name: MCP Memory
-description: MCP server providing persistent memory and knowledge graph storage
-  across AI sessions via stdio transport.
+description: MCP server providing persistent cross-session memory storage via
+  knowledge graph; stores facts, entities, relations; query with semantic
+  search.
 registry: mcp
 tool_id: default:memory
 category: mcp-server
 tags:
-  - memory
-  - persistence
-  - knowledge-graph
-  - session-state
   - mcp-server
-  - context-management
-  - stdio
-summary: Use @modelcontextprotocol/server-memory to store and retrieve
-  information across AI sessions. Invoke via npx with optional
-  MEMORY_PERSIST=true and MEMORY_PATH environment variables. Stores memories
-  (entities, observations, relations) in JSON or JSONL format. Tools include
-  create_entities, create_relations, add_observations, search_nodes, read_graph,
-  delete operations. Memory persists between sessions only if MEMORY_PERSIST is
-  set; otherwise state is ephemeral. Default storage is ./memory.json in CWD.
-  Watch for memory limits (some implementations cap at ~200 entries), file path
-  permissions, and lack of built-in encryption. Output is JSON-RPC 2.0 tool
-  responses. Use for maintaining context about targets, findings, or workflow
-  state across multiple agent invocations during long-running engagements.
+  - memory
+  - knowledge-graph
+  - persistent-context
+  - entity-storage
+  - semantic-search
+  - session-continuity
+summary: "Use MCP Memory to persist facts, preferences, and context across
+  sessions so you don't need to re-learn project details or user preferences.
+  Invoke by calling tools like `store_memory`, `search_memories`,
+  `create_entities`, `create_relations`, `read_graph`. Store when you discover
+  non-obvious project details, user workflows, or preferences; search before
+  starting new tasks to recall prior context. Memory persists in a local JSON
+  file (default `memory.json` in CWD; override with `--memory-file` arg or
+  `MEMORY_FILE_PATH` env var). Knowledge graph supports entity/relation
+  modeling: create named entities with types and observations, then link them
+  with typed relations. Use `search_memories` for natural-language queries,
+  `search_nodes` for entity lookups, `read_graph` to dump the full graph. Memory
+  builds up over time—session data accumulates in heap and file; monitor memory
+  usage in long-running sessions. Expect plain JSON or text responses; parse
+  output carefully. Do not store PII, secrets, or ephemeral session state. Do
+  not assume memory is shared across multiple agent instances unless explicitly
+  configured (default is local, per-instance storage)."
 sources:
-  - https://modelcontextprotocol.info/docs/best-practices
   - https://fast.io/resources/mcp-server-memory-management
+  - https://modelcontextprotocol.info/docs/best-practices
   - https://www.mintlify.com/blog/how-claudes-memory-and-mcp-work
-  - https://lobehub.com/mcp/eragonht1-simple-memory-mcp
-  - https://www.youtube.com/watch?v=qeru0ZdudD4
+  - https://www.memoryplugin.com/platforms/mcp
+  - https://github.com/doobidoo/mcp-memory-service
   - https://lobehub.com/mcp/danieleugenewilliams-local-memory-mcp
   - https://docs.basicmemory.com/reference/mcp-tools-reference
+  - https://www.qed42.com/insights/the-claude-youll-never-need-to-remind-mcp-in-action
   - https://github.com/okooo5km/memory-mcp-server
   - https://code.visualstudio.com/docs/agents/reference/mcp-configuration
-  - https://forum.cursor.com/t/mcp-add-persistent-memory-in-cursor/57497
-  - https://mcpmarket.com/server/redteam-1
-  - https://lobehub.com/mcp/deloney-code-ai-powered-red-team-automation
-generated_at: 2026-09-03T12:38:42.981Z
+  - https://arxiv.org/html/2511.15998v1
+  - https://pentest.qa/blog/mcp-server-security-testing-red-team-guide
+generated_at: 2026-09-04T02:29:57.903Z
 generated_by: anthropic
 source_hash: ff83e9a5a01b84d42a41d11a392d2179aaf37d67ef4df27cf8c0b4e1d52706bd
 ---
@@ -46,41 +52,41 @@ source_hash: ff83e9a5a01b84d42a41d11a392d2179aaf37d67ef4df27cf8c0b4e1d52706bd
 
 ## Overview
 
-MCP Memory is a Model Context Protocol server that provides persistent storage for AI agents. It acts as a stateful knowledge graph, allowing agents to store entities, observations, and relationships across sessions. The server runs as a stdio transport subprocess launched via npx, communicating over JSON-RPC 2.0. It is designed to solve the problem of context loss between agent invocations by maintaining a structured memory store on disk. The canonical package is @modelcontextprotocol/server-memory. Alternative implementations like @itseasy21/mcp-knowledge-graph and local-memory-mcp exist with similar interfaces.
+MCP Memory is a Model Context Protocol server that provides persistent, cross-session storage for facts, preferences, entities, and relationships. It maintains a knowledge graph structure allowing you to store named entities with types and observations, create typed relations between entities, and query via natural language or entity name. The server keeps context alive between sessions, unlike stateless APIs. It runs as a local Node.js process spawned by `npx`, communicates over stdio, and persists data to a JSON file (default `memory.json` in the current working directory). Memory data accumulates over time and is not automatically pruned.
 
 ## When to use
 
-Use MCP Memory when you need an AI agent to remember information across multiple invocations or sessions. Ideal for: tracking discovered assets, services, and vulnerabilities during multi-stage penetration tests; maintaining state about targets between reconnaissance, enumeration, and exploitation phases; storing contextual notes and observations that inform later decision-making; building a knowledge graph of relationships (e.g., which hosts run which services, which CVEs apply to which versions). Do NOT use for: storing credentials or sensitive secrets (no encryption at rest); high-throughput logging (designed for structured memory, not append-only logs); real-time collaboration (single-process, file-based storage). Consider Claude Projects or external databases if you need richer querying, access control, or multi-user support.
+Use MCP Memory when you need to remember context across separate sessions or long-running tasks: user preferences (code style, communication tone), project structure and architecture decisions, recurring workflows, entity relationships (people, systems, dependencies), or non-obvious facts discovered during recon or development. Do NOT use for ephemeral session state, secrets (API keys, tokens), or PII (unless explicitly authorized and aware of local file storage). Prefer MCP Memory over re-reading large documents when you've already extracted key facts. Use it to avoid redundant questions and to maintain continuity when a task spans multiple sessions.
 
 ## Authentication & setup
 
-No authentication required—MCP Memory is a local subprocess. Setup: (1) Ensure Node.js ≥16 is installed. (2) Add server configuration to your MCP client config (e.g., .cursor/mcp.json, ~/Library/Application Support/Claude/claude_desktop_config.json). Minimal config: {"mcpServers": {"memory": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-memory"]}}}. (3) For persistence, add env vars: "env": {"MEMORY_PERSIST": "true", "MEMORY_PATH": "/absolute/path/to/memory.json"}. Without MEMORY_PERSIST, memory is ephemeral and lost on process exit. MEMORY_PATH defaults to ./memory.json in CWD; use absolute paths to avoid confusion. On Windows, use forward slashes or escaped backslashes in JSON. Create the target directory manually before first run. Some implementations support --db-path or --memory-path CLI args instead of env vars. Verify setup by invoking read_graph after restart; empty graph confirms fresh state, populated graph confirms persistence is working.
+No authentication required; the server runs locally and accesses a file path you control. Setup: the MCP client (Claude Desktop, VS Code, Cursor, etc.) spawns the server via `npx -y @modelcontextprotocol/server-memory`. Default storage is `memory.json` in CWD. Override with `--memory-file /custom/path.json` in the args array or set `MEMORY_FILE_PATH` environment variable. Ensure the directory is writable. Example config (Claude Desktop): `{"memory": {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-memory", "--memory-file", "/Users/you/claude-memory.json"]}}`. On first run the server creates the file if it doesn't exist. No API keys, no network calls (all local).
 
 ## Key commands / parameters
 
-MCP Memory exposes tools via JSON-RPC 2.0. Key tools: **create_entities** (params: entities [array of {name, entityType, observations[]}])—bulk-create nodes in the knowledge graph. **create_relations** (params: relations [array of {from, to, relationType}])—define directed edges between entities. **add_observations** (params: [{entityName, contents[]}])—append observations to existing entities. **search_nodes** (params: {query})—full-text search across entity names, types, and observations. **open_nodes** (params: {names[]})—retrieve specific entities by name. **read_graph** (no params)—dump the entire knowledge graph. **update_memory** / **delete_memory** (params: {id} or {entityName})—modify or remove entries. **list_sessions** / **get_session_stats**—some implementations support session scoping via --session-id CLI arg or session_id param. **store_memory** (params: {content, source, importance, tags, session_id})—simplified storage interface in some variants. All tools return JSON responses with entities, relations, and observations arrays. Importance and tagging are implementation-dependent.
+`store_memory(content, source?, importance?, tags?, session_id?)`: Store a text fact with optional metadata. `content` (required) is the fact; `source`, `importance` (1-10), `tags` (array), and `session_id` are optional. | `search_memories(query, limit?, min_importance?, session_id?)`: Full-text or semantic search; returns matching memories. `query` supports `tag:` shorthand (e.g., `tag:security`). | `create_entities(entities: [{name, entityType, observations}])`: Create or update named entities in the knowledge graph. | `create_relations(relations: [{from, to, relationType}])`: Create typed edges between entities. | `delete_entities(entityNames: string[])`, `delete_relations(relations: [{from, to, relationType}])`: Remove entities or relations. | `read_graph()`: Dump the entire knowledge graph (all entities and relations). | `search_nodes(query)`: Search entities by name, type, or observation. | `open_nodes(names: string[])`: Retrieve specific entities by name. | `list_sessions()`, `get_session_stats(session_id?)`: List sessions and get memory counts. | `update_memory(id, content?, importance?, tags?)`: Update existing memory by ID. | `delete_memory(id)`: Delete a memory by ID.
 
 ## Example workflows
 
-**Reconnaissance persistence**: After running nmap, store discovered hosts: create_entities([{name: "192.168.1.10", entityType: "host", observations: ["ports: 22,80,443", "OS: Linux"]}]). Link services: create_relations([{from: "192.168.1.10", to: "SSH", relationType: "runs_service"}]). Later, search_nodes({query: "SSH"}) to retrieve all hosts running SSH. **Vulnerability tracking**: Store findings as entities with CVE IDs, then relate them to affected hosts. add_observations to append exploitation attempts or remediation notes. **Multi-stage attack chains**: After initial foothold, store credentials, pivot paths, and compromised accounts as entities. Use relations to map privilege escalation paths (e.g., user -> group -> admin). **Session continuity**: At the start of each engagement, read_graph to restore context. At the end, verify MEMORY_PATH to ensure findings are persisted. Use session_id if running parallel engagements to isolate memory stores.
+**Store project architecture decision**: After discovering the codebase uses React 18 + TypeScript, call `store_memory({content: "Project uses React 18 with TypeScript and Vite bundler", tags: ["architecture", "frontend"], importance: 8})`. | **Recall context at task start**: Before beginning a new coding task, call `search_memories({query: "React TypeScript"})` to retrieve prior architecture notes. | **Build knowledge graph of services**: `create_entities({entities: [{name: "API Gateway", entityType: "service", observations: ["Handles auth"]}, {name: "UserDB", entityType: "database", observations: ["PostgreSQL 14"]}]})`, then `create_relations({relations: [{from: "API Gateway", to: "UserDB", relationType: "queries"}]})`. Later `read_graph()` to visualize dependencies. | **Tag-based search**: `search_memories({query: "tag:security", limit: 5})` returns all memories tagged `security`. | **Session isolation**: Pass `session_id: "recon-phase-1"` to `store_memory` and `search_memories` to namespace memories per operation phase.
 
 ## Output format
 
-MCP Memory returns JSON-RPC 2.0 responses. Successful tool calls return {"entities": [{"name": str, "entityType": str, "observations": [str]}], "relations": [{"from": str, "to": str, "relationType": str}]}. search_nodes returns matching entities with relevance scoring (implementation-dependent). read_graph returns the full graph structure: {"entities": [...], "relations": [...]}. Errors return JSON-RPC error objects with code and message fields. The underlying storage format is JSON (default) or JSONL (some implementations). Example memory.json: {"entities": [{"name": "target.com", "entityType": "domain", "observations": ["resolved to 203.0.113.5"]}], "relations": [{"from": "target.com", "to": "web-server-1", "relationType": "hosted_on"}]}. Do not parse the file directly; always use MCP tools to ensure consistency.
+All tools return JSON. `store_memory`, `create_entities`, `create_relations` return confirmation objects. `search_memories` and `search_nodes` return arrays of matching records with fields like `id`, `content`, `tags`, `importance`, `timestamp`, or `name`, `entityType`, `observations`. `read_graph()` returns `{entities: [...], relations: [...]}`. `list_sessions()` returns session IDs and counts. Parse the JSON; do not assume pretty-printing. Text fields may contain newlines or special chars; handle accordingly. `update_memory` and `delete_memory` return success/error status. No binary data; all text-based.
 
 ## Common pitfalls
 
-**Memory limits**: Some implementations cap storage at ~200 entities and auto-evict or require manual deletion. Monitor with get_session_stats. **Path issues**: MEMORY_PATH must be absolute or relative to the MCP server's CWD, not the client's. Verify with process.cwd() or by checking where npx runs. On Windows, backslashes in JSON must be escaped (\\) or use forward slashes. **No encryption**: Memory files are plaintext JSON. Do not store credentials, API keys, or sensitive PII. **Ephemeral by default**: Without MEMORY_PERSIST=true, all state is lost on process exit. Always set this in production. **Concurrent access**: Single-process, file-based storage; no locking. Do not run multiple MCP Memory instances with the same MEMORY_PATH. **Schema drift**: No enforced schema; entityType and relationType are free text. Maintain consistent naming conventions (e.g., lowercase, underscores). **Performance**: Full-text search over large graphs is slow. Implementations using SQLite (local-memory-mcp) perform better at scale. **Session isolation**: If using session_id, ensure it's passed consistently across all tool calls within an engagement; otherwise, memories mix.
+**Memory bloat**: The server does not auto-prune. Over many sessions the graph and memory file grow indefinitely, consuming heap and disk. In long ops, periodically check `get_session_stats()` and manually delete obsolete memories. | **No cross-instance sharing by default**: Each spawned server instance uses its own file. If you run multiple agent processes, they do NOT share memory unless you configure the same `--memory-file` path and handle concurrent writes (risk of race conditions and corruption). | **Secrets in memory**: Do not store API keys, passwords, or PII unless you understand the file is unencrypted local JSON. | **Schema drift**: Memory structure may evolve; older clients may not support all fields. Test compatibility. | **Session ID confusion**: If you don't pass `session_id`, memories are global. Use session IDs to isolate operation phases, but remember you must explicitly pass the same ID to retrieve them. | **Search relevance**: Full-text search is basic substring/keyword matching unless semantic/vector search is enabled (implementation-dependent). Do not assume fuzzy matching or embeddings without verifying the server version supports it. | **Concurrency**: The JSON file is not a database; simultaneous writes from multiple processes can corrupt it. Use file locking or a single coordinating process.
 
 ## References
 
-- https://modelcontextprotocol.info/docs/best-practices
 - https://fast.io/resources/mcp-server-memory-management
+- https://modelcontextprotocol.info/docs/best-practices
 - https://www.mintlify.com/blog/how-claudes-memory-and-mcp-work
-- https://lobehub.com/mcp/eragonht1-simple-memory-mcp
-- https://www.youtube.com/watch?v=qeru0ZdudD4
+- https://github.com/doobidoo/mcp-memory-service
 - https://lobehub.com/mcp/danieleugenewilliams-local-memory-mcp
 - https://docs.basicmemory.com/reference/mcp-tools-reference
+- https://www.qed42.com/insights/the-claude-youll-never-need-to-remind-mcp-in-action
 - https://github.com/okooo5km/memory-mcp-server
 - https://code.visualstudio.com/docs/agents/reference/mcp-configuration
-- https://forum.cursor.com/t/mcp-add-persistent-memory-in-cursor/57497
+- https://pentest.qa/blog/mcp-server-security-testing-red-team-guide

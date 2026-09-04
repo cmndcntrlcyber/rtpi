@@ -1,50 +1,50 @@
 ---
 name: MCP Filesystem
-description: MCP server granting file read/write access within explicitly
-  allowed directories on the local filesystem
+description: MCP server exposing local filesystem read/write operations to AI
+  agents within explicitly allowed directories via stdio transport.
 registry: mcp
 tool_id: default:filesystem
 category: mcp-server
 tags:
+  - mcp-server
   - filesystem
   - file-operations
-  - local-storage
-  - mcp-server
+  - stdio
+  - sandbox
+  - local-access
   - read-write
-  - directory-tree
-  - file-search
-mitre_techniques:
-  - T1005
-  - T1083
-  - T1119
-summary: The MCP Filesystem server exposes local file operations to AI agents
-  via the Model Context Protocol. It is restricted to
-  /home/cmndcntrl/code/rtpi/mcp-workspace and all subdirectories within that
-  path. All file operations—read, write, move, search, create, delete—are
-  validated against this allowed root. Use this server when you need to inspect
-  source code, configuration files, logs, or artifacts outside the IDE's default
-  working directory, or when you must persist data across sessions. Invoke tools
-  by name (read_file, write_file, list_directory, search_files, etc.) with JSON
-  arguments. Expect text or JSON responses. Do not assume access to parent
-  directories, symlinks outside allowed paths, or system directories. All path
-  traversal attempts will fail. This server cannot execute binaries or scripts;
-  it only manipulates file content and metadata. It is the primary vector for
-  data exfiltration, configuration tampering, and payload staging in red-team
-  scenarios, so validate every path and sanitize every write.
+summary: The MCP Filesystem server grants AI agents controlled read/write access
+  to local files and directories via the Model Context Protocol. It is invoked
+  with `npx -y @modelcontextprotocol/server-filesystem <allowed_dir_paths>` and
+  enforces strict path validation—all operations are restricted to explicitly
+  allowed directories passed as arguments. Use when agents need to read source
+  code, write reports, manage configuration files, or perform batch file
+  operations in /home/cmndcntrl/code/rtpi/mcp-workspace. The server provides
+  tools including read_file, write_file, read_multiple_files, edit_file
+  (pattern-based selective edits), create_directory, move_file, list_directory,
+  search_files (recursive pattern matching), get_file_info, and directory_tree.
+  All paths are validated against allowed directories; symlinks pointing outside
+  trigger warnings; path traversal attempts are blocked. Outputs are returned as
+  MCP tool responses with text content for file contents, JSON structures for
+  directory listings, and metadata objects for file info. Do NOT attempt
+  operations outside the configured workspace—they will be rejected. This is a
+  stdio transport server with no network capability. Primarily useful for
+  headless automation, batch processing, or accessing files outside the agent
+  host's working directory.
 sources:
   - https://docs.stacklok.com/toolhive/guides-mcp/filesystem
-  - https://www.verdent.ai/guides/filesystem-mcp-server
-  - https://mcpservers.org/servers/calebmwelsh/file-system-mcp-server
   - https://skyvia.com/blog/filesystem-mcp-server
   - https://dev.to/furudo_erika_7633eee4afa5/how-to-use-local-filesystem-mcp-server-363e
+  - https://www.pulsemcp.com/servers/modelcontextprotocol-filesystem
+  - https://github.com/mark3labs/mcp-filesystem-server
   - https://docs.rs/crate/mcp-server-filesystem/latest
   - https://www.philschmid.de/mcp-cli
+  - https://www.librechat.ai/docs/configuration/librechat_yaml/object_structure/mcp_servers
   - https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem
   - https://lobehub.com/mcp/marcusjellinghaus-mcp-server-filesystem
-  - https://www.librechat.ai/docs/configuration/librechat_yaml/object_structure/mcp_servers
-  - https://mcpmarket.com/server/redteam-1
-  - https://pentest.qa/blog/mcp-server-security-testing-red-team-guide
-generated_at: 2026-09-03T12:38:38.781Z
+  - https://mcp.so/server/mcp-filesystem/gabrielmaialva33
+  - https://mcp.so/server/mcp_server_filesystem/philgei
+generated_at: 2026-09-04T02:29:55.986Z
 generated_by: anthropic
 source_hash: 4447056b5ddd4003e289d5da271f76a7f5b13c44e6dd9e2dcfe5d1864552469c
 ---
@@ -53,42 +53,75 @@ source_hash: 4447056b5ddd4003e289d5da271f76a7f5b13c44e6dd9e2dcfe5d1864552469c
 
 ## Overview
 
-The MCP Filesystem server (@modelcontextprotocol/server-filesystem) is a Model Context Protocol server that bridges AI agents to the local filesystem. It is invoked via npx and scoped to a single root directory (/home/cmndcntrl/code/rtpi/mcp-workspace in this deployment). It provides tools for reading files, writing files, creating and listing directories, moving/renaming files, searching for files by pattern, and retrieving file metadata. It does not provide shell execution, binary invocation, or network operations. All operations are constrained by the allowed directory list; attempts to access parent directories or traverse symlinks outside the allowed tree will be blocked. The server runs as a stdio process and communicates via JSON-RPC over standard input/output.
+MCP Filesystem is an official Model Context Protocol server implementation (NPM package @modelcontextprotocol/server-filesystem) that exposes local filesystem operations to AI agents via stdio transport. It acts as a secure bridge allowing controlled file read, write, search, and directory management within predefined allowed directories. Security is enforced through path validation, prevention of directory traversal attacks (../ blocked), and symlink resolution with boundary checks. The server is stateless and operates synchronously over stdio, making it suitable for automation pipelines and headless environments. This RTPI instance is configured with workspace /home/cmndcntrl/code/rtpi/mcp-workspace as the single allowed root.
 
 ## When to use
 
-Use the MCP Filesystem server when you need to read configuration files, source code, logs, or artifacts stored in /home/cmndcntrl/code/rtpi/mcp-workspace or its subdirectories. Use it to persist reconnaissance findings, enumeration results, or exfiltrated data to disk for later analysis. Use it to modify configuration files, inject payloads into scripts, or prepare staging directories for further exploitation. Use it when the red-team task requires batch operations (e.g., search all .env files, read all .config files, extract all private keys). Do not use it if you need to interact with files outside the allowed directory, execute binaries, or perform network operations. Do not use it if the host application (IDE, headless runner) already provides sufficient filesystem access.
+Use MCP Filesystem when agents need to: (1) Read source code, configuration files, logs, or data files for analysis or vulnerability scanning. (2) Write reports, generated code, extraction results, or modified configurations back to disk. (3) Perform batch operations like reading multiple files, searching codebases for patterns (e.g., secrets, vulnerabilities), or generating directory trees. (4) Manage project structure by creating directories, moving/renaming files, or organizing output. (5) Access files outside the agent host application's native working directory. Do NOT use for network file systems, cloud storage, or operations requiring privilege escalation—this server only accesses local paths within the configured workspace and has no network transport.
 
 ## Authentication & setup
 
-No authentication is required. The server is launched by npx with a single positional argument specifying the allowed root directory. In this deployment, the allowed root is /home/cmndcntrl/code/rtpi/mcp-workspace. The server inherits the permissions of the invoking user (cmndcntrl). All tools validate paths against the allowed root before execution. There is no token, API key, or session management. MCP clients that support the Roots protocol can dynamically update allowed directories at runtime, but in this deployment the allowed directory is fixed at startup. If you need to operate on files outside /home/cmndcntrl/code/rtpi/mcp-workspace, you must reconfigure and restart the server.
+No authentication mechanism exists—security is enforced by limiting allowed directories at launch. The server is invoked via `npx -y @modelcontextprotocol/server-filesystem <allowed_directory_paths>`. This RTPI deployment launches with `/home/cmndcntrl/code/rtpi/mcp-workspace` as the single allowed directory. All file operations are restricted to this path and its subdirectories. The server communicates over stdio (standard input/output) and is automatically managed by the MCP infrastructure—agents do not manually start or stop it. No configuration file is used in this deployment; allowed directories are specified solely via command-line arguments. If the server is not responding, check that the workspace directory exists and is readable. Path validation failures will return error messages indicating the operation was blocked.
 
 ## Key commands / parameters
 
-Available tools: read_file (path), read_text_file (path, head/tail options), read_multiple_files (paths[]), write_file (path, content), edit_file (path, edits[]), create_directory (path), list_directory (path), list_directory_with_sizes (path), directory_tree (path), move_file (source, destination), get_file_info (path), search_files (path, pattern, recursive), list_allowed_directories (). All paths are validated against /home/cmndcntrl/code/rtpi/mcp-workspace. Use read_file for binary-safe reads, read_text_file for text with optional head/tail. Use write_file to create or overwrite; use edit_file for surgical pattern-based edits. Use search_files with glob patterns (*.txt, **/*.env) to recursively locate targets. Use get_file_info to retrieve size, timestamps, permissions. Use move_file for renaming or relocating within the allowed tree. Use list_allowed_directories to confirm the active root before executing operations.
+Available tools (invoked via MCP tool call protocol):
+
+**read_file** / **read_text_file**: Read complete file contents. Parameters: `path` (required, string). Returns text content or error if outside allowed directories.
+
+**read_multiple_files**: Read multiple files in one operation. Parameters: `paths` (required, array of strings). Returns array of file contents.
+
+**write_file**: Create new file or overwrite existing. Parameters: `path` (required), `content` (required, string). Creates parent directories if needed.
+
+**edit_file** / **modify_file**: Selective edits using pattern matching and replacement. Parameters: `path` (required), pattern/replacement directives. Safer than full overwrites for incremental changes.
+
+**create_directory**: Create directory or ensure it exists. Parameters: `path` (required). Idempotent operation.
+
+**move_file**: Move or rename files/directories. Parameters: `source` (required), `destination` (required). Both paths must be within allowed directories.
+
+**list_directory**: List directory contents showing files and subdirectories. Parameters: `path` (required). Returns array of entries with names and types.
+
+**list_directory_with_sizes**: Enhanced directory listing with file sizes. Parameters: `path` (required).
+
+**search_files**: Recursive pattern-based file search. Parameters: `path` (directory to search), `pattern` (glob or regex pattern). Returns matching file paths.
+
+**get_file_info**: Retrieve file metadata (size, timestamps, permissions, MIME type). Parameters: `path` (required).
+
+**directory_tree**: Generate hierarchical directory structure. Parameters: `path` (required). Returns tree representation.
+
+**delete_file**: Delete file or directory. Parameters: `path` (required), `recursive` (optional boolean, default false). Use with caution.
+
+**copy_file**: Copy files or directories. Parameters: `source`, `destination`. Both must be within allowed boundaries.
+
+**read_media_file**: Read binary/media files with base64 encoding for inline content. Parameters: `path` (required).
 
 ## Example workflows
 
-Enumerate all configuration files: search_files({path: '/home/cmndcntrl/code/rtpi/mcp-workspace', pattern: '**/*.{conf,config,ini,env,yaml,yml}', recursive: true}). Read multiple targets in batch: read_multiple_files({paths: ['/home/cmndcntrl/code/rtpi/mcp-workspace/config/db.yaml', '/home/cmndcntrl/code/rtpi/mcp-workspace/.env']}). Exfiltrate SSH keys: search_files for **/id_rsa, then read_file each hit, then write_file to /home/cmndcntrl/code/rtpi/mcp-workspace/loot/keys.txt. Modify a configuration file: read_file('/home/cmndcntrl/code/rtpi/mcp-workspace/app/config.json'), parse JSON, inject backdoor parameter, write_file() back. Prepare a staging directory: create_directory('/home/cmndcntrl/code/rtpi/mcp-workspace/stage'), write_file('/home/cmndcntrl/code/rtpi/mcp-workspace/stage/payload.sh', '#!/bin/bash\nreverse_shell...'). Search for credentials: search_files({pattern: '**/*password*.txt'}) then read each hit and extract structured data.
+**Codebase vulnerability scan**: (1) Use `directory_tree` on /home/cmndcntrl/code/rtpi/mcp-workspace to understand structure. (2) Use `search_files` with pattern '*.py' or '*.js' to locate source files. (3) Use `read_multiple_files` to batch-read discovered files. (4) Analyze for vulnerabilities (hardcoded secrets, SQL injection patterns). (5) Use `write_file` to create a report at /home/cmndcntrl/code/rtpi/mcp-workspace/scan_report.txt.
+
+**Configuration file modification**: (1) Use `read_file` to read existing config at /home/cmndcntrl/code/rtpi/mcp-workspace/config.yaml. (2) Parse and modify in agent logic. (3) Use `write_file` to atomically replace the config file. Alternatively, use `edit_file` for surgical pattern-based changes.
+
+**Log aggregation**: (1) Use `search_files` with pattern '*.log' under /home/cmndcntrl/code/rtpi/mcp-workspace/logs. (2) Use `read_multiple_files` to retrieve all logs. (3) Parse and aggregate findings. (4) Use `write_file` to create summary report.
+
+**Directory organization**: (1) Use `create_directory` to establish /home/cmndcntrl/code/rtpi/mcp-workspace/results. (2) Use `move_file` to relocate analysis outputs into organized subdirectories. (3) Use `get_file_info` to verify file sizes and timestamps.
+
+**Secret extraction**: (1) Use `search_files` with pattern matching common secret files (.env, credentials.json). (2) Use `read_file` on matches. (3) Parse and extract credentials. (4) Use `write_file` to create loot inventory.
 
 ## Output format
 
-Tools return JSON objects with a 'content' field. For read operations, content is typically {type: 'text', text: '...'} or {type: 'resource', resource: {...}}. For list_directory, expect an array of {name, type, size, modified} objects. For search_files, expect an array of file paths (strings). For write_file and create_directory, expect a confirmation message or empty success response. For get_file_info, expect {size, created, modified, accessed, isDirectory, isFile, permissions}. For directory_tree, expect a nested JSON structure representing the directory hierarchy. All errors return JSON with an error field containing a message and optional code. Parse responses carefully; success does not always mean the operation had the intended side effect (e.g., writing to a read-only mount).
+All tools return MCP-formatted responses with a `content` field. **Text files**: Content returned as plain string in `content.text`. **Directory listings**: JSON array of objects with `name`, `type` (file/directory), optionally `size`. **File metadata**: JSON object with fields `size` (bytes), `created`, `modified`, `accessed` (ISO timestamps), `isDirectory`, `isFile`, `permissions`, `mimeType`. **Search results**: Array of file path strings matching the pattern. **Binary/media files**: base64-encoded content in `content.text` or external reference if size exceeds limits. **Errors**: Error message strings indicating path validation failure, file not found, permission denied, or operation not allowed. The server enforces size limits for inline content (typically 10MB for text, smaller thresholds for base64). Larger files may return truncated content or error messages.
 
 ## Common pitfalls
 
-Path traversal: do not attempt ../../ or absolute paths outside /home/cmndcntrl/code/rtpi/mcp-workspace; all will be rejected. Symlinks: if a symlink points outside the allowed root, operations will fail or trigger warnings. Binary files: read_file is binary-safe, but read_text_file may garble binary content; use the correct tool. Overwrites: write_file will overwrite existing files without confirmation; always read first if preservation is required. Permissions: the server inherits user permissions; you cannot write to read-only mounts or files owned by other users unless the cmndcntrl user has write access. Performance: directory_tree and recursive search_files on large directories can be slow and may time out; scope searches narrowly. No execution: you cannot execute scripts or binaries via this server; you can only read and write their content. Race conditions: if multiple agents or processes write to the same file concurrently, last-write-wins; implement locking externally if required.
+**Path traversal attempts**: Any path containing `..` or attempting to escape /home/cmndcntrl/code/rtpi/mcp-workspace will be rejected with an error. Always use absolute paths within the workspace or relative paths that resolve inside it. **Symlink warnings**: If a symlink points outside allowed directories, operations may fail or trigger security warnings. Test symlink resolution with `get_file_info` first. **Overwriting files**: `write_file` will silently overwrite existing files without confirmation. Use `read_file` first to verify contents if preservation matters, or use `edit_file` for selective changes. **Large file operations**: Reading multi-gigabyte files may timeout or exceed memory limits. Use `get_file_info` to check file size before reading. **Recursive deletes**: `delete_file` with `recursive: true` will permanently remove entire directory trees. Double-check paths before invoking. **Permission errors**: The server runs with the permissions of the user invoking npx (typically the RTPI operator). Files requiring elevated privileges cannot be accessed. **MIME type limitations**: Binary file detection relies on file extensions and magic bytes; edge cases may misclassify files. **No undo**: All write, delete, and move operations are immediate and irreversible. Implement external backups or versioning if critical data is at risk. **Case sensitivity**: Filesystem path matching is case-sensitive on Linux; /home/cmndcntrl is NOT the same as /Home/CMNDcntrl.
 
 ## References
 
-https://docs.stacklok.com/toolhive/guides-mcp/filesystem
-https://www.verdent.ai/guides/filesystem-mcp-server
-https://mcpservers.org/servers/calebmwelsh/file-system-mcp-server
-https://skyvia.com/blog/filesystem-mcp-server
-https://dev.to/furudo_erika_7633eee4afa5/how-to-use-local-filesystem-mcp-server-363e
-https://docs.rs/crate/mcp-server-filesystem/latest
-https://www.philschmid.de/mcp-cli
-https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem
-https://lobehub.com/mcp/marcusjellinghaus-mcp-server-filesystem
-https://www.librechat.ai/docs/configuration/librechat_yaml/object_structure/mcp_servers
-https://pentest.qa/blog/mcp-server-security-testing-red-team-guide
+• https://docs.stacklok.com/toolhive/guides-mcp/filesystem
+• https://dev.to/furudo_erika_7633eee4afa5/how-to-use-local-filesystem-mcp-server-363e
+• https://www.pulsemcp.com/servers/modelcontextprotocol-filesystem
+• https://github.com/mark3labs/mcp-filesystem-server
+• https://docs.rs/crate/mcp-server-filesystem/latest
+• https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem
+• https://www.librechat.ai/docs/configuration/librechat_yaml/object_structure/mcp_servers
+• https://lobehub.com/mcp/marcusjellinghaus-mcp-server-filesystem

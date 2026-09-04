@@ -14,16 +14,16 @@ sources:
   - https://www.tavily.com/blog/getting-started-with-the-tavily-search-api
   - https://www.linkedin.com/posts/tavily_best-practices-for-search-tavily-docs-activity-7344061189343051777-d-7o
   - https://www.freecodecamp.org/news/how-to-add-real-time-web-search-to-your-llm-using-tavily
-  - https://docs.crewai.com/v1.15.3/en/tools/search-research/tavilysearchtool
-  - https://notes.kodekloud.com/docs/LangChain/Using-Tools/Using-Tavily-Search-Tool/page
+  - https://docs.tavily.com/documentation/api-reference/introduction
+  - https://inference.sh/apps/tavily/search-assistant
   - https://lobehub.com/de/skills/kyopark2014-agent-skills-tavily-search
-  - https://docs.tavily.com/documentation/tavily-cli
-  - https://github.com/tavily-ai/langchain-tavily
-  - https://docs.tavily.com/documentation/integrations/langchain
-  - https://docs.tavily.com/documentation/agent-skills
-  - https://www.offsec.com/blog/red-teaming-vs-pentesting
-  - https://redbotsecurity.com/red-team-testing
-generated_at: 2026-09-04T07:50:38.311Z
+  - https://lobehub.com/skills/tavily-ai-skills-tavily-cli
+  - https://pypi.org/project/tavily-cli
+  - https://github.com/tavily-ai/skills/blob/main/skills/tavily-cli/SKILL.md
+  - https://mcpservers.org/agent-skills/tavily-ai/tavily-cli
+  - https://www.youtube.com/watch?v=J7im0UVVHs0
+  - https://www.redhat.com/en/blog/red-hats-commitment-open-source-response-gitcentosorg-changes
+generated_at: 2026-09-04T17:22:21.077Z
 generated_by: template
 source_hash: 44a4931b9d7e8188278db2000cb24e4240b08d275140d2f40a8bb20de245dbe0
 ---
@@ -63,12 +63,12 @@ None documented in fallback mode.
 - https://www.tavily.com/blog/getting-started-with-the-tavily-search-api
 - https://www.linkedin.com/posts/tavily_best-practices-for-search-tavily-docs-activity-7344061189343051777-d-7o
 - https://www.freecodecamp.org/news/how-to-add-real-time-web-search-to-your-llm-using-tavily
-- https://docs.crewai.com/v1.15.3/en/tools/search-research/tavilysearchtool
-- https://notes.kodekloud.com/docs/LangChain/Using-Tools/Using-Tavily-Search-Tool/page
+- https://docs.tavily.com/documentation/api-reference/introduction
+- https://inference.sh/apps/tavily/search-assistant
 - https://lobehub.com/de/skills/kyopark2014-agent-skills-tavily-search
-- https://docs.tavily.com/documentation/tavily-cli
-- https://github.com/tavily-ai/langchain-tavily
-- https://docs.tavily.com/documentation/integrations/langchain
-- https://docs.tavily.com/documentation/agent-skills
-- https://www.offsec.com/blog/red-teaming-vs-pentesting
-- https://redbotsecurity.com/red-team-testing
+- https://lobehub.com/skills/tavily-ai-skills-tavily-cli
+- https://pypi.org/project/tavily-cli
+- https://github.com/tavily-ai/skills/blob/main/skills/tavily-cli/SKILL.md
+- https://mcpservers.org/agent-skills/tavily-ai/tavily-cli
+- https://www.youtube.com/watch?v=J7im0UVVHs0
+- https://www.redhat.com/en/blog/red-hats-commitment-open-source-response-gitcentosorg-changes

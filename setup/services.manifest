@@ -37,6 +37,6 @@
 -kasm       | kasm         | https://0.0.0.0:8443  | true      | true
 -wiki       | docmost      | http://0.0.0.0:13000  | false     | false
 -vscode     | kasm         | https://0.0.0.0:6901  | true      | true
--kali       | kasm         | https://0.0.0.0:6902  | true      | true
+-kali       |              | https://0.0.0.0:6903  | true      | true
 -workbench  |              | http://0.0.0.0:3020   | false     | false
 -api        |              | http://0.0.0.0:3001   | true      | false

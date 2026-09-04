@@ -12,18 +12,18 @@ summary: "MCP Fetch is a mcp-server registered in RTPI. No description
   research — consult the upstream documentation for accurate usage."
 sources:
   - https://glama.ai/mcp/servers/modelcontextprotocol/fetch
+  - https://www.youtube.com/watch?v=wZw1k72Oe4k
   - https://github.com/zcaceres/fetch-mcp
+  - https://github.com/modelcontextprotocol/servers/tree/main/src/fetch
   - https://mcp.so/server/fetch/test
-  - https://github.com/wolfyy970/docs-fetch-mcp
-  - https://agentskillshub.dev/skills/fetch
+  - https://crates.io/crates/mcp-server-fetch
   - https://lib.rs/crates/mcp-server-fetch
-  - https://mcpservers.org/servers/zcaceres/fetch-mcp
-  - https://mcp.so/servers/mcp_server_fetch
-  - https://github.com/modelcontextprotocol/servers/blob/main/src/fetch/README.md
-  - https://mcpmarket.com/server/redteam-1
-  - https://github.com/GH05TCREW/ghostcrew
-  - https://pentest.qa/blog/mcp-server-security-testing-red-team-guide
-generated_at: 2026-09-04T07:50:40.638Z
+  - https://hub.docker.com/mcp/server/fetch/overview
+  - https://mcp.so/servers/playwright-fetch
+  - https://arxiv.org/html/2511.15998v1
+  - https://tierzerosecurity.co.nz/2025/04/29/mcp-llm.html
+  - https://mcp.so/servers/read-team-mcp-server
+generated_at: 2026-09-04T17:22:20.802Z
 generated_by: template
 source_hash: 4195fc904223cce05bd98d6e5426a11af915e4d3cf644d1df266c8cbf511443e
 ---
@@ -61,14 +61,14 @@ None documented in fallback mode.
 ## References
 
 - https://glama.ai/mcp/servers/modelcontextprotocol/fetch
+- https://www.youtube.com/watch?v=wZw1k72Oe4k
 - https://github.com/zcaceres/fetch-mcp
+- https://github.com/modelcontextprotocol/servers/tree/main/src/fetch
 - https://mcp.so/server/fetch/test
-- https://github.com/wolfyy970/docs-fetch-mcp
-- https://agentskillshub.dev/skills/fetch
+- https://crates.io/crates/mcp-server-fetch
 - https://lib.rs/crates/mcp-server-fetch
-- https://mcpservers.org/servers/zcaceres/fetch-mcp
-- https://mcp.so/servers/mcp_server_fetch
-- https://github.com/modelcontextprotocol/servers/blob/main/src/fetch/README.md
-- https://mcpmarket.com/server/redteam-1
-- https://github.com/GH05TCREW/ghostcrew
-- https://pentest.qa/blog/mcp-server-security-testing-red-team-guide
+- https://hub.docker.com/mcp/server/fetch/overview
+- https://mcp.so/servers/playwright-fetch
+- https://arxiv.org/html/2511.15998v1
+- https://tierzerosecurity.co.nz/2025/04/29/mcp-llm.html
+- https://mcp.so/servers/read-team-mcp-server

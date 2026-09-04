@@ -15,16 +15,16 @@ sources:
   - https://modelcontextprotocol.info/docs/best-practices
   - https://fast.io/resources/mcp-server-memory-management
   - https://www.mintlify.com/blog/how-claudes-memory-and-mcp-work
+  - https://github.com/doobidoo/mcp-memory-service
   - https://www.memoryplugin.com/platforms/mcp
-  - https://docs.basicmemory.com/reference/mcp-tools-reference
   - https://lobehub.com/mcp/danieleugenewilliams-local-memory-mcp
+  - https://docs.basicmemory.com/reference/mcp-tools-reference
   - https://www.qed42.com/insights/the-claude-youll-never-need-to-remind-mcp-in-action
   - https://crates.io/crates/memory-mcp-rs
-  - https://github.com/okooo5km/memory-mcp-server
+  - https://code.visualstudio.com/docs/agents/reference/mcp-configuration
   - https://arxiv.org/html/2511.15998v1
   - https://pentest.qa/blog/mcp-server-security-testing-red-team-guide
-  - https://www.praetorian.com/security-101/red-team-vs-penetration-testing
-generated_at: 2026-09-04T07:50:38.365Z
+generated_at: 2026-09-04T17:22:21.108Z
 generated_by: template
 source_hash: ff83e9a5a01b84d42a41d11a392d2179aaf37d67ef4df27cf8c0b4e1d52706bd
 ---
@@ -64,12 +64,12 @@ None documented in fallback mode.
 - https://modelcontextprotocol.info/docs/best-practices
 - https://fast.io/resources/mcp-server-memory-management
 - https://www.mintlify.com/blog/how-claudes-memory-and-mcp-work
+- https://github.com/doobidoo/mcp-memory-service
 - https://www.memoryplugin.com/platforms/mcp
-- https://docs.basicmemory.com/reference/mcp-tools-reference
 - https://lobehub.com/mcp/danieleugenewilliams-local-memory-mcp
+- https://docs.basicmemory.com/reference/mcp-tools-reference
 - https://www.qed42.com/insights/the-claude-youll-never-need-to-remind-mcp-in-action
 - https://crates.io/crates/memory-mcp-rs
-- https://github.com/okooo5km/memory-mcp-server
+- https://code.visualstudio.com/docs/agents/reference/mcp-configuration
 - https://arxiv.org/html/2511.15998v1
 - https://pentest.qa/blog/mcp-server-security-testing-red-team-guide
-- https://www.praetorian.com/security-101/red-team-vs-penetration-testing

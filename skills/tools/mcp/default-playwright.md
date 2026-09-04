@@ -14,17 +14,17 @@ summary: "Microsoft Playwright is a mcp-server registered in RTPI. No
 sources:
   - https://www.checklyhq.com/docs/learn/playwright/what-is-playwright
   - https://en.wikipedia.org/wiki/Playwright_(software)
-  - https://testguild.com/what-is-microsoft-playwright-js
   - https://nareshit.com/blogs/playwright-automation-tutorial-beginners-2026
-  - https://testgrid.io/blog/playwright-testing
+  - https://www.pcloudy.com/blogs/playwright-test-automation-guide
+  - https://github.com/microsoft/playwright
   - https://playwright.dev/docs/test-cli
-  - https://playwright.dev/docs/test-use-options
+  - https://playwright.dev/mcp/configuration/options
   - https://github.com/microsoft/playwright-cli
-  - https://playwright.dev/agent-cli/introduction
-  - https://playwright.dev/agent-cli/configuration
+  - https://blog.nashtechglobal.com/playwright-cli
+  - https://scrolltest.medium.com/the-playwright-cli-has-40-commands-916064bb48f2
   - https://www.varonis.com/blog/red-teaming
   - https://www.reddit.com/r/Pentesting/comments/1u6fotc/playwright_for_penetration_testing
-generated_at: 2026-09-04T07:50:39.082Z
+generated_at: 2026-09-04T17:22:21.041Z
 generated_by: template
 source_hash: 31443b217674de7bf666aca246f2f3a31e02eb99977235fcde65a8ac32d166fb
 ---
@@ -63,13 +63,13 @@ None documented in fallback mode.
 
 - https://www.checklyhq.com/docs/learn/playwright/what-is-playwright
 - https://en.wikipedia.org/wiki/Playwright_(software)
-- https://testguild.com/what-is-microsoft-playwright-js
 - https://nareshit.com/blogs/playwright-automation-tutorial-beginners-2026
-- https://testgrid.io/blog/playwright-testing
+- https://www.pcloudy.com/blogs/playwright-test-automation-guide
+- https://github.com/microsoft/playwright
 - https://playwright.dev/docs/test-cli
-- https://playwright.dev/docs/test-use-options
+- https://playwright.dev/mcp/configuration/options
 - https://github.com/microsoft/playwright-cli
-- https://playwright.dev/agent-cli/introduction
-- https://playwright.dev/agent-cli/configuration
+- https://blog.nashtechglobal.com/playwright-cli
+- https://scrolltest.medium.com/the-playwright-cli-has-40-commands-916064bb48f2
 - https://www.varonis.com/blog/red-teaming
 - https://www.reddit.com/r/Pentesting/comments/1u6fotc/playwright_for_penetration_testing

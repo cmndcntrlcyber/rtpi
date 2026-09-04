@@ -1276,38 +1276,8 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  kasm-kali:
-    image: kasmweb/kali-rolling-desktop:1.16.0
-    container_name: rtpi-kasm-kali
-    profiles:
-      - kasm
-    platform: linux/amd64
-    restart: unless-stopped
-    ports:
-      - "6902:6901"  # Kali web interface (mapped to different host port)
-    volumes:
-      - kasm-kali-data:/home/kasm-user
-    environment:
-      - VNC_PW=${KASM_VNC_PASSWORD:-password}
-      - KASM_SVC_AUDIO=1
-      - KASM_SVC_UPLOADS=1
-      - KASM_SVC_DOWNLOADS=1
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - rtpi-network
-    # See note on kasm-vscode — same 401-on-everything behavior.
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sk -o /dev/null -w '%{http_code}' --max-time 5 https://localhost:6901/ | grep -qE '^[234]'"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+  # kasm-kali removed — redundant with nexus-kali (nexus-offense:latest)
+  # which has 260+ skills, 280+ tools, and runs on port 6903.
 
   # ============================================================================
   # v2.5 — mem0 Memory Infrastructure
@@ -1484,7 +1454,6 @@ volumes:
   portainer-data:
   # Kasm containerized workspace volumes
   kasm-vscode-data:
-  kasm-kali-data:
   # v2.5 — mem0 & orchestrator volumes
   mem0-pg-data:
   neo4j-data:

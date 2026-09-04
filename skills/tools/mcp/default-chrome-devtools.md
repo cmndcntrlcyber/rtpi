@@ -19,11 +19,11 @@ sources:
   - https://github.com/GoogleChrome/devtools-docs/blob/master/docs/commandline-api.md
   - https://developer.chrome.com/docs/devtools/console/reference
   - https://developer.chrome.com/docs/devtools/console/utilities
-  - https://developer.chrome.com/docs/devtools/open
-  - https://peter.sh/experiments/chromium-command-line-switches
-  - https://chrome-stats.com/d/cmbndhnoonmghfofefkcccljbkdpamhi
-  - https://github.com/digitalarche/Hack-Tools-Chrome
-generated_at: 2026-09-04T07:50:38.961Z
+  - https://bugfender.com/blog/chrome-developer-tools
+  - https://developer.chrome.com/docs/devtools/settings
+  - https://courses.redteamleaders.com/courses/e79d5f5c-181d-4a90-bedd-58d3320eabf3
+  - https://www.linkedin.com/posts/akhil-s-163646277_100daysoflearning-day8-cybersecurity-activity-7436373819314954240-BB2o
+generated_at: 2026-09-04T17:22:20.746Z
 generated_by: template
 source_hash: adce2514b3aa6da536b6221b9bc85a4eaecf5a0422a3b22808e9ca3844183e32
 ---
@@ -68,7 +68,7 @@ None documented in fallback mode.
 - https://github.com/GoogleChrome/devtools-docs/blob/master/docs/commandline-api.md
 - https://developer.chrome.com/docs/devtools/console/reference
 - https://developer.chrome.com/docs/devtools/console/utilities
-- https://developer.chrome.com/docs/devtools/open
-- https://peter.sh/experiments/chromium-command-line-switches
-- https://chrome-stats.com/d/cmbndhnoonmghfofefkcccljbkdpamhi
-- https://github.com/digitalarche/Hack-Tools-Chrome
+- https://bugfender.com/blog/chrome-developer-tools
+- https://developer.chrome.com/docs/devtools/settings
+- https://courses.redteamleaders.com/courses/e79d5f5c-181d-4a90-bedd-58d3320eabf3
+- https://www.linkedin.com/posts/akhil-s-163646277_100daysoflearning-day8-cybersecurity-activity-7436373819314954240-BB2o

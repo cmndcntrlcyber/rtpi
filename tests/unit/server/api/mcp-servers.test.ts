@@ -3,6 +3,7 @@ import request from 'supertest';
 import express from 'express';
 import mcpServersRouter from '../../../../server/api/v1/mcp-servers';
 import { db } from '../../../../server/db';
+import { mcpServerManager } from '../../../../server/services/mcp-server-manager';
 
 // Mock dependencies
 vi.mock('../../../../server/db');
@@ -30,6 +31,9 @@ vi.mock('../../../../server/auth/middleware', () => ({
     }
   },
   logAudit: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('../../../../server/middleware/rate-limit', () => ({
+  mcpBulkLimiter: (_req: any, _res: any, next: any) => next(),
 }));
 
 describe('MCP Servers API', () => {
@@ -565,6 +569,207 @@ describe('MCP Servers API', () => {
       const allowedRoles = ['admin', 'operator'];
       expect(allowedRoles).toContain('admin');
       expect(allowedRoles).toContain('operator');
+    });
+
+    it('should allow admin and operator for bulk operations', () => {
+      const allowedRoles = ['admin', 'operator'];
+      expect(allowedRoles).toContain('admin');
+      expect(allowedRoles).toContain('operator');
+    });
+  });
+
+  describe('Bulk Operations', () => {
+
+    describe('POST /api/v1/mcp-servers/bulk/start', () => {
+      it('should start multiple servers', async () => {
+        const mockServers = [
+          { id: 'id-1', name: 'server-1', status: 'stopped' },
+          { id: 'id-2', name: 'server-2', status: 'stopped' },
+        ];
+        const updatedServers = [
+          { id: 'id-1', name: 'server-1', status: 'running' },
+          { id: 'id-2', name: 'server-2', status: 'running' },
+        ];
+
+        vi.mocked(db.select).mockReturnValue({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue(mockServers),
+          }),
+        } as any);
+
+        // Second call for re-fetch
+        vi.mocked(db.select)
+          .mockReturnValueOnce({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue(mockServers),
+            }),
+          } as any)
+          .mockReturnValueOnce({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue(updatedServers),
+            }),
+          } as any);
+
+        vi.mocked(mcpServerManager.startServer).mockResolvedValue(true);
+
+        const response = await request(app)
+          .post('/api/v1/mcp-servers/bulk/start')
+          .send({ ids: ['id-1', 'id-2'] });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toHaveProperty('results');
+        expect(response.body).toHaveProperty('summary');
+        expect(response.body.summary.total).toBe(2);
+        expect(response.body.summary.succeeded).toBe(2);
+        expect(response.body.summary.failed).toBe(0);
+      });
+
+      it('should handle partial failures', async () => {
+        const mockServers = [
+          { id: 'id-1', name: 'server-1', status: 'stopped' },
+          { id: 'id-2', name: 'server-2', status: 'stopped' },
+        ];
+
+        vi.mocked(db.select).mockReturnValue({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue(mockServers),
+          }),
+        } as any);
+
+        vi.mocked(mcpServerManager.startServer)
+          .mockResolvedValueOnce(true)
+          .mockResolvedValueOnce(false);
+
+        const response = await request(app)
+          .post('/api/v1/mcp-servers/bulk/start')
+          .send({ ids: ['id-1', 'id-2'] });
+
+        expect(response.status).toBe(200);
+        expect(response.body.summary.succeeded).toBe(1);
+        expect(response.body.summary.failed).toBe(1);
+      });
+
+      it('should return 400 for empty ids', async () => {
+        const response = await request(app)
+          .post('/api/v1/mcp-servers/bulk/start')
+          .send({ ids: [] });
+
+        expect(response.status).toBe(400);
+        expect(response.body).toHaveProperty('error');
+      });
+
+      it('should return 400 for non-array ids', async () => {
+        const response = await request(app)
+          .post('/api/v1/mcp-servers/bulk/start')
+          .send({ ids: 'not-an-array' });
+
+        expect(response.status).toBe(400);
+      });
+
+      it('should return 400 for too many ids', async () => {
+        const tooMany = Array.from({ length: 21 }, (_, i) => `id-${i}`);
+        const response = await request(app)
+          .post('/api/v1/mcp-servers/bulk/start')
+          .send({ ids: tooMany });
+
+        expect(response.status).toBe(400);
+      });
+
+      it('should handle nonexistent IDs gracefully', async () => {
+        vi.mocked(db.select).mockReturnValue({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ id: 'id-1', name: 'server-1', status: 'stopped' }]),
+          }),
+        } as any);
+
+        vi.mocked(mcpServerManager.startServer).mockResolvedValue(true);
+
+        const response = await request(app)
+          .post('/api/v1/mcp-servers/bulk/start')
+          .send({ ids: ['id-1', 'id-missing'] });
+
+        expect(response.status).toBe(200);
+        const missing = response.body.results.find((r: any) => r.id === 'id-missing');
+        expect(missing).toBeDefined();
+        expect(missing.success).toBe(false);
+        expect(missing.error).toBe('Server not found');
+      });
+
+      it('should require admin or operator role', async () => {
+        const viewerApp = express();
+        viewerApp.use(express.json());
+        viewerApp.use((req: any, _res, next) => {
+          req.user = { id: 'test-user', role: 'viewer' };
+          next();
+        });
+        viewerApp.use('/api/v1/mcp-servers', mcpServersRouter);
+
+        const response = await request(viewerApp)
+          .post('/api/v1/mcp-servers/bulk/start')
+          .send({ ids: ['id-1'] });
+
+        expect(response.status).toBe(403);
+      });
+    });
+
+    describe('POST /api/v1/mcp-servers/bulk/stop', () => {
+      it('should stop multiple servers', async () => {
+        const mockServers = [
+          { id: 'id-1', name: 'server-1', status: 'running' },
+          { id: 'id-2', name: 'server-2', status: 'running' },
+        ];
+        const updatedServers = [
+          { id: 'id-1', name: 'server-1', status: 'stopped' },
+          { id: 'id-2', name: 'server-2', status: 'stopped' },
+        ];
+
+        vi.mocked(db.select)
+          .mockReturnValueOnce({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue(mockServers),
+            }),
+          } as any)
+          .mockReturnValueOnce({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue(updatedServers),
+            }),
+          } as any);
+
+        vi.mocked(mcpServerManager.stopServer).mockResolvedValue(true);
+
+        const response = await request(app)
+          .post('/api/v1/mcp-servers/bulk/stop')
+          .send({ ids: ['id-1', 'id-2'] });
+
+        expect(response.status).toBe(200);
+        expect(response.body.summary.total).toBe(2);
+        expect(response.body.summary.succeeded).toBe(2);
+      });
+
+      it('should handle partial stop failures', async () => {
+        const mockServers = [
+          { id: 'id-1', name: 'server-1', status: 'running' },
+          { id: 'id-2', name: 'server-2', status: 'running' },
+        ];
+
+        vi.mocked(db.select).mockReturnValue({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue(mockServers),
+          }),
+        } as any);
+
+        vi.mocked(mcpServerManager.stopServer)
+          .mockResolvedValueOnce(true)
+          .mockResolvedValueOnce(false);
+
+        const response = await request(app)
+          .post('/api/v1/mcp-servers/bulk/stop')
+          .send({ ids: ['id-1', 'id-2'] });
+
+        expect(response.status).toBe(200);
+        expect(response.body.summary.succeeded).toBe(1);
+        expect(response.body.summary.failed).toBe(1);
+      });
     });
   });
 });

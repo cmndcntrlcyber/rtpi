@@ -1,27 +1,26 @@
 /**
- * Orchestrator API Routes — v2.5
+ * Orchestrator API Routes — v3.10.3a
  *
  * Proxies engagement management and workflow control requests
- * to the LangGraph orchestrator service. Provides the Express
- * backend's interface to the pentest workflow engine.
+ * through the ferry gateway to nexus-harness. All dispatch routes
+ * through the ferry path; the legacy LangGraph orchestrator has
+ * been removed (v3.10.3b Phase 1).
  */
 
 import { Router, Request, Response } from "express";
 import { ensureAuthenticated, logAudit } from "../../auth/middleware";
 import { z } from "zod";
 import {
-  startEngagement,
-  getEngagementStatus,
-  listEngagements,
-  advanceEngagement,
-  approveExploitation,
-  checkOrchestratorHealth,
-  executeTool,
-  executeToolsBatch,
-  getToolRegistry,
-  checkAllContainerHealth,
-  checkAgentContainerHealth,
-} from "../../services/langgraph-client";
+  checkFerryHealth,
+  startEngagementViaFerry,
+  getEngagementStatusViaFerry,
+  listEngagementsViaFerry,
+  advanceEngagementViaFerry,
+  approveExploitationViaFerry,
+  executeToolViaFerry,
+} from "../../services/ferry-orchestrator-client";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("orchestrator");
 
 const router = Router();
 
@@ -52,7 +51,7 @@ const approvalSchema = z.object({
  */
 router.get("/health", async (_req: Request, res: Response) => {
   try {
-    const health = await checkOrchestratorHealth();
+    const health = await checkFerryHealth();
     res.json(health);
   } catch (error) {
     res.status(502).json({ status: "unreachable", error: "Orchestrator service unavailable" });
@@ -65,10 +64,10 @@ router.get("/health", async (_req: Request, res: Response) => {
  */
 router.get("/engagements", async (_req: Request, res: Response) => {
   try {
-    const result = await listEngagements();
+    const result = await listEngagementsViaFerry();
     res.json(result);
   } catch (error) {
-    console.error("[Orchestrator] List engagements error:", error);
+    log.error("[Orchestrator] List engagements error:", error);
     res.status(502).json({ error: "Orchestrator service unavailable" });
   }
 });
@@ -77,17 +76,20 @@ router.get("/engagements", async (_req: Request, res: Response) => {
  * POST /api/v1/orchestrator/engagements/start
  * Start a new pentest engagement workflow.
  */
-router.post("/engagements/start", logAudit("engagement:start"), async (req: Request, res: Response) => {
+router.post("/engagements/start", async (req: Request, res: Response) => {
+  const user = req.user as any;
   try {
     const parsed = startEngagementSchema.parse(req.body);
-    const result = await startEngagement(parsed);
+    const result = await startEngagementViaFerry(parsed);
+    await logAudit(user.id, "engagement:start", "/orchestrator/engagements/start", (result as any)?.engagement_id ?? null, true, req);
     res.status(201).json(result);
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: "Validation error", details: error.errors });
       return;
     }
-    console.error("[Orchestrator] Start engagement error:", error);
+    await logAudit(user.id, "engagement:start", "/orchestrator/engagements/start", null, false, req);
+    log.error("[Orchestrator] Start engagement error:", error);
     res.status(502).json({ error: "Orchestrator service unavailable" });
   }
 });
@@ -98,10 +100,10 @@ router.post("/engagements/start", logAudit("engagement:start"), async (req: Requ
  */
 router.get("/engagements/:id", async (req: Request, res: Response) => {
   try {
-    const result = await getEngagementStatus(req.params.id);
+    const result = await getEngagementStatusViaFerry(req.params.id);
     res.json(result);
   } catch (error) {
-    console.error("[Orchestrator] Get status error:", error);
+    log.error("[Orchestrator] Get status error:", error);
     res.status(404).json({ error: "Engagement not found" });
   }
 });
@@ -110,12 +112,15 @@ router.get("/engagements/:id", async (req: Request, res: Response) => {
  * POST /api/v1/orchestrator/engagements/:id/advance
  * Advance engagement to next phase.
  */
-router.post("/engagements/:id/advance", logAudit("engagement:advance"), async (req: Request, res: Response) => {
+router.post("/engagements/:id/advance", async (req: Request, res: Response) => {
+  const user = req.user as any;
   try {
-    const result = await advanceEngagement(req.params.id);
+    const result = await advanceEngagementViaFerry(req.params.id);
+    await logAudit(user.id, "engagement:advance", `/orchestrator/engagements/${req.params.id}/advance`, req.params.id, true, req);
     res.json(result);
   } catch (error) {
-    console.error("[Orchestrator] Advance error:", error);
+    await logAudit(user.id, "engagement:advance", `/orchestrator/engagements/${req.params.id}/advance`, req.params.id, false, req);
+    log.error("[Orchestrator] Advance error:", error);
     res.status(502).json({ error: "Failed to advance engagement" });
   }
 });
@@ -124,20 +129,20 @@ router.post("/engagements/:id/advance", logAudit("engagement:advance"), async (r
  * POST /api/v1/orchestrator/engagements/:id/approve
  * Approve or deny exploitation for an engagement.
  */
-router.post("/engagements/:id/approve", logAudit("engagement:approve"), async (req: Request, res: Response) => {
+router.post("/engagements/:id/approve", async (req: Request, res: Response) => {
+  const user = req.user as any;
   try {
     const parsed = approvalSchema.parse(req.body);
-    const result = await approveExploitation({
-      engagement_id: req.params.id,
-      ...parsed,
-    });
+    const result = await approveExploitationViaFerry({ engagement_id: req.params.id, ...parsed });
+    await logAudit(user.id, "engagement:approve", `/orchestrator/engagements/${req.params.id}/approve`, req.params.id, true, req);
     res.json(result);
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: "Validation error", details: error.errors });
       return;
     }
-    console.error("[Orchestrator] Approval error:", error);
+    await logAudit(user.id, "engagement:approve", `/orchestrator/engagements/${req.params.id}/approve`, req.params.id, false, req);
+    log.error("[Orchestrator] Approval error:", error);
     res.status(502).json({ error: "Failed to process approval" });
   }
 });
@@ -164,80 +169,101 @@ const batchToolExecSchema = z.object({
 
 /**
  * POST /api/v1/orchestrator/tools/execute
- * Execute a single tool inside its mapped container.
+ * Execute a single tool via the ferry gateway.
  */
-router.post("/tools/execute", logAudit("tool:execute"), async (req: Request, res: Response) => {
+router.post("/tools/execute", async (req: Request, res: Response) => {
+  const user = req.user as any;
   try {
     const parsed = toolExecSchema.parse(req.body);
-    const result = await executeTool(parsed);
+    const result = await executeToolViaFerry(parsed);
+    await logAudit(user.id, "tool:execute", "/orchestrator/tools/execute", parsed.tool_name, true, req);
     res.json(result);
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: "Validation error", details: error.errors });
       return;
     }
-    console.error("[Orchestrator] Tool exec error:", error);
+    await logAudit(user.id, "tool:execute", "/orchestrator/tools/execute", null, false, req);
+    log.error("[Orchestrator] Tool exec error:", error);
     res.status(502).json({ error: "Tool execution failed" });
   }
 });
 
 /**
  * POST /api/v1/orchestrator/tools/execute-batch
- * Execute multiple tools in parallel.
+ * Execute multiple tools in parallel via the ferry gateway.
  */
-router.post("/tools/execute-batch", logAudit("tool:execute-batch"), async (req: Request, res: Response) => {
+router.post("/tools/execute-batch", async (req: Request, res: Response) => {
+  const user = req.user as any;
   try {
     const parsed = batchToolExecSchema.parse(req.body);
-    const result = await executeToolsBatch(parsed);
-    res.json(result);
+    const results = await Promise.all(
+      parsed.tools.map((tool) =>
+        executeToolViaFerry({
+          agent_role: parsed.agent_role,
+          tool_name: tool.tool_name,
+          params: tool.params,
+        }),
+      ),
+    );
+    await logAudit(user.id, "tool:execute-batch", "/orchestrator/tools/execute-batch", null, true, req);
+    res.json({ results });
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: "Validation error", details: error.errors });
       return;
     }
-    console.error("[Orchestrator] Batch exec error:", error);
+    await logAudit(user.id, "tool:execute-batch", "/orchestrator/tools/execute-batch", null, false, req);
+    log.error("[Orchestrator] Batch exec error:", error);
     res.status(502).json({ error: "Batch execution failed" });
   }
 });
 
 /**
  * GET /api/v1/orchestrator/tools/registry
- * List all registered tools grouped by agent role.
+ * List all registered tools from the ferry skill catalog.
  */
 router.get("/tools/registry", async (_req: Request, res: Response) => {
   try {
-    const registry = await getToolRegistry();
-    res.json(registry);
+    const { listFerrySkills } = await import("../../services/ferry-skill-catalog");
+    const skills = listFerrySkills();
+    const grouped: Record<string, Array<{ name: string; skill_path: string }>> = {};
+    for (const s of skills) {
+      const category = s.category || "general";
+      if (!grouped[category]) grouped[category] = [];
+      grouped[category].push({ name: s.name, skill_path: s.skillPath });
+    }
+    res.json({ registry: grouped });
   } catch (error) {
-    console.error("[Orchestrator] Registry error:", error);
+    log.error("[Orchestrator] Registry error:", error);
     res.status(502).json({ error: "Tool registry unavailable" });
   }
 });
 
 /**
  * GET /api/v1/orchestrator/tools/containers/health
- * Check health of all tool containers.
+ * Check health of the ferry gateway (replaces per-container health).
  */
 router.get("/tools/containers/health", async (_req: Request, res: Response) => {
   try {
-    const health = await checkAllContainerHealth();
+    const health = await checkFerryHealth();
     res.json(health);
   } catch (error) {
-    console.error("[Orchestrator] Container health error:", error);
+    log.error("[Orchestrator] Container health error:", error);
     res.status(502).json({ error: "Container health check failed" });
   }
 });
 
 /**
  * GET /api/v1/orchestrator/tools/containers/:agentRole/health
- * Check health of containers for a specific agent.
+ * Check health of the ferry gateway for a specific agent role.
  */
 router.get("/tools/containers/:agentRole/health", async (req: Request, res: Response) => {
   try {
-    const health = await checkAgentContainerHealth(req.params.agentRole as any);
-    res.json(health);
+    const health = await checkFerryHealth();
+    res.json({ ...health, agent_role: req.params.agentRole });
   } catch (error) {
-    console.error("[Orchestrator] Agent container health error:", error);
+    log.error("[Orchestrator] Agent container health error:", error);
     res.status(502).json({ error: "Agent container health check failed" });
   }
 });

@@ -5,6 +5,8 @@ import { eq, desc, and, like, ilike } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import { runAllTests } from "../../services/tool-tester";
 import { z } from "zod";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("offsec-rd-tools");
 
 const router = Router();
 
@@ -47,11 +49,11 @@ async function syncToolLibrary() {
           requiredCapabilities: [],
         }))
       );
-      console.log(`[OffSec R&D] Auto-registered ${missing.length} tool(s) into Tool Library`);
+      log.info(`[OffSec R&D] Auto-registered ${missing.length} tool(s) into Tool Library`);
     }
   } catch (error) {
     // Non-fatal — log and continue
-    console.error("[OffSec R&D] Tool library sync failed:", error);
+    log.error("[OffSec R&D] Tool library sync failed:", error);
   }
 }
 

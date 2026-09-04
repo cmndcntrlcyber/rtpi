@@ -18,6 +18,8 @@ import { routeReasoning, NoInferenceProviderAvailable } from "../inference/infer
 import { loadSkillBody } from "../skills/skill-loader";
 import { slugifyId } from "../skills/skill-paths";
 import type { Finding } from "./tool-execution-loop";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("tool-chain-proposer");
 
 export interface ChainProposal {
   /** The toolId (short form, matches tool_registry.tool_id / security_tools.id). */
@@ -241,7 +243,7 @@ Rules:
       // own decision path.
       return [];
     }
-    console.warn(`[tool-chain-proposer] failed:`, err);
+    log.warn(`[tool-chain-proposer] failed:`, err);
     return [];
   }
 }

@@ -15,6 +15,8 @@ import { db } from '../db';
 import { operations, targets } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { buildOperationTag } from './operation-tag-helper';
+import { createLogger } from '../lib/logger';
+const log = createLogger("bug-bounty-import-service");
 
 // ============================================================================
 // Types
@@ -235,7 +237,7 @@ class BugBountyImportService {
         });
         targetsCreated++;
       } catch (err) {
-        console.warn(`[BugBountyImport] Failed to create target for ${value}:`, err);
+        log.warn(`[BugBountyImport] Failed to create target for ${value}:`, err);
       }
     }
 
@@ -710,7 +712,7 @@ class BugBountyImportService {
         });
         targetsCreated++;
       } catch (err) {
-        console.warn(`[BugBountyImport] Failed to create target for ${value}:`, err);
+        log.warn(`[BugBountyImport] Failed to create target for ${value}:`, err);
       }
     }
 
@@ -722,7 +724,7 @@ class BugBountyImportService {
         await operationLifecycleAutomation.handleOperationActivated(operationId, userId);
         autoActivated = true;
       } catch (err) {
-        console.error('[BugBountyImport] Auto-activation failed:', err);
+        log.error('[BugBountyImport] Auto-activation failed:', err);
       }
     }
 

@@ -2,6 +2,8 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { createLogger } from '../lib/logger';
+const log = createLogger("burp-image-builder");
 
 const execAsync = promisify(exec);
 
@@ -65,7 +67,7 @@ class BurpImageBuilder {
    * Initialize builder
    */
   private async initialize(): Promise<void> {
-    console.log('[Burp Builder] Initializing...');
+    log.info('[Burp Builder] Initializing...');
 
     try {
       // Create directories
@@ -83,16 +85,16 @@ class BurpImageBuilder {
           const stat = await fs.stat(filePath);
           if (Date.now() - stat.mtimeMs > 3600000) { // 1 hour
             await fs.unlink(filePath).catch(() => {});
-            console.log(`[Burp Builder] Cleaned up orphaned staging file: ${file}`);
+            log.info(`[Burp Builder] Cleaned up orphaned staging file: ${file}`);
           }
         }
       } catch {
         // staging dir may be empty or inaccessible
       }
 
-      console.log('[Burp Builder] Initialized successfully');
+      log.info('[Burp Builder] Initialized successfully');
     } catch (error) {
-      console.error('[Burp Builder] Initialization error:', error);
+      log.error('[Burp Builder] Initialization error:', error);
     }
   }
 
@@ -112,7 +114,7 @@ class BurpImageBuilder {
     const isJar = jarFile.originalname.endsWith('.jar');
     const uploadType: BurpUploadType = isInstaller ? 'installer' : 'jar';
 
-    console.log(`[Burp Builder] Processing ${uploadType} upload for user ${userId}...`);
+    log.info(`[Burp Builder] Processing ${uploadType} upload for user ${userId}...`);
 
     try {
       // Validate file type
@@ -145,7 +147,7 @@ class BurpImageBuilder {
       try {
         await fs.rename(jarFile.path, targetFilePath);
       } catch {
-        console.log('[Burp Builder] rename failed, falling back to copy...');
+        log.info('[Burp Builder] rename failed, falling back to copy...');
         await fs.copyFile(jarFile.path, targetFilePath);
         await fs.unlink(jarFile.path).catch(() => {});
       }
@@ -155,7 +157,7 @@ class BurpImageBuilder {
         await fs.chmod(targetFilePath, 0o755);
       }
 
-      console.log(`[Burp Builder] ${uploadType} saved: ${targetFilePath} (${(jarFile.size / 1024 / 1024).toFixed(1)}MB)`);
+      log.info(`[Burp Builder] ${uploadType} saved: ${targetFilePath} (${(jarFile.size / 1024 / 1024).toFixed(1)}MB)`);
 
       return {
         userId,
@@ -169,7 +171,7 @@ class BurpImageBuilder {
       if (jarFile.path) {
         await fs.unlink(jarFile.path).catch(() => {});
       }
-      console.error(`[Burp Builder] Upload failed:`, error);
+      log.error(`[Burp Builder] Upload failed:`, error);
       throw error;
     }
   }
@@ -213,15 +215,15 @@ class BurpImageBuilder {
    * Delete uploaded JAR for user
    */
   async deleteUploadedJAR(userId: string): Promise<void> {
-    console.log(`[Burp Builder] Deleting JAR for user ${userId}...`);
+    log.info(`[Burp Builder] Deleting JAR for user ${userId}...`);
 
     try {
       const userUploadDir = path.join(this.uploadDir, userId);
       await fs.rm(userUploadDir, { recursive: true, force: true });
 
-      console.log(`[Burp Builder] JAR deleted`);
+      log.info(`[Burp Builder] JAR deleted`);
     } catch (error) {
-      console.error(`[Burp Builder] JAR deletion failed:`, error);
+      log.error(`[Burp Builder] JAR deletion failed:`, error);
       throw error;
     }
   }
@@ -234,7 +236,7 @@ class BurpImageBuilder {
    * Build Burp Suite Docker image for user
    */
   async buildBurpImage(userId: string): Promise<BurpImageBuildResult> {
-    console.log(`[Burp Builder] Building Burp image for user ${userId}...`);
+    log.info(`[Burp Builder] Building Burp image for user ${userId}...`);
 
     const startTime = Date.now();
 
@@ -277,7 +279,7 @@ class BurpImageBuilder {
       await fs.chmod(path.join(buildDir, 'custom_startup.sh'), 0o755);
 
       // Build Docker image
-      console.log(`[Burp Builder] Building image ${fullImageName} (${isInstaller ? 'installer' : 'JAR'} mode)...`);
+      log.info(`[Burp Builder] Building image ${fullImageName} (${isInstaller ? 'installer' : 'JAR'} mode)...`);
       const buildCmd = `docker build -t ${fullImageName} ${buildDir}`;
 
       const { stdout, stderr } = await execAsync(buildCmd, {
@@ -286,7 +288,7 @@ class BurpImageBuilder {
 
       const buildDuration = Date.now() - startTime;
 
-      console.log(`[Burp Builder] Image built successfully in ${buildDuration}ms`);
+      log.info(`[Burp Builder] Image built successfully in ${buildDuration}ms`);
 
       return {
         success: true,
@@ -298,7 +300,7 @@ class BurpImageBuilder {
     } catch (error) {
       const buildDuration = Date.now() - startTime;
 
-      console.error(`[Burp Builder] Image build failed:`, error);
+      log.error(`[Burp Builder] Image build failed:`, error);
 
       return {
         success: false,
@@ -561,7 +563,7 @@ echo "  Projects: /home/kasm-user/burp-projects"
 
       return images;
     } catch (error) {
-      console.error('[Burp Builder] Failed to list images:', error);
+      log.error('[Burp Builder] Failed to list images:', error);
       return [];
     }
   }
@@ -570,15 +572,15 @@ echo "  Projects: /home/kasm-user/burp-projects"
    * Delete Burp image
    */
   async deleteBurpImage(imageName: string, imageTag: string): Promise<void> {
-    console.log(`[Burp Builder] Deleting image ${imageName}:${imageTag}...`);
+    log.info(`[Burp Builder] Deleting image ${imageName}:${imageTag}...`);
 
     try {
       const deleteCmd = `docker rmi ${imageName}:${imageTag}`;
       await execAsync(deleteCmd);
 
-      console.log(`[Burp Builder] Image deleted`);
+      log.info(`[Burp Builder] Image deleted`);
     } catch (error) {
-      console.error(`[Burp Builder] Image deletion failed:`, error);
+      log.error(`[Burp Builder] Image deletion failed:`, error);
       throw error;
     }
   }
@@ -602,7 +604,7 @@ echo "  Projects: /home/kasm-user/burp-projects"
         imageSize: `${(imageInfo.Size / 1024 / 1024 / 1024).toFixed(2)} GB`,
       };
     } catch (error) {
-      console.error('[Burp Builder] Failed to get image info:', error);
+      log.error('[Burp Builder] Failed to get image info:', error);
       return null;
     }
   }

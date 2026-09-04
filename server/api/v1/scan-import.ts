@@ -8,6 +8,8 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { scanImportService } from '../../services/scan-import-service';
+import { createLogger } from '../../lib/logger';
+const log = createLogger("scan-import");
 
 const router = Router();
 const upload = multer({
@@ -49,7 +51,7 @@ router.post('/:operationId/upload', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: message });
     }
 
-    console.error('Scan import upload failed:', error);
+    log.error('Scan import upload failed:', error);
     res.status(500).json({ error: 'Import failed', message });
   }
 });
@@ -84,7 +86,7 @@ router.post('/:operationId/json', async (req, res) => {
       return res.status(400).json({ error: message });
     }
 
-    console.error('Scan import JSON failed:', error);
+    log.error('Scan import JSON failed:', error);
     res.status(500).json({ error: 'Import failed', message });
   }
 });

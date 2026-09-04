@@ -5,6 +5,8 @@ import { eq, and, desc, gte, lte, or } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import { z } from "zod";
 import { rdExperimentOrchestrator } from "../../services/rd-experiment-orchestrator";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("offsec-rd-experiments");
 
 const router = Router();
 
@@ -316,7 +318,7 @@ router.post("/:id/execute", ensureRole("admin", "operator"), async (req, res) =>
 
     // Start execution in background, return immediately
     rdExperimentOrchestrator.executeExperiment(id, context).catch((err) => {
-      console.error(`[RD Orchestrator] Background experiment ${id} failed:`, err);
+      log.error(`[RD Orchestrator] Background experiment ${id} failed:`, err);
     });
 
     res.json({
@@ -408,7 +410,7 @@ router.post("/projects/:projectId/execute", ensureRole("admin", "operator"), asy
 
     // Execute all planned experiments in background
     rdExperimentOrchestrator.executeProject(projectId).catch((err) => {
-      console.error(`[RD Orchestrator] Background project ${projectId} execution failed:`, err);
+      log.error(`[RD Orchestrator] Background project ${projectId} execution failed:`, err);
     });
 
     res.json({
@@ -540,6 +542,42 @@ router.get("/:id/agent-log", async (req, res) => {
   } catch (error: any) {
     res.status(500).json({
       error: "Failed to retrieve agent log",
+      details: error.message,
+    });
+  }
+});
+
+// DELETE /api/v1/offsec-rd/experiments/:id - Delete experiment
+router.delete("/:id", ensureRole("admin"), async (req, res) => {
+  const { id } = req.params;
+  const user = req.user as any;
+
+  try {
+    const existing = await db
+      .select()
+      .from(rdExperiments)
+      .where(eq(rdExperiments.id, id))
+      .limit(1);
+
+    if (!existing || existing.length === 0) {
+      return res.status(404).json({ error: "Experiment not found" });
+    }
+
+    await db.delete(rdExperiments).where(eq(rdExperiments.id, id));
+
+    await logAudit(
+      user.id,
+      "offsec_rd_experiment_delete",
+      `/offsec-rd/experiments/${id}`,
+      id,
+      true,
+      req
+    );
+
+    res.json({ message: "Experiment deleted successfully" });
+  } catch (error: any) {
+    res.status(500).json({
+      error: "Failed to delete experiment",
       details: error.message,
     });
   }

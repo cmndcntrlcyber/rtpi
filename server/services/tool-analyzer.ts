@@ -11,6 +11,8 @@ import type {
   ToolDependency,
   ParameterType,
 } from '../../shared/types/tool-config';
+import { createLogger } from '../lib/logger';
+const log = createLogger("tool-analyzer");
 
 /**
  * Python tool analysis result
@@ -542,7 +544,7 @@ export async function analyzeToolsDirectory(dirPath: string): Promise<PythonTool
     try {
       await fs.access(dirPath);
     } catch {
-      console.warn(`Directory does not exist (skipping): ${dirPath}`);
+      log.warn(`Directory does not exist (skipping): ${dirPath}`);
       return results; // Return empty array instead of throwing
     }
 
@@ -556,12 +558,12 @@ export async function analyzeToolsDirectory(dirPath: string): Promise<PythonTool
           const analysis = await analyzePythonTool(filePath);
           results.push(analysis);
         } catch (error) {
-          console.error(`Failed to analyze ${filePath}:`, error);
+          log.error(`Failed to analyze ${filePath}:`, error);
         }
       }
     }
   } catch (error) {
-    console.error(`Failed to read directory ${dirPath}:`, error);
+    log.error(`Failed to read directory ${dirPath}:`, error);
   }
 
   return results;
@@ -578,9 +580,9 @@ export async function analyzeOffSecTeamTools(): Promise<Map<string, PythonToolAn
   try {
     await fs.access(toolsBasePath);
   } catch {
-    console.warn(`OffSec team tools base directory not found: ${toolsBasePath}`);
-    console.warn('This is expected if the offsec-team repository is not yet added.');
-    console.warn('To add it, run: git submodule add <repo-url> tools/offsec-team');
+    log.warn(`OffSec team tools base directory not found: ${toolsBasePath}`);
+    log.warn('This is expected if the offsec-team repository is not yet added.');
+    log.warn('To add it, run: git submodule add <repo-url> tools/offsec-team');
     return new Map(); // Return empty map instead of throwing
   }
 
@@ -595,9 +597,9 @@ export async function analyzeOffSecTeamTools(): Promise<Map<string, PythonToolAn
   }
 
   if (totalToolsFound === 0) {
-    console.warn('No tools found in offsec-team categories. Tool migration features will be limited.');
+    log.warn('No tools found in offsec-team categories. Tool migration features will be limited.');
   } else {
-    console.log(`Found ${totalToolsFound} tools across ${categories.length} categories`);
+    log.info(`Found ${totalToolsFound} tools across ${categories.length} categories`);
   }
 
   return results;

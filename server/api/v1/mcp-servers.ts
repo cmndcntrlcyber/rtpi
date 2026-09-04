@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "../../db";
 import { mcpServers } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import { mcpServerManager } from "../../services/mcp-server-manager";
 import {
@@ -9,6 +9,7 @@ import {
   DefaultMcpEntry,
 } from "../../services/mcp/default-servers-catalog";
 import { syncDefaultCatalog, needsConfig } from "../../services/mcp/catalog-sync";
+import { mcpBulkLimiter } from "../../middleware/rate-limit";
 
 const router = Router();
 
@@ -98,6 +99,112 @@ router.post("/catalog/sync", ensureRole("admin"), async (req, res) => {
   } catch (error: any) {
     await logAudit(user.id, "sync_mcp_catalog", "/mcp-servers/catalog/sync", null, false, req);
     res.status(500).json({ error: "Catalog sync failed", details: error?.message || "Internal server error" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// v3.1.10 — bulk operations (declared before /:id so Express doesn't match
+// "bulk" as an :id parameter)
+// ---------------------------------------------------------------------------
+
+const MAX_BULK_IDS = 20;
+
+// POST /api/v1/mcp-servers/bulk/start - Start multiple servers
+router.post("/bulk/start", ensureRole("admin", "operator"), mcpBulkLimiter, async (req, res) => {
+  const user = req.user as any;
+  const { ids } = req.body;
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: "ids must be a non-empty array" });
+  }
+  if (ids.length > MAX_BULK_IDS) {
+    return res.status(400).json({ error: `Cannot exceed ${MAX_BULK_IDS} servers per bulk operation` });
+  }
+
+  try {
+    const existing = await db.select().from(mcpServers).where(inArray(mcpServers.id, ids));
+    const existingMap = new Map(existing.map((s) => [s.id, s]));
+
+    const results = await Promise.allSettled(
+      ids.map(async (id: string) => {
+        if (!existingMap.has(id)) return { id, success: false, error: "Server not found" };
+        try {
+          const success = await mcpServerManager.startServer(id);
+          return { id, success, error: success ? undefined : "Failed to start server" };
+        } catch (err: any) {
+          return { id, success: false, error: err?.message || "Unknown error" };
+        }
+      }),
+    );
+
+    const settled = results.map((r) => (r.status === "fulfilled" ? r.value : { id: "unknown", success: false, error: "Internal error" }));
+    const succeeded = settled.filter((r) => r.success).length;
+
+    // Re-fetch updated rows
+    const updatedRows = succeeded > 0
+      ? await db.select().from(mcpServers).where(inArray(mcpServers.id, settled.filter((r) => r.success).map((r) => r.id)))
+      : [];
+    const updatedMap = new Map(updatedRows.map((s) => [s.id, s]));
+
+    const enriched = settled.map((r) => ({ ...r, server: updatedMap.get(r.id) ?? undefined }));
+
+    await logAudit(user.id, "bulk_start_mcp_servers", "/mcp-servers/bulk/start", ids.join(","), succeeded > 0, req);
+
+    res.json({
+      results: enriched,
+      summary: { total: ids.length, succeeded, failed: ids.length - succeeded },
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: "Bulk start failed", details: error?.message || "Internal server error" });
+  }
+});
+
+// POST /api/v1/mcp-servers/bulk/stop - Stop multiple servers
+router.post("/bulk/stop", ensureRole("admin", "operator"), mcpBulkLimiter, async (req, res) => {
+  const user = req.user as any;
+  const { ids } = req.body;
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: "ids must be a non-empty array" });
+  }
+  if (ids.length > MAX_BULK_IDS) {
+    return res.status(400).json({ error: `Cannot exceed ${MAX_BULK_IDS} servers per bulk operation` });
+  }
+
+  try {
+    const existing = await db.select().from(mcpServers).where(inArray(mcpServers.id, ids));
+    const existingMap = new Map(existing.map((s) => [s.id, s]));
+
+    const results = await Promise.allSettled(
+      ids.map(async (id: string) => {
+        if (!existingMap.has(id)) return { id, success: false, error: "Server not found" };
+        try {
+          const success = await mcpServerManager.stopServer(id);
+          return { id, success, error: success ? undefined : "Failed to stop server" };
+        } catch (err: any) {
+          return { id, success: false, error: err?.message || "Unknown error" };
+        }
+      }),
+    );
+
+    const settled = results.map((r) => (r.status === "fulfilled" ? r.value : { id: "unknown", success: false, error: "Internal error" }));
+    const succeeded = settled.filter((r) => r.success).length;
+
+    const updatedRows = succeeded > 0
+      ? await db.select().from(mcpServers).where(inArray(mcpServers.id, settled.filter((r) => r.success).map((r) => r.id)))
+      : [];
+    const updatedMap = new Map(updatedRows.map((s) => [s.id, s]));
+
+    const enriched = settled.map((r) => ({ ...r, server: updatedMap.get(r.id) ?? undefined }));
+
+    await logAudit(user.id, "bulk_stop_mcp_servers", "/mcp-servers/bulk/stop", ids.join(","), succeeded > 0, req);
+
+    res.json({
+      results: enriched,
+      summary: { total: ids.length, succeeded, failed: ids.length - succeeded },
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: "Bulk stop failed", details: error?.message || "Internal server error" });
   }
 });
 

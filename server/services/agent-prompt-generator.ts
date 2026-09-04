@@ -1,4 +1,6 @@
 import { routeReasoning, NoInferenceProviderAvailable } from "./inference/inference-router";
+import { createLogger } from '../lib/logger';
+const log = createLogger("agent-prompt-generator");
 
 export interface ToolSkillSummary {
   registry: "mcp" | "registry" | "security";
@@ -19,6 +21,8 @@ interface GeneratePromptParams {
    * always includes operational guidance for the tools it's attached to.
    */
   toolSkills?: ToolSkillSummary[];
+  groundTruth?: string;
+  personaBlock?: string;
 }
 
 interface GeneratePromptResult {
@@ -32,7 +36,9 @@ interface GeneratePromptResult {
 export async function generateAgentPrompt(
   params: GeneratePromptParams
 ): Promise<GeneratePromptResult> {
-  const { description, toolContainers, agentType, toolSkills = [] } = params;
+  const { description, toolContainers, agentType, toolSkills = [], groundTruth, personaBlock } = params;
+
+  const personaPrefix = personaBlock ? `${personaBlock}\n\n` : "";
 
   const toolSkillsBlock = toolSkills.length > 0
     ? `\n\n**Tool Skill Summaries (load-bearing — agent must read these):**\n${toolSkills
@@ -81,21 +87,19 @@ Generate ONLY the system prompt text, without any additional explanation or form
         result.provider === "anthropic" ? "anthropic"
           : result.provider === "openai" ? "openai"
           : "template";
-      // agentType is kept for API back-compat (UI passes it) — log when the
-      // router's choice diverges from the caller's hint so we can spot
-      // operators with stale assumptions.
       if (agentType && agentType !== generatedBy && (generatedBy === "anthropic" || generatedBy === "openai")) {
-        console.log(
+        log.info(
           `[agent-prompt-generator] agentType hint=${agentType} but router served=${result.provider}/${result.model}`,
         );
       }
-      return { prompt: text, generatedBy };
+      const enriched = `${personaPrefix}${text}${groundTruth ? `\n\n${groundTruth}` : ""}`;
+      return { prompt: enriched, generatedBy };
     }
   } catch (error) {
     if (error instanceof NoInferenceProviderAvailable) {
-      console.error("Agent prompt generation: all providers exhausted, using template:", error.message);
+      log.error("Agent prompt generation: all providers exhausted, using template:", error.message);
     } else {
-      console.error("Agent prompt generation router failed:", error);
+      log.error("Agent prompt generation router failed:", error);
     }
   }
 
@@ -110,7 +114,7 @@ Generate ONLY the system prompt text, without any additional explanation or form
  * Generates a template-based prompt when AI services are unavailable
  */
 function generateTemplatePrompt(params: GeneratePromptParams): string {
-  const { description, toolContainers, toolSkills = [] } = params;
+  const { description, toolContainers, toolSkills = [], groundTruth, personaBlock } = params;
 
   const toolSection = toolContainers.length > 0
     ? `## Available Tool Containers
@@ -132,7 +136,10 @@ You will be provided with various security and reconnaissance tools. Use them sy
         .join('\n\n')}`
     : '';
 
-  return `# Agent Role
+  const personaPrefix = personaBlock ? `${personaBlock}\n\n` : "";
+  const groundTruthSuffix = groundTruth ? `\n\n${groundTruth}` : "";
+
+  return `${personaPrefix}# Agent Role
 
 You are an AI agent specialized in ${description}.
 
@@ -177,7 +184,7 @@ When reporting findings, use this structure:
 3. **Impact**: Assessment of significance
 4. **Recommendations**: Suggested next steps
 
-Remember: Your role is to assist human operators in achieving their security objectives efficiently and safely.`;
+Remember: Your role is to assist human operators in achieving their security objectives efficiently and safely.${groundTruthSuffix}`;
 }
 
 /**

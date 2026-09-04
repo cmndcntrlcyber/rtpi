@@ -25,6 +25,8 @@ import { BBOTExecutor } from '../bbot-executor';
 import { eq, and } from 'drizzle-orm';
 import { EventEmitter } from 'events';
 import { ToolExecutionLoop, LoopResult } from './tool-execution-loop';
+import { createLogger } from '../../lib/logger';
+const log = createLogger("surface-assessment-agent");
 
 // ============================================================================
 // Types
@@ -133,7 +135,7 @@ export class SurfaceAssessmentAgent extends EventEmitter {
 
     if (existingAgent) {
       this.agentId = existingAgent.id;
-      console.log(`Surface Assessment Agent found: ${this.agentId}`);
+      log.info(`Surface Assessment Agent found: ${this.agentId}`);
     } else {
       const [newAgent] = await db
         .insert(agents)
@@ -149,7 +151,7 @@ export class SurfaceAssessmentAgent extends EventEmitter {
         })
         .returning();
       this.agentId = newAgent.id;
-      console.log(`Surface Assessment Agent created: ${this.agentId}`);
+      log.info(`Surface Assessment Agent created: ${this.agentId}`);
     }
 
     // Register with dynamic workflow orchestrator
@@ -184,9 +186,9 @@ export class SurfaceAssessmentAgent extends EventEmitter {
           },
         ]
       );
-      console.log('Surface Assessment Agent registered with orchestrator');
+      log.info('Surface Assessment Agent registered with orchestrator');
     } catch (error) {
-      console.warn('Could not register with orchestrator:', error);
+      log.warn('Could not register with orchestrator:', error);
     }
   }
 
@@ -194,7 +196,7 @@ export class SurfaceAssessmentAgent extends EventEmitter {
    * Process an operation - main entry point
    */
   async processOperation(operationId: string, userId: string): Promise<ScanResult> {
-    console.log(`Surface Assessment Agent: Processing operation ${operationId}`);
+    log.info(`Surface Assessment Agent: Processing operation ${operationId}`);
     this.emit('operation_started', operationId);
 
     // Update agent status
@@ -208,7 +210,7 @@ export class SurfaceAssessmentAgent extends EventEmitter {
         throw new Error('No in-scope domains found for operation');
       }
 
-      console.log(`Surface Assessment Agent: Found ${domains.length} in-scope domains: ${domains.join(', ')}`);
+      log.info(`Surface Assessment Agent: Found ${domains.length} in-scope domains: ${domains.join(', ')}`);
       this.emit('scope_retrieved', { operationId, domains });
 
       // Step 2: Execute BBOT scan
@@ -225,7 +227,7 @@ export class SurfaceAssessmentAgent extends EventEmitter {
       return scanResult;
 
     } catch (error) {
-      console.error(`Surface Assessment Agent failed for operation ${operationId}:`, error);
+      log.error(`Surface Assessment Agent failed for operation ${operationId}:`, error);
       await this.updateAgentStatus('error');
       this.emit('operation_failed', { operationId, error });
       throw error;
@@ -307,7 +309,7 @@ export class SurfaceAssessmentAgent extends EventEmitter {
       noDeps: true,
     };
 
-    console.log(`Surface Assessment Agent: Starting BBOT scan with preset '${bbotOptions.preset}'`);
+    log.info(`Surface Assessment Agent: Starting BBOT scan with preset '${bbotOptions.preset}'`);
 
     // Start scan
     const { scanId } = await this.bbotExecutor.startScan(

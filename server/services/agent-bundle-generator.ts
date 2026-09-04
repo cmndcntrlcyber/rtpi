@@ -22,6 +22,8 @@ import { agentBundles, rustNexusCertificates } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { agentBuildService, BuildResult, AgentPlatform, AgentArchitecture } from './agent-build-service';
 import { agentTokenService } from './agent-token-service';
+import { createLogger } from '../lib/logger';
+const log = createLogger("agent-bundle-generator");
 
 // ============================================================================
 // Types
@@ -88,7 +90,7 @@ class AgentBundleGenerator {
    * Generate a complete agent bundle
    */
   async generateBundle(options: BundleOptions): Promise<GeneratedBundle> {
-    console.log(`[AgentBundleGenerator] Generating bundle: ${options.name} (${options.platform}/${options.architecture})`);
+    log.info(`[AgentBundleGenerator] Generating bundle: ${options.name} (${options.platform}/${options.architecture})`);
 
     // 1. Trigger or wait for build
     const buildId = await agentBuildService.triggerBuild({
@@ -98,7 +100,7 @@ class AgentBundleGenerator {
       userId: options.userId,
     });
 
-    console.log(`[AgentBundleGenerator] Build ${buildId} triggered, waiting for completion...`);
+    log.info(`[AgentBundleGenerator] Build ${buildId} triggered, waiting for completion...`);
 
     // 2. Wait for build to complete
     const buildResult = await agentBuildService.waitForBuild(buildId);
@@ -107,7 +109,7 @@ class AgentBundleGenerator {
       throw new Error(`Build failed: ${buildResult.errorMessage || 'Unknown error'}`);
     }
 
-    console.log(`[AgentBundleGenerator] Build completed: ${buildResult.binaryPath}`);
+    log.info(`[AgentBundleGenerator] Build completed: ${buildResult.binaryPath}`);
 
     // 3. Generate certificates
     const bundleId = crypto.randomUUID();
@@ -185,7 +187,7 @@ class AgentBundleGenerator {
       metadata: options.metadata || {},
     }).returning();
 
-    console.log(`[AgentBundleGenerator] Bundle ${bundleRecord.id} created successfully`);
+    log.info(`[AgentBundleGenerator] Bundle ${bundleRecord.id} created successfully`);
 
     // Auto-generate download token (if enabled)
     let publicDownloadUrl: string | undefined;
@@ -204,12 +206,12 @@ class AgentBundleGenerator {
         tokenId = token.tokenId;
         tokenExpiresAt = token.expiresAt;
 
-        console.log(
+        log.info(
           `[AgentBundleGenerator] Auto-generated token ${token.tokenId} for bundle ${bundleRecord.id}`
         );
       }
     } catch (error) {
-      console.warn(
+      log.warn(
         `[AgentBundleGenerator] Failed to auto-generate token:`,
         error
       );
@@ -562,7 +564,7 @@ Documentation:  https://docs.rtpi.local/agents
       try {
         await fs.rm(bundleDir, { recursive: true, force: true });
       } catch (error) {
-        console.warn(`[AgentBundleGenerator] Failed to delete bundle files:`, error);
+        log.warn(`[AgentBundleGenerator] Failed to delete bundle files:`, error);
       }
     }
 

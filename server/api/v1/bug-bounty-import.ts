@@ -8,6 +8,8 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { bugBountyImportService } from '../../services/bug-bounty-import-service';
+import { createLogger } from '../../lib/logger';
+const log = createLogger("bug-bounty-import");
 
 const router = Router();
 const upload = multer({
@@ -38,7 +40,7 @@ router.post('/from-url', async (req, res) => {
     res.json(result);
   } catch (error: any) {
     const message = error instanceof Error ? error.message : 'Import failed';
-    console.error('Bug bounty import from-url failed:', error);
+    log.error('Bug bounty import from-url failed:', error);
     res.status(error.message?.includes('fetch failed') ? 502 : 500).json({ error: message });
   }
 });
@@ -84,7 +86,7 @@ router.post(
       if (message.includes('missing required') || message.includes('empty')) {
         return res.status(400).json({ error: message });
       }
-      console.error('Bug bounty import upload failed:', error);
+      log.error('Bug bounty import upload failed:', error);
       res.status(500).json({ error: message });
     }
   }
@@ -132,7 +134,7 @@ router.post(
       if (message.includes('missing required') || message.includes('empty') || message.includes('Invalid')) {
         return res.status(400).json({ error: message });
       }
-      console.error('Bug bounty import preview failed:', error);
+      log.error('Bug bounty import preview failed:', error);
       res.status(500).json({ error: message });
     }
   }
@@ -179,7 +181,7 @@ router.post(
       if (message.includes('not found')) {
         return res.status(404).json({ error: message });
       }
-      console.error('Bug bounty import into-operation failed:', error);
+      log.error('Bug bounty import into-operation failed:', error);
       res.status(500).json({ error: message });
     }
   }

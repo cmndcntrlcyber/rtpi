@@ -4,6 +4,8 @@ import path from 'path';
 import fs from 'fs';
 import { randomUUID } from 'crypto';
 import { burpImageBuilder } from '../../services/burp-image-builder';
+import { createLogger } from '../../lib/logger';
+const log = createLogger("burp-builder");
 
 const router = Router();
 
@@ -203,7 +205,7 @@ router.post('/upload/chunked/init', (req, res) => {
       createdAt: Date.now(),
     });
 
-    console.log(`[Burp Builder] Chunked upload initialized: ${uploadId} (${totalChunks} chunks, ${(totalSize / 1024 / 1024).toFixed(1)}MB)`);
+    log.info(`[Burp Builder] Chunked upload initialized: ${uploadId} (${totalChunks} chunks, ${(totalSize / 1024 / 1024).toFixed(1)}MB)`);
 
     res.json({ uploadId, chunkDir: uploadId, totalChunks: Number(totalChunks) });
   } catch (error: any) {
@@ -265,7 +267,7 @@ router.post('/upload/chunked/:uploadId/complete', async (req, res) => {
     // Get assembled file stats
     const stats = fs.statSync(assembledPath);
 
-    console.log(`[Burp Builder] Chunks reassembled: ${assembledPath} (${(stats.size / 1024 / 1024).toFixed(1)}MB)`);
+    log.info(`[Burp Builder] Chunks reassembled: ${assembledPath} (${(stats.size / 1024 / 1024).toFixed(1)}MB)`);
 
     // Process as a regular multer-style file object
     const fakeMulterFile: Express.Multer.File = {

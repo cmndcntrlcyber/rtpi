@@ -14,6 +14,8 @@ import {
 import { eq, desc, and } from "drizzle-orm";
 import { ollamaAIClient } from "../../services/ollama-ai-client";
 import { agentConversationService } from "../../services/agent-conversation-service";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("agent-chat");
 
 const router = express.Router();
 
@@ -331,7 +333,7 @@ router.post("/:agentRole/message", async (req, res) => {
       tokensUsed: aiResponse.tokensUsed,
     });
   } catch (error) {
-    console.error("Error in agent chat:", error);
+    log.error("Error in agent chat:", error);
     res.status(500).json({
       error: "Failed to process chat message",
       details: error instanceof Error ? error.message : "Unknown error",
@@ -382,7 +384,7 @@ router.get("/:agentRole/conversation", async (req, res) => {
       })),
     });
   } catch (error) {
-    console.error("Error fetching conversation:", error);
+    log.error("Error fetching conversation:", error);
     res.status(500).json({ error: "Failed to fetch conversation" });
   }
 });
@@ -404,7 +406,7 @@ router.get("/conversations", async (req, res) => {
 
     res.json({ conversations });
   } catch (error) {
-    console.error("Error listing conversations:", error);
+    log.error("Error listing conversations:", error);
     res.status(500).json({ error: "Failed to list conversations" });
   }
 });
@@ -431,7 +433,7 @@ router.get("/:conversationId/messages", async (req, res) => {
       })),
     });
   } catch (error) {
-    console.error("Error fetching messages:", error);
+    log.error("Error fetching messages:", error);
     res.status(500).json({ error: "Failed to fetch messages" });
   }
 });
@@ -466,7 +468,7 @@ router.delete("/:agentRole/conversation", async (req, res) => {
     await agentConversationService.archiveConversation(conversations[0].id);
     res.json({ success: true, message: "Conversation archived" });
   } catch (error) {
-    console.error("Error archiving conversation:", error);
+    log.error("Error archiving conversation:", error);
     res.status(500).json({ error: "Failed to archive conversation" });
   }
 });

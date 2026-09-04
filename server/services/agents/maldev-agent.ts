@@ -20,6 +20,8 @@ import { metasploitExecutor } from '../metasploit-executor';
 import { ollamaAIClient } from '../ollama-ai-client';
 import type { VulnerabilityResearchPackage } from './research-agent';
 import { maldevToolExecutor, type BinaryAnalysis, type ROPGadget, type Shellcode } from './maldev-tool-executor';
+import { createLogger } from '../../lib/logger';
+const log = createLogger("maldev-agent");
 
 // ============================================================================
 // Types
@@ -94,7 +96,7 @@ export class MaldevAgent extends BaseTaskAgent {
       return result;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`[Maldev Agent] Task failed: ${errorMsg}`);
+      log.error(`[Maldev Agent] Task failed: ${errorMsg}`);
       await this.updateStatus('error');
       return { success: false, error: errorMsg };
     }
@@ -114,8 +116,8 @@ export class MaldevAgent extends BaseTaskAgent {
       return { success: false, error: 'Missing researchPackage parameter' };
     }
 
-    console.log(`[Maldev Agent] Starting exploit development for: ${researchPackage.service} ${researchPackage.version || ''}`);
-    console.log(`[Maldev Agent] Tool integration: ${useToolIntegration ? 'ENABLED' : 'DISABLED (AI-only mode)'}`);
+    log.info(`[Maldev Agent] Starting exploit development for: ${researchPackage.service} ${researchPackage.version || ''}`);
+    log.info(`[Maldev Agent] Tool integration: ${useToolIntegration ? 'ENABLED' : 'DISABLED (AI-only mode)'}`);
     await this.reportProgress(task.id || 'maldev', 5, 'Analyzing research package');
 
     const artifacts: ExploitArtifact[] = [];
@@ -140,37 +142,37 @@ export class MaldevAgent extends BaseTaskAgent {
       const binaryPath = (pocWithBinary as any)?.binaryPath as string | undefined;
       if (binaryPath) {
         try {
-          console.log(`[Maldev Agent] Analyzing binary: ${binaryPath}`);
+          log.info(`[Maldev Agent] Analyzing binary: ${binaryPath}`);
           binaryAnalysis = await maldevToolExecutor.analyzeWithRadare2(binaryPath);
-          console.log(`[Maldev Agent] Binary analysis: arch=${binaryAnalysis.architecture}, NX=${binaryAnalysis.protections.nx}`);
+          log.info(`[Maldev Agent] Binary analysis: arch=${binaryAnalysis.architecture}, NX=${binaryAnalysis.protections.nx}`);
           await this.reportProgress(task.id || 'maldev', 20, `Binary analyzed: ${binaryAnalysis.architecture}`);
 
           // Step 1b: Deep analysis with Ghidra (if available)
           const ghidraResult = await maldevToolExecutor.analyzeWithGhidra(binaryPath);
           if (ghidraResult.available && ghidraResult.functions.length > 0) {
-            console.log(`[Maldev Agent] Ghidra deep analysis: ${ghidraResult.functions.length} functions`);
+            log.info(`[Maldev Agent] Ghidra deep analysis: ${ghidraResult.functions.length} functions`);
             (binaryAnalysis as any).ghidraFunctions = ghidraResult.functions.slice(0, 20);
             (binaryAnalysis as any).ghidraCrossRefs = ghidraResult.crossReferences.slice(0, 20);
             await this.reportProgress(task.id || 'maldev', 22, `Ghidra: ${ghidraResult.functions.length} functions decompiled`);
           }
         } catch (error) {
-          console.warn('[Maldev Agent] Binary analysis failed (continuing):', error instanceof Error ? error.message : error);
+          log.warn('[Maldev Agent] Binary analysis failed (continuing):', error instanceof Error ? error.message : error);
         }
       }
 
       // Step 2: ROP gadget discovery (if binary available and NX enabled)
       if (binaryAnalysis && binaryPath && binaryAnalysis.protections.nx) {
         try {
-          console.log('[Maldev Agent] Finding ROP gadgets...');
+          log.info('[Maldev Agent] Finding ROP gadgets...');
           const gadgets = await maldevToolExecutor.findGadgets(binaryPath, 200);
           if (gadgets.length > 0) {
-            console.log(`[Maldev Agent] Found ${gadgets.length} ROP gadgets`);
+            log.info(`[Maldev Agent] Found ${gadgets.length} ROP gadgets`);
             // Attach gadgets to binary analysis for AI prompt enrichment
             (binaryAnalysis as any).ropGadgets = gadgets.slice(0, 50);
           }
           await this.reportProgress(task.id || 'maldev', 24, `Found ${gadgets.length} ROP gadgets`);
         } catch (error) {
-          console.warn('[Maldev Agent] ROP gadget discovery failed (continuing):', error instanceof Error ? error.message : error);
+          log.warn('[Maldev Agent] ROP gadget discovery failed (continuing):', error instanceof Error ? error.message : error);
         }
       }
 
@@ -178,17 +180,17 @@ export class MaldevAgent extends BaseTaskAgent {
       const payloadType = researchPackage.methodology.payloadType || 'reverse_shell';
       if (payloadType === 'reverse_shell' || payloadType === 'bind_shell') {
         try {
-          console.log(`[Maldev Agent] Generating ${targetOS} shellcode with pwntools`);
+          log.info(`[Maldev Agent] Generating ${targetOS} shellcode with pwntools`);
           shellcodeData = await maldevToolExecutor.generateShellcode(
             targetOS,
             'x64',
             payloadType as 'reverse_shell' | 'bind_shell',
             { lhost, lport }
           );
-          console.log(`[Maldev Agent] Generated shellcode: ${shellcodeData.length} bytes`);
+          log.info(`[Maldev Agent] Generated shellcode: ${shellcodeData.length} bytes`);
           await this.reportProgress(task.id || 'maldev', 28, `Generated shellcode: ${shellcodeData.length} bytes`);
         } catch (error) {
-          console.warn('[Maldev Agent] Shellcode generation failed (continuing):', error instanceof Error ? error.message : error);
+          log.warn('[Maldev Agent] Shellcode generation failed (continuing):', error instanceof Error ? error.message : error);
         }
       }
     }
@@ -213,7 +215,7 @@ export class MaldevAgent extends BaseTaskAgent {
         msfModule.loaded = loadResult.success;
         artifacts.push(msfModule);
 
-        console.log(`[Maldev Agent] MSF module ${loadResult.success ? 'loaded' : 'failed to load'}: ${loadResult.loadedPath}`);
+        log.info(`[Maldev Agent] MSF module ${loadResult.success ? 'loaded' : 'failed to load'}: ${loadResult.loadedPath}`);
       }
     }
 
@@ -226,12 +228,12 @@ export class MaldevAgent extends BaseTaskAgent {
           shellcodeData.architecture
         );
         if (emulationResult.success && !emulationResult.crashed) {
-          console.log('[Maldev Agent] Shellcode emulation: PASSED');
+          log.info('[Maldev Agent] Shellcode emulation: PASSED');
         } else {
-          console.warn(`[Maldev Agent] Shellcode emulation: ${emulationResult.crashed ? 'CRASHED' : 'INCOMPLETE'}`);
+          log.warn(`[Maldev Agent] Shellcode emulation: ${emulationResult.crashed ? 'CRASHED' : 'INCOMPLETE'}`);
         }
       } catch (error) {
-        console.warn('[Maldev Agent] Shellcode emulation failed (non-blocking):', error instanceof Error ? error.message : error);
+        log.warn('[Maldev Agent] Shellcode emulation failed (non-blocking):', error instanceof Error ? error.message : error);
       }
     }
 
@@ -397,7 +399,7 @@ Output ONLY the Ruby code, no explanation or markdown.`;
         };
       }
     } catch (error) {
-      console.error('[Maldev Agent] Enhanced AI module generation failed:', error);
+      log.error('[Maldev Agent] Enhanced AI module generation failed:', error);
     }
 
     // Fallback: generate a template module
@@ -463,7 +465,7 @@ Output ONLY the Ruby code, no explanation or markdown.`;
         };
       }
     } catch (error) {
-      console.error('[Maldev Agent] AI module generation failed:', error);
+      log.error('[Maldev Agent] AI module generation failed:', error);
     }
 
     // Fallback: generate a template module
@@ -624,7 +626,7 @@ ${pkg.version ? `          - "${pkg.version}"` : ''}
         dbId: saved?.id,
       };
     } catch (error) {
-      console.error('[Maldev Agent] Failed to save Nuclei template:', error);
+      log.error('[Maldev Agent] Failed to save Nuclei template:', error);
       return {
         type: 'nuclei_template',
         name: templateId,

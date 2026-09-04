@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "@/lib/api";
+import { useAgentWebSocket } from "./useAgentWebSocket";
 
 export interface WorkflowTask {
   id: string;
@@ -92,12 +93,33 @@ export function useWorkflows(autoRefresh = true) {
     }
   };
 
+  // Live updates: the orchestrator broadcasts workflow_update events on status
+  // and progress changes. When connected we refresh from those pushes and fall
+  // back to a slow reconcile poll; only when the socket is down do we poll fast.
+  const { connected, events, subscribe } = useAgentWebSocket({ autoConnect: true });
+  const [workflowEventTick, setWorkflowEventTick] = useState(0);
+
+  // Subscribe to all events once connected (Dashboard isn't operation-scoped).
+  useEffect(() => {
+    if (connected) subscribe(["*"]);
+  }, [connected, subscribe]);
+
+  // React to workflow_update pushes (events are newest-first).
+  useEffect(() => {
+    if (!connected) return;
+    if (events[0]?.type === "workflow_update") {
+      setWorkflowEventTick((t) => t + 1);
+      loadWorkflows();
+    }
+  }, [events, connected, loadWorkflows]);
+
   useEffect(() => {
     loadWorkflows();
 
     let interval: NodeJS.Timeout | undefined;
     if (autoRefresh) {
-      interval = setInterval(loadWorkflows, 3000); // Refresh every 3 seconds
+      // 3s when offline (events unavailable); 15s reconcile when live.
+      interval = setInterval(loadWorkflows, connected ? 15000 : 3000);
     }
 
     // Cleanup: clear interval and abort pending request
@@ -109,7 +131,7 @@ export function useWorkflows(autoRefresh = true) {
         abortControllerRef.current.abort();
       }
     };
-  }, [autoRefresh, loadWorkflows]);
+  }, [autoRefresh, loadWorkflows, connected]);
 
   // Derived data
   const runningWorkflows = workflows.filter((w) => w.status === "running");
@@ -128,5 +150,8 @@ export function useWorkflows(autoRefresh = true) {
     refetch: loadWorkflows,
     getWorkflowDetails,
     cancelWorkflow,
+    // Live-update signals for consumers that fetch dependent data (e.g. tasks).
+    connected,
+    workflowEventTick,
   };
 }

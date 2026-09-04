@@ -19,6 +19,9 @@ import { containerRuntime } from './runtime/container-runtime';
 import { ContainerError, classifyContainerError } from './runtime/error-classifier';
 import { loadSkillBody, loadSkillFileByRelativePath } from './skills/skill-loader';
 import { deriveToolConfigFromSkill } from './tool-config-deriver';
+import { createLogger } from '../lib/logger';
+
+const log = createLogger("tool-executor");
 
 // Maximum concurrent tool executions
 const MAX_CONCURRENT_EXECUTIONS = parseInt(
@@ -66,8 +69,20 @@ export async function executeTool(
 
   const config = (tool.config as any) || {};
 
+  // Resolve binaryPath early — needed for the full command record.
+  const containerName = (tool as any).containerName || 'rtpi-tools';
+  const containerUser = (tool as any).containerUser || 'rtpi-tools';
+  const binaryPath = (tool as any).binaryPath || config.binaryPath || tool.toolId;
+
   // Build command with parameters (self-repairs registry if config is malformed)
-  const command = await buildCommand(tool, request.parameters);
+  const commandArgs = await buildCommand(tool, request.parameters);
+
+  // The full command reflects what actually executes in the container:
+  // <binaryPath> <args>. Stored in the DB and returned to callers so the
+  // evidence gate and UI show the real invocation, not just the args portion.
+  const command = commandArgs
+    ? `${binaryPath} ${commandArgs}`.trim()
+    : binaryPath;
 
   // Defensive guard: never hand a nullish command to Drizzle, which would
   // serialize as `default` and fail the NOT NULL constraint with a cryptic SQL error.
@@ -97,14 +112,10 @@ export async function executeTool(
     // Update status to running
     await updateExecutionStatus(executionId, 'running');
 
-    // Execute the command in the tool's container
-    const containerName = (tool as any).containerName || 'rtpi-tools';
-    const containerUser = (tool as any).containerUser || 'rtpi-tools';
-    // binaryPath is a top-level column on toolRegistry; config.binaryPath is vestigial.
-    const binaryPath = (tool as any).binaryPath || config.binaryPath || tool.toolId;
+    // Execute: runCommand prepends binaryPath, so pass args only.
     const result = await runCommand(
       binaryPath,
-      command,
+      commandArgs,
       request.timeout || DEFAULT_TIMEOUT,
       containerName,
       containerUser,
@@ -124,10 +135,10 @@ export async function executeTool(
           if (parseResult.success) {
             parsedOutput = parseResult.parsed;
           } else {
-            console.warn(`Failed to parse output:`, parseResult.errors);
+            log.warn({ errors: parseResult.errors }, "Failed to parse output");
           }
         } catch (parseError: any) {
-          console.warn(`Failed to parse output: ${parseError.message}`);
+          log.warn({ err: parseError }, "Failed to parse output");
         }
       }
     }
@@ -158,7 +169,7 @@ export async function executeTool(
           updatedAt: new Date(),
         })
         .where(eq(toolRegistry.id, tool.id));
-    } catch (e) { console.warn('[ToolExecutor] Failed to update tool stats:', e); }
+    } catch (e) { log.warn({ err: e }, "Failed to update tool stats"); }
 
     // Update agent stats if agent-initiated
     if (request.agentId) {
@@ -172,7 +183,7 @@ export async function executeTool(
             lastActivity: new Date(),
           })
           .where(eq(agents.id, request.agentId));
-      } catch (e) { console.warn('[ToolExecutor] Failed to update agent stats:', e); }
+      } catch (e) { log.warn({ err: e }, "Failed to update agent stats"); }
     }
 
     const executionResult: ToolExecutionResult = {
@@ -213,7 +224,7 @@ export async function executeTool(
         await db.update(agents)
           .set({ tasksFailed: sql`${agents.tasksFailed} + 1`, lastActivity: new Date() })
           .where(eq(agents.id, request.agentId));
-      } catch (e) { console.warn('[ToolExecutor] Failed to update agent failure stats:', e); }
+      } catch (e) { log.warn({ err: e }, "Failed to update agent failure stats"); }
     }
 
     throw error;
@@ -259,9 +270,7 @@ async function buildCommand(tool: any, parameters: any): Promise<string> {
   // takes the happy path above. If derivation fails (no SKILL.md, no
   // reasoning provider, garbage response), fall through to the legacy
   // positional stub so the row is at least insertable.
-  console.warn(
-    `[ToolExecutor] tool_registry row '${tool.toolId}' (${tool.id}) has no baseCommand/parameters; attempting SKILL.md-driven derivation.`
-  );
+  log.warn({ toolId: tool.toolId, id: tool.id }, "tool_registry row has no baseCommand/parameters; attempting SKILL.md-driven derivation");
 
   const skillBody = await loadSkillForTool(tool);
   if (skillBody) {
@@ -278,12 +287,10 @@ async function buildCommand(tool: any, parameters: any): Promise<string> {
         .set({ config: derived, updatedAt: new Date() })
         .where(eq(toolRegistry.id, tool.id))
         .then(() =>
-          console.info(
-            `[ToolExecutor] cached derived config for '${tool.toolId}' (baseCommand='${derived.baseCommand}', params=${derived.parameters.length})`,
-          ),
+          log.info({ toolId: tool.toolId, baseCommand: derived.baseCommand, paramCount: derived.parameters.length }, "Cached derived config"),
         )
         .catch((e) =>
-          console.warn(`[ToolExecutor] cache derived config failed for '${tool.toolId}':`, e),
+          log.warn({ err: e, toolId: tool.toolId }, "Cache derived config failed"),
         );
       return buildCommandFromConfig(derived, params);
     }
@@ -316,9 +323,9 @@ async function buildCommand(tool: any, parameters: any): Promise<string> {
         .update(toolRegistry)
         .set({ config: repaired, updatedAt: new Date() })
         .where(eq(toolRegistry.id, tool.id));
-      console.info(`[ToolExecutor] Auto-patched tool_registry config for '${tool.toolId}' (legacy stub).`);
+      log.info({ toolId: tool.toolId }, "Auto-patched tool_registry config (legacy stub)");
     } catch (e: any) {
-      console.warn(`[ToolExecutor] Auto-patch failed for '${tool.toolId}': ${e?.message || e}`);
+      log.warn({ err: e, toolId: tool.toolId }, "Auto-patch failed");
     }
   })();
 
@@ -465,11 +472,18 @@ function validateParameter(paramDef: any, value: any): void {
  * services. Use buildCommand() / buildCommandFromConfig() instead.
  */
 export function formatParameter(paramDef: any, value: any): string {
-  const { name, type, flag, positional } = paramDef;
+  const { name, type, flag, positional, valuePrefix, valueSuffix } = paramDef;
+
+  // Apply optional value transformations (e.g., prepend "http://", append "/FUZZ")
+  let transformed = value;
+  if (typeof transformed === 'string') {
+    if (typeof valuePrefix === 'string') transformed = `${valuePrefix}${transformed}`;
+    if (typeof valueSuffix === 'string') transformed = `${transformed}${valueSuffix}`;
+  }
 
   if (positional) {
-    if (type === 'array') return (value as any[]).map((v) => String(v)).join(' ');
-    return String(value);
+    if (type === 'array') return (transformed as any[]).map((v) => String(v)).join(' ');
+    return String(transformed);
   }
 
   const switchToken = (typeof flag === 'string' && flag.length > 0) ? flag : `--${name}`;
@@ -479,10 +493,10 @@ export function formatParameter(paramDef: any, value: any): string {
   }
 
   if (type === 'array') {
-    return (value as any[]).map((v) => `${switchToken} ${v}`).join(' ');
+    return (transformed as any[]).map((v) => `${switchToken} ${v}`).join(' ');
   }
 
-  return `${switchToken} ${value}`;
+  return `${switchToken} ${transformed}`;
 }
 
 /**
@@ -587,42 +601,37 @@ export async function repairToolRegistryConfigs(): Promise<{ scanned: number; pa
   try {
     const rows = await db.select().from(toolRegistry);
     scanned = rows.length;
+    const needsDerivation: string[] = [];
     for (const row of rows) {
       const config = ((row as any).config as any) || {};
       const hasBase = typeof config.baseCommand === 'string' && config.baseCommand.trim().length > 0;
       const hasParams = Array.isArray(config.parameters) && config.parameters.length > 0;
       if (hasBase || hasParams) continue;
 
-      const repaired = {
-        ...config,
-        baseCommand: config.baseCommand || '',
-        parameters: [
-          {
-            name: 'target',
-            type: 'string',
-            required: false,
-            description: 'Target host/URL/IP (positional, auto-seeded by self-repair).',
-            positional: true,
-          },
-        ],
-      };
-      try {
-        await db
-          .update(toolRegistry)
-          .set({ config: repaired, updatedAt: new Date() })
-          .where(eq(toolRegistry.id, row.id));
-        patched++;
-      } catch (e: any) {
-        console.warn(`[ToolExecutor] repair: failed to patch '${row.toolId}': ${e?.message || e}`);
+      // Don't patch with a bare positional stub — that produces broken
+      // commands and blocks the SKILL.md deriver. Just ensure the config
+      // column is a valid object (for NOT NULL) and leave derivation to
+      // the runtime buildCommand fallback which tries SKILL.md first.
+      if (!config || typeof config !== 'object') {
+        try {
+          await db
+            .update(toolRegistry)
+            .set({ config: {}, updatedAt: new Date() })
+            .where(eq(toolRegistry.id, row.id));
+          patched++;
+        } catch (e: any) {
+          log.warn({ err: e, toolId: row.toolId }, "Repair: failed to patch tool");
+        }
       }
+      needsDerivation.push(row.toolId);
     }
-    if (patched > 0) {
-      console.log(`🔧 tool_registry self-repair: scanned ${scanned}, patched ${patched} rows with missing baseCommand/parameters`);
+    if (needsDerivation.length > 0) {
+      log.info({ scanned, patched, needsDerivation }, "tool_registry: tools without config will derive from SKILL.md at first use");
     } else {
-      console.log(`✅ tool_registry healthy: scanned ${scanned}, no repairs needed`);
+      log.info({ scanned }, "tool_registry healthy, all tools have configs");
     }
   } catch (e: any) {
-    console.warn(`[ToolExecutor] repairToolRegistryConfigs failed (non-fatal): ${e?.message || e}`);
+    log.warn({ err: e }, "repairToolRegistryConfigs failed (non-fatal)");
   }
   return { scanned, patched };
 }

@@ -3,6 +3,8 @@ import { aiEnrichmentLogs } from "../../shared/schema";
 import { ollamaManager } from "./ollama-manager";
 import { getOpenAIClient, getAnthropicClient } from "./ai-clients";
 import { resolveTargets as resolveInferenceTargets } from "./inference/resolver";
+import { createLogger } from '../lib/logger';
+const log = createLogger("ollama-ai-client");
 
 /**
  * Ollama AI Client Service
@@ -478,7 +480,7 @@ export class OllamaAIClient {
       const cacheHash = this.cache.generateHash(messages, options);
       const cached = this.cache.get(cacheHash);
       if (cached) {
-        console.log(`[OllamaAIClient] Cache hit for prompt hash: ${cacheHash}`);
+        log.info(`[OllamaAIClient] Cache hit for prompt hash: ${cacheHash}`);
         return cached;
       }
     }
@@ -497,11 +499,11 @@ export class OllamaAIClient {
         throw new Error(response.error || "Provider returned failure");
       }
     } catch (error) {
-      console.error(`[OllamaAIClient] ${provider} failed:`, error);
+      log.error(`[OllamaAIClient] ${provider} failed:`, error);
 
       // Fallback to cloud if Ollama fails (#OL-19)
       if (provider === "ollama") {
-        console.log("[OllamaAIClient] Falling back to cloud provider...");
+        log.info("[OllamaAIClient] Falling back to cloud provider...");
         const fallbackProvider = this.anthropic ? "anthropic" : this.openai ? "openai" : null;
 
         if (fallbackProvider) {
@@ -510,7 +512,7 @@ export class OllamaAIClient {
             // (Ollama model names like "llama3:8b" are invalid for cloud APIs)
             response = await this.callProvider(fallbackProvider, "", messages, options);
           } catch (fallbackError) {
-            console.error(`[OllamaAIClient] Fallback failed:`, fallbackError);
+            log.error(`[OllamaAIClient] Fallback failed:`, fallbackError);
             throw fallbackError;
           }
         } else {
@@ -653,7 +655,7 @@ export class OllamaAIClient {
       const truncated = response.stop_reason === "max_tokens";
 
       if (truncated) {
-        console.warn(`[AI] Anthropic response truncated due to max_tokens limit (${options.maxTokens || 2048})`);
+        log.warn(`[AI] Anthropic response truncated due to max_tokens limit (${options.maxTokens || 2048})`);
       }
 
       return {
@@ -711,7 +713,7 @@ export class OllamaAIClient {
       const truncated = response.choices[0]?.finish_reason === "length";
 
       if (truncated) {
-        console.warn(`[AI] OpenAI response truncated due to max_tokens limit (${options.maxTokens || 2048})`);
+        log.warn(`[AI] OpenAI response truncated due to max_tokens limit (${options.maxTokens || 2048})`);
       }
 
       return {
@@ -843,7 +845,7 @@ export class OllamaAIClient {
         errorMessage: response.error,
       });
     } catch (error) {
-      console.error("[OllamaAIClient] Failed to log enrichment:", error);
+      log.error("[OllamaAIClient] Failed to log enrichment:", error);
       // Don't throw - logging failure shouldn't break AI completion
     }
   }
@@ -894,11 +896,11 @@ export class OllamaAIClient {
 
 export const ollamaAIClient = new OllamaAIClient();
 
-console.log("[OllamaAIClient] Service initialized");
-console.log(`[OllamaAIClient] Available providers: ${ollamaAIClient.getAvailableProviders().join(", ")}`);
+log.info("[OllamaAIClient] Service initialized");
+log.info(`[OllamaAIClient] Available providers: ${ollamaAIClient.getAvailableProviders().join(", ")}`);
 if (process.env.RKLLM_MODE === "true") {
-  console.log(`[OllamaAIClient] RKLLama NPU mode enabled (default: ${process.env.RKLLM_DEFAULT_MODEL || "llama3:8b"}, code: ${process.env.RKLLM_CODE_MODEL || "qwen2.5-coder:7b"})`);
+  log.info(`[OllamaAIClient] RKLLama NPU mode enabled (default: ${process.env.RKLLM_DEFAULT_MODEL || "llama3:8b"}, code: ${process.env.RKLLM_CODE_MODEL || "qwen2.5-coder:7b"})`);
 }
 if (process.env.PREFER_LOCAL_AI === "true") {
-  console.log("[OllamaAIClient] Local-first AI enabled — cloud providers used as fallback only");
+  log.info("[OllamaAIClient] Local-first AI enabled — cloud providers used as fallback only");
 }

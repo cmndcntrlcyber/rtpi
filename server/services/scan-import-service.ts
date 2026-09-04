@@ -10,6 +10,8 @@ import { db } from '../db';
 import { discoveredAssets, discoveredServices, vulnerabilities, axScanResults } from '@shared/schema';
 import { resolveTargetId } from './target-resolver';
 import { eq, and, sql } from 'drizzle-orm';
+import { createLogger } from '../lib/logger';
+const log = createLogger("scan-import-service");
 
 // ============================================================================
 // Types
@@ -151,7 +153,7 @@ class ScanImportService {
       await this.triggerPipeline(scanId, detectedTool, operationId, userId);
       pipelineTriggered = true;
     } catch (err) {
-      console.error('Scan import: pipeline trigger failed:', err);
+      log.error('Scan import: pipeline trigger failed:', err);
     }
 
     return {
@@ -638,7 +640,7 @@ class ScanImportService {
           assetMap.set(asset.value, upserted.id);
         }
       } catch (err) {
-        console.warn(`Scan import: failed to store asset ${asset.value}:`, err);
+        log.warn(`Scan import: failed to store asset ${asset.value}:`, err);
       }
     }
 
@@ -672,7 +674,7 @@ class ScanImportService {
 
         if (upserted) servicesFound++;
       } catch (err) {
-        console.warn(`Scan import: failed to store service ${svc.name}:${svc.port}:`, err);
+        log.warn(`Scan import: failed to store service ${svc.name}:${svc.port}:`, err);
       }
     }
 
@@ -708,7 +710,7 @@ class ScanImportService {
 
         if (upserted) vulnerabilitiesFound++;
       } catch (err) {
-        console.warn(`Scan import: failed to store vulnerability ${vuln.title}:`, err);
+        log.warn(`Scan import: failed to store vulnerability ${vuln.title}:`, err);
       }
     }
 

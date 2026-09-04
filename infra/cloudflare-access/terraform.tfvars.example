@@ -13,7 +13,7 @@ tenants = [
   {
     id               = "attck"
     name             = "attck-workspace"
-    workspace_domain = "attck.nexus"
+    workspace_domain = "onoiroi.us"
     client_id        = "665194864071-bspf7uinfctsvnngckl6aigps97rj66v.apps.googleusercontent.com"
     client_secret    = "REPLACE_OR_USE_TF_VAR_attck_client_secret"
     enable_scim      = false
@@ -21,7 +21,7 @@ tenants = [
   {
     id               = "c3s"
     name             = "c3s-Workspace"
-    workspace_domain = "c3s.nexus"
+    workspace_domain = "onoiroi.us"
     client_id        = "665194864071-bspf7uinfctsvnngckl6aigps97rj66v.apps.googleusercontent.com"
     client_secret    = "REPLACE_OR_USE_TF_VAR_c3s_client_secret"
     enable_scim      = false
@@ -41,7 +41,7 @@ tenants = [
 # IMPORTANT: domain values must match the hostnames build.sh provisions. That
 # script reads setup/services.manifest as the single source of truth and emits
 # `${SLUG}-${suffix}.${CF_DOMAIN}` per row. The entries below mirror the
-# manifest for the example slug `attck` against the `attck.nexus` parent.
+# manifest for the example slug `attck` against the `onoiroi.us` parent.
 #
 # To add a new RTPI surface to public Access:
 #   1. Append a row to setup/services.manifest (the script will mint DNS + cert).
@@ -51,7 +51,7 @@ applications = [
   {
     id                 = "rtpi-attck"
     name               = "RTPI Dashboard (attck)"
-    domain             = "attck.attck.nexus"
+    domain             = "attck.onoiroi.us"
     allowed_tenant_ids = ["attck"]
     session_duration   = "24h"
     auto_redirect      = true
@@ -70,7 +70,7 @@ applications = [
   {
     id                 = "rtpi-reports-attck"
     name               = "SysReptor (attck)"
-    domain             = "attck-reports.attck.nexus"
+    domain             = "attck-reports.onoiroi.us"
     allowed_tenant_ids = ["attck"]
     session_duration   = "24h"
     auto_redirect      = true
@@ -80,7 +80,7 @@ applications = [
   {
     id                 = "rtpi-empire-attck"
     name               = "Empire C2 (attck)"
-    domain             = "attck-empire.attck.nexus"
+    domain             = "attck-empire.onoiroi.us"
     allowed_tenant_ids = ["attck"]
     session_duration   = "8h"
     auto_redirect      = true
@@ -90,7 +90,7 @@ applications = [
   {
     id                 = "rtpi-mgmt-attck"
     name               = "Portainer (attck)"
-    domain             = "attck-mgmt.attck.nexus"
+    domain             = "attck-mgmt.onoiroi.us"
     allowed_tenant_ids = ["attck"]
     session_duration   = "8h"
     auto_redirect      = true
@@ -100,7 +100,7 @@ applications = [
   {
     id                 = "rtpi-kasm-attck"
     name               = "Kasm Workspaces mgmt (attck)"
-    domain             = "attck-kasm.attck.nexus"
+    domain             = "attck-kasm.onoiroi.us"
     allowed_tenant_ids = ["attck"]
     session_duration   = "8h"
     auto_redirect      = true
@@ -110,7 +110,7 @@ applications = [
   {
     id                 = "rtpi-wiki-attck"
     name               = "Docmost Wiki (attck)"
-    domain             = "attck-wiki.attck.nexus"
+    domain             = "attck-wiki.onoiroi.us"
     allowed_tenant_ids = ["attck"]
     session_duration   = "24h"
     auto_redirect      = true
@@ -120,7 +120,7 @@ applications = [
   {
     id                 = "rtpi-vscode-attck"
     name               = "Kasm VS Code (attck)"
-    domain             = "attck-vscode.attck.nexus"
+    domain             = "attck-vscode.onoiroi.us"
     allowed_tenant_ids = ["attck"]
     session_duration   = "8h"
     auto_redirect      = true
@@ -130,10 +130,21 @@ applications = [
   {
     id                 = "rtpi-kali-attck"
     name               = "Kasm Kali Desktop (attck)"
-    domain             = "attck-kali.attck.nexus"
+    domain             = "attck-kali.onoiroi.us"
     allowed_tenant_ids = ["attck"]
     session_duration   = "8h"
     auto_redirect      = true
+    policies           = []
+  },
+  # ── ATT&CK Workbench (always-on, suffix=-workbench) ──────────────────────
+  {
+    id                 = "rtpi-workbench-attck"
+    name               = "ATT&CK Workbench (attck)"
+    domain             = "c3s-workbench.onoiroi.us"
+    allowed_tenant_ids = ["attck"]
+    session_duration   = "24h"
+    auto_redirect      = true
+    same_site_cookie   = "none"
     policies           = []
   },
   # ── Cross-tenant admin console (NOT slug-based — illustrative only) ──────

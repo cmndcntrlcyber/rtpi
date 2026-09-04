@@ -12,6 +12,8 @@ import type {
   ToolDependency,
   InstallMethod
 } from '../../shared/types/tool-config';
+import { createLogger } from '../lib/logger';
+const log = createLogger("github-tool-installer");
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
 
@@ -80,7 +82,7 @@ export async function analyzeGitHubRepository(githubUrl: string): Promise<GitHub
       const { data: readmeData } = await octokit.repos.getReadme({ owner, repo });
       readme = Buffer.from(readmeData.content, 'base64').toString('utf-8');
     } catch (error) {
-      console.warn(`Could not fetch README for ${owner}/${repo}`);
+      log.warn(`Could not fetch README for ${owner}/${repo}`);
     }
 
     // Detect dependencies by checking for specific files
@@ -226,7 +228,7 @@ async function detectDependencies(
     }
 
   } catch (error) {
-    console.warn(`Error detecting dependencies: ${error}`);
+    log.warn(`Error detecting dependencies: ${error}`);
   }
 
   return dependencies;
@@ -287,7 +289,7 @@ function parsePackageJson(content: string): ToolDependency[] {
       });
     }
   } catch (error) {
-    console.warn('Failed to parse package.json');
+    log.warn('Failed to parse package.json');
   }
 
   return dependencies;
@@ -559,7 +561,7 @@ export async function installToolFromGitHub(
 ): Promise<string> {
   try {
     // First, analyze the repository
-    console.log(`Analyzing repository: ${githubUrl}`);
+    log.info(`Analyzing repository: ${githubUrl}`);
     const analysis = await analyzeGitHubRepository(githubUrl);
 
     // Create installation record
@@ -575,10 +577,10 @@ export async function installToolFromGitHub(
       analyzedAt: new Date(),
     }).returning();
 
-    console.log(`Repository analyzed. Installation ID: ${installation.id}`);
-    console.log(`Detected language: ${analysis.language}`);
-    console.log(`Dependencies: ${analysis.detectedDependencies.length}`);
-    console.log(`Suggested install method: ${analysis.suggestedInstallMethod}`);
+    log.info(`Repository analyzed. Installation ID: ${installation.id}`);
+    log.info(`Detected language: ${analysis.language}`);
+    log.info(`Dependencies: ${analysis.detectedDependencies.length}`);
+    log.info(`Suggested install method: ${analysis.suggestedInstallMethod}`);
 
     // Update status to installing
     await db.update(githubToolInstallations)
@@ -590,7 +592,7 @@ export async function installToolFromGitHub(
 
     return installation.id;
   } catch (error: any) {
-    console.error('Installation failed:', error);
+    log.error('Installation failed:', error);
     throw new Error(`Failed to install tool: ${error.message}`);
   }
 }

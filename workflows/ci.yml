@@ -71,15 +71,16 @@ jobs:
       - name: Run unit tests
         run: npm test -- --coverage
         env:
-          DATABASE_URL: postgresql://rtpi:rtpi@localhost:5434/rtpi_main
-          REDIS_URL: redis://localhost:6381
+          DATABASE_URL: postgresql://rtpi:rtpi@localhost:5432/rtpi_main
+          REDIS_URL: redis://localhost:6379
       
       - name: Upload coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
           file: ./coverage/coverage-final.json
           flags: unittests
           name: codecov-umbrella
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   build:
     name: Build
@@ -100,10 +101,74 @@ jobs:
         run: npm run build
       
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
+          retention-days: 7
+
+  e2e:
+    name: E2E Tests
+    needs: build
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: rtpi
+          POSTGRES_PASSWORD: rtpi
+          POSTGRES_DB: rtpi_main
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Push database schema
+        run: npm run db:push
+        env:
+          DATABASE_URL: postgresql://rtpi:rtpi@localhost:5432/rtpi_main
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+        env:
+          DATABASE_URL: postgresql://rtpi:rtpi@localhost:5432/rtpi_main
+          REDIS_URL: redis://localhost:6379
+          CI: true
+
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
           retention-days: 7
 
   security:

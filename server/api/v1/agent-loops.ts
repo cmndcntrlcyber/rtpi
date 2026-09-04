@@ -37,38 +37,46 @@ router.get("/:id", async (req, res) => {
 });
 
 // POST /api/v1/agent-loops/start - Start new loop
+//
+// Two shapes are accepted:
+//   Pairwise (legacy): { agentId, targetId, initialInput }
+//     - uses the lead agent's loopEnabled/loopPartnerId config.
+//   Multi-agent group (canvas "Add To Loop"):
+//     { agentIds: [...>=2], targetId, initialInput, maxIterations?, exitCondition? }
+//     - agents take turns in ring order; no per-agent loop config required.
 router.post("/start", async (req, res) => {
   const user = req.user as any;
-  const { agentId, targetId, initialInput } = req.body;
+  const { agentId, agentIds, targetId, initialInput, maxIterations, exitCondition } = req.body;
 
-  // Validate required fields
-  if (!agentId || !targetId || !initialInput) {
-    return res.status(400).json({ 
-      error: "Missing required fields: agentId, targetId, initialInput" 
-    });
-  }
-
-  // Validate UUID format
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  
-  if (!uuidRegex.test(agentId)) {
-    return res.status(400).json({ 
-      error: "Invalid agentId format. Must be a valid UUID." 
-    });
+
+  if (!targetId || !initialInput) {
+    return res.status(400).json({ error: "Missing required fields: targetId, initialInput" });
+  }
+  if (!uuidRegex.test(targetId)) {
+    return res.status(400).json({ error: "Invalid targetId format. Must be a valid UUID." });
   }
 
-  if (!uuidRegex.test(targetId)) {
-    return res.status(400).json({ 
-      error: "Invalid targetId format. Must be a valid UUID." 
-    });
+  const isGroup = Array.isArray(agentIds) && agentIds.length > 0;
+
+  if (!isGroup && !agentId) {
+    return res.status(400).json({ error: "Provide either agentId or agentIds[]" });
+  }
+
+  // Validate UUID format for every participant.
+  const participants: string[] = isGroup ? agentIds : [agentId];
+  const badId = participants.find((id) => !uuidRegex.test(id));
+  if (badId) {
+    return res.status(400).json({ error: `Invalid agent id format: ${badId}` });
   }
 
   try {
-    const loop = await agentLoopService.startLoop(
-      agentId,
-      targetId,
-      initialInput
-    );
+    const loop = isGroup
+      ? await agentLoopService.startLoopGroup(participants, targetId, initialInput, {
+          maxIterations,
+          exitCondition,
+        })
+      : await agentLoopService.startLoop(agentId, targetId, initialInput);
 
     await logAudit(user.id, "start_agent_loop", "/agent-loops", loop?.id || null, true, req);
 
@@ -76,8 +84,8 @@ router.post("/start", async (req, res) => {
   } catch (error: any) {
     // Error logged for debugging
     await logAudit(user.id, "start_agent_loop", "/agent-loops", null, false, req);
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : "Failed to start loop" 
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Failed to start loop"
     });
   }
 });

@@ -54,6 +54,9 @@ USER nodejs
 
 EXPOSE 3000
 
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=30s \
+    CMD wget -qO /dev/null http://localhost:${PORT:-3000}/api/v1/health/live || exit 1
+
 # Note: Running TypeScript files directly with tsx in production
 # If you prefer compiled JavaScript, update build process and use:
 # CMD ["node", "dist/server/index.js"]

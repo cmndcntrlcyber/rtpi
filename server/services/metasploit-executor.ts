@@ -2,6 +2,11 @@ import { dockerExecutor } from "./docker-executor";
 import { db } from "../db";
 import { securityTools } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { createLogger } from "../lib/logger";
+import { logToolAudit } from "../auth/middleware";
+import { toolExecutionDuration, toolExecutionsTotal } from "../lib/metrics";
+
+const log = createLogger("metasploit-executor");
 
 /**
  * Metasploit Module Executor
@@ -22,6 +27,9 @@ export interface ExecutionResult {
   duration: number;
   moduleUsed: string;
   timestamp: string;
+  cveIds?: string[];
+  cweIds?: string[];
+  cvssScore?: number | null;
 }
 
 class MetasploitExecutor {
@@ -80,7 +88,7 @@ class MetasploitExecutor {
       // Build msfconsole command
       const command = this.buildMsfCommand(module, targetValue);
       
-      console.log(`[Metasploit] Executing: ${command.join(" ")}`);
+      log.info({ toolId, module: `${module.type}/${module.path}`, target: targetValue }, "Executing Metasploit module");
 
       // Execute in Docker container
       const result = await dockerExecutor.exec("rtpi-tools", command, {
@@ -89,7 +97,13 @@ class MetasploitExecutor {
 
       const duration = Date.now() - startTime;
 
-      // Parse result
+      // Parse result and extract CVE/CWE from module path and output
+      const fullOutput = (result.stdout || "") + (result.stderr || "");
+      const { cveIds, cweIds, cvssScore } = this.extractVulnMetadata(
+        `${module.type}/${module.path}`,
+        fullOutput
+      );
+
       const executionResult: ExecutionResult = {
         success: result.exitCode === 0,
         output: result.stdout || "",
@@ -98,6 +112,9 @@ class MetasploitExecutor {
         duration,
         moduleUsed: `${module.type}/${module.path}`,
         timestamp,
+        cveIds: cveIds.length > 0 ? cveIds : undefined,
+        cweIds: cweIds.length > 0 ? cweIds : undefined,
+        cvssScore: cvssScore ?? undefined,
       };
 
       // Update tool status back to available and store execution result
@@ -129,10 +146,23 @@ class MetasploitExecutor {
         })
         .where(eq(securityTools.id, toolId));
 
+      const status = executionResult.success ? "success" : "failure";
+      toolExecutionDuration.observe({ tool: "metasploit", status }, duration / 1000);
+      toolExecutionsTotal.inc({ tool: "metasploit", status });
+      logToolAudit(null, "metasploit_execute", "metasploit", toolId, executionResult.success, {
+        module: executionResult.moduleUsed, target: targetValue, duration, exitCode: executionResult.exitCode,
+      });
+
       return executionResult;
     } catch (error) {
       const duration = Date.now() - startTime;
       const errorMsg = error instanceof Error ? error.message : String(error);
+
+      toolExecutionDuration.observe({ tool: "metasploit", status: "failure" }, duration / 1000);
+      toolExecutionsTotal.inc({ tool: "metasploit", status: "failure" });
+      logToolAudit(null, "metasploit_execute", "metasploit", toolId, false, {
+        module: `${module.type}/${module.path}`, target: targetValue, error: errorMsg,
+      });
 
       // Reset tool status on error
       await db
@@ -220,7 +250,7 @@ class MetasploitExecutor {
 
       return this.parseModuleInfo(result.stdout);
     } catch (error) {
-      console.error("Failed to get module info:", error);
+      log.error({ err: error, moduleType, modulePath }, "Failed to get module info");
       return null;
     }
   }
@@ -289,12 +319,52 @@ class MetasploitExecutor {
       } else if (trimmed.includes("References:")) {
         collectingOptions = false;
         currentSection = "references";
-      } else if (currentSection === "references" && trimmed.match(/^\s*https?:\/\//)) {
+      } else if (currentSection === "references" && trimmed) {
         info.references.push(trimmed);
       }
     }
 
+    // Extract CVE/CWE/CVSS from references and full output
+    const { cveIds, cweIds, cvssScore } = this.extractVulnMetadata("", output, info.rank);
+    info.cveIds = cveIds;
+    info.cweIds = cweIds;
+    info.cvssScore = cvssScore;
+
     return info;
+  }
+
+  private static readonly RANK_TO_CVSS: Record<string, number> = {
+    excellent: 9.8,
+    great: 8.5,
+    good: 7.0,
+    normal: 5.0,
+    average: 4.0,
+    low: 2.0,
+    manual: 0,
+  };
+
+  private extractVulnMetadata(
+    modulePath: string,
+    output: string,
+    rank?: string
+  ): { cveIds: string[]; cweIds: string[]; cvssScore: number | null } {
+    const combined = `${modulePath}\n${output}`;
+
+    const cveMatches = combined.match(/CVE-\d{4}-\d{4,}/gi) || [];
+    const cveIds = [...new Set(cveMatches.map(c => c.toUpperCase()))];
+
+    const cweMatches = combined.match(/CWE-\d+/gi) || [];
+    const cweIds = [...new Set(cweMatches.map(c => c.toUpperCase()))];
+
+    let cvssScore: number | null = null;
+    const cvssMatch = combined.match(/CVSS(?:v[23])?[:\s]+(\d+(?:\.\d+)?)/i);
+    if (cvssMatch) {
+      cvssScore = parseFloat(cvssMatch[1]);
+    } else if (rank && MetasploitExecutor.RANK_TO_CVSS[rank.toLowerCase()] !== undefined) {
+      cvssScore = MetasploitExecutor.RANK_TO_CVSS[rank.toLowerCase()];
+    }
+
+    return { cveIds, cweIds, cvssScore };
   }
 
   /**
@@ -320,7 +390,7 @@ class MetasploitExecutor {
 
       return this.parseSearchResults(result.stdout, moduleType);
     } catch (error) {
-      console.error("Failed to search modules:", error);
+      log.error({ err: error, query }, "Failed to search modules");
       return [];
     }
   }
@@ -371,14 +441,19 @@ class MetasploitExecutor {
               // Parse the rest for additional info
               const restParts = match[2].trim().split(/\s{2,}/);
 
+              const desc = restParts[restParts.length - 1] || "";
+              const searchText = `${fullPath} ${desc}`;
+              const cveMatches = searchText.match(/CVE-\d{4}-\d{4,}/gi) || [];
+
               modules.push({
                 type,
                 path,
                 fullPath,
                 disclosureDate: restParts[0] || "",
                 rank: restParts[1] || "",
-                description: restParts[restParts.length - 1] || "",
+                description: desc,
                 displayName: path.split("/").pop() || path,
+                cveIds: [...new Set(cveMatches.map(c => c.toUpperCase()))],
               });
             }
           }
@@ -497,7 +572,7 @@ class MetasploitExecutor {
         { timeout: 30000 }
       );
 
-      console.log(`[Metasploit] Custom module loaded: ${containerModulePath}`);
+      log.info({ path: containerModulePath }, "Custom module loaded");
 
       return {
         success: true,
@@ -505,7 +580,7 @@ class MetasploitExecutor {
       };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(`[Metasploit] Failed to load custom module: ${errorMsg}`);
+      log.error({ err: error, path: containerModulePath }, "Failed to load custom module");
       return {
         success: false,
         loadedPath: containerModulePath,

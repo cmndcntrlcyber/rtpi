@@ -17,6 +17,8 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { resolveMcpFsRoot } from "./catalog-sync";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("preflight");
 
 export type PreflightFailureKind =
   | "command_missing"
@@ -139,14 +141,14 @@ export async function runDiagnostics(): Promise<void> {
   const tools = ["npx", "uvx", "node", "uv"];
   for (const tool of tools) {
     const found = await commandInPath(tool);
-    console.log(`[preflight-diag] ${tool}: ${found ?? "MISSING"}`);
+    log.info(`[preflight-diag] ${tool}: ${found ?? "MISSING"}`);
   }
   const fsRoot = resolveMcpFsRoot();
   try {
     await fs.mkdir(fsRoot, { recursive: true });
-    console.log(`[preflight-diag] fs root ready: ${fsRoot}`);
+    log.info(`[preflight-diag] fs root ready: ${fsRoot}`);
   } catch (err) {
-    console.error(`[preflight-diag] fs root FAILED: ${fsRoot} -> ${err}`);
+    log.error(`[preflight-diag] fs root FAILED: ${fsRoot} -> ${err}`);
   }
 }
 

@@ -12,19 +12,19 @@ summary: "Microsoft Playwright is a mcp-server registered in RTPI. No
   generated without LLM or web research — consult the upstream documentation for
   accurate usage."
 sources:
-  - https://github.com/microsoft/playwright
-  - https://www.browserstack.com/guide/playwright-tutorial
-  - https://learn.microsoft.com/en-us/shows/getting-started-with-end-to-end-testing-with-playwright/introduction-to-playwright-for-end-to-end-testing
-  - https://dev.to/austinwdigital/playwright-a-guide-to-browser-automation-testing-hnd
-  - https://learn.microsoft.com/en-us/training/modules/build-with-playwright/
+  - https://www.checklyhq.com/docs/learn/playwright/what-is-playwright
+  - https://en.wikipedia.org/wiki/Playwright_(software)
+  - https://testguild.com/what-is-microsoft-playwright-js
+  - https://nareshit.com/blogs/playwright-automation-tutorial-beginners-2026
+  - https://testgrid.io/blog/playwright-testing
   - https://playwright.dev/docs/test-cli
   - https://playwright.dev/docs/test-use-options
   - https://github.com/microsoft/playwright-cli
   - https://playwright.dev/agent-cli/introduction
-  - https://mcpservers.org/agent-skills/microsoft/playwright
-  - https://www.applytosupply.digitalmarketplace.service.gov.uk/g-cloud/services/353657919462727
-  - https://www.offsec.com/blog/red-teaming-vs-pentesting/
-generated_at: 2026-05-19T10:55:33.100Z
+  - https://playwright.dev/agent-cli/configuration
+  - https://www.varonis.com/blog/red-teaming
+  - https://www.reddit.com/r/Pentesting/comments/1u6fotc/playwright_for_penetration_testing
+generated_at: 2026-09-04T07:50:39.082Z
 generated_by: template
 source_hash: 31443b217674de7bf666aca246f2f3a31e02eb99977235fcde65a8ac32d166fb
 ---
@@ -61,15 +61,15 @@ None documented in fallback mode.
 
 ## References
 
-- https://github.com/microsoft/playwright
-- https://www.browserstack.com/guide/playwright-tutorial
-- https://learn.microsoft.com/en-us/shows/getting-started-with-end-to-end-testing-with-playwright/introduction-to-playwright-for-end-to-end-testing
-- https://dev.to/austinwdigital/playwright-a-guide-to-browser-automation-testing-hnd
-- https://learn.microsoft.com/en-us/training/modules/build-with-playwright/
+- https://www.checklyhq.com/docs/learn/playwright/what-is-playwright
+- https://en.wikipedia.org/wiki/Playwright_(software)
+- https://testguild.com/what-is-microsoft-playwright-js
+- https://nareshit.com/blogs/playwright-automation-tutorial-beginners-2026
+- https://testgrid.io/blog/playwright-testing
 - https://playwright.dev/docs/test-cli
 - https://playwright.dev/docs/test-use-options
 - https://github.com/microsoft/playwright-cli
 - https://playwright.dev/agent-cli/introduction
-- https://mcpservers.org/agent-skills/microsoft/playwright
-- https://www.applytosupply.digitalmarketplace.service.gov.uk/g-cloud/services/353657919462727
-- https://www.offsec.com/blog/red-teaming-vs-pentesting/
+- https://playwright.dev/agent-cli/configuration
+- https://www.varonis.com/blog/red-teaming
+- https://www.reddit.com/r/Pentesting/comments/1u6fotc/playwright_for_penetration_testing

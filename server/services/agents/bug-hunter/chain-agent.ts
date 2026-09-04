@@ -16,6 +16,8 @@ import { BaseTaskAgent, type TaskDefinition, type TaskResult } from "../base-tas
 import { routeReasoning, NoInferenceProviderAvailable } from "../../inference/inference-router";
 import { retrieveBugHunterSkills } from "../../knowledge/bug-hunter-skill-retriever";
 import { loadEngagementMeta } from "../../bug-hunter/engagement-scaffolder";
+import { createLogger } from '../../../lib/logger';
+const log = createLogger("chain-agent");
 
 export interface ChainProposal {
   primary: string;
@@ -105,9 +107,9 @@ If no chains are viable, return [].`;
         }
       } catch (err) {
         if (err instanceof NoInferenceProviderAvailable) {
-          console.warn("[ChainAgent] no provider available — returning empty proposal list");
+          log.warn("[ChainAgent] no provider available — returning empty proposal list");
         } else {
-          console.warn("[ChainAgent] chain reasoning failed:", err);
+          log.warn("[ChainAgent] chain reasoning failed:", err);
         }
       }
 

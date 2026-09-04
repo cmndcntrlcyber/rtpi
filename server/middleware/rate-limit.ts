@@ -10,7 +10,9 @@ export const apiLimiter = rateLimit({
   // Use Redis for distributed rate limiting (optional, falls back to memory)
   skip: (req) => {
     // Skip rate limiting for health checks and authenticated workflow monitoring
-    return req.path === "/api/v1/health" || 
+    return req.path === "/api/v1/health" ||
+           req.path === "/api/v1/health/live" ||
+           req.path === "/api/v1/health/ready" ||
            (req.path.includes("/agent-workflows") && req.isAuthenticated?.());
   },
 });
@@ -28,4 +30,11 @@ export const passwordChangeLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 3, // 3 password changes per hour
   message: "Too many password change attempts, please try again later",
+});
+
+// Rate limit for bulk MCP server operations (start/stop multiple)
+export const mcpBulkLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 5, // 5 bulk operations per minute per IP
+  message: "Too many bulk MCP operations, please try again later",
 });

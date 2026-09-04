@@ -7,6 +7,8 @@ import { agentToolBuilds, mcpServers, containers, agents } from "@shared/schema"
 import { eq } from "drizzle-orm";
 import { routeReasoning, NoInferenceProviderAvailable } from "./inference/inference-router";
 import { agentMCPConnector } from "./agent-mcp-connector";
+import { createLogger } from '../lib/logger';
+const log = createLogger("agent-tool-builder");
 
 const execAsync = promisify(exec);
 
@@ -356,7 +358,7 @@ class AgentToolBuilder {
       });
       await this.appendBuildLog(buildId, "Build pipeline completed successfully");
     } catch (error: any) {
-      console.error(`[AgentToolBuilder] Build ${buildId} failed:`, error);
+      log.error(`[AgentToolBuilder] Build ${buildId} failed:`, error);
       await this.updateBuildStatus(buildId, "failed", "Build failed", {
         errorMessage: error?.message || String(error),
       });
@@ -429,7 +431,7 @@ class AgentToolBuilder {
           searchResults,
         });
       } catch (err: any) {
-        console.warn(`[AgentToolBuilder] Tavily research failed for ${url}:`, err.message);
+        log.warn(`[AgentToolBuilder] Tavily research failed for ${url}:`, err.message);
 
         // Fallback: basic URL parsing only
         results.push({
@@ -477,7 +479,7 @@ class AgentToolBuilder {
       );
       exampleDockerfile = await fs.readFile(examplePath, "utf-8");
     } catch {
-      console.warn("[AgentToolBuilder] Could not read Dockerfile.fuzzing-tools example");
+      log.warn("[AgentToolBuilder] Could not read Dockerfile.fuzzing-tools example");
     }
 
     const repoSummary = repoResearch
@@ -570,14 +572,14 @@ Generate ONLY the RUN instructions, no explanation or markdown fences.`;
       }
     } catch (error) {
       if (error instanceof NoInferenceProviderAvailable) {
-        console.error("[AgentToolBuilder] Dockerfile generation — providers exhausted:", error.message);
+        log.error("[AgentToolBuilder] Dockerfile generation — providers exhausted:", error.message);
       } else {
-        console.error("[AgentToolBuilder] Dockerfile generation router failed:", error);
+        log.error("[AgentToolBuilder] Dockerfile generation router failed:", error);
       }
     }
 
     // Fallback to template
-    console.warn("[AgentToolBuilder] No LLM available, using template fallback");
+    log.warn("[AgentToolBuilder] No LLM available, using template fallback");
     return this.generateTemplateFallback(name, repoResearch);
   }
 
@@ -640,14 +642,14 @@ Generate ONLY the fixed Dockerfile content, no explanation or markdown fences.`;
       if (text.trim().length > 0) return text;
     } catch (error) {
       if (error instanceof NoInferenceProviderAvailable) {
-        console.error("[AgentToolBuilder] Repair providers exhausted:", error.message);
+        log.error("[AgentToolBuilder] Repair providers exhausted:", error.message);
       } else {
-        console.error("[AgentToolBuilder] Repair router failed:", error);
+        log.error("[AgentToolBuilder] Repair router failed:", error);
       }
     }
 
     // Fallback: heuristic regex-based repairs
-    console.warn("[AgentToolBuilder] No LLM available for repair, applying heuristic fixes");
+    log.warn("[AgentToolBuilder] No LLM available for repair, applying heuristic fixes");
     return this.applyHeuristicRepairs(dockerfile, errorTail);
   }
 
@@ -933,7 +935,7 @@ ENTRYPOINT ["/usr/local/bin/mcp-entrypoint.sh"]
         return existingContainers[0].name;
       }
     } catch (err: any) {
-      console.warn("[AgentToolBuilder] Could not resolve existing container name:", err.message);
+      log.warn("[AgentToolBuilder] Could not resolve existing container name:", err.message);
     }
 
     // Fallback to the standard naming convention

@@ -13,6 +13,8 @@ import { toolRegistry, toolRegistryTactics, toolRegistryTechniques, attackTactic
 import { eq, and } from 'drizzle-orm';
 import type { POCArtifact } from './rd-experiment-orchestrator';
 import { createKnowledgeArticle } from './knowledge/knowledge-base-writer';
+import { createLogger } from '../lib/logger';
+const log = createLogger("rd-tool-promotion");
 
 // ============================================================================
 // Types
@@ -130,7 +132,7 @@ class RDToolPromotion {
           dedupeTag: `tool:${tool.id}`,
         });
       } catch (err) {
-        console.warn('[rd-tool-promotion] S4 KB indexing failed (non-fatal):', err);
+        log.warn('[rd-tool-promotion] S4 KB indexing failed (non-fatal):', err);
       }
 
       return {

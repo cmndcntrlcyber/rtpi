@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { db } from "../../db";
 import { agentWorkflows, workflowTasks, workflowLogs, targets, operations, workflowTemplates } from "@shared/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, inArray } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import { agentWorkflowOrchestrator } from "../../services/agent-workflow-orchestrator";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("agent-workflows");
 
 const router = Router();
 
@@ -154,7 +156,7 @@ router.post("/start", ensureRole("admin", "operator"), async (req, res) => {
 
       // Execute async - don't wait for completion
       dynamicWorkflowOrchestrator.executeWorkflow(workflowId).catch((err: Error) => {
-        console.error("Custom workflow execution failed:", err);
+        log.error("Custom workflow execution failed:", err);
       });
 
       await logAudit(
@@ -256,18 +258,22 @@ router.post("/execute-tools", ensureRole("admin", "operator"), async (req, res) 
  */
 router.get("/", async (req, res) => {
   try {
-    const { status, targetId, limit = 50 } = req.query;
+    const { status, targetId, operationId, limit = 50 } = req.query;
 
     // Build query with filters
     let workflows;
     const conditions = [];
-    
+
     if (status) {
       conditions.push(eq(agentWorkflows.status, status as any));
     }
-    
+
     if (targetId) {
       conditions.push(eq(agentWorkflows.targetId, targetId as string));
+    }
+
+    if (operationId) {
+      conditions.push(eq(agentWorkflows.operationId, operationId as string));
     }
 
     if (conditions.length > 0) {
@@ -329,6 +335,37 @@ router.get("/target/:targetId/latest", async (req, res) => {
   } catch (error: any) {
     // Error logged for debugging
     res.status(500).json({ error: "Failed to get latest workflow", details: error?.message || "Internal server error" });
+  }
+});
+
+/**
+ * GET /api/v1/agent-workflows/tasks-bulk?ids=id1,id2,...
+ * Batch-fetch tasks for many workflows in one query, returning a map keyed by
+ * workflowId. Replaces the Dashboard's N+1 loop of per-workflow /:id/tasks
+ * calls. Declared before /:id so it isn't captured as an id.
+ */
+router.get("/tasks-bulk", async (req, res) => {
+  try {
+    const idsParam = String(req.query.ids ?? "").trim();
+    const ids = idsParam ? idsParam.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    if (ids.length === 0) {
+      return res.json({ tasks: {} });
+    }
+
+    const rows = await db
+      .select()
+      .from(workflowTasks)
+      .where(inArray(workflowTasks.workflowId, ids));
+
+    const tasks: Record<string, typeof rows> = {};
+    for (const id of ids) tasks[id] = [];
+    for (const row of rows) {
+      (tasks[row.workflowId] ??= []).push(row);
+    }
+
+    res.json({ tasks });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to bulk-fetch workflow tasks", details: error?.message || "Internal server error" });
   }
 });
 
@@ -425,6 +462,47 @@ router.post("/:id/cancel", ensureRole("admin", "operator"), async (req, res) => 
     await logAudit(user.id, "cancel_agent_workflow", "/agent-workflows", id, false, req);
 
     res.status(500).json({ error: "Failed to cancel workflow", details: error?.message || "Internal server error" });
+  }
+});
+
+/**
+ * POST /api/v1/agent-workflows/:id/steer
+ * Apply a steering directive to an active workflow's judgment space
+ */
+router.post("/:id/steer", ensureRole("admin", "operator"), async (req, res) => {
+  const user = req.user as any;
+  const { action, target, value, reason } = req.body;
+
+  if (!action || !reason) {
+    return res.status(400).json({ error: "action and reason are required" });
+  }
+
+  try {
+    const { steeringController } = await import("../../services/judgment/steering");
+    const directive = steeringController.applyDirective({
+      action,
+      target,
+      value,
+      reason,
+      operatorId: user.id,
+    });
+
+    res.json({ success: true, directive });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to apply steering directive", details: error?.message });
+  }
+});
+
+/**
+ * GET /api/v1/agent-workflows/:id/steering-state
+ * Get current steering state for monitoring
+ */
+router.get("/:id/steering-state", async (req, res) => {
+  try {
+    const { steeringController } = await import("../../services/judgment/steering");
+    res.json({ state: steeringController.getState(), history: steeringController.getHistory() });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to get steering state" });
   }
 });
 

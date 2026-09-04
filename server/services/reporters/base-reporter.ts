@@ -4,6 +4,8 @@ import { eq, and, desc } from "drizzle-orm";
 import { memoryService, AddMemoryParams } from "../memory-service";
 import { agentConfig } from "../../config/agent-config";
 import { getReporterSpec } from "../../config/reporter-config";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("base-reporter");
 
 // ============================================================================
 // Types
@@ -103,7 +105,7 @@ export abstract class BaseReporter {
     operationId: string,
     reportingPeriod: Date,
   ): Promise<ReportResult> {
-    console.log(`[${this.pageRole}Reporter] Executing report for operation ${operationId}`);
+    log.info(`[${this.pageRole}Reporter] Executing report for operation ${operationId}`);
 
     // Fetch last report for comparison
     const lastReport = await this.getLastReport(agentId, operationId);
@@ -153,7 +155,7 @@ export abstract class BaseReporter {
       await this.storeReportInMemory(operationId, agentId, report.id, summary, changes);
     }
 
-    console.log(`[${this.pageRole}Reporter] Report ${report.id} created`);
+    log.info(`[${this.pageRole}Reporter] Report ${report.id} created`);
 
     return {
       reportId: report.id,
@@ -275,7 +277,7 @@ export abstract class BaseReporter {
         });
       }
     } catch (error) {
-      console.error(`[${this.pageRole}Reporter] Failed to store report in memory:`, error);
+      log.error(`[${this.pageRole}Reporter] Failed to store report in memory:`, error);
     }
   }
 }

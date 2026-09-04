@@ -11,6 +11,8 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import { burpActivationService } from '../../services/burp-activation-service';
 import { ensureAuthenticated, ensureRole, logAudit } from '../../auth/middleware';
+import { createLogger } from '../../lib/logger';
+const log = createLogger("burp-activation");
 
 const router = Router();
 
@@ -100,7 +102,7 @@ router.get('/status', async (req, res) => {
     const status = await burpActivationService.getStatus();
     res.json(status);
   } catch (error) {
-    console.error('[BurpActivation API] Get status failed:', error);
+    log.error('[BurpActivation API] Get status failed:', error);
     res.status(500).json({
       error: 'Failed to get activation status',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -144,7 +146,7 @@ router.post('/upload-jar', ensureRole('admin'), upload.single('jar'), async (req
       });
     }
   } catch (error) {
-    console.error('[BurpActivation API] JAR upload failed:', error);
+    log.error('[BurpActivation API] JAR upload failed:', error);
     await logAudit(user.id, 'burp_jar_upload', '/burp-activation/upload-jar', null, false, req);
     res.status(500).json({
       error: 'JAR upload failed',
@@ -189,7 +191,7 @@ router.post('/upload-license', ensureRole('admin'), upload.single('license'), as
       });
     }
   } catch (error) {
-    console.error('[BurpActivation API] License upload failed:', error);
+    log.error('[BurpActivation API] License upload failed:', error);
     await logAudit(user.id, 'burp_license_upload', '/burp-activation/upload-license', null, false, req);
     res.status(500).json({
       error: 'License upload failed',
@@ -236,7 +238,7 @@ router.post('/upload-jar/chunked/init', ensureRole('admin'), (req, res) => {
       createdAt: Date.now(),
     });
 
-    console.log(`[BurpActivation] Chunked upload initialized: ${uploadId} (${totalChunks} chunks, ${(totalSize / 1024 / 1024).toFixed(1)}MB)`);
+    log.info(`[BurpActivation] Chunked upload initialized: ${uploadId} (${totalChunks} chunks, ${(totalSize / 1024 / 1024).toFixed(1)}MB)`);
 
     res.json({ uploadId, totalChunks: Number(totalChunks) });
   } catch (error: any) {
@@ -295,7 +297,7 @@ router.post('/upload-jar/chunked/:uploadId/complete', ensureRole('admin'), async
     activeChunkedUploads.delete(uploadId);
 
     const stats = fs.statSync(assembledPath);
-    console.log(`[BurpActivation] Chunks reassembled: ${assembledPath} (${(stats.size / 1024 / 1024).toFixed(1)}MB)`);
+    log.info(`[BurpActivation] Chunks reassembled: ${assembledPath} (${(stats.size / 1024 / 1024).toFixed(1)}MB)`);
 
     // Process through activation service
     const result = await burpActivationService.uploadJar(
@@ -406,7 +408,7 @@ router.post('/activate', ensureRole('admin'), async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('[BurpActivation API] Activation failed:', error);
+    log.error('[BurpActivation API] Activation failed:', error);
     await logAudit(user.id, 'burp_activate', '/burp-activation/activate', null, false, req);
     res.status(500).json({
       error: 'Activation failed',
@@ -440,7 +442,7 @@ router.post('/deactivate', ensureRole('admin'), async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('[BurpActivation API] Deactivation failed:', error);
+    log.error('[BurpActivation API] Deactivation failed:', error);
     await logAudit(user.id, 'burp_deactivate', '/burp-activation/deactivate', null, false, req);
     res.status(500).json({
       error: 'Deactivation failed',
@@ -474,7 +476,7 @@ router.delete('/jar', ensureRole('admin'), async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('[BurpActivation API] JAR removal failed:', error);
+    log.error('[BurpActivation API] JAR removal failed:', error);
     await logAudit(user.id, 'burp_jar_remove', '/burp-activation/jar', null, false, req);
     res.status(500).json({
       error: 'JAR removal failed',
@@ -508,7 +510,7 @@ router.delete('/license', ensureRole('admin'), async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('[BurpActivation API] License removal failed:', error);
+    log.error('[BurpActivation API] License removal failed:', error);
     await logAudit(user.id, 'burp_license_remove', '/burp-activation/license', null, false, req);
     res.status(500).json({
       error: 'License removal failed',
@@ -530,7 +532,7 @@ router.get('/health', async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error('[BurpActivation API] Health check failed:', error);
+    log.error('[BurpActivation API] Health check failed:', error);
     res.status(500).json({
       healthy: false,
       error: error instanceof Error ? error.message : 'Health check failed',

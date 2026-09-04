@@ -8,6 +8,8 @@ import * as agentBackupService from "../../services/agent-backup-service";
 import { loadSkillSummary } from "../../services/skills/skill-loader";
 import type { ToolSkillSummary } from "../../services/agent-prompt-generator";
 import { syncAgentPromptForToolset } from "../../services/agents/tool-skill-prompt-sync";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("agents");
 
 const router = Router();
 
@@ -55,7 +57,7 @@ router.post("/admin/reseed", ensureRole("admin"), async (req, res) => {
       names: allAgents.map((a) => a.name),
     });
   } catch (error: any) {
-    console.error("[agents] admin reseed failed:", error);
+    log.error("[agents] admin reseed failed:", error);
     await logAudit(user.id, "admin_reseed_agents", "/agents/admin/reseed", error?.message || "failed", false, req);
     res.status(500).json({ error: "Reseed failed", details: error?.message });
   }
@@ -85,7 +87,7 @@ router.get("/admin/backups", ensureRole("admin"), async (req, res) => {
     await logAudit(user.id, "admin_backup_list", "/agents/admin/backups", `${result.length} agents`, true, req);
     res.json(result);
   } catch (error: any) {
-    console.error("[agents] admin backups list failed:", error);
+    log.error("[agents] admin backups list failed:", error);
     res.status(500).json({ error: "Failed to list backups", details: error?.message });
   }
 });
@@ -103,7 +105,7 @@ router.get("/admin/backups/:slug/:snapshotId", ensureRole("admin"), async (req, 
     await logAudit(user.id, "admin_backup_get", `/agents/admin/backups/${slug}/${snapshotId}`, slug, true, req);
     res.json(payload);
   } catch (error: any) {
-    console.error("[agents] admin backup get failed:", error);
+    log.error("[agents] admin backup get failed:", error);
     res.status(500).json({ error: "Failed to read snapshot", details: error?.message });
   }
 });
@@ -133,7 +135,7 @@ router.post("/admin/restore", ensureRole("admin"), async (req, res) => {
     }
     res.json(result);
   } catch (error: any) {
-    console.error("[agents] admin restore failed:", error);
+    log.error("[agents] admin restore failed:", error);
     await logAudit(user.id, "admin_restore_agent", "/agents/admin/restore", agentName, false, req);
     res.status(500).json({ error: "Restore failed", details: error?.message });
   }
@@ -161,7 +163,7 @@ router.post("/admin/restore-all", ensureRole("admin"), async (req, res) => {
     );
     res.json({ results });
   } catch (error: any) {
-    console.error("[agents] admin restore-all failed:", error);
+    log.error("[agents] admin restore-all failed:", error);
     await logAudit(user.id, "admin_restore_all", "/agents/admin/restore-all", error?.message || "failed", false, req);
     res.status(500).json({ error: "Restore-all failed", details: error?.message });
   }
@@ -214,7 +216,7 @@ router.get("/", async (_req, res) => {
 
     res.json({ agents: enrichedAgents });
   } catch (error: any) {
-    console.error("[agents] GET / failed:", error);
+    log.error("[agents] GET / failed:", error);
     res.status(500).json({ error: "Failed to list agents", details: error?.message || "Internal server error" });
   }
 });
@@ -367,8 +369,14 @@ router.post("/workflow-templates", ensureRole("admin", "operator"), async (req, 
 // ============================================================================
 
 // GET /api/v1/agents/:id - Get agent details
-router.get("/:id", async (req, res) => {
+router.get("/:id", async (req, res, next) => {
   const { id } = req.params;
+
+  // Skip if this is not a UUID — let later single-segment routes such as
+  // /workflows and /capabilities handle it instead of 404-ing here.
+  if (!id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+    return next();
+  }
 
   try {
     const result = await db
@@ -438,7 +446,7 @@ router.put("/:id", ensureRole("admin", "operator"), async (req, res) => {
     // failure inside the sync only logs (the PUT itself stays a 200).
     if (toolsetChanged(prior?.config, result[0]?.config)) {
       void syncAgentPromptForToolset(id, { reason: "toolset_updated" }).catch((err) => {
-        console.error(`[agents.PUT] tool-skill sync failed for ${id}:`, err);
+        log.error(`[agents.PUT] tool-skill sync failed for ${id}:`, err);
       });
     }
 
@@ -954,7 +962,7 @@ router.post("/surface-assessment/trigger", ensureRole("admin", "operator"), asyn
 
     // Trigger async - don't wait for completion
     surfaceAssessmentAgent.processOperation(operationId, user.id).catch((err: Error) => {
-      console.error("Surface Assessment Agent failed:", err);
+      log.error("Surface Assessment Agent failed:", err);
     });
 
     await logAudit(user.id, "trigger_surface_assessment", "/agents/surface-assessment/trigger", operationId, true, req);
@@ -996,7 +1004,7 @@ router.post("/web-hacker/trigger", ensureRole("admin", "operator"), async (req, 
 
     // Trigger async - don't wait for completion
     webHackerAgent.processOperation(operationId, user.id).catch((err: Error) => {
-      console.error("Web Hacker Agent failed:", err);
+      log.error("Web Hacker Agent failed:", err);
     });
 
     await logAudit(user.id, "trigger_web_hacker", "/agents/web-hacker/trigger", operationId, true, req);
@@ -1013,35 +1021,6 @@ router.get("/web-hacker/status", async (_req, res) => {
   try {
     const { webHackerAgent } = await import("../../services/agents/web-hacker-agent");
     const status = webHackerAgent.getStatus();
-    res.json({ status });
-  } catch (error: any) {
-    res.status(500).json({ error: "Failed to get status", details: error?.message });
-  }
-});
-
-// POST /api/v1/agents/tool-connector/poll - Manually trigger Tool Connector poll
-router.post("/tool-connector/poll", ensureRole("admin", "operator"), async (req, res) => {
-  const user = req.user as any;
-
-  try {
-    const { toolConnectorAgent } = await import("../../services/agents/tool-connector-agent");
-
-    const tools = await toolConnectorAgent.poll();
-
-    await logAudit(user.id, "trigger_tool_connector_poll", "/agents/tool-connector/poll", null, true, req);
-
-    res.json({ message: "Tool registry updated", toolsFound: tools.length, tools });
-  } catch (error: any) {
-    await logAudit(user.id, "trigger_tool_connector_poll", "/agents/tool-connector/poll", null, false, req);
-    res.status(500).json({ error: "Failed to poll tools", details: error?.message });
-  }
-});
-
-// GET /api/v1/agents/tool-connector/status - Get Tool Connector Agent status
-router.get("/tool-connector/status", async (_req, res) => {
-  try {
-    const { toolConnectorAgent } = await import("../../services/agents/tool-connector-agent");
-    const status = toolConnectorAgent.getStatus();
     res.json({ status });
   } catch (error: any) {
     res.status(500).json({ error: "Failed to get status", details: error?.message });
@@ -1116,7 +1095,7 @@ router.post("/workflows/execute", ensureRole("admin", "operator"), async (req, r
 
     // Execute async
     dynamicWorkflowOrchestrator.executeWorkflow(workflowId).catch((err: Error) => {
-      console.error("Workflow execution failed:", err);
+      log.error("Workflow execution failed:", err);
     });
 
     await logAudit(user.id, "execute_workflow", "/agents/workflows/execute", workflowId, true, req);
@@ -1206,7 +1185,6 @@ router.get("/system/status", async (_req, res) => {
     // Get individual agent statuses
     let surfaceAssessmentStatus = null;
     let webHackerStatus = null;
-    let toolConnectorStatus = null;
 
     try {
       const { surfaceAssessmentAgent } = await import("../../services/agents/surface-assessment-agent");
@@ -1222,20 +1200,12 @@ router.get("/system/status", async (_req, res) => {
       // Agent not loaded
     }
 
-    try {
-      const { toolConnectorAgent } = await import("../../services/agents/tool-connector-agent");
-      toolConnectorStatus = toolConnectorAgent.getStatus();
-    } catch (e) {
-      // Agent not loaded
-    }
-
     res.json({
       isInitialized,
       config,
       agents: {
         surfaceAssessment: surfaceAssessmentStatus,
         webHacker: webHackerStatus,
-        toolConnector: toolConnectorStatus,
       },
     });
   } catch (error: any) {

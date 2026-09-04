@@ -28,9 +28,9 @@ interface CertificateConfig {
 function ensureCaDirectory(): void {
   if (!fs.existsSync(CA_DIR)) {
     fs.mkdirSync(CA_DIR, { recursive: true });
-    console.log(`✓ Created CA directory: ${CA_DIR}`);
+    log.info(`✓ Created CA directory: ${CA_DIR}`);
   } else {
-    console.log(`✓ CA directory already exists: ${CA_DIR}`);
+    log.info(`✓ CA directory already exists: ${CA_DIR}`);
   }
 }
 
@@ -55,7 +55,7 @@ function generateSubject(config: CertificateConfig): string {
  * Generate Certificate Authority
  */
 function generateCA(): void {
-  console.log("\n📜 Generating Certificate Authority...");
+  log.info("\n📜 Generating Certificate Authority...");
 
   const caConfig: CertificateConfig = {
     country: "US",
@@ -71,19 +71,19 @@ function generateCA(): void {
   const caCertPath = path.join(CA_DIR, "ca.crt");
 
   if (fs.existsSync(caCertPath)) {
-    console.log("  ⚠ CA certificate already exists, skipping generation");
+    log.info("  ⚠ CA certificate already exists, skipping generation");
     return;
   }
 
   // Generate CA private key (4096-bit RSA)
-  console.log("  → Generating CA private key...");
+  log.info("  → Generating CA private key...");
   execSync(
     `openssl genrsa -out "${caKeyPath}" 4096`,
     { stdio: "inherit" }
   );
 
   // Generate CA certificate
-  console.log("  → Generating CA certificate...");
+  log.info("  → Generating CA certificate...");
   execSync(
     `openssl req -new -x509 -days ${CERT_VALIDITY_DAYS} ` +
     `-key "${caKeyPath}" -out "${caCertPath}" ` +
@@ -95,15 +95,15 @@ function generateCA(): void {
   fs.chmodSync(caKeyPath, 0o600);
   fs.chmodSync(caCertPath, 0o644);
 
-  console.log(`✓ CA certificate generated: ${caCertPath}`);
-  console.log(`✓ CA private key secured: ${caKeyPath}`);
+  log.info(`✓ CA certificate generated: ${caCertPath}`);
+  log.info(`✓ CA private key secured: ${caKeyPath}`);
 }
 
 /**
  * Generate Server Certificate
  */
 function generateServerCertificate(): void {
-  console.log("\n🔐 Generating Server Certificate...");
+  log.info("\n🔐 Generating Server Certificate...");
 
   const serverConfig: CertificateConfig = {
     country: "US",
@@ -121,19 +121,19 @@ function generateServerCertificate(): void {
   const serverExtPath = path.join(CA_DIR, "server.ext");
 
   if (fs.existsSync(serverCertPath)) {
-    console.log("  ⚠ Server certificate already exists, skipping generation");
+    log.info("  ⚠ Server certificate already exists, skipping generation");
     return;
   }
 
   // Generate server private key
-  console.log("  → Generating server private key...");
+  log.info("  → Generating server private key...");
   execSync(
     `openssl genrsa -out "${serverKeyPath}" 2048`,
     { stdio: "inherit" }
   );
 
   // Generate server CSR
-  console.log("  → Generating server certificate signing request...");
+  log.info("  → Generating server certificate signing request...");
   execSync(
     `openssl req -new -key "${serverKeyPath}" -out "${serverCsrPath}" ` +
     `-subj "${generateSubject(serverConfig)}"`,
@@ -155,7 +155,7 @@ IP.2 = 0.0.0.0
   fs.writeFileSync(serverExtPath, extConfig.trim());
 
   // Sign server certificate with CA
-  console.log("  → Signing server certificate with CA...");
+  log.info("  → Signing server certificate with CA...");
   const caKeyPath = path.join(CA_DIR, "ca.key");
   const caCertPath = path.join(CA_DIR, "ca.crt");
 
@@ -176,52 +176,52 @@ IP.2 = 0.0.0.0
   fs.unlinkSync(serverCsrPath);
   fs.unlinkSync(serverExtPath);
 
-  console.log(`✓ Server certificate generated: ${serverCertPath}`);
-  console.log(`✓ Server private key secured: ${serverKeyPath}`);
+  log.info(`✓ Server certificate generated: ${serverCertPath}`);
+  log.info(`✓ Server private key secured: ${serverKeyPath}`);
 }
 
 /**
  * Verify certificates
  */
 function verifyCertificates(): void {
-  console.log("\n🔍 Verifying Certificates...");
+  log.info("\n🔍 Verifying Certificates...");
 
   const caCertPath = path.join(CA_DIR, "ca.crt");
   const serverCertPath = path.join(CA_DIR, "server.crt");
 
   // Verify CA certificate
-  console.log("  → Verifying CA certificate...");
+  log.info("  → Verifying CA certificate...");
   try {
     execSync(`openssl x509 -in "${caCertPath}" -noout -text | grep "CA:TRUE"`, {
       stdio: "pipe",
     });
-    console.log("    ✓ CA certificate is valid");
+    log.info("    ✓ CA certificate is valid");
   } catch (error) {
-    console.error("    ✗ CA certificate verification failed");
+    log.error("    ✗ CA certificate verification failed");
     process.exit(1);
   }
 
   // Verify server certificate chain
-  console.log("  → Verifying server certificate chain...");
+  log.info("  → Verifying server certificate chain...");
   try {
     execSync(`openssl verify -CAfile "${caCertPath}" "${serverCertPath}"`, {
       stdio: "inherit",
     });
-    console.log("    ✓ Server certificate chain is valid");
+    log.info("    ✓ Server certificate chain is valid");
   } catch (error) {
-    console.error("    ✗ Server certificate verification failed");
+    log.error("    ✗ Server certificate verification failed");
     process.exit(1);
   }
 
   // Display certificate information
-  console.log("\n📋 Certificate Information:");
+  log.info("\n📋 Certificate Information:");
 
-  console.log("\n  CA Certificate:");
+  log.info("\n  CA Certificate:");
   execSync(`openssl x509 -in "${caCertPath}" -noout -subject -dates`, {
     stdio: "inherit",
   });
 
-  console.log("\n  Server Certificate:");
+  log.info("\n  Server Certificate:");
   execSync(`openssl x509 -in "${serverCertPath}" -noout -subject -dates`, {
     stdio: "inherit",
   });
@@ -231,17 +231,17 @@ function verifyCertificates(): void {
  * Main execution
  */
 async function main() {
-  console.log("═══════════════════════════════════════════════════════════");
-  console.log("  rust-nexus mTLS Certificate Authority Setup");
-  console.log("═══════════════════════════════════════════════════════════\n");
+  log.info("═══════════════════════════════════════════════════════════");
+  log.info("  rust-nexus mTLS Certificate Authority Setup");
+  log.info("═══════════════════════════════════════════════════════════\n");
 
   try {
     // Check if OpenSSL is available
     try {
       execSync("openssl version", { stdio: "pipe" });
     } catch (error) {
-      console.error("✗ OpenSSL is not installed or not in PATH");
-      console.error("  Please install OpenSSL to continue");
+      log.error("✗ OpenSSL is not installed or not in PATH");
+      log.error("  Please install OpenSSL to continue");
       process.exit(1);
     }
 
@@ -250,26 +250,28 @@ async function main() {
     generateServerCertificate();
     verifyCertificates();
 
-    console.log("\n═══════════════════════════════════════════════════════════");
-    console.log("✓ mTLS Certificate Authority setup completed successfully!");
-    console.log("═══════════════════════════════════════════════════════════\n");
-    console.log("Certificate files:");
-    console.log(`  CA Certificate:     ${path.join(CA_DIR, "ca.crt")}`);
-    console.log(`  CA Private Key:     ${path.join(CA_DIR, "ca.key")} (keep secure!)`);
-    console.log(`  Server Certificate: ${path.join(CA_DIR, "server.crt")}`);
-    console.log(`  Server Private Key: ${path.join(CA_DIR, "server.key")} (keep secure!)`);
-    console.log("\nNext steps:");
-    console.log("  1. Start the rust-nexus controller service");
-    console.log("  2. Generate client certificates for implants");
-    console.log("  3. Deploy implants to target systems\n");
+    log.info("\n═══════════════════════════════════════════════════════════");
+    log.info("✓ mTLS Certificate Authority setup completed successfully!");
+    log.info("═══════════════════════════════════════════════════════════\n");
+    log.info("Certificate files:");
+    log.info(`  CA Certificate:     ${path.join(CA_DIR, "ca.crt")}`);
+    log.info(`  CA Private Key:     ${path.join(CA_DIR, "ca.key")} (keep secure!)`);
+    log.info(`  Server Certificate: ${path.join(CA_DIR, "server.crt")}`);
+    log.info(`  Server Private Key: ${path.join(CA_DIR, "server.key")} (keep secure!)`);
+    log.info("\nNext steps:");
+    log.info("  1. Start the rust-nexus controller service");
+    log.info("  2. Generate client certificates for implants");
+    log.info("  3. Deploy implants to target systems\n");
   } catch (error) {
-    console.error("\n✗ Setup failed:", error);
+    log.error("\n✗ Setup failed:", error);
     process.exit(1);
   }
 }
 
 // Run if executed directly
 import { fileURLToPath } from "url";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("setup-mtls-ca");
 const __filename = fileURLToPath(import.meta.url);
 if (process.argv[1] === __filename || process.argv[1]?.endsWith("setup-mtls-ca.ts")) {
   main();

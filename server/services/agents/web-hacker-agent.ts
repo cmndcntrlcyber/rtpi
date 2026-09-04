@@ -27,6 +27,8 @@ import { DockerExecutor } from '../docker-executor';
 import { eq, and, inArray, like, or } from 'drizzle-orm';
 import { EventEmitter } from 'events';
 import { ToolExecutionLoop, LoopResult } from './tool-execution-loop';
+import { createLogger } from '../../lib/logger';
+const log = createLogger("web-hacker-agent");
 
 // ============================================================================
 // Types
@@ -170,7 +172,7 @@ export class WebHackerAgent extends EventEmitter {
 
     if (existingAgent) {
       this.agentId = existingAgent.id;
-      console.log(`Web Hacker Agent found: ${this.agentId}`);
+      log.info(`Web Hacker Agent found: ${this.agentId}`);
     } else {
       const [newAgent] = await db
         .insert(agents)
@@ -191,7 +193,7 @@ export class WebHackerAgent extends EventEmitter {
         })
         .returning();
       this.agentId = newAgent.id;
-      console.log(`Web Hacker Agent created: ${this.agentId}`);
+      log.info(`Web Hacker Agent created: ${this.agentId}`);
     }
 
     // Register with dynamic workflow orchestrator
@@ -236,9 +238,9 @@ export class WebHackerAgent extends EventEmitter {
           },
         ]
       );
-      console.log('Web Hacker Agent registered with orchestrator');
+      log.info('Web Hacker Agent registered with orchestrator');
     } catch (error) {
-      console.warn('Could not register with orchestrator:', error);
+      log.warn('Could not register with orchestrator:', error);
     }
 
     // Ensure custom templates directory exists
@@ -256,7 +258,7 @@ export class WebHackerAgent extends EventEmitter {
         { timeout: 10000 }
       );
     } catch (error) {
-      console.warn('Could not create custom templates directory:', error);
+      log.warn('Could not create custom templates directory:', error);
     }
   }
 
@@ -264,7 +266,7 @@ export class WebHackerAgent extends EventEmitter {
    * Process an operation - main entry point
    */
   async processOperation(operationId: string, userId: string): Promise<ExploitationResult[]> {
-    console.log(`Web Hacker Agent: Processing operation ${operationId}`);
+    log.info(`Web Hacker Agent: Processing operation ${operationId}`);
     this.emit('operation_started', operationId);
 
     // Update agent status
@@ -275,12 +277,12 @@ export class WebHackerAgent extends EventEmitter {
       const vulnerabilityTargets = await this.getVulnerabilityTargets(operationId);
 
       if (vulnerabilityTargets.length === 0) {
-        console.log('Web Hacker Agent: No vulnerability targets found');
+        log.info('Web Hacker Agent: No vulnerability targets found');
         await this.updateAgentStatus('idle');
         return [];
       }
 
-      console.log(`Web Hacker Agent: Found ${vulnerabilityTargets.length} vulnerability targets`);
+      log.info(`Web Hacker Agent: Found ${vulnerabilityTargets.length} vulnerability targets`);
       this.emit('targets_identified', { operationId, count: vulnerabilityTargets.length });
 
       const results: ExploitationResult[] = [];
@@ -292,7 +294,7 @@ export class WebHackerAgent extends EventEmitter {
           results.push(result);
           this.emit('target_processed', { operationId, targetId: target.id, result });
         } catch (error) {
-          console.error(`Failed to process target ${target.id}:`, error);
+          log.error(`Failed to process target ${target.id}:`, error);
           results.push({
             targetId: target.id,
             vulnerabilityName: target.name,
@@ -311,7 +313,7 @@ export class WebHackerAgent extends EventEmitter {
 
       return results;
     } catch (error) {
-      console.error(`Web Hacker Agent failed for operation ${operationId}:`, error);
+      log.error(`Web Hacker Agent failed for operation ${operationId}:`, error);
       await this.updateAgentStatus('error');
       this.emit('operation_failed', { operationId, error });
       throw error;
@@ -394,12 +396,12 @@ export class WebHackerAgent extends EventEmitter {
     operationId: string,
     userId: string
   ): Promise<ExploitationResult> {
-    console.log(`Web Hacker Agent: Processing vulnerability "${target.name}" on ${target.value}`);
+    log.info(`Web Hacker Agent: Processing vulnerability "${target.name}" on ${target.value}`);
     const startTime = Date.now();
 
     // Step 2: Select appropriate templates
     const templates = await this.selectTemplates(target);
-    console.log(`Web Hacker Agent: Selected ${templates.length} template paths`);
+    log.info(`Web Hacker Agent: Selected ${templates.length} template paths`);
 
     // Step 3: Execute nuclei scan with selected templates
     let scanResult = await this.executeScan(target, templates, operationId, userId);
@@ -412,7 +414,7 @@ export class WebHackerAgent extends EventEmitter {
       target.severity !== 'info' &&
       this.config.enableCustomTemplateGeneration
     ) {
-      console.log('Web Hacker Agent: Generating custom template...');
+      log.info('Web Hacker Agent: Generating custom template...');
 
       const customTemplate = await this.generateCustomTemplate(target, operationId);
 
@@ -661,7 +663,7 @@ export class WebHackerAgent extends EventEmitter {
       const templateContent = await this.callAI(prompt);
 
       if (!templateContent || !templateContent.includes('id:')) {
-        console.warn('AI did not generate valid template');
+        log.warn('AI did not generate valid template');
         return null;
       }
 
@@ -690,7 +692,7 @@ export class WebHackerAgent extends EventEmitter {
         operationId,
       };
     } catch (error) {
-      console.error('Failed to generate custom template:', error);
+      log.error('Failed to generate custom template:', error);
       return null;
     }
   }
@@ -711,7 +713,7 @@ export class WebHackerAgent extends EventEmitter {
       });
       return result.response.text;
     } catch (error) {
-      console.error('AI call failed:', error);
+      log.error('AI call failed:', error);
       return '';
     }
   }
@@ -731,9 +733,9 @@ TEMPLATE_EOF`,
         { container: 'rtpi-tools', timeout: 10000 }
       );
 
-      console.log(`Web Hacker Agent: Wrote custom template to ${template.path}`);
+      log.info(`Web Hacker Agent: Wrote custom template to ${template.path}`);
     } catch (error) {
-      console.error('Failed to write template to disk:', error);
+      log.error('Failed to write template to disk:', error);
     }
 
     // Save to database
@@ -754,7 +756,7 @@ TEMPLATE_EOF`,
         },
       });
     } catch (error) {
-      console.error('Failed to save template to database:', error);
+      log.error('Failed to save template to database:', error);
     }
 
     this.emit('template_generated', template);

@@ -1,8 +1,11 @@
 import { EventEmitter } from "events";
+import { createHash } from "crypto";
 import { db } from "../db";
-import { agents, mcpServers } from "@shared/schema";
+import { agents, mcpServers, notifications, users } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { mcpInvoker } from "./agents/mcp-invoker";
+import { createLogger } from '../lib/logger';
+const log = createLogger("agent-mcp-connector");
 
 /**
  * MCP Tool Schema - describes a tool available from an MCP server
@@ -97,7 +100,7 @@ class AgentMCPConnector extends EventEmitter {
    * Start the connector service
    */
   async start(): Promise<void> {
-    console.log("[AgentMCPConnector] Starting service...");
+    log.info("[AgentMCPConnector] Starting service...");
 
     // Initial discovery
     await this.discoverAllServerCapabilities();
@@ -115,7 +118,7 @@ class AgentMCPConnector extends EventEmitter {
     }, 5 * 60 * 1000);
 
     this.emit("started");
-    console.log("[AgentMCPConnector] Service started");
+    log.info("[AgentMCPConnector] Service started");
   }
 
   /**
@@ -151,11 +154,11 @@ class AgentMCPConnector extends EventEmitter {
           restored += attachments.length;
         }
       }
-      console.log(
+      log.info(
         `[AgentMCPConnector] Rehydrated ${restored} attachment(s) across ${this.agentAttachments.size} agent(s) from agents.config`,
       );
     } catch (err) {
-      console.error("[AgentMCPConnector] Attachment rehydration failed (non-fatal):", err);
+      log.error("[AgentMCPConnector] Attachment rehydration failed (non-fatal):", err);
     }
   }
 
@@ -168,7 +171,7 @@ class AgentMCPConnector extends EventEmitter {
       this.discoveryInterval = null;
     }
     this.emit("stopped");
-    console.log("[AgentMCPConnector] Service stopped");
+    log.info("[AgentMCPConnector] Service stopped");
   }
 
   /**
@@ -190,7 +193,7 @@ class AgentMCPConnector extends EventEmitter {
       .limit(1);
 
     if (!agent) {
-      console.error(`[AgentMCPConnector] Agent ${agentId} not found`);
+      log.error(`[AgentMCPConnector] Agent ${agentId} not found`);
       return false;
     }
 
@@ -202,7 +205,7 @@ class AgentMCPConnector extends EventEmitter {
       .limit(1);
 
     if (!server) {
-      console.error(`[AgentMCPConnector] MCP server ${mcpServerId} not found`);
+      log.error(`[AgentMCPConnector] MCP server ${mcpServerId} not found`);
       return false;
     }
 
@@ -274,7 +277,7 @@ class AgentMCPConnector extends EventEmitter {
       })
       .where(eq(agents.id, agentId));
 
-    console.log(`[AgentMCPConnector] Agent ${agent.name} attached to MCP server ${server.name}`);
+    log.info(`[AgentMCPConnector] Agent ${agent.name} attached to MCP server ${server.name}`);
     this.emit("agent_attached", { agentId, mcpServerId, attachment });
 
     return true;
@@ -351,18 +354,19 @@ class AgentMCPConnector extends EventEmitter {
       .limit(1);
 
     if (!server) {
-      console.error(`[AgentMCPConnector] Server ${serverId} not found`);
+      log.error(`[AgentMCPConnector] Server ${serverId} not found`);
       return null;
     }
 
-    console.log(`[AgentMCPConnector] Discovering capabilities from ${server.name}...`);
+    log.info(`[AgentMCPConnector] Discovering capabilities from ${server.name}...`);
 
     // Prefer LIVE discovery: query the running server's actual tools/list over
     // JSON-RPC. Static `inferToolsFromServerConfig` is only a fallback for
     // servers that aren't running or fail the round-trip — otherwise agents get
     // offered tools the server doesn't have (and miss tools it does).
     let tools = await this.discoverLiveTools(server);
-    if (tools.length === 0) {
+    const isLive = tools.length > 0;
+    if (!isLive) {
       tools = this.inferToolsFromServerConfig(server);
     }
 
@@ -375,10 +379,101 @@ class AgentMCPConnector extends EventEmitter {
 
     this.serverCapabilities.set(serverId, capabilities);
 
-    console.log(`[AgentMCPConnector] Discovered ${tools.length} tools from ${server.name}`);
+    log.info(`[AgentMCPConnector] Discovered ${tools.length} tools from ${server.name}`);
     this.emit("server_discovered", { serverId, capabilities });
 
+    // v3.1.10 — Capability drift detection (only for live-discovered tools)
+    if (isLive) {
+      await this.detectCapabilityDrift(serverId, server.name, tools);
+    }
+
     return capabilities;
+  }
+
+  private computeToolsHash(tools: MCPToolSchema[]): string {
+    const canonical = tools
+      .map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
+  }
+
+  private async detectCapabilityDrift(
+    serverId: string,
+    serverName: string,
+    tools: MCPToolSchema[],
+  ): Promise<void> {
+    try {
+      const newHash = this.computeToolsHash(tools);
+
+      const [row] = await db
+        .select({
+          lastCapabilityHash: mcpServers.lastCapabilityHash,
+          lastCapabilitySnapshot: mcpServers.lastCapabilitySnapshot,
+        })
+        .from(mcpServers)
+        .where(eq(mcpServers.id, serverId))
+        .limit(1);
+
+      const oldHash = row?.lastCapabilityHash;
+
+      if (oldHash && oldHash !== newHash) {
+        const oldSnapshot = (Array.isArray(row?.lastCapabilitySnapshot) ? row.lastCapabilitySnapshot : []) as { name: string }[];
+        const oldNames = new Set(oldSnapshot.map((t) => t.name));
+        const newNames = new Set(tools.map((t) => t.name));
+
+        const added = tools.filter((t) => !oldNames.has(t.name)).map((t) => t.name);
+        const removed = oldSnapshot.filter((t) => !newNames.has(t.name)).map((t) => t.name);
+
+        log.warn(
+          `[AgentMCPConnector] Capability drift on ${serverName}: added=[${added.join(",")}] removed=[${removed.join(",")}]`,
+        );
+
+        this.emit("capability_drift", { serverId, serverName, added, removed, oldHash, newHash });
+
+        await this.notifyCapabilityDrift(serverName, serverId, added, removed);
+      }
+
+      const toolSnapshot = tools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }));
+      await db
+        .update(mcpServers)
+        .set({ lastCapabilityHash: newHash, lastCapabilitySnapshot: toolSnapshot })
+        .where(eq(mcpServers.id, serverId));
+    } catch (err) {
+      log.warn(`[AgentMCPConnector] Drift detection failed for ${serverId} (non-fatal):`, err);
+    }
+  }
+
+  private async notifyCapabilityDrift(
+    serverName: string,
+    serverId: string,
+    added: string[],
+    removed: string[],
+  ): Promise<void> {
+    try {
+      const admins = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.role, "admin"));
+
+      if (admins.length === 0) return;
+
+      const parts: string[] = [];
+      if (added.length > 0) parts.push(`added: ${added.join(", ")}`);
+      if (removed.length > 0) parts.push(`removed: ${removed.join(", ")}`);
+      const changesSummary = parts.join("; ");
+
+      for (const admin of admins) {
+        await db.insert(notifications).values({
+          userId: admin.id,
+          type: "capability_drift",
+          title: `MCP capability drift: ${serverName}`,
+          message: `Tools changed on "${serverName}": ${changesSummary}`,
+          metadata: { serverId, added, removed },
+        });
+      }
+    } catch (err) {
+      log.warn(`[AgentMCPConnector] drift notification failed for ${serverId}:`, err);
+    }
   }
 
   /**
@@ -407,7 +502,7 @@ class AgentMCPConnector extends EventEmitter {
         };
       });
     } catch (err) {
-      console.warn(
+      log.warn(
         `[AgentMCPConnector] Live tools/list failed for ${server.name}; falling back to static inference:`,
         err instanceof Error ? err.message : err,
       );
@@ -706,7 +801,7 @@ class AgentMCPConnector extends EventEmitter {
         .set({ capabilities })
         .where(eq(agents.id, agentId));
 
-      console.log(`[AgentMCPConnector] Registered capability '${capability}' for agent ${agent.name}`);
+      log.info(`[AgentMCPConnector] Registered capability '${capability}' for agent ${agent.name}`);
     }
   }
 

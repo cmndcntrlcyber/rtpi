@@ -244,7 +244,7 @@ export default function Dashboard() {
   const { vulnerabilities, loading: vulnLoading, error: vulnError } = useVulnerabilities();
   const { agents, loading: agentsLoading, error: agentsError } = useAgents();
   const { agents: reporters, loading: reportersLoading } = useReporterAgents();
-  const { runningWorkflows, allNonRunning, getWorkflowDetails, cancelWorkflow } = useWorkflows();
+  const { runningWorkflows, allNonRunning, getWorkflowDetails, cancelWorkflow, connected, workflowEventTick } = useWorkflows();
 
   // Workflow state
   const [workflowTasksMap, setWorkflowTasksMap] = useState<Record<string, any[]>>({});
@@ -274,24 +274,25 @@ export default function Dashboard() {
     }
   };
 
-  // Poll tasks for running workflows
+  // Fetch tasks for running workflows. Uses one batched /tasks-bulk call
+  // instead of N per-workflow requests. When the WebSocket is live this re-runs
+  // on workflow_update pushes (via workflowEventTick) with a slow 15s reconcile;
+  // when offline it falls back to a 5s poll.
   useEffect(() => {
     const loadTasksForWorkflows = async () => {
-      const activeWorkflows = runningWorkflows.filter(
-        (w) => w.status === "running" || w.status === "pending"
-      );
-      if (activeWorkflows.length === 0) return;
+      const activeIds = runningWorkflows
+        .filter((w) => w.status === "running" || w.status === "pending")
+        .map((w) => w.id);
+      if (activeIds.length === 0) return;
 
-      const tasksMap: Record<string, any[]> = {};
-      for (const workflow of activeWorkflows) {
-        try {
-          const response = await api.get<{ tasks: any[] }>(`/agent-workflows/${workflow.id}/tasks`);
-          tasksMap[workflow.id] = response.tasks || [];
-        } catch {
-          // ignore
-        }
+      try {
+        const response = await api.get<{ tasks: Record<string, any[]> }>(
+          `/agent-workflows/tasks-bulk?ids=${activeIds.join(",")}`,
+        );
+        setWorkflowTasksMap((prev) => ({ ...prev, ...(response.tasks || {}) }));
+      } catch {
+        // ignore
       }
-      setWorkflowTasksMap((prev) => ({ ...prev, ...tasksMap }));
     };
 
     if (runningWorkflows.length > 0) loadTasksForWorkflows();
@@ -299,9 +300,9 @@ export default function Dashboard() {
       if (runningWorkflows.some((w) => w.status === "running" || w.status === "pending")) {
         loadTasksForWorkflows();
       }
-    }, 5000);
+    }, connected ? 15000 : 5000);
     return () => clearInterval(pollInterval);
-  }, [runningWorkflows.length]);
+  }, [runningWorkflows.length, connected, workflowEventTick]);
 
   // Surface assessment full overview data
   const [surfaceData, setSurfaceData] = useState<SurfaceOverviewData>({

@@ -39,6 +39,12 @@ describe("assessToolEvidence", () => {
     expect(r.reason).toMatch(/sentinel/i);
   });
 
+  it("flags the no-target-supplied sentinel when prefixed with binaryPath", () => {
+    const r = assessToolEvidence("msfconsole # no-target-supplied for metasploit", null, "", null);
+    expect(r.hasEvidence).toBe(false);
+    expect(r.reason).toMatch(/sentinel/i);
+  });
+
   it("treats structured parsedOutput as real evidence", () => {
     const r = assessToolEvidence("nmap -sV 10.0.0.1", "10.0.0.1", "", { ports: [{ port: 22, service: "ssh" }] });
     expect(r.hasEvidence).toBe(true);

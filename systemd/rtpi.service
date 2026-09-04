@@ -1,0 +1,70 @@
+# rtpi.service — full RTPI development stack.
+#
+# Starts all Docker Compose profiles, then launches the backend (npm run dev)
+# and frontend (npm run dev:frontend) dev servers. The service stays alive as
+# long as both dev servers are running; if either exits, it stops the other
+# and systemd can restart the whole unit.
+#
+# Install:
+#   sudo bash scripts/install-systemd-units.sh
+#
+# Manual control:
+#   sudo systemctl start rtpi            # bring up everything
+#   sudo systemctl stop rtpi             # graceful shutdown
+#   sudo systemctl restart rtpi          # full restart
+#   sudo systemctl status rtpi           # check state
+#
+# Logs:
+#   journalctl -u rtpi.service -f        # live service output
+#   tail -f logs/backend.log             # backend dev server
+#   tail -f logs/frontend.log            # frontend dev server
+
+[Unit]
+Description=RTPI Development Stack (Docker + backend + frontend)
+Documentation=file:///home/cmndcntrl/code/rtpi/docs/HEALTHCHECK.md
+After=docker.service network-online.target
+Wants=docker.service network-online.target
+# The healers should wait for us to finish bringing the stack up.
+Before=rtpi-watcher.service rtpi-container-healer.timer
+
+[Service]
+Type=simple
+User=cmndcntrl
+Group=cmndcntrl
+WorkingDirectory=/home/cmndcntrl/code/rtpi
+
+EnvironmentFile=-/etc/default/rtpi
+EnvironmentFile=-/home/cmndcntrl/code/rtpi/.env
+
+ExecStart=/home/cmndcntrl/code/rtpi/scripts/rtpi-dev.sh
+
+# Give Docker containers + npm time to start
+TimeoutStartSec=300
+# Give npm + containers time to shut down
+TimeoutStopSec=30
+
+# Forward SIGTERM so the wrapper can clean up child processes
+KillMode=mixed
+KillSignal=SIGTERM
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rtpi
+
+# Restart policy — bring the stack back if a dev server crashes.
+Restart=on-failure
+RestartSec=10
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+# Sandboxing — needs docker socket + home dir access for npm/node_modules.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=false
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

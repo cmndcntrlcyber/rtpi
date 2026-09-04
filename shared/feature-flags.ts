@@ -23,12 +23,22 @@ export const FEATURE_FLAGS = {
   gmlTelemetry: "FF_GML_TELEMETRY",
   a2aCapabilityGate: "FF_A2A_CAPABILITY_GATE",
   toolSkillGeneration: "FF_TOOL_SKILL_GENERATION",
+  requireToolEvidence: "FF_REQUIRE_TOOL_EVIDENCE",
   bugHunter: "FF_BUG_HUNTER",
   agentScopedAttackTree: "FF_AGENT_SCOPED_ATTACK_TREE",
   uiV3Tokens: "FF_UI_V3_TOKENS",
   uiV3Graphite: "FF_UI_V3_GRAPHITE",
   uiV3DensityToggle: "FF_UI_V3_DENSITY_TOGGLE",
   uiV3LazyRoutes: "FF_UI_V3_LAZY_ROUTES",
+  intentAccuracyEngine: "FF_INTENT_ACCURACY_ENGINE",
+  memoryRouter: "FF_MEMORY_ROUTER",
+  judgmentSpace: "FF_JUDGMENT_SPACE",
+  agentPersonas: "FF_AGENT_PERSONAS",
+  loopEngineering: "FF_LOOP_ENGINEERING",
+  crossSessionLearning: "FF_CROSS_SESSION_LEARNING",
+  skillSelfImprovement: "FF_SKILL_SELF_IMPROVEMENT",
+  cloudflareAccess: "FF_CLOUDFLARE_ACCESS",
+  ferryBridge: "FF_FERRY_BRIDGE",
 } as const;
 
 export type FeatureFlagKey = keyof typeof FEATURE_FLAGS;

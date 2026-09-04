@@ -1,3 +1,6 @@
+import { createLogger } from '../lib/logger';
+const log = createLogger("sysreptor-client");
+
 /**
  * SysReptor REST API Client
  *
@@ -264,7 +267,7 @@ class SysReptorClient {
     } catch {
       const fallback =
         process.env.SYSREPTOR_HOST_URL || "http://localhost:9005";
-      console.log(
+      log.info(
         `[SysReptor] DNS for 'rtpi-sysreptor-app' failed; falling back to ${fallback} ` +
           "(set SYSREPTOR_URL to a different value to bypass)",
       );
@@ -715,14 +718,14 @@ class SysReptorClient {
         const result = await this.autoConnect();
         if (result.ok) {
           if (result.action === "minted") {
-            console.log(
+            log.info(
               `[SysReptor] Auto-connect (${trigger}): minted new API token, ` +
                 `persistedToEnv=${result.persistedToEnv === true}`,
             );
           }
         } else if (result.reason !== "container_not_running") {
           // Don't spam logs at startup if sysreptor profile isn't enabled.
-          console.warn(`[SysReptor] Auto-connect (${trigger}) skipped: ${result.message}`);
+          log.warn(`[SysReptor] Auto-connect (${trigger}) skipped: ${result.message}`);
         }
         return result;
       } finally {
@@ -859,7 +862,7 @@ class SysReptorClient {
       // Persistence is best-effort. The in-memory token still works for this
       // process; the operator just needs to set SYSREPTOR_API_TOKEN before
       // restart, or call auto-connect again.
-      console.warn(
+      log.warn(
         `[SysReptor] Auto-connect: minted token but failed to write .env: ${err?.message || err}. ` +
           "Run auto-connect again after restart, or set SYSREPTOR_API_TOKEN manually.",
       );

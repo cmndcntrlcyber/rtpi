@@ -1,62 +1,66 @@
 /**
- * Skill Discovery Service — v2.5
+ * Skill Discovery Service — v3.10.3a
  *
- * TypeScript wrapper that delegates to the Python orchestrator's
- * skill discovery endpoints. Provides caching and local fallback.
+ * Provides skill search and content loading with caching. Routes
+ * through the ferry-based skill catalog backed by nexus-harness.
  */
 
 import type {
   SkillSearchRequest,
-  SkillSearchResponse,
   SkillSearchResult,
-  SkillContentResponse,
 } from "../../shared/types/skill-types";
-import { searchSkills, getSkillContent } from "./langgraph-client";
+import { searchFerrySkills, listFerrySkills } from "./ferry-skill-catalog";
+import { ferryClient } from "./ferry-client";
+import { createLogger } from '../lib/logger';
+const log = createLogger("skill-discovery-service");
 
-// Simple in-memory cache for skill searches
-const searchCache = new Map<string, { data: SkillSearchResponse; expires: number }>();
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const searchCache = new Map<string, { data: SkillSearchResult[]; expires: number }>();
+const CACHE_TTL_MS = 5 * 60 * 1000;
 
 function cacheKey(req: SkillSearchRequest): string {
   return JSON.stringify(req);
 }
 
-/**
- * Search for relevant skills with caching.
- */
 export async function findSkills(req: SkillSearchRequest): Promise<SkillSearchResult[]> {
   const key = cacheKey(req);
   const cached = searchCache.get(key);
   if (cached && cached.expires > Date.now()) {
-    return cached.data.results;
+    return cached.data;
   }
 
-  try {
-    const response = await searchSkills(req);
-    searchCache.set(key, { data: response, expires: Date.now() + CACHE_TTL_MS });
-    return response.results;
-  } catch (error) {
-    // If orchestrator is unavailable, return empty results
-    console.error("[SkillDiscovery] Search failed:", error);
-    return [];
-  }
+  const ferryResults = searchFerrySkills(req.query);
+  const results: SkillSearchResult[] = ferryResults.map((s) => ({
+    name: s.name,
+    skill_path: s.skillPath,
+    domain: s.domain,
+    score: 1.0,
+    snippet: `Harness skill: ${s.skillPath}`,
+  }));
+
+  searchCache.set(key, { data: results, expires: Date.now() + CACHE_TTL_MS });
+  return results;
 }
 
-/**
- * Get full content of a specific skill.
- */
 export async function loadSkill(skillName: string): Promise<string | null> {
+  const skills = listFerrySkills();
+  const match = skills.find(
+    (s) => s.name === skillName || s.skillPath.endsWith(`/${skillName}`),
+  );
+  if (!match) return null;
+
   try {
-    const response = await getSkillContent(skillName);
-    return response.content;
-  } catch {
+    const result = await ferryClient.submitTask({
+      task_id: `skill-load-${skillName}-${Date.now()}`,
+      tool_name: match.skillPath,
+      json_arguments: JSON.stringify({ action: "describe" }),
+    });
+    return result.output;
+  } catch (err) {
+    log.error(`[SkillDiscovery] Failed to load skill ${skillName}:`, err);
     return null;
   }
 }
 
-/**
- * Clear the search cache (e.g., after skills are updated).
- */
 export function clearSkillCache(): void {
   searchCache.clear();
 }

@@ -14,6 +14,8 @@ import {
 } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import type { STIXBundle, STIXObject } from "./stix-parser";
+import { createLogger } from '../lib/logger';
+const log = createLogger("atlas-stix-parser");
 
 /**
  * ATLAS Import statistics
@@ -40,8 +42,8 @@ export async function importATLASSTIXBundle(bundle: STIXBundle): Promise<ATLASIm
     errors: [],
   };
 
-  console.log(`Importing ATLAS STIX bundle: ${bundle.id}`);
-  console.log(`Total objects: ${bundle.objects.length}`);
+  log.info(`Importing ATLAS STIX bundle: ${bundle.id}`);
+  log.info(`Total objects: ${bundle.objects.length}`);
 
   // First pass: Import core objects (tactics, techniques, mitigations)
   for (const obj of bundle.objects) {
@@ -83,7 +85,7 @@ export async function importATLASSTIXBundle(bundle: STIXBundle): Promise<ATLASIm
       }
     } catch (error: any) {
       stats.errors.push(`Error importing ${obj.type} ${obj.id}: ${error.message}`);
-      console.error(`Error importing ATLAS ${obj.type} ${obj.id}:`, error);
+      log.error(`Error importing ATLAS ${obj.type} ${obj.id}:`, error);
     }
   }
 
@@ -95,7 +97,7 @@ export async function importATLASSTIXBundle(bundle: STIXBundle): Promise<ATLASIm
         stats.relationships++;
       } catch (error: any) {
         stats.errors.push(`Error importing relationship ${obj.id}: ${error.message}`);
-        console.error(`Error importing ATLAS relationship ${obj.id}:`, error);
+        log.error(`Error importing ATLAS relationship ${obj.id}:`, error);
       }
     }
   }
@@ -106,7 +108,7 @@ export async function importATLASSTIXBundle(bundle: STIXBundle): Promise<ATLASIm
   // Fourth pass: Link subtechniques to parents
   await linkSubtechniquesToParents();
 
-  console.log("ATLAS import complete:", stats);
+  log.info("ATLAS import complete:", stats);
   return stats;
 }
 

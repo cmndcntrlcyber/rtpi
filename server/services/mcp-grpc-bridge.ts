@@ -2,6 +2,8 @@ import { EventEmitter } from "events";
 import { db } from "../db";
 import { agents, rustNexusImplants, rustNexusTasks } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { createLogger } from '../lib/logger';
+const log = createLogger("mcp-grpc-bridge");
 
 /**
  * MCP Tool Request - represents a tool call from an agent
@@ -66,10 +68,10 @@ class MCPGRPCBridge extends EventEmitter {
   async start(): Promise<void> {
     if (this.isActive) return;
 
-    console.log("[MCPGRPCBridge] Starting MCP-gRPC Bridge service...");
+    log.info("[MCPGRPCBridge] Starting MCP-gRPC Bridge service...");
     this.isActive = true;
     this.emit("started");
-    console.log("[MCPGRPCBridge] MCP-gRPC Bridge service started");
+    log.info("[MCPGRPCBridge] MCP-gRPC Bridge service started");
   }
 
   /**
@@ -78,7 +80,7 @@ class MCPGRPCBridge extends EventEmitter {
   async stop(): Promise<void> {
     if (!this.isActive) return;
 
-    console.log("[MCPGRPCBridge] Stopping MCP-gRPC Bridge service...");
+    log.info("[MCPGRPCBridge] Stopping MCP-gRPC Bridge service...");
 
     // Cancel all pending requests
     for (const [requestId, pending] of this.pendingRequests) {
@@ -89,7 +91,7 @@ class MCPGRPCBridge extends EventEmitter {
 
     this.isActive = false;
     this.emit("stopped");
-    console.log("[MCPGRPCBridge] MCP-gRPC Bridge service stopped");
+    log.info("[MCPGRPCBridge] MCP-gRPC Bridge service stopped");
   }
 
   /**

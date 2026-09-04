@@ -1,0 +1,3 @@
+cloudflare_account_id = "REPLACE_WITH_32_CHAR_HEX_ACCOUNT_ID"
+bucket_name           = "rtpi-releases-c3s"
+location              = "WNAM"

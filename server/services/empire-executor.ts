@@ -15,6 +15,10 @@ import {
 import { eq, and } from "drizzle-orm";
 import { decrypt } from "../utils/encryption";
 import { kasmNginxManager } from "./kasm-nginx-manager";
+import { createLogger } from "../lib/logger";
+import { logToolAudit } from '../auth/middleware';
+
+const log = createLogger("empire-executor");
 
 /**
  * PowerShell Empire C2 Executor
@@ -139,6 +143,7 @@ export interface TaskCreateOptions {
 
 class EmpireExecutor {
   private apiClients = new Map<string, AxiosInstance>();
+  private activePolls = new Map<string, { intervalId: NodeJS.Timeout; resolve: (result: EmpireExecutionResult) => void }>();
 
   /**
    * Get or create an API client for a specific Empire server and user
@@ -293,7 +298,7 @@ class EmpireExecutor {
       return true;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(`[Empire] Connection check failed for ${serverId}: ${errorMsg}`);
+      log.error({ serverId, err: errorMsg }, "Connection check failed");
 
       // If primary URL failed, try auto-switching protocol (HTTP↔HTTPS)
       try {
@@ -314,7 +319,7 @@ class EmpireExecutor {
           const altResponse = await altClient.get("/api/v2/meta/version");
 
           // Auto-fix the URL in the database
-          console.log(`[Empire] Auto-corrected URL to ${altUrl} for server ${serverId}`);
+          log.info({ serverId, url: altUrl }, "Auto-corrected server URL");
           await db
             .update(empireServers)
             .set({
@@ -400,6 +405,8 @@ class EmpireExecutor {
         config: response.data.options,
       }).returning();
 
+      logToolAudit(userId, "empire_create_listener", "empire", createdListener.id, true, { listener: options.name, type: options.listenerType, host: options.host, port: options.port });
+
       // Register dynamic proxy route with Kasm nginx (if enabled)
       try {
         const proxyRoute = await kasmNginxManager.registerListenerProxy(
@@ -409,10 +416,10 @@ class EmpireExecutor {
         );
 
         if (proxyRoute) {
-          console.log(`[EmpireExecutor] Registered proxy route for listener ${options.name}: ${proxyRoute.subdomain}`);
+          log.info({ listener: options.name, subdomain: proxyRoute.subdomain }, "Registered proxy route for listener");
         }
       } catch (proxyError) {
-        console.warn('[EmpireExecutor] Failed to register proxy route (non-fatal):', proxyError);
+        log.warn({ err: proxyError }, "Failed to register proxy route (non-fatal)");
         // Don't fail listener creation if proxy registration fails
       }
 
@@ -532,6 +539,8 @@ class EmpireExecutor {
         createdBy: userId,
         config: additionalOptions || {},
       });
+
+      logToolAudit(userId, "empire_deploy_stager", "empire", null, true, { stagerName, listenerName });
 
       return {
         success: true,
@@ -712,6 +721,7 @@ class EmpireExecutor {
           status: "queued" as any,
           createdBy: userId,
         });
+        logToolAudit(userId, "empire_execute_task", "empire", agent.id, true, { agentName: options.agentName, command: options.command });
       }
 
       return {
@@ -835,6 +845,7 @@ class EmpireExecutor {
           status: "queued" as any,
           createdBy: userId,
         });
+        logToolAudit(userId, "empire_execute_module", "empire", agent.id, true, { agentName, moduleName, options });
       }
 
       return {
@@ -916,6 +927,8 @@ class EmpireExecutor {
         }
       }
 
+      logToolAudit(userId, "empire_credential_harvest", "empire", serverId, true, { count: credentials.length });
+
       return {
         success: true,
         data: { synced: credentials.length },
@@ -979,7 +992,7 @@ class EmpireExecutor {
       });
 
       if (servers.length === 0) {
-        console.log(`[EmpireExecutor] No active Empire servers found, skipping token initialization for user ${userId}`);
+        log.info({ userId }, "No active Empire servers found, skipping token initialization");
         return;
       }
 
@@ -987,18 +1000,99 @@ class EmpireExecutor {
       for (const server of servers) {
         try {
           await this.getUserToken(server.id, userId);
-          console.log(`[EmpireExecutor] Initialized Empire token for user ${userId} on server ${server.name}`);
+          log.info({ userId, server: server.name }, "Initialized Empire token");
         } catch (error) {
-          console.warn(`[EmpireExecutor] Failed to initialize token for user ${userId} on server ${server.name}:`, error);
+          log.warn({ err: error, userId, server: server.name }, "Failed to initialize token");
           // Continue with other servers even if one fails
         }
       }
 
-      console.log(`[EmpireExecutor] Completed token initialization for user ${userId} across ${servers.length} server(s)`);
+      log.info({ userId, serverCount: servers.length }, "Completed token initialization");
     } catch (error) {
-      console.error('[EmpireExecutor] Failed to initialize tokens for user:', error);
+      log.error({ err: error, userId }, "Failed to initialize tokens for user");
       // Don't throw - token initialization should not block user creation
     }
+  }
+
+  /**
+   * Poll for task completion, resolving when output is available or max attempts reached
+   */
+  async pollTaskResult(
+    serverId: string,
+    userId: string,
+    agentName: string,
+    taskId: string,
+    options: {
+      intervalMs?: number;
+      maxAttempts?: number;
+    } = {}
+  ): Promise<EmpireExecutionResult> {
+    const { intervalMs = 5000, maxAttempts = 60 } = options;
+    let attempts = 0;
+
+    return new Promise<EmpireExecutionResult>((resolve) => {
+      const poll = async () => {
+        attempts++;
+        try {
+          const result = await this.getTaskResults(serverId, userId, agentName, taskId);
+
+          if (!result.success) {
+            clearInterval(intervalId);
+            this.activePolls.delete(taskId);
+            resolve(result);
+            return;
+          }
+
+          const taskData = result.data as EmpireTask;
+          if (taskData.output || attempts >= maxAttempts) {
+            clearInterval(intervalId);
+            this.activePolls.delete(taskId);
+
+            if (!taskData.output && attempts >= maxAttempts) {
+              resolve({
+                success: false,
+                error: `Task polling timed out after ${attempts} attempts`,
+                timestamp: new Date().toISOString(),
+              });
+            } else {
+              resolve(result);
+            }
+            return;
+          }
+        } catch (error: any) {
+          clearInterval(intervalId);
+          this.activePolls.delete(taskId);
+          resolve({
+            success: false,
+            error: error.message || "Polling failed",
+            timestamp: new Date().toISOString(),
+          });
+        }
+      };
+
+      const intervalId = setInterval(poll, intervalMs);
+      this.activePolls.set(taskId, { intervalId, resolve });
+      poll();
+    });
+  }
+
+  cancelPoll(taskId: string): boolean {
+    const poll = this.activePolls.get(taskId);
+    if (poll) {
+      clearInterval(poll.intervalId);
+      poll.resolve({
+        success: false,
+        error: "Polling cancelled",
+        timestamp: new Date().toISOString(),
+      });
+      this.activePolls.delete(taskId);
+      return true;
+    }
+    return false;
+  }
+
+  getActivePolls(): string[] {
+    return Array.from(this.activePolls.keys());
   }
 
   /**

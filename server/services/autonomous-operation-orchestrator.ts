@@ -23,6 +23,8 @@ import { operationLeadAgent } from './agents/operation-lead-agent';
 import { technicalReviewerAgent } from './agents/technical-reviewer-agent';
 import { qaAgent } from './agents/qa-agent';
 import { technicalWriterAgent } from './agents/technical-writer-agent';
+import { createLogger } from '../lib/logger';
+const log = createLogger("autonomous-operation-orchestrator");
 
 // ============================================================================
 // Types
@@ -84,7 +86,7 @@ class AutonomousOperationOrchestrator extends EventEmitter {
       this.emit('operation_started', { operationId });
 
       // ── Phase 1: Review ──────────────────────────────────────────────
-      console.log(`[Autonomous] Phase 1: Reviewing operation ${operationId}`);
+      log.info(`[Autonomous] Phase 1: Reviewing operation ${operationId}`);
       await this.initializeAgent(reviewAgent);
 
       const reviewResult = await reviewAgent.executeTask({
@@ -107,7 +109,7 @@ class AutonomousOperationOrchestrator extends EventEmitter {
       this.emit('phase_completed', { operationId, phase: 'review', result: reviewResult });
 
       // ── Phase 2: Technical Execution ─────────────────────────────────
-      console.log(`[Autonomous] Phase 2: Executing ${result.phases.review.taskCount} tasks`);
+      log.info(`[Autonomous] Phase 2: Executing ${result.phases.review.taskCount} tasks`);
       await this.initializeAgent(operationLeadAgent);
 
       const executionResult = await operationLeadAgent.executeTask({
@@ -130,7 +132,7 @@ class AutonomousOperationOrchestrator extends EventEmitter {
       this.emit('phase_completed', { operationId, phase: 'execution', result: executionResult });
 
       // ── Phase 3: Technical Review (Contrarian) ───────────────────────
-      console.log(`[Autonomous] Phase 3: Reviewing findings with contrarian approach`);
+      log.info(`[Autonomous] Phase 3: Reviewing findings with contrarian approach`);
       await this.initializeAgent(technicalReviewerAgent);
 
       const validationResult = await technicalReviewerAgent.executeTask({
@@ -150,7 +152,7 @@ class AutonomousOperationOrchestrator extends EventEmitter {
       this.emit('phase_completed', { operationId, phase: 'validation', result: validationResult });
 
       // ── Phase 4: QA Loop (up to 3 iterations) ───────────────────────
-      console.log(`[Autonomous] Phase 4: QA validation (max ${this.MAX_QA_ITERATIONS} iterations)`);
+      log.info(`[Autonomous] Phase 4: QA validation (max ${this.MAX_QA_ITERATIONS} iterations)`);
       await this.initializeAgent(qaAgent);
 
       let qaIterations = 0;
@@ -158,7 +160,7 @@ class AutonomousOperationOrchestrator extends EventEmitter {
 
       while (qaIterations < this.MAX_QA_ITERATIONS && !qaPassed) {
         qaIterations++;
-        console.log(`[Autonomous] QA iteration ${qaIterations}/${this.MAX_QA_ITERATIONS}`);
+        log.info(`[Autonomous] QA iteration ${qaIterations}/${this.MAX_QA_ITERATIONS}`);
 
         const qaResult = await qaAgent.executeTask({
           taskType: 'check_report_quality',
@@ -181,7 +183,7 @@ class AutonomousOperationOrchestrator extends EventEmitter {
       this.emit('phase_completed', { operationId, phase: 'qa', iterations: qaIterations });
 
       // ── Phase 5: Final Report ────────────────────────────────────────
-      console.log(`[Autonomous] Phase 5: Generating final report`);
+      log.info(`[Autonomous] Phase 5: Generating final report`);
       await this.initializeAgent(technicalWriterAgent);
 
       const reportResult = await technicalWriterAgent.executeTask({
@@ -213,7 +215,7 @@ class AutonomousOperationOrchestrator extends EventEmitter {
 
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`[Autonomous] Operation ${operationId} failed:`, msg);
+      log.error(`[Autonomous] Operation ${operationId} failed:`, msg);
 
       await db.update(operations)
         .set({ status: 'paused' })

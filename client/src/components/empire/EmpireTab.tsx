@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -32,24 +32,50 @@ export default function EmpireTab() {
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
   const [executeTaskOpen, setExecuteTaskOpen] = useState(false);
   const [selectedAgentName, setSelectedAgentName] = useState<string>("");
+  // Keep the latest selected server id available inside the polling interval
+  // without re-registering the timer on every selection change.
+  const selectedServerIdRef = useRef<string | null>(null);
+  const autoConnectInFlight = useRef(false);
 
-  // Fetch Empire servers
-  const fetchServers = async () => {
+  // Fetch Empire servers. Returns the list so callers can chain auto-connect.
+  const fetchServers = async (): Promise<EmpireServer[]> => {
     try {
       const response = await fetch("/api/v1/empire/servers", {
         credentials: "include",
       });
 
       if (response.ok) {
-        const data = await response.json();
+        const data: EmpireServer[] = await response.json();
         setServers(data);
-        if (data.length > 0 && !selectedServerId) {
+        if (data.length > 0 && !selectedServerIdRef.current) {
           setSelectedServerId(data[0].id);
         }
+        return data;
       }
     } catch (error) {
       // Error already shown via toast
       console.error("Operation completed");
+    }
+    return [];
+  };
+
+  // Auto check-connection for every server (fire-and-forget), so the UI
+  // populates connection status without a manual click. Guarded against
+  // overlapping runs from the poll interval.
+  const autoConnectAll = async (list: EmpireServer[]) => {
+    if (autoConnectInFlight.current || list.length === 0) return;
+    autoConnectInFlight.current = true;
+    try {
+      await Promise.allSettled(
+        list.map((s) =>
+          fetch(`/api/v1/empire/servers/${s.id}/check-connection`, {
+            method: "POST",
+            credentials: "include",
+          }),
+        ),
+      );
+    } finally {
+      autoConnectInFlight.current = false;
     }
   };
 
@@ -261,11 +287,39 @@ export default function EmpireTab() {
     setExecuteTaskOpen(true);
   };
 
+  // Mount: load servers, auto check-connection, then refresh status. Then poll
+  // every 20s to keep server status + the selected server's listeners/agents
+  // live without manual refresh.
   useEffect(() => {
-    fetchServers();
+    let cancelled = false;
+    const init = async () => {
+      const list = await fetchServers();
+      if (cancelled || list.length === 0) return;
+      await autoConnectAll(list);
+      if (!cancelled) await fetchServers();
+    };
+    init();
+
+    const interval = setInterval(async () => {
+      const list = await fetchServers();
+      if (cancelled) return;
+      await autoConnectAll(list);
+      const sid = selectedServerIdRef.current;
+      if (sid) {
+        fetchListeners(sid);
+        fetchAgents(sid);
+      }
+    }, 20000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
+    selectedServerIdRef.current = selectedServerId;
     if (selectedServerId) {
       fetchListeners(selectedServerId);
       fetchAgents(selectedServerId);

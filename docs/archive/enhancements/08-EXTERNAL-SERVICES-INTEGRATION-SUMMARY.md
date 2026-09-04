@@ -196,7 +196,7 @@ EXTERNAL_IP=<your-public-ip>
 # Kasm Workspaces (Phase 2)
 # ============================================================================
 KASM_DB_PASSWORD=<generated>
-KASM_DOMAIN=kasm.attck.nexus
+KASM_DOMAIN=kasm.onoiroi.us
 KASM_NGINX_CONTAINER=kasm-proxy
 
 # ============================================================================

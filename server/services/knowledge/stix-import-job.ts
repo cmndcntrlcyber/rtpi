@@ -27,6 +27,8 @@ import {
   importATLASSTIXBundle,
   type ATLASImportStats,
 } from "../atlas-stix-parser";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("stix-import-job");
 
 const ATLAS_BUNDLE_URL =
   process.env.ATLAS_BUNDLE_URL ||
@@ -78,7 +80,7 @@ class StixImportJob {
         "0 30 3 * * *", // 03:30 daily
         () => {
           this.refreshAtlas().catch((err) =>
-            console.warn("[stix] ATLAS daily refresh failed:", err),
+            log.warn("[stix] ATLAS daily refresh failed:", err),
           );
         },
         null,
@@ -90,7 +92,7 @@ class StixImportJob {
         "0 45 4 * * 0", // 04:45 Sunday
         () => {
           this.refreshAttck().catch((err) =>
-            console.warn("[stix] ATT&CK weekly refresh failed:", err),
+            log.warn("[stix] ATT&CK weekly refresh failed:", err),
           );
         },
         null,

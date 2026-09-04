@@ -325,7 +325,7 @@ The ATT&CK Workflows tab and `/api/v1/attack/*` endpoints depend on the `attack_
 **Manual:** If the deployment has no outbound internet access, run the importer locally once and commit/ship the JSON under `server/data/attack/`:
 
 ```bash
-npx tsx server/scripts/import-attack-data.ts
+npx tsx server/scripts/data/import-attack-data.ts
 ```
 
 **Opt-out:** Set `ATTACK_AUTO_IMPORT=false` in the environment to skip the bootstrap entirely. Override the source URL with `ATTACK_STIX_URL` if you mirror it internally.

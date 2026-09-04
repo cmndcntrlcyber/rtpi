@@ -19,6 +19,8 @@ import {
   MCP_FS_ROOT_PLACEHOLDER,
 } from "./default-servers-catalog";
 import { enqueueSkillGeneration } from "../skill-generator";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("catalog-sync");
 
 export interface CatalogSyncResult {
   inserted: number;
@@ -89,7 +91,7 @@ export async function syncDefaultCatalog(): Promise<CatalogSyncResult> {
     }
   }
 
-  console.log(
+  log.info(
     `[catalog-sync] inserted ${inserted}, already-present ${alreadyPresent}`,
   );
   return { inserted, alreadyPresent };

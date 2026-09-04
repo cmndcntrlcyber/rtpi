@@ -15,6 +15,8 @@ import { eq } from "drizzle-orm";
 import { db } from "../../../db";
 import { discoveredAssets, discoveredServices, targets } from "@shared/schema";
 import { BaseTaskAgent, type TaskDefinition, type TaskResult } from "../base-task-agent";
+import { createLogger } from '../../../lib/logger';
+const log = createLogger("recon-agent");
 
 export class ReconAgent extends BaseTaskAgent {
   constructor() {
@@ -57,7 +59,7 @@ export class ReconAgent extends BaseTaskAgent {
             .runScan(task.operationId, presetFromTask);
         }
       } catch (err) {
-        console.warn("[ReconAgent] surface-assessment delegation failed (continuing):", err);
+        log.warn("[ReconAgent] surface-assessment delegation failed (continuing):", err);
       }
 
       // Read whatever the assessment produced (or the data already present

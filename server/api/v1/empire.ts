@@ -11,8 +11,11 @@ import {
 import { eq, and, desc } from "drizzle-orm";
 import { empireExecutor } from "../../services/empire-executor";
 import { encrypt } from "../../utils/encryption";
+import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 
 const router = Router();
+
+router.use(ensureAuthenticated);
 
 /**
  * Empire C2 Server Management
@@ -60,8 +63,9 @@ router.get("/servers/:id", async (req, res) => {
 });
 
 // Create a new Empire server configuration
-router.post("/servers", async (req, res) => {
+router.post("/servers", ensureRole("admin"), async (req, res) => {
   try {
+    const userId = (req.user as any).id;
     const {
       name,
       host,
@@ -97,18 +101,18 @@ router.post("/servers", async (req, res) => {
       })
       .returning();
 
+    await logAudit(userId, "empire_create_server", "empire", server.id, true, req);
     res.status(201).json({
       ...server,
       adminPasswordHash: undefined,
     });
   } catch (error: any) {
-    // Error logged for debugging
     res.status(500).json({ error: "Failed to create Empire server", details: error?.message || "Internal server error" });
   }
 });
 
 // Update an Empire server
-router.patch("/servers/:id", async (req, res) => {
+router.patch("/servers/:id", ensureRole("admin", "operator"), async (req, res) => {
   try {
     const updates: any = {};
 
@@ -148,12 +152,13 @@ router.patch("/servers/:id", async (req, res) => {
 });
 
 // Delete an Empire server
-router.delete("/servers/:id", async (req, res) => {
+router.delete("/servers/:id", ensureRole("admin"), async (req, res) => {
   try {
+    const userId = (req.user as any).id;
     await db.delete(empireServers).where(eq(empireServers.id, req.params.id));
+    await logAudit(userId, "empire_delete_server", "empire", req.params.id, true, req);
     res.status(204).send();
   } catch (error: any) {
-    // Error logged for debugging
     res.status(500).json({ error: "Failed to delete Empire server", details: error?.message || "Internal server error" });
   }
 });
@@ -161,10 +166,7 @@ router.delete("/servers/:id", async (req, res) => {
 // Check connection to Empire server
 router.post("/servers/:id/check-connection", async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const userId = (req.user as any).id;
 
     const isConnected = await empireExecutor.checkConnection(req.params.id, userId);
 
@@ -191,10 +193,7 @@ router.post("/servers/:id/check-connection", async (req, res) => {
 // Get current user's tokens for all Empire servers
 router.get("/tokens", async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const userId = (req.user as any).id;
 
     const tokens = await db.query.empireUserTokens.findMany({
       where: eq(empireUserTokens.userId, userId),
@@ -223,10 +222,7 @@ router.get("/tokens", async (req, res) => {
 // Refresh token for a specific server
 router.post("/tokens/:serverId/refresh", async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const userId = (req.user as any).id;
 
     // Clear cached client to force token refresh
     empireExecutor.clearCache(req.params.serverId, userId);
@@ -254,10 +250,7 @@ router.post("/tokens/:serverId/refresh", async (req, res) => {
 // Revoke/delete token for a specific server
 router.delete("/tokens/:serverId", async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const userId = (req.user as any).id;
 
     // Clear cached client
     empireExecutor.clearCache(req.params.serverId, userId);
@@ -287,10 +280,7 @@ router.delete("/tokens/:serverId", async (req, res) => {
 // Manually generate token for a specific server
 router.post("/tokens/:serverId/generate", async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const userId = (req.user as any).id;
 
     // Clear cached client
     empireExecutor.clearCache(req.params.serverId, userId);
@@ -312,7 +302,7 @@ router.post("/tokens/:serverId/generate", async (req, res) => {
     const isConnected = await empireExecutor.checkConnection(req.params.serverId, userId);
 
     if (!isConnected) {
-      return res.status(500).json({ error: "Failed to connect to Empire server", details: error?.message || "Internal server error" });
+      return res.status(500).json({ error: "Failed to connect to Empire server" });
     }
 
     res.json({ success: true, message: "Token generated successfully" });
@@ -329,10 +319,7 @@ router.post("/tokens/:serverId/generate", async (req, res) => {
 // List all listeners
 router.get("/servers/:serverId/listeners", async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const userId = (req.user as any).id;
 
     const result = await empireExecutor.listListeners(req.params.serverId, userId);
 
@@ -348,12 +335,9 @@ router.get("/servers/:serverId/listeners", async (req, res) => {
 });
 
 // Create a new listener
-router.post("/servers/:serverId/listeners", async (req, res) => {
+router.post("/servers/:serverId/listeners", ensureRole("admin", "operator"), async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const userId = (req.user as any).id;
 
     const {
       name,
@@ -389,20 +373,17 @@ router.post("/servers/:serverId/listeners", async (req, res) => {
       return res.status(500).json({ error: result.error });
     }
 
+    await logAudit(userId, "empire_create_listener", "empire", req.params.serverId, true, req);
     res.status(201).json(result.data);
   } catch (error: any) {
-    // Error logged for debugging
     res.status(500).json({ error: "Failed to create listener", details: error?.message || "Internal server error" });
   }
 });
 
 // Stop a listener
-router.delete("/servers/:serverId/listeners/:listenerName", async (req, res) => {
+router.delete("/servers/:serverId/listeners/:listenerName", ensureRole("admin", "operator"), async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const userId = (req.user as any).id;
 
     const result = await empireExecutor.stopListener(
       req.params.serverId,
@@ -414,9 +395,9 @@ router.delete("/servers/:serverId/listeners/:listenerName", async (req, res) => 
       return res.status(500).json({ error: result.error });
     }
 
+    await logAudit(userId, "empire_stop_listener", "empire", req.params.serverId, true, req);
     res.status(204).send();
   } catch (error: any) {
-    // Error logged for debugging
     res.status(500).json({ error: "Failed to stop listener", details: error?.message || "Internal server error" });
   }
 });
@@ -426,12 +407,9 @@ router.delete("/servers/:serverId/listeners/:listenerName", async (req, res) => 
  */
 
 // Generate a stager
-router.post("/servers/:serverId/stagers", async (req, res) => {
+router.post("/servers/:serverId/stagers", ensureRole("admin", "operator"), async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const userId = (req.user as any).id;
 
     const { stagerName, listenerName, additionalOptions } = req.body;
 
@@ -461,10 +439,7 @@ router.post("/servers/:serverId/stagers", async (req, res) => {
 // List all agents
 router.get("/servers/:serverId/agents", async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const userId = (req.user as any).id;
 
     const result = await empireExecutor.listAgents(req.params.serverId, userId);
 
@@ -482,10 +457,7 @@ router.get("/servers/:serverId/agents", async (req, res) => {
 // Sync agents from Empire to RTPI database
 router.post("/servers/:serverId/agents/sync", async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const userId = (req.user as any).id;
 
     const result = await empireExecutor.syncAgents(req.params.serverId, userId);
 
@@ -501,12 +473,9 @@ router.post("/servers/:serverId/agents/sync", async (req, res) => {
 });
 
 // Kill an agent
-router.delete("/servers/:serverId/agents/:agentName", async (req, res) => {
+router.delete("/servers/:serverId/agents/:agentName", ensureRole("admin", "operator"), async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const userId = (req.user as any).id;
 
     const result = await empireExecutor.killAgent(
       req.params.serverId,
@@ -518,9 +487,9 @@ router.delete("/servers/:serverId/agents/:agentName", async (req, res) => {
       return res.status(500).json({ error: result.error });
     }
 
+    await logAudit(userId, "empire_kill_agent", "empire", req.params.agentName, true, req);
     res.status(204).send();
   } catch (error: any) {
-    // Error logged for debugging
     res.status(500).json({ error: "Failed to kill agent", details: error?.message || "Internal server error" });
   }
 });
@@ -530,12 +499,9 @@ router.delete("/servers/:serverId/agents/:agentName", async (req, res) => {
  */
 
 // Execute a task on an agent
-router.post("/servers/:serverId/agents/:agentName/tasks", async (req, res) => {
+router.post("/servers/:serverId/agents/:agentName/tasks", ensureRole("admin", "operator"), async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const userId = (req.user as any).id;
 
     const { command, moduleName, parameters } = req.body;
 
@@ -550,9 +516,9 @@ router.post("/servers/:serverId/agents/:agentName/tasks", async (req, res) => {
       return res.status(500).json({ error: result.error });
     }
 
+    await logAudit(userId, "empire_execute_task", "empire", req.params.agentName, true, req);
     res.status(201).json(result.data);
   } catch (error: any) {
-    // Error logged for debugging
     res.status(500).json({ error: "Failed to execute task", details: error?.message || "Internal server error" });
   }
 });
@@ -560,10 +526,7 @@ router.post("/servers/:serverId/agents/:agentName/tasks", async (req, res) => {
 // Get task results
 router.get("/servers/:serverId/agents/:agentName/tasks/:taskId", async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const userId = (req.user as any).id;
 
     const result = await empireExecutor.getTaskResults(
       req.params.serverId,
@@ -583,6 +546,32 @@ router.get("/servers/:serverId/agents/:agentName/tasks/:taskId", async (req, res
   }
 });
 
+// Poll for task completion (long-polling)
+router.post("/servers/:serverId/agents/:agentName/tasks/:taskId/poll", ensureRole("admin", "operator"), async (req, res) => {
+  try {
+    const userId = (req.user as any).id;
+    const { intervalMs, maxAttempts } = req.body;
+
+    const result = await empireExecutor.pollTaskResult(
+      req.params.serverId,
+      userId,
+      req.params.agentName,
+      req.params.taskId,
+      { intervalMs, maxAttempts }
+    );
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to poll task", details: error?.message || "Internal server error" });
+  }
+});
+
+// Cancel active task poll
+router.delete("/servers/:serverId/agents/:agentName/tasks/:taskId/poll", ensureRole("admin", "operator"), async (req, res) => {
+  const cancelled = empireExecutor.cancelPoll(req.params.taskId);
+  res.json({ cancelled });
+});
+
 /**
  * Module Management
  */
@@ -590,10 +579,7 @@ router.get("/servers/:serverId/agents/:agentName/tasks/:taskId", async (req, res
 // List available modules
 router.get("/servers/:serverId/modules", async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const userId = (req.user as any).id;
 
     const result = await empireExecutor.listModules(req.params.serverId, userId);
 
@@ -609,12 +595,9 @@ router.get("/servers/:serverId/modules", async (req, res) => {
 });
 
 // Execute a module on an agent
-router.post("/servers/:serverId/agents/:agentName/modules/:moduleName", async (req, res) => {
+router.post("/servers/:serverId/agents/:agentName/modules/:moduleName", ensureRole("admin", "operator"), async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const userId = (req.user as any).id;
 
     const { options } = req.body;
 
@@ -630,9 +613,9 @@ router.post("/servers/:serverId/agents/:agentName/modules/:moduleName", async (r
       return res.status(500).json({ error: result.error });
     }
 
+    await logAudit(userId, "empire_execute_module", "empire", req.params.moduleName, true, req);
     res.status(201).json(result.data);
   } catch (error: any) {
-    // Error logged for debugging
     res.status(500).json({ error: "Failed to execute module", details: error?.message || "Internal server error" });
   }
 });
@@ -642,12 +625,9 @@ router.post("/servers/:serverId/agents/:agentName/modules/:moduleName", async (r
  */
 
 // List harvested credentials
-router.get("/servers/:serverId/credentials", async (req, res) => {
+router.get("/servers/:serverId/credentials", ensureRole("admin", "operator"), async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const userId = (req.user as any).id;
 
     const result = await empireExecutor.listCredentials(req.params.serverId, userId);
 
@@ -663,12 +643,9 @@ router.get("/servers/:serverId/credentials", async (req, res) => {
 });
 
 // Sync credentials from Empire to RTPI database
-router.post("/servers/:serverId/credentials/sync", async (req, res) => {
+router.post("/servers/:serverId/credentials/sync", ensureRole("admin", "operator"), async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const userId = (req.user as any).id;
 
     const result = await empireExecutor.syncCredentials(req.params.serverId, userId);
 
@@ -676,9 +653,9 @@ router.post("/servers/:serverId/credentials/sync", async (req, res) => {
       return res.status(500).json({ error: result.error });
     }
 
+    await logAudit(userId, "empire_sync_credentials", "empire", req.params.serverId, true, req);
     res.json(result.data);
   } catch (error: any) {
-    // Error logged for debugging
     res.status(500).json({ error: "Failed to sync credentials", details: error?.message || "Internal server error" });
   }
 });

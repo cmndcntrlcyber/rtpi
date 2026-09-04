@@ -8,11 +8,18 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import { checkDatabaseConnection } from "./db";
-import { sessionMiddleware } from "./auth/session";
+import path from "path";
+import { writeFileSync, unlinkSync } from "fs";
+import { logger } from "./lib/logger";
+import { requestIdMiddleware } from "./middleware/request-id";
+import { metricsRegistry, httpRequestDuration } from "./lib/metrics";
+import { waitForDatabase } from "./db";
+import { client as dbClient } from "./db";
+import { sessionMiddleware, redisClient, connectRedis } from "./auth/session";
 import passport from "./auth/strategies/local";
 import "./auth/strategies/google";
 import "./auth/strategies/apikey";
+import { verifyCloudflareJWT } from "./auth/strategies/cloudflare-access";
 import { apiLimiter } from "./middleware/rate-limit";
 import authRoutes from "./api/v1/auth";
 import operationsRoutes from "./api/v1/operations";
@@ -29,14 +36,18 @@ import toolsRoutes from "./api/v1/tools";
 import skillImportRoutes from "./api/v1/skill-import";
 import toolSkillsRoutes from "./api/v1/tool-skills";
 import skillsCatalogRoutes from "./api/v1/skills-catalog";
+import skillsRoutes from "./api/v1/skills";
+import orchestratorRoutes from "./api/v1/orchestrator";
 import settingsRoutes from "./api/v1/settings";
 import agentLoopsRoutes from "./api/v1/agent-loops";
 import agentMcpRoutes from "./api/v1/agent-mcp";
 import agentWorkflowsRoutes from "./api/v1/agent-workflows";
+import agentFlowsRoutes from "./api/v1/agent-flows";
 import metasploitRoutes from "./api/v1/metasploit";
 import surfaceAssessmentRoutes from "./api/v1/surface-assessment";
 import usersRoutes from "./api/v1/users";
 import empireRoutes from "./api/v1/empire";
+import sliverRoutes from "./api/v1/sliver";
 import attackRoutes from "./api/v1/attack";
 import attackFlowsRoutes from "./api/v1/attack-flows";
 import workbenchRoutes from "./api/v1/workbench";
@@ -59,7 +70,6 @@ import offsecRdExperimentsRoutes from "./api/v1/offsec-rd-experiments";
 import offsecRdArtifactsRoutes from "./api/v1/offsec-rd-artifacts";
 import offsecRdKnowledgeRoutes from "./api/v1/offsec-rd-knowledge";
 import offsecRdToolsRoutes from "./api/v1/offsec-rd-tools";
-import offsecRdArtifactsRoutes from "./api/v1/offsec-rd-artifacts";
 import vulnerabilityRdRoutes from "./api/v1/vulnerability-rd";
 import operationsManagementRoutes from "./api/v1/operations-management";
 import scanSchedulesRoutes from "./api/v1/scan-schedules";
@@ -93,11 +103,15 @@ import stixRoutes from "./api/v1/stix";
 import docmostRoutes from "./api/v1/docmost";
 import frameworkDeployRoutes from "./api/v1/framework-deploy";
 import infrastructureCertificatesRoutes from "./api/v1/infrastructure-certificates";
+import harnessEvaluationsRoutes from "./api/v1/harness-evaluations";
+import ferryRoutes from "./api/v1/ferry";
+import { readFeatureFlags } from "@shared/feature-flags";
 import "./services/rd-feedback-loop"; // Activate R&D tool testing feedback loop
 import { initializeDefaultAdmin } from "./services/admin-initialization";
 import { opsManagerScheduler } from "./services/ops-manager-scheduler";
 import { scanScheduler } from "./services/scan-scheduler";
 import { initializeAgentSystem, shutdownAgentSystem } from "./services/workflow-event-handlers";
+import { startAuditLogCleanup, stopAuditLogCleanup } from "./services/audit-log-cleanup";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -106,13 +120,37 @@ const PORT = Number(process.env.PORT) || 3000;
 app.set("trust proxy", 1);
 
 // Middleware
-app.use(helmet());
+app.use(requestIdMiddleware);
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "blob:"],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+      },
+    },
+  })
+);
+const corsOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(",").map(s => s.trim()).filter(Boolean)
+  : ["http://0.0.0.0:5000"];
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || "http://0.0.0.0:5000",
+  origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
   credentials: true,
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Cloudflare Access JWT verification (before session — populates req.user from CF header)
+app.use(verifyCloudflareJWT);
 
 // Session management
 app.use(sessionMiddleware);
@@ -124,14 +162,46 @@ app.use(passport.session());
 // Rate limiting
 app.use(apiLimiter);
 
-// Health check endpoint
+// HTTP request duration tracking
+app.use((req, res, next) => {
+  const end = httpRequestDuration.startTimer();
+  res.on("finish", () => {
+    const route = req.route?.path || req.path;
+    end({ method: req.method, route, status_code: res.statusCode });
+  });
+  next();
+});
+
+// Prometheus metrics endpoint (no session auth — scrapers don't carry cookies)
+app.get("/metrics", async (req, res) => {
+  const token = process.env.METRICS_AUTH_TOKEN;
+  if (token && req.headers.authorization !== `Bearer ${token}`) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  res.set("Content-Type", metricsRegistry.contentType);
+  res.end(await metricsRegistry.metrics());
+});
+
+// Health endpoints (unauthenticated — probed by Docker, K8s, rtpi-watcher)
 app.get("/api/v1/health", async (_req, res) => {
-  const dbHealthy = await checkDatabaseConnection();
-  
-  res.status(dbHealthy ? 200 : 503).json({
-    status: dbHealthy ? "healthy" : "unhealthy",
-    timestamp: new Date().toISOString(),
-    database: dbHealthy ? "connected" : "disconnected",
+  const { fullHealthCheck } = await import("./lib/health");
+  const result = await fullHealthCheck();
+  res.status(result.status === "unhealthy" ? 503 : 200).json(result);
+});
+
+app.get("/api/v1/health/live", (_req, res) => {
+  res.json({ status: "alive" });
+});
+
+app.get("/api/v1/health/ready", async (_req, res) => {
+  const { checkDB, checkRedis } = await import("./lib/health");
+  const [db, redis] = await Promise.all([checkDB(), checkRedis()]);
+  const ready = db.ok && redis.ok;
+  res.status(ready ? 200 : 503).json({
+    ready,
+    database: db,
+    redis,
   });
 });
 
@@ -151,14 +221,21 @@ app.use("/api/v1/tools", toolsRoutes);
 app.use("/api/v1/skills", skillImportRoutes);
 app.use("/api/v1/tool-skills", toolSkillsRoutes);
 app.use("/api/v1/skills", skillsCatalogRoutes);
+// LangGraph skill search/cache proxy. Mounted AFTER the import/catalog routers
+// so its catch-all GET /:skillName only handles paths they don't claim.
+app.use("/api/v1/skills", skillsRoutes);
+// LangGraph orchestrator proxy (rtpi-orchestrator service, ORCHESTRATOR_URL).
+app.use("/api/v1/orchestrator", orchestratorRoutes);
 app.use("/api/v1/settings", settingsRoutes);
 app.use("/api/v1/agent-loops", agentLoopsRoutes);
 app.use("/api/v1/agents", agentMcpRoutes);
 app.use("/api/v1/agent-workflows", agentWorkflowsRoutes);
+app.use("/api/v1/agent-flows", agentFlowsRoutes);
 app.use("/api/v1/metasploit", metasploitRoutes);
 app.use("/api/v1/surface-assessment", surfaceAssessmentRoutes);
 app.use("/api/v1/users", usersRoutes);
 app.use("/api/v1/empire", empireRoutes);
+app.use("/api/v1/sliver", sliverRoutes);
 app.use("/api/v1/c2-warroom", c2WarroomRoutes);
 app.use("/api/v1/sysreptor", sysreptorRoutes);
 app.use("/api/v1/inference", inferenceRoutes);
@@ -187,13 +264,12 @@ app.use("/api/v1/notifications", notificationsRoutes);
 app.use("/api/v1/filter-presets", filterPresetsRoutes);
 app.use("/api/v1/offsec-rd/projects", offsecRdProjectsRoutes);
 app.use("/api/v1/offsec-rd/experiments", offsecRdExperimentsRoutes);
+// B1: artifact promote/deploy routes are mounted here at /api/v1/offsec-rd/artifacts
+// to match the frontend URL. They previously lived under the experiments router, so
+// the real path was …/experiments/artifacts and the frontend POST always 404'd.
 app.use("/api/v1/offsec-rd/artifacts", offsecRdArtifactsRoutes);
 app.use("/api/v1/offsec-rd/knowledge", offsecRdKnowledgeRoutes);
 app.use("/api/v1/offsec-rd/tools", offsecRdToolsRoutes);
-// B1: artifact promote/deploy routes mounted at /api/v1/offsec-rd/artifacts to
-// match the frontend URL (was defined under the experiments router, so the real
-// path was …/experiments/artifacts and the frontend POST always 404'd).
-app.use("/api/v1/offsec-rd/artifacts", offsecRdArtifactsRoutes);
 app.use("/api/v1/vulnerability-rd", vulnerabilityRdRoutes);
 app.use("/api/v1/operations-management", operationsManagementRoutes);
 app.use("/api/v1/scan-schedules", scanSchedulesRoutes);
@@ -214,6 +290,8 @@ app.use("/api/v1/scan-import", scanImportRoutes);
 app.use("/api/v1/vulnerability-investigation", vulnerabilityInvestigationRoutes);
 app.use("/api/v1/bug-bounty-import", bugBountyImportRoutes);
 app.use("/api/v1/agent-chat", agentChatRoutes);
+app.use("/api/v1/harness-evaluations", harnessEvaluationsRoutes);
+app.use("/api/v1/ferry", ferryRoutes);
 
 // Bug-hunter admin/introspection routes (FF_BUG_HUNTER). Workflow + query
 // endpoints land in subsequent PRs (workflows.ts, queries.ts, memory.ts).
@@ -272,8 +350,17 @@ app.get("/api/v1", (_req, res) => {
   });
 });
 
-// 404 handler
-app.use((req, res) => {
+// Production static file serving — Vite build output
+if (process.env.NODE_ENV === "production") {
+  const clientDir = path.join(import.meta.dirname, "../dist/client");
+  app.use(express.static(clientDir));
+  app.get("*", (_req, res) => {
+    res.sendFile(path.join(clientDir, "index.html"));
+  });
+}
+
+// 404 handler for unmatched API routes
+app.use("/api", (req, res) => {
   res.status(404).json({
     error: "Not Found",
     path: req.path,
@@ -282,23 +369,26 @@ app.use((req, res) => {
 
 // Error handler
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error(err.stack);
+  logger.error({ err, requestId: _req.id }, "Unhandled error");
   res.status(500).json({
     error: "Internal Server Error",
     message: process.env.NODE_ENV === "development" ? err.message : undefined,
+    requestId: _req.id,
   });
 });
 
 // Initialize database and default admin user
 async function initializeServer() {
+  const READY_FILE = process.env.RTPI_READY_FILE || "/tmp/rtpi-ready";
+
   try {
-    // Check database connection
-    const dbHealthy = await checkDatabaseConnection();
-    if (!dbHealthy) {
-      console.error("❌ Database connection failed");
-      process.exit(1);
-    }
-    console.log("✅ Database connection successful");
+    // Wait for database with retry (tolerates infra still starting)
+    await waitForDatabase();
+    logger.info("Database connection successful");
+
+    // Wait for Redis with retry
+    await connectRedis();
+    logger.info("Redis connection successful");
 
     // Initialize default admin user
     await initializeDefaultAdmin();
@@ -309,7 +399,7 @@ async function initializeServer() {
       const { repairToolRegistryConfigs } = await import("./services/tool-executor");
       await repairToolRegistryConfigs();
     } catch (repairErr) {
-      console.warn("⚠️  tool_registry self-repair skipped:", repairErr);
+      logger.warn({ err: repairErr }, "tool_registry self-repair skipped");
     }
 
     // Bootstrap MITRE ATT&CK data if the DB is empty. Non-fatal.
@@ -317,13 +407,22 @@ async function initializeServer() {
       const { bootstrapAttackData } = await import("./services/attack-bootstrap");
       await bootstrapAttackData();
     } catch (attackErr) {
-      console.warn("⚠️  MITRE ATT&CK bootstrap skipped:", attackErr);
+      logger.warn({ err: attackErr }, "MITRE ATT&CK bootstrap skipped");
     }
 
     // Start server
     const server = app.listen(PORT, "0.0.0.0", () => {
-      console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
-      console.log(`📚 API documentation: http://0.0.0.0:${PORT}/api/v1`);
+      logger.info({ port: PORT, url: `http://0.0.0.0:${PORT}` }, "Server started");
+      logger.info({ docs: `http://0.0.0.0:${PORT}/api/v1` }, "API documentation available");
+
+      // Write readiness file so external probes (rtpi-watcher) can distinguish
+      // "still booting" from "crashed"
+      try {
+        writeFileSync(READY_FILE, String(process.pid));
+        logger.info({ readyFile: READY_FILE }, "Readiness file written");
+      } catch (err) {
+        logger.warn({ err }, "Could not write readiness file");
+      }
     });
 
     // Configure timeouts for long-running scan operations
@@ -331,27 +430,30 @@ async function initializeServer() {
     server.requestTimeout = 7200000; // Node 18+ explicit request timeout
     server.headersTimeout = 7210000; // Slightly higher than request timeout
     server.keepAliveTimeout = 65000; // Keep connections alive
-    console.log(`⏱️  Server timeouts configured for long-running scans (2 hour limit)`);
+    logger.info({ timeoutMs: 7200000 }, "Server timeouts configured for long-running scans");
 
     // Initialize unified Agent WebSocket manager (handles agent events + scan streaming + approval gates)
     const { initializeAgentWebSocketManager } = await import("./services/agent-websocket-manager");
     initializeAgentWebSocketManager(server);
-    console.log(`🔌 Agent WebSocket server ready (agent events + scan streaming + approval gates)`);
+    logger.info("Agent WebSocket server ready");
 
     // Start Operations Manager Scheduler
     opsManagerScheduler.start();
-    console.log(`⏰ Operations Manager Scheduler started (runs hourly)`);
+    logger.info("Operations Manager Scheduler started");
 
     // Start Scan Scheduler
     await scanScheduler.start();
-    console.log(`⏰ Scan Scheduler started for scheduled security scans`);
+    logger.info("Scan Scheduler started");
+
+    // Start Audit Log Cleanup (daily at 03:00 UTC)
+    startAuditLogCleanup();
 
     // B10: auto-seed the bug-hunter skill corpus into knowledge_base
     // (FF_BUG_HUNTER). Self-gated + count-gated + delayed; fully detached so it
     // never blocks or crashes boot. See services/knowledge/skill-seed-startup.ts.
     import("./services/knowledge/skill-seed-startup")
       .then(({ scheduleBugHunterSkillSeed }) => scheduleBugHunterSkillSeed())
-      .catch((err) => console.warn(`⚠️  Skill seed scheduling failed:`, err?.message ?? err));
+      .catch((err) => logger.warn({ err }, "Skill seed scheduling failed"));
     // Warm the inference model cache so the router can validate Settings-
     // chosen models against actual provider availability on the first call.
     // Fire-and-forget — failure here just means router falls back to
@@ -359,8 +461,8 @@ async function initializeServer() {
     setTimeout(() => {
       import("./services/inference/model-cache")
         .then(({ modelCache }) => modelCache.refresh())
-        .then(() => console.log(`🤖 Inference model cache warmed`))
-        .catch((err) => console.warn(`⚠️  Inference model cache warm failed:`, err?.message ?? err));
+        .then(() => logger.info("Inference model cache warmed"))
+        .catch((err) => logger.warn({ err }, "Inference model cache warm failed"));
     }, 2000);
 
     // Start the Agent-MCP connector: live tool discovery + rehydrate the
@@ -370,52 +472,89 @@ async function initializeServer() {
     setTimeout(() => {
       import("./services/agent-mcp-connector")
         .then(({ agentMCPConnector }) => agentMCPConnector.start())
-        .catch((err) => console.warn(`⚠️  Agent-MCP connector start failed:`, err?.message ?? err));
+        .catch((err) => logger.warn({ err }, "Agent-MCP connector start failed"));
     }, 6000);
+
+    // Start ferry stream bridge (FF_FERRY_BRIDGE) — SSE→WebSocket relay
+    import("./services/ferry-stream-bridge")
+      .then(({ ferryStreamBridge }) => ferryStreamBridge.start())
+      .catch((err) => logger.warn({ err }, "Ferry stream bridge start failed (non-fatal)"));
+
+    // Start rust-nexus implant controller (FF_NEXUS_MESH)
+    if (readFeatureFlags(process.env).nexusMesh) {
+      import("./services/rust-nexus-controller")
+        .then(({ rustNexusController }) => rustNexusController.start())
+        .then(() => logger.info("rust-nexus controller started"))
+        .catch((err) => logger.warn({ err }, "rust-nexus controller start failed (non-fatal)"));
+    }
 
     // Initialize v2.1 Autonomous Agent System
     if (process.env.AGENT_AUTO_INITIALIZE !== "false") {
       try {
         await initializeAgentSystem();
-        console.log(`🤖 Agent System initialized (Tool Connector, Surface Assessment, Web Hacker)`);
+        logger.info("Agent System initialized");
       } catch (agentError) {
-        // Non-fatal - agents can be initialized later via API
-        console.warn(`⚠️  Agent System initialization failed (non-fatal):`, agentError);
+        logger.warn({ err: agentError }, "Agent System initialization failed (non-fatal)");
       }
     } else {
-      console.log(`🤖 Agent System auto-initialization disabled (AGENT_AUTO_INITIALIZE=false)`);
+      logger.info("Agent System auto-initialization disabled");
     }
 
     // Graceful shutdown
     const shutdown = async () => {
-      console.log("\n🛑 Shutting down gracefully...");
+      logger.info("Shutting down gracefully...");
+
+      // Stop accepting new connections first
+      server.close(() => logger.info("HTTP server closed"));
+
       opsManagerScheduler.shutdown();
       await scanScheduler.stop();
+      stopAuditLogCleanup();
 
       // Shutdown v2.1 Agent System
       try {
         await shutdownAgentSystem();
-        console.log("🤖 Agent System shutdown complete");
+        logger.info("Agent System shutdown complete");
       } catch (agentError) {
-        console.warn("⚠️  Agent System shutdown error:", agentError);
+        logger.warn({ err: agentError }, "Agent System shutdown error");
       }
 
-      server.close(() => {
-        console.log("✅ Server closed");
-        process.exit(0);
-      });
+      // Close Redis
+      try {
+        await redisClient.quit();
+        logger.info("Redis client closed");
+      } catch (redisErr) {
+        logger.warn({ err: redisErr }, "Redis client close error");
+      }
 
-      // Force shutdown after 10 seconds
-      setTimeout(() => {
-        console.error("⚠️  Forced shutdown after timeout");
-        process.exit(1);
-      }, 10000);
+      // Drain database connection pool
+      try {
+        await dbClient.end({ timeout: 5 });
+        logger.info("Database connection pool closed");
+      } catch (dbErr) {
+        logger.warn({ err: dbErr }, "Database pool close error");
+      }
+
+      // Remove readiness file
+      try {
+        unlinkSync(READY_FILE);
+      } catch {}
+
+      process.exit(0);
     };
 
-    process.on("SIGTERM", shutdown);
-    process.on("SIGINT", shutdown);
+    // Safety net: force exit if graceful shutdown hangs
+    const forceExit = () => {
+      setTimeout(() => {
+        logger.error("Forced shutdown after timeout");
+        process.exit(1);
+      }, 10000).unref();
+    };
+
+    process.on("SIGTERM", () => { forceExit(); shutdown(); });
+    process.on("SIGINT", () => { forceExit(); shutdown(); });
   } catch (error) {
-    console.error("❌ Server initialization failed:", error);
+    logger.fatal({ err: error }, "Server initialization failed");
     process.exit(1);
   }
 }

@@ -4,6 +4,10 @@ import crypto from "crypto";
 import { db } from "../../db";
 import { users, apiKeys } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { redisClient } from "../session";
+import { createLogger } from "../../lib/logger";
+
+const log = createLogger("apikey-auth");
 
 // API Key Authentication Strategy
 passport.use(
@@ -44,6 +48,22 @@ passport.use(
       // Check if user is active
       if (!record.user.isActive) {
         return done(null, false);
+      }
+
+      // Per-key rate limiting via Redis sliding window
+      if (record.apiKey.rateLimit) {
+        try {
+          const rlKey = `apikey-rl:${record.apiKey.id}`;
+          const count = await redisClient.incr(rlKey);
+          if (count === 1) {
+            await redisClient.expire(rlKey, 60);
+          }
+          if (count > record.apiKey.rateLimit) {
+            return done(null, false);
+          }
+        } catch (rlError) {
+          log.warn({ err: rlError }, "Rate limit check failed, allowing request");
+        }
       }
 
       // Update last used timestamp

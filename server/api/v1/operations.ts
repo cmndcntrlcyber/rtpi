@@ -2,8 +2,10 @@ import { Router } from "express";
 import { db } from "../../db";
 import { operations, users } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
+import { ensureAuthenticated, ensureRole, ensureResourceOwnership, logAudit } from "../../auth/middleware";
 import { z } from "zod";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("operations");
 
 const router = Router();
 
@@ -131,7 +133,7 @@ router.post("/", ensureRole("admin", "operator"), async (req, res) => {
 });
 
 // PUT /api/v1/operations/:id - Update operation
-router.put("/:id", ensureRole("admin", "operator"), async (req, res) => {
+router.put("/:id", ensureRole("admin", "operator"), ensureResourceOwnership(operations, operations.ownerId), async (req, res) => {
   const { id } = req.params;
   const user = req.user as any;
 
@@ -189,7 +191,7 @@ router.delete("/:id", ensureRole("admin"), async (req, res) => {
 });
 
 // POST /api/v1/operations/:id/start - Start operation
-router.post("/:id/start", ensureRole("admin", "operator"), async (req, res) => {
+router.post("/:id/start", ensureRole("admin", "operator"), ensureResourceOwnership(operations, operations.ownerId), async (req, res) => {
   const { id } = req.params;
   const user = req.user as any;
 
@@ -212,7 +214,7 @@ router.post("/:id/start", ensureRole("admin", "operator"), async (req, res) => {
       const { operationLifecycleAutomation } = await import('../../services/operation-lifecycle-automation');
       await operationLifecycleAutomation.handleOperationActivated(id, user.id);
     } catch (automationError) {
-      console.error('Lifecycle automation failed (non-fatal):', automationError);
+      log.error('Lifecycle automation failed (non-fatal):', automationError);
     }
 
     await logAudit(user.id, "start_operation", "/operations", id, true, req);
@@ -226,7 +228,7 @@ router.post("/:id/start", ensureRole("admin", "operator"), async (req, res) => {
 });
 
 // POST /api/v1/operations/:id/complete - Complete operation
-router.post("/:id/complete", ensureRole("admin", "operator"), async (req, res) => {
+router.post("/:id/complete", ensureRole("admin", "operator"), ensureResourceOwnership(operations, operations.ownerId), async (req, res) => {
   const { id } = req.params;
   const user = req.user as any;
 
@@ -249,7 +251,7 @@ router.post("/:id/complete", ensureRole("admin", "operator"), async (req, res) =
       const { operationLifecycleAutomation } = await import('../../services/operation-lifecycle-automation');
       await operationLifecycleAutomation.handleOperationCompleted(id, user.id);
     } catch (automationError) {
-      console.error('Lifecycle automation failed (non-fatal):', automationError);
+      log.error('Lifecycle automation failed (non-fatal):', automationError);
     }
 
     await logAudit(user.id, "complete_operation", "/operations", id, true, req);
@@ -263,7 +265,7 @@ router.post("/:id/complete", ensureRole("admin", "operator"), async (req, res) =
 });
 
 // FIX BUG #2: PATCH /api/v1/operations/:id/status - Quick status update
-router.patch("/:id/status", ensureRole("admin", "operator"), async (req, res) => {
+router.patch("/:id/status", ensureRole("admin", "operator"), ensureResourceOwnership(operations, operations.ownerId), async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
   const user = req.user as any;
@@ -320,7 +322,7 @@ router.patch("/:id/status", ensureRole("admin", "operator"), async (req, res) =>
         await operationLifecycleAutomation.handleOperationCompleted(id, user.id);
       }
     } catch (automationError) {
-      console.error('Lifecycle automation failed (non-fatal):', automationError);
+      log.error('Lifecycle automation failed (non-fatal):', automationError);
     }
 
     await logAudit(user.id, "update_operation_status", "/operations", id, true, req);

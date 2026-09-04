@@ -3,6 +3,20 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import TargetCard from '../../../../../client/src/components/targets/TargetCard';
 
+vi.mock('@dnd-kit/sortable', () => ({
+  useSortable: () => ({
+    attributes: {},
+    listeners: {},
+    setNodeRef: vi.fn(),
+    transform: null,
+    transition: null,
+  }),
+}));
+
+vi.mock('@dnd-kit/utilities', () => ({
+  CSS: { Transform: { toString: () => '' } },
+}));
+
 describe('TargetCard Component', () => {
   const mockTarget = {
     id: '1',
@@ -58,7 +72,6 @@ describe('TargetCard Component', () => {
     it('should show globe icon for domain type', () => {
       const target = { ...mockTarget, type: 'domain' };
       render(<TargetCard target={target} />);
-      // Icon is rendered, we can check the type badge
       expect(screen.getByText('domain')).toBeInTheDocument();
     });
 
@@ -139,69 +152,81 @@ describe('TargetCard Component', () => {
       const user = userEvent.setup();
       render(<TargetCard target={mockTarget} onSelect={onSelect} />);
 
-      const card = screen.getByText('target-server.example.com').closest('.bg-white');
+      const card = screen.getByText('target-server.example.com').closest('[class*="cursor-pointer"]');
       if (card) {
         await user.click(card);
         expect(onSelect).toHaveBeenCalledWith(mockTarget);
       }
     });
 
-    it('should show scan button when onScan is provided', () => {
+    it('should show dropdown menu when onScan is provided', () => {
       const onScan = vi.fn();
       render(<TargetCard target={mockTarget} onScan={onScan} />);
-      expect(screen.getByText('Scan')).toBeInTheDocument();
+      expect(screen.getByLabelText('Open menu')).toBeInTheDocument();
     });
 
-    it('should call onScan when scan button is clicked', async () => {
+    it('should call onScan when scan menu item is clicked', async () => {
       const onScan = vi.fn();
       const user = userEvent.setup();
       render(<TargetCard target={mockTarget} onScan={onScan} />);
 
-      const scanButton = screen.getByText('Scan');
-      await user.click(scanButton);
+      const menuTrigger = screen.getByLabelText('Open menu');
+      await user.click(menuTrigger);
+
+      const scanItem = screen.getByText('Scan');
+      await user.click(scanItem);
       expect(onScan).toHaveBeenCalledWith(mockTarget);
     });
 
-    it('should show edit button when onEdit is provided', () => {
+    it('should show dropdown menu when onEdit is provided', () => {
       const onEdit = vi.fn();
       render(<TargetCard target={mockTarget} onEdit={onEdit} />);
-      expect(screen.getByText('Edit')).toBeInTheDocument();
+      expect(screen.getByLabelText('Open menu')).toBeInTheDocument();
     });
 
-    it('should call onEdit when edit button is clicked', async () => {
+    it('should call onEdit when edit menu item is clicked', async () => {
       const onEdit = vi.fn();
       const user = userEvent.setup();
       render(<TargetCard target={mockTarget} onEdit={onEdit} />);
 
-      const editButton = screen.getByText('Edit');
-      await user.click(editButton);
+      const menuTrigger = screen.getByLabelText('Open menu');
+      await user.click(menuTrigger);
+
+      const editItem = screen.getByText('Edit');
+      await user.click(editItem);
       expect(onEdit).toHaveBeenCalledWith(mockTarget);
     });
 
-    it('should show delete button when onDelete is provided', () => {
+    it('should show dropdown menu when onDelete is provided', () => {
       const onDelete = vi.fn();
       render(<TargetCard target={mockTarget} onDelete={onDelete} />);
-      expect(screen.getByText('Delete')).toBeInTheDocument();
+      expect(screen.getByLabelText('Open menu')).toBeInTheDocument();
     });
 
-    it('should call onDelete when delete button is clicked', async () => {
+    it('should call onDelete when delete menu item is clicked', async () => {
       const onDelete = vi.fn();
       const user = userEvent.setup();
       render(<TargetCard target={mockTarget} onDelete={onDelete} />);
 
-      const deleteButton = screen.getByText('Delete');
-      await user.click(deleteButton);
+      const menuTrigger = screen.getByLabelText('Open menu');
+      await user.click(menuTrigger);
+
+      const deleteItem = screen.getByText('Delete');
+      await user.click(deleteItem);
       expect(onDelete).toHaveBeenCalledWith(mockTarget);
     });
 
-    it('should not call onSelect when action button is clicked', async () => {
+    it('should not call onSelect when dropdown action is clicked', async () => {
       const onSelect = vi.fn();
       const onEdit = vi.fn();
       const user = userEvent.setup();
       render(<TargetCard target={mockTarget} onSelect={onSelect} onEdit={onEdit} />);
 
-      const editButton = screen.getByText('Edit');
-      await user.click(editButton);
+      const menuTrigger = screen.getByLabelText('Open menu');
+      await user.click(menuTrigger);
+
+      const editItem = screen.getByText('Edit');
+      await user.click(editItem);
 
       expect(onEdit).toHaveBeenCalledTimes(1);
       expect(onSelect).not.toHaveBeenCalled();
@@ -217,7 +242,7 @@ describe('TargetCard Component', () => {
 
     it('should have hover effects', () => {
       const { container } = render(<TargetCard target={mockTarget} />);
-      const card = container.querySelector('.hover\\:shadow-md');
+      const card = container.querySelector('.hover\\:shadow-lg');
       expect(card).toBeInTheDocument();
     });
   });

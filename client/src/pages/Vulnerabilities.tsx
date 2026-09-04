@@ -3,12 +3,11 @@ import { toast } from "sonner";
 import {
   Plus,
   CheckSquare,
-  Crosshair,
   Loader2,
-  FileCode,
   Copy,
   Terminal,
   ShieldAlert,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -61,12 +60,23 @@ export default function Vulnerabilities() {
 
   // Execute exploit state
   const [rdExploitVulnIds, setRdExploitVulnIds] = useState<Set<string>>(new Set());
-  const [exploitDialogOpen, setExploitDialogOpen] = useState(false);
   const [exploitVuln, setExploitVuln] = useState<any>(null);
-  const [exploitArtifacts, setExploitArtifacts] = useState<any[]>([]);
-  const [exploitLoading, setExploitLoading] = useState(false);
-  const [executing, setExecuting] = useState(false);
-  const [executionResult, setExecutionResult] = useState<any>(null);
+  const [executingVulnId, setExecutingVulnId] = useState<string | null>(null);
+
+  // Scan output dialog state
+  const [executionOutputVulnIds, setExecutionOutputVulnIds] = useState<Set<string>>(new Set());
+  const [outputDialogOpen, setOutputDialogOpen] = useState(false);
+  const [outputVuln, setOutputVuln] = useState<any>(null);
+  const [outputExecutions, setOutputExecutions] = useState<any[]>([]);
+  const [outputLoading, setOutputLoading] = useState(false);
+  const [draftingReport, setDraftingReport] = useState(false);
+
+  // Report dialog state
+  const [reportVulnIds, setReportVulnIds] = useState<Set<string>>(new Set());
+  const [reportDialogOpen, setReportDialogOpen] = useState(false);
+  const [reportVuln, setReportVuln] = useState<any>(null);
+  const [reportContent, setReportContent] = useState<string>("");
+  const [reportLoading, setReportLoading] = useState(false);
 
   // Bulk selection state
   const [bulkMode, setBulkMode] = useState(false);
@@ -107,8 +117,10 @@ export default function Vulnerabilities() {
       setTargets(targetsRes.targets);
       setOperations(opsRes.operations);
 
-      // Check which vulnerabilities have R&D exploits available
+      // Check which vulnerabilities have R&D exploits, execution outputs, and reports
       checkRdExploits(vulnsRes.vulnerabilities);
+      checkExecutionOutputs(vulnsRes.vulnerabilities);
+      checkReports(vulnsRes.vulnerabilities);
     } catch (error) {
       toast.error("Failed to load data");
     } finally {
@@ -136,6 +148,48 @@ export default function Vulnerabilities() {
       }
     }
     setRdExploitVulnIds(idsWithExploits);
+  };
+
+  const checkExecutionOutputs = async (vulns: any[]) => {
+    const idsWithOutputs = new Set<string>();
+    const batch = vulns.filter(
+      (v) => v.investigationStatus && v.investigationStatus !== "pending"
+    );
+    const results = await Promise.allSettled(
+      batch.map((v) =>
+        api.get<{ executions: any[] }>(`/vulnerability-rd/${v.id}/execution-history`).then((res) => ({
+          vulnId: v.id,
+          hasOutputs: (res.executions?.length || 0) > 0,
+        }))
+      )
+    );
+    for (const r of results) {
+      if (r.status === "fulfilled" && r.value.hasOutputs) {
+        idsWithOutputs.add(r.value.vulnId);
+      }
+    }
+    setExecutionOutputVulnIds(idsWithOutputs);
+  };
+
+  const checkReports = async (vulns: any[]) => {
+    const idsWithReports = new Set<string>();
+    const batch = vulns.filter(
+      (v) => v.investigationStatus && v.investigationStatus !== "pending"
+    );
+    const results = await Promise.allSettled(
+      batch.map((v) =>
+        api.get<{ report: any }>(`/vulnerability-rd/${v.id}/report`).then((res) => ({
+          vulnId: v.id,
+          hasReport: !!res.report,
+        }))
+      )
+    );
+    for (const r of results) {
+      if (r.status === "fulfilled" && r.value.hasReport) {
+        idsWithReports.add(r.value.vulnId);
+      }
+    }
+    setReportVulnIds(idsWithReports);
   };
 
   const handleToggleGroup = useCallback((groupKey: string) => {
@@ -253,42 +307,108 @@ export default function Vulnerabilities() {
     }
   };
 
-  // Execute exploit handlers
+  // Execute exploit — auto-selects best artifact (nuclei template preferred),
+  // runs it against the associated target, then opens the Output dialog.
   const handleExecuteExploit = async (vulnerability: any) => {
-    setExploitVuln(vulnerability);
-    setExploitDialogOpen(true);
-    setExecutionResult(null);
-    setExploitLoading(true);
     try {
+      setExecutingVulnId(vulnerability.id);
+      setExploitVuln(vulnerability);
+      toast.info(`Executing scan against target for "${vulnerability.title}"...`);
+
+      // Fetch artifacts and auto-select best one
       const res = await api.get<{ artifacts: any[] }>(`/vulnerability-rd/${vulnerability.id}/artifacts`);
-      setExploitArtifacts(res.artifacts || []);
-    } catch {
-      setExploitArtifacts([]);
-      toast.error("Failed to load R&D artifacts");
+      const artifacts = res.artifacts || [];
+      if (artifacts.length === 0) {
+        toast.error("No R&D artifacts available to execute");
+        return;
+      }
+
+      // Prefer nuclei templates, fall back to poc_code
+      const artifact =
+        artifacts.find((a: any) => a.artifactType === "nuclei_template") ||
+        artifacts[0];
+
+      // Execute against the target
+      const result = await api.post<any>(`/vulnerability-rd/${vulnerability.id}/execute-exploit`, {
+        artifactId: artifact.id,
+      });
+
+      if (result.success) {
+        toast.success("Scan executed successfully — opening output");
+      } else {
+        toast.warning("Scan completed with non-zero exit code");
+      }
+
+      // Mark this vuln as having execution output
+      setExecutionOutputVulnIds((prev) => new Set([...prev, vulnerability.id]));
+
+      // Open the Output dialog with fresh results
+      handleViewOutput(vulnerability);
+    } catch (error: any) {
+      toast.error(error?.message || "Exploit execution failed");
     } finally {
-      setExploitLoading(false);
+      setExecutingVulnId(null);
     }
   };
 
-  const handleRunExploit = async (artifactId: string) => {
-    if (!exploitVuln) return;
+  // View output handler
+  const handleViewOutput = async (vulnerability: any) => {
+    setOutputVuln(vulnerability);
+    setOutputDialogOpen(true);
+    setOutputExecutions([]);
+    setOutputLoading(true);
     try {
-      setExecuting(true);
-      setExecutionResult(null);
-      const result = await api.post<any>(`/vulnerability-rd/${exploitVuln.id}/execute-exploit`, {
-        artifactId,
+      const res = await api.get<{ executions: any[] }>(`/vulnerability-rd/${vulnerability.id}/execution-history`);
+      setOutputExecutions(res.executions || []);
+    } catch {
+      setOutputExecutions([]);
+      toast.error("Failed to load execution history");
+    } finally {
+      setOutputLoading(false);
+    }
+  };
+
+  // Draft report handler
+  const handleDraftReport = async (execution: any) => {
+    if (!outputVuln) return;
+    try {
+      setDraftingReport(true);
+      const result = await api.post<any>(`/vulnerability-rd/${outputVuln.id}/draft-report`, {
+        executionId: execution.id,
+        scanOutput: execution.rawOutput || execution.results?.output || "No output available",
+        targetUrl: (execution.targets as any)?.[0] || null,
       });
-      setExecutionResult(result);
       if (result.success) {
-        toast.success("Exploit executed successfully");
-      } else {
-        toast.warning("Exploit completed with non-zero exit code");
+        toast.success("Draft report generated");
+        setOutputDialogOpen(false);
+        // Refresh report tracking
+        setReportVulnIds((prev) => new Set([...prev, outputVuln.id]));
+        // Open the report immediately
+        setReportVuln(outputVuln);
+        setReportContent(result.report);
+        setReportDialogOpen(true);
       }
     } catch (error: any) {
-      toast.error(error?.message || "Exploit execution failed");
-      setExecutionResult({ success: false, output: error?.message || "Execution failed", exitCode: -1 });
+      toast.error(error?.message || "Failed to generate draft report");
     } finally {
-      setExecuting(false);
+      setDraftingReport(false);
+    }
+  };
+
+  // View report handler
+  const handleViewReport = async (vulnerability: any) => {
+    setReportVuln(vulnerability);
+    setReportDialogOpen(true);
+    setReportContent("");
+    setReportLoading(true);
+    try {
+      const res = await api.get<{ report: any }>(`/vulnerability-rd/${vulnerability.id}/report`);
+      setReportContent(res.report?.content || "No report available");
+    } catch {
+      setReportContent("Failed to load report");
+      toast.error("Failed to load report");
+    } finally {
+      setReportLoading(false);
     }
   };
 
@@ -466,7 +586,12 @@ export default function Vulnerabilities() {
         onSendToRD={handleSendToRD}
         onInvestigate={handleInvestigate}
         onExecuteExploit={handleExecuteExploit}
+        onViewOutput={handleViewOutput}
+        onViewReport={handleViewReport}
         rdExploitVulnIds={rdExploitVulnIds}
+        executionOutputVulnIds={executionOutputVulnIds}
+        reportVulnIds={reportVulnIds}
+        executingVulnId={executingVulnId}
         selectable={bulkMode}
         selectedIds={selectedIds}
         onSelectionChange={handleSelectionChange}
@@ -481,6 +606,7 @@ export default function Vulnerabilities() {
         open={editDialogOpen}
         vulnerability={selectedVulnerability}
         targets={targets}
+        operations={operations}
         onClose={() => setEditDialogOpen(false)}
         onSave={handleSaveVulnerability}
         onDelete={handleDeleteVulnerability}
@@ -515,129 +641,137 @@ export default function Vulnerabilities() {
         onSuccess={handleRDSuccess}
       />
 
-      {/* Execute Exploit Dialog */}
-      <Dialog open={exploitDialogOpen} onOpenChange={setExploitDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+      {/* Scan Output Dialog */}
+      <Dialog open={outputDialogOpen} onOpenChange={setOutputDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Crosshair aria-hidden="true" className="h-5 w-5 text-success" />
-              Execute R&D Exploit
+              <Terminal aria-hidden="true" className="h-5 w-5 text-amber-600" />
+              Scan Output
             </DialogTitle>
-            {exploitVuln && (
+            {outputVuln && (
               <p className="text-sm text-muted-foreground">
-                {exploitVuln.title} {exploitVuln.cve && `(${exploitVuln.cve})`}
+                {outputVuln.title} {outputVuln.cve && `(${outputVuln.cve})`}
               </p>
             )}
           </DialogHeader>
 
-          {exploitLoading ? (
+          {outputLoading ? (
             <div className="space-y-3 py-2" aria-busy="true" aria-live="polite">
-              <Skeleton className="h-16 rounded-lg" />
-              <Skeleton className="h-16 rounded-lg" />
-              <Skeleton className="h-16 rounded-lg" />
+              <Skeleton className="h-32 rounded-lg" />
+              <Skeleton className="h-32 rounded-lg" />
             </div>
-          ) : exploitArtifacts.length === 0 ? (
+          ) : outputExecutions.length === 0 ? (
             <EmptyState
-              icon={FileCode}
-              title="No exploitable artifacts"
-              description="No R&D artifacts were generated for this vulnerability."
+              icon={Terminal}
+              title="No execution output"
+              description="No scan executions found for this vulnerability."
               className="border-0 bg-transparent"
             />
           ) : (
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Select an R&D-generated exploit to execute against the target:
-              </p>
-              {exploitArtifacts.map((artifact: any) => (
-                <div
-                  key={artifact.id}
-                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <Badge
-                      variant="secondary"
-                      className={
-                        artifact.artifactType === "poc_code"
-                          ? "bg-info/10 text-info border-info/20"
-                          : "bg-warning/10 text-warning border-warning/20"
-                      }
-                    >
-                      {artifact.artifactType === "poc_code" ? "POC Code" : "Nuclei Template"}
-                    </Badge>
-                    <span className="text-sm font-medium truncate">
-                      {artifact.filename || artifact.id.substring(0, 8)}
-                    </span>
-                    {artifact.language && (
-                      <Badge variant="outline" className="text-xs">
-                        {artifact.language}
+            <div className="space-y-4">
+              {outputExecutions.map((execution: any, idx: number) => (
+                <div key={execution.id} className="border rounded-lg overflow-hidden">
+                  <div className="flex items-center justify-between p-3 bg-muted/50">
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        variant="secondary"
+                        className={
+                          execution.status === "completed"
+                            ? "bg-success/10 text-success border-success/20"
+                            : "bg-destructive/10 text-destructive border-destructive/20"
+                        }
+                      >
+                        {execution.status}
                       </Badge>
-                    )}
-                  </div>
-                  <div className="flex gap-2 ml-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      aria-label="Copy artifact to clipboard"
-                      onClick={() => {
-                        navigator.clipboard.writeText(artifact.content || "");
-                        toast.success("Copied to clipboard");
-                      }}
-                    >
-                      <Copy aria-hidden="true" className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => handleRunExploit(artifact.id)}
-                      disabled={executing}
-                    >
-                      {executing ? (
-                        <Loader2 aria-hidden="true" className="h-4 w-4 mr-1 animate-spin" />
-                      ) : (
-                        <Crosshair aria-hidden="true" className="h-4 w-4 mr-1" />
+                      <span className="text-sm font-medium">{execution.toolName}</span>
+                      {execution.duration != null && (
+                        <span className="text-xs text-muted-foreground">{execution.duration}s</span>
                       )}
-                      Execute
-                    </Button>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(execution.createdAt).toLocaleString()}
+                    </span>
                   </div>
+                  {(execution.targets as any)?.[0] && (
+                    <p className="text-xs text-muted-foreground px-3 pt-2">
+                      Target: {(execution.targets as any)[0]}
+                    </p>
+                  )}
+                  <pre className="p-3 text-xs font-mono whitespace-pre-wrap max-h-80 overflow-y-auto bg-background">
+                    {execution.rawOutput || execution.errorMessage || "No output"}
+                  </pre>
+                  {idx === 0 && (
+                    <div className="p-3 border-t bg-muted/30">
+                      <Button
+                        onClick={() => handleDraftReport(execution)}
+                        disabled={draftingReport}
+                        className="w-full"
+                      >
+                        {draftingReport ? (
+                          <Loader2 aria-hidden="true" className="h-4 w-4 mr-2 animate-spin" />
+                        ) : (
+                          <FileText aria-hidden="true" className="h-4 w-4 mr-2" />
+                        )}
+                        {draftingReport ? "Generating Report..." : "Draft Report"}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           )}
 
-          {/* Execution Result */}
-          {executionResult && (
-            <div className="mt-4 border-t pt-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Terminal aria-hidden="true" className="h-4 w-4" />
-                <span className="font-medium text-sm">Execution Result</span>
-                <Badge
-                  variant="secondary"
-                  className={
-                    executionResult.success
-                      ? "bg-success/10 text-success border-success/20"
-                      : "bg-destructive/10 text-destructive border-destructive/20"
-                  }
-                >
-                  {executionResult.success ? "Success" : `Exit ${executionResult.exitCode}`}
-                </Badge>
-                {executionResult.duration && (
-                  <span className="text-xs text-muted-foreground">
-                    {(executionResult.duration / 1000).toFixed(1)}s
-                  </span>
-                )}
-              </div>
-              {executionResult.targetUrl && (
-                <p className="text-xs text-muted-foreground mb-2">
-                  Target: {executionResult.targetUrl}
-                </p>
-              )}
-              <pre className="p-3 bg-muted rounded-lg text-xs font-mono whitespace-pre-wrap max-h-64 overflow-y-auto">
-                {executionResult.output || "No output"}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOutputDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Report Viewer Dialog */}
+      <Dialog open={reportDialogOpen} onOpenChange={setReportDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText aria-hidden="true" className="h-5 w-5 text-purple-600" />
+              Vulnerability Report
+            </DialogTitle>
+            {reportVuln && (
+              <p className="text-sm text-muted-foreground">
+                {reportVuln.title} {reportVuln.cve && `(${reportVuln.cve})`}
+              </p>
+            )}
+          </DialogHeader>
+
+          {reportLoading ? (
+            <div className="space-y-3 py-2" aria-busy="true" aria-live="polite">
+              <Skeleton className="h-16 rounded-lg" />
+              <Skeleton className="h-32 rounded-lg" />
+              <Skeleton className="h-24 rounded-lg" />
+            </div>
+          ) : (
+            <div className="border rounded-lg overflow-hidden">
+              <pre className="p-4 text-sm font-mono whitespace-pre-wrap max-h-[60vh] overflow-y-auto bg-background">
+                {reportContent || "No report available"}
               </pre>
             </div>
           )}
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setExploitDialogOpen(false)}>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                navigator.clipboard.writeText(reportContent);
+                toast.success("Report copied to clipboard");
+              }}
+              disabled={!reportContent}
+            >
+              <Copy aria-hidden="true" className="h-4 w-4 mr-2" />
+              Copy
+            </Button>
+            <Button variant="outline" onClick={() => setReportDialogOpen(false)}>
               Close
             </Button>
           </DialogFooter>

@@ -18,6 +18,8 @@ import { sql } from "drizzle-orm";
 import { db } from "../../db";
 import { knowledgeBase } from "@shared/schema";
 import { embedder, EmbedderError } from "./embedder";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("knowledge-base-writer");
 
 export interface KnowledgeArticleInput {
   title: string;
@@ -56,7 +58,7 @@ async function embed(
     return null;
   } catch (err) {
     if (err instanceof EmbedderError) {
-      console.warn("[kb-writer] embed failed, persisting without vector:", err.message);
+      log.warn("[kb-writer] embed failed, persisting without vector:", err.message);
       return null;
     }
     throw err;

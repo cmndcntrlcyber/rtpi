@@ -14,6 +14,8 @@ import crypto from 'crypto';
 import { db } from '@db';
 import { agentDownloadTokens, agentBundles } from '@shared/schema';
 import { eq, and, gt, isNull } from 'drizzle-orm';
+import { createLogger } from '../lib/logger';
+const log = createLogger("agent-token-service");
 
 // ============================================================================
 // Types
@@ -116,7 +118,7 @@ class AgentTokenService {
 
     const downloadUrl = `${this.baseUrl}/api/v1/public/agents/download/${token}`;
 
-    console.log(`[AgentTokenService] Generated token ${tokenRecord.id} for bundle ${options.bundleId}`);
+    log.info(`[AgentTokenService] Generated token ${tokenRecord.id} for bundle ${options.bundleId}`);
 
     return {
       tokenId: tokenRecord.id,
@@ -249,7 +251,7 @@ class AgentTokenService {
       })
       .where(eq(agentDownloadTokens.id, tokenId));
 
-    console.log(`[AgentTokenService] Token ${tokenId} revoked by user ${userId}`);
+    log.info(`[AgentTokenService] Token ${tokenId} revoked by user ${userId}`);
     return true;
   }
 
@@ -374,7 +376,7 @@ class AgentTokenService {
       .where(gt(cutoff, agentDownloadTokens.expiresAt));
 
     // Note: In production, you might want to soft delete or archive instead
-    console.log(`[AgentTokenService] Found ${expiredTokens.length} expired tokens`);
+    log.info(`[AgentTokenService] Found ${expiredTokens.length} expired tokens`);
 
     return expiredTokens.length;
   }

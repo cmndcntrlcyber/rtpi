@@ -14,6 +14,8 @@ import { CronJob } from "cron";
 import { db } from "../db";
 import { scanSchedules, axScanResults } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { createLogger } from '../lib/logger';
+const log = createLogger("scan-scheduler");
 
 // ============================================================================
 // Types
@@ -66,11 +68,11 @@ export class ScanScheduler {
    */
   async start(): Promise<void> {
     if (this.running) {
-      console.log("[ScanScheduler] Already running");
+      log.info("[ScanScheduler] Already running");
       return;
     }
 
-    console.log("[ScanScheduler] Starting...");
+    log.info("[ScanScheduler] Starting...");
     this.running = true;
 
     // Load all enabled schedules
@@ -78,20 +80,20 @@ export class ScanScheduler {
       where: eq(scanSchedules.enabled, true),
     });
 
-    console.log(`[ScanScheduler] Loading ${schedules.length} enabled schedules`);
+    log.info(`[ScanScheduler] Loading ${schedules.length} enabled schedules`);
 
     for (const schedule of schedules) {
       await this.addSchedule(schedule as any);
     }
 
-    console.log("[ScanScheduler] Started successfully");
+    log.info("[ScanScheduler] Started successfully");
   }
 
   /**
    * Stop the scheduler (stop all cron jobs)
    */
   async stop(): Promise<void> {
-    console.log("[ScanScheduler] Stopping...");
+    log.info("[ScanScheduler] Stopping...");
 
     for (const [scheduleId, job] of this.jobs.entries()) {
       if (job && typeof job.stop === "function") {
@@ -101,14 +103,14 @@ export class ScanScheduler {
     }
 
     this.running = false;
-    console.log("[ScanScheduler] Stopped");
+    log.info("[ScanScheduler] Stopped");
   }
 
   /**
    * Add a schedule to the scheduler
    */
   async addSchedule(schedule: ScanSchedule): Promise<void> {
-    console.log(`[ScanScheduler] Adding schedule: ${schedule.name} (${schedule.cronExpression})`);
+    log.info(`[ScanScheduler] Adding schedule: ${schedule.name} (${schedule.cronExpression})`);
 
     try {
       const job = new CronJob(
@@ -126,9 +128,9 @@ export class ScanScheduler {
       // Update next run time
       await this.updateNextRun(schedule.id);
 
-      console.log(`[ScanScheduler] Schedule added: ${schedule.name}`);
+      log.info(`[ScanScheduler] Schedule added: ${schedule.name}`);
     } catch (error) {
-      console.error(`[ScanScheduler] Failed to add schedule ${schedule.name}:`, error);
+      log.error(`[ScanScheduler] Failed to add schedule ${schedule.name}:`, error);
     }
   }
 
@@ -143,14 +145,14 @@ export class ScanScheduler {
     }
 
     this.jobs.delete(scheduleId);
-    console.log(`[ScanScheduler] Schedule removed: ${scheduleId}`);
+    log.info(`[ScanScheduler] Schedule removed: ${scheduleId}`);
   }
 
   /**
    * Execute a scheduled scan
    */
   private async executeScan(schedule: ScanSchedule): Promise<void> {
-    console.log(`[ScanScheduler] Executing scan: ${schedule.name}`);
+    log.info(`[ScanScheduler] Executing scan: ${schedule.name}`);
 
     try {
       // Update last run time
@@ -178,9 +180,9 @@ export class ScanScheduler {
       // Update next run time
       await this.updateNextRun(schedule.id);
 
-      console.log(`[ScanScheduler] Scan completed: ${schedule.name}`);
+      log.info(`[ScanScheduler] Scan completed: ${schedule.name}`);
     } catch (error) {
-      console.error(`[ScanScheduler] Scan failed: ${schedule.name}`, error);
+      log.error(`[ScanScheduler] Scan failed: ${schedule.name}`, error);
 
       // Update failure count
       await db
@@ -206,9 +208,9 @@ export class ScanScheduler {
         schedule.operationId,
         schedule.createdBy
       );
-      console.log(`[ScanScheduler] BBOT scan started: ${scanId}`);
+      log.info(`[ScanScheduler] BBOT scan started: ${scanId}`);
     } catch (error) {
-      console.error('[ScanScheduler] Failed to start BBOT scan:', error);
+      log.error('[ScanScheduler] Failed to start BBOT scan:', error);
       throw error;
     }
   }
@@ -231,9 +233,9 @@ export class ScanScheduler {
         schedule.operationId,
         schedule.createdBy
       );
-      console.log(`[ScanScheduler] Nuclei scan started: ${scanId}`);
+      log.info(`[ScanScheduler] Nuclei scan started: ${scanId}`);
     } catch (error) {
-      console.error('[ScanScheduler] Failed to start Nuclei scan:', error);
+      log.error('[ScanScheduler] Failed to start Nuclei scan:', error);
       throw error;
     }
   }
@@ -252,9 +254,9 @@ export class ScanScheduler {
         schedule.operationId,
         schedule.createdBy
       );
-      console.log(`[ScanScheduler] Nmap scan started: ${scanId}`);
+      log.info(`[ScanScheduler] Nmap scan started: ${scanId}`);
     } catch (error) {
-      console.error('[ScanScheduler] Failed to start Nmap scan:', error);
+      log.error('[ScanScheduler] Failed to start Nmap scan:', error);
       throw error;
     }
   }

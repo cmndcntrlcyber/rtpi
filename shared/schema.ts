@@ -47,7 +47,7 @@ const tsvector = customType<{ data: string }>({
 // ============================================================================
 
 export const userRoleEnum = pgEnum("user_role", ["admin", "operator", "viewer"]);
-export const authMethodEnum = pgEnum("auth_method", ["local", "google_oauth", "certificate", "api_key"]);
+export const authMethodEnum = pgEnum("auth_method", ["local", "google_oauth", "certificate", "api_key", "cloudflare_access"]);
 export const operationStatusEnum = pgEnum("operation_status", ["planning", "active", "paused", "completed", "cancelled"]);
 export const targetTypeEnum = pgEnum("target_type", ["ip", "domain", "url", "network", "range"]);
 export const severityEnum = pgEnum("severity", ["critical", "high", "medium", "low", "informational"]);
@@ -133,6 +133,14 @@ export const attackPlatformEnum = pgEnum("attack_platform", [
   "Azure AD",
   "Google Workspace",
   "PRE",
+  "Android",
+  "iOS",
+  "ESXi",
+  "Network Devices",
+  "Office Suite",
+  "Identity Provider",
+  "Engineering Workstation",
+  "Field Controller/RTU/PLC/IED",
 ]);
 
 // Notification enums
@@ -147,6 +155,7 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "workflow_completed",
   "workflow_failed",
   "harness_evaluation_ready",
+  "capability_drift",
 ]);
 
 // ============================================================================
@@ -187,6 +196,7 @@ export const auditLogs = pgTable("audit_logs", {
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
   success: boolean("success").notNull().default(true),
+  retentionDays: integer("retention_days").notNull().default(90),
   timestamp: timestamp("timestamp").notNull().defaultNow(),
 });
 
@@ -459,6 +469,13 @@ export const mcpServers = pgTable("mcp_servers", {
   skillPath: text("skill_path"),
   skillGeneratedAt: timestamp("skill_generated_at"),
   skillSourceHash: text("skill_source_hash"),
+  // v3.1.10 — Response time metrics (rolling window)
+  avgResponseMs: integer("avg_response_ms"),
+  p95ResponseMs: integer("p95_response_ms"),
+  metricsCallCount: integer("metrics_call_count").notNull().default(0),
+  // v3.1.10 — Capability drift detection
+  lastCapabilityHash: text("last_capability_hash"),
+  lastCapabilitySnapshot: json("last_capability_snapshot"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => [
@@ -942,6 +959,11 @@ export const toolCategoryEnum = pgEnum("tool_category", [
   "discovery",
   "security-scanning",
   "web-recon",
+  // Categories for cloud, LLM-security, C2-implant, and web-injection tool containers
+  "cloud-security",
+  "llm-security",
+  "c2-implant",
+  "web-injection",
 ]);
 
 export const parameterTypeEnum = pgEnum("parameter_type", [
@@ -1441,6 +1463,48 @@ export const empireEvents = pgTable("empire_events", {
   timestamp: timestamp("timestamp").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   eventData: json("event_data").default({}),
+});
+
+// ============================================================================
+// SLIVER C2 TABLES
+// ============================================================================
+
+export const sliverSessionStatusEnum = pgEnum("sliver_session_status", [
+  "active", "dormant", "killed", "disconnected",
+]);
+
+export const sliverSessions = pgTable("sliver_sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sessionId: text("session_id").notNull().unique(),
+  name: text("name"),
+  hostname: text("hostname"),
+  username: text("username"),
+  os: text("os"),
+  arch: text("arch"),
+  transport: text("transport"),
+  remoteAddress: text("remote_address"),
+  pid: integer("pid"),
+  filename: text("filename"),
+  lastCheckin: timestamp("last_checkin"),
+  status: sliverSessionStatusEnum("status").default("active"),
+  isBeacon: boolean("is_beacon").default(false),
+  beaconInterval: integer("beacon_interval"),
+  metadata: json("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const sliverTasks = pgTable("sliver_tasks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sessionId: text("session_id").notNull(),
+  command: text("command").notNull(),
+  parameters: json("parameters").default({}),
+  status: empireTaskStatusEnum("status").default("queued"),
+  results: text("results"),
+  errorMessage: text("error_message"),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
 });
 
 // ============================================================================
@@ -3681,4 +3745,80 @@ export const a2aCapabilityMatrix = pgTable("a2a_capability_matrix", {
   uniqueIndex("a2a_caps_agent_skill_unique_idx").on(table.agentId, table.skillId),
   index("a2a_caps_skill_idx").on(table.skillId),
 ]);
+
+export const personaProfiles = pgTable("persona_profiles", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  agentType: text("agent_type").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  methodology: text("methodology").notNull(),
+  expertiseDomains: json("expertise_domains").$type<string[]>().default([]),
+  behavioralConstraints: json("behavioral_constraints").$type<Record<string, unknown>>().default({}),
+  performanceHistory: json("performance_history").$type<Record<string, unknown>>().default({}),
+  version: integer("version").notNull().default(1),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const reasoningTraces = pgTable("reasoning_traces", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workflowId: uuid("workflow_id").references(() => agentWorkflows.id, { onDelete: "cascade" }),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "set null" }),
+  agentId: uuid("agent_id").references(() => agents.id, { onDelete: "set null" }),
+  agentName: text("agent_name"),
+  iteration: integer("iteration").notNull(),
+  action: text("action").notNull(),
+  tool: text("tool"),
+  confidence: real("confidence").notNull(),
+  outcome: text("outcome"),
+  durationMs: integer("duration_ms"),
+  hypothesis: text("hypothesis"),
+  findingsCount: integer("findings_count").default(0),
+  metadata: json("metadata"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const sessionSummaries = pgTable("session_summaries", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  conversationId: uuid("conversation_id").references(() => agentConversations.id, { onDelete: "cascade" }),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "set null" }),
+  agentType: text("agent_type").notNull(),
+  targetType: text("target_type"),
+  summary: text("summary").notNull(),
+  toolsUsed: json("tools_used").$type<string[]>().default([]),
+  findingsCount: integer("findings_count").default(0),
+  outcome: text("outcome").notNull(),
+  lessonsLearned: json("lessons_learned").$type<string[]>().default([]),
+  searchVector: text("search_vector"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const skillUsageLog = pgTable("skill_usage_log", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  skillPath: text("skill_path").notNull(),
+  agentId: uuid("agent_id").references(() => agents.id, { onDelete: "set null" }),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "set null" }),
+  outcome: text("outcome").notNull(),
+  iterationsUsed: integer("iterations_used"),
+  findingsProduced: integer("findings_produced").default(0),
+  feedbackText: text("feedback_text"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// v3.10 WS4 — HITL approval audit trail for ferry skill execution
+export const ferryApprovalAuditEnum = pgEnum("ferry_approval_decision", ["approved", "denied"]);
+
+export const ferryApprovalAudit = pgTable("ferry_approval_audit", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  skillPath: text("skill_path").notNull(),
+  toolName: text("tool_name").notNull(),
+  targetDescription: text("target_description"),
+  operationId: uuid("operation_id").references(() => operations.id, { onDelete: "set null" }),
+  requestedBy: uuid("requested_by").references(() => users.id, { onDelete: "set null" }),
+  approvedBy: uuid("approved_by").references(() => users.id, { onDelete: "set null" }),
+  decision: ferryApprovalAuditEnum("decision").notNull(),
+  reason: text("reason"),
+  ferryTaskId: text("ferry_task_id"),
+  requestedAt: timestamp("requested_at").notNull().defaultNow(),
+  decidedAt: timestamp("decided_at"),
+});
 

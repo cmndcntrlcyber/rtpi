@@ -16,6 +16,8 @@ import { operations } from "@shared/schema";
 import { BaseTaskAgent, type TaskDefinition, type TaskResult } from "../base-task-agent";
 import { routeReasoning, NoInferenceProviderAvailable } from "../../inference/inference-router";
 import { loadEngagementMeta } from "../../bug-hunter/engagement-scaffolder";
+import { createLogger } from '../../../lib/logger';
+const log = createLogger("scope-agent");
 
 interface ScopeRules {
   inScopeDomains: string[];
@@ -136,9 +138,9 @@ If a field is not present, return an empty array (or empty string for notes).`;
       };
     } catch (err) {
       if (err instanceof NoInferenceProviderAvailable) {
-        console.warn("[ScopeAgent] no provider — leaving scope rules empty");
+        log.warn("[ScopeAgent] no provider — leaving scope rules empty");
       } else {
-        console.warn("[ScopeAgent] parse failed:", err);
+        log.warn("[ScopeAgent] parse failed:", err);
       }
       return { ...EMPTY_RULES };
     }

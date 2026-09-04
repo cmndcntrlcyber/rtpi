@@ -54,6 +54,8 @@ import {
   type TargetSource,
 } from "./resolver";
 import type { ProviderId } from "./inference-provider-registry";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("inference-router");
 
 export interface AttemptRecord {
   provider: ProviderId;
@@ -215,7 +217,7 @@ async function runChat(
         source: target.source,
         outcome: "skipped_not_in_cache",
       });
-      console.warn(
+      log.warn(
         `[inference-router] ${kind}: skipping ${target.provider}/${target.model} (not in model cache)`,
       );
       continue;
@@ -259,7 +261,7 @@ async function runChat(
         durationMs: Date.now() - startedAt,
         error: msg,
       });
-      console.warn(
+      log.warn(
         `[inference-router] ${kind}: ${target.provider}/${target.model} failed (${msg}), trying next target`,
       );
     }
@@ -289,7 +291,7 @@ async function loadAgentOverride(agentId: string | undefined): Promise<AgentOver
     const config = (row.config ?? {}) as { model?: string | null };
     return { providerId, model: config.model ?? null };
   } catch (err) {
-    console.warn(`[inference-router] failed to load agent override for ${agentId}:`, err);
+    log.warn(`[inference-router] failed to load agent override for ${agentId}:`, err);
     return undefined;
   }
 }
@@ -300,7 +302,7 @@ function logSuccess(
   attemptCount: number,
 ): void {
   const suffix = attemptCount > 1 ? ` (after ${attemptCount - 1} fallback${attemptCount > 2 ? "s" : ""})` : "";
-  console.log(
+  log.info(
     `[inference-router] ${kind}: ${target.provider}/${target.model} source=${target.source}${suffix}`,
   );
 }

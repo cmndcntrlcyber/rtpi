@@ -2,6 +2,17 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import OperationList from '../../../../../client/src/components/operations/OperationList';
 
+vi.mock('@/lib/api', () => ({
+  api: {
+    get: vi.fn().mockResolvedValue({}),
+    delete: vi.fn().mockResolvedValue({}),
+  },
+}));
+
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
+
 describe('OperationList Component', () => {
   const mockOperations = [
     {
@@ -9,7 +20,7 @@ describe('OperationList Component', () => {
       name: 'Operation Alpha',
       description: 'Test operation 1',
       status: 'active',
-      startedAt: '2024-01-01T00:00:00Z',
+      startDate: '2024-01-01T00:00:00Z',
       createdBy: 'John Doe',
       targets: 5,
       findings: 3,
@@ -19,7 +30,7 @@ describe('OperationList Component', () => {
       name: 'Operation Beta',
       description: 'Test operation 2',
       status: 'planning',
-      startedAt: '2024-01-02T00:00:00Z',
+      startDate: '2024-01-02T00:00:00Z',
       createdBy: 'Jane Smith',
       targets: 3,
       findings: 1,
@@ -91,26 +102,24 @@ describe('OperationList Component', () => {
     it('should pass onSelect handler to operation cards', () => {
       const onSelect = vi.fn();
       render(<OperationList operations={mockOperations} onSelect={onSelect} />);
-      // The handler is passed to OperationCard, which we tested separately
       expect(screen.getByText('Operation Alpha')).toBeInTheDocument();
     });
 
-    it('should pass onEdit handler to operation cards', () => {
+    it('should show dropdown menus when onEdit handler is provided', () => {
       const onEdit = vi.fn();
       render(<OperationList operations={mockOperations} onEdit={onEdit} />);
-      expect(screen.getAllByText('Edit').length).toBe(2);
+      expect(screen.getAllByLabelText('Open menu').length).toBe(2);
     });
 
-    it('should pass onDelete handler to operation cards', () => {
+    it('should show dropdown menus when onDelete handler is provided', () => {
       const onDelete = vi.fn();
       render(<OperationList operations={mockOperations} onDelete={onDelete} />);
-      expect(screen.getAllByText('Delete').length).toBe(2);
+      expect(screen.getAllByLabelText('Open menu').length).toBe(2);
     });
 
     it('should not show action buttons when handlers not provided', () => {
       render(<OperationList operations={mockOperations} />);
-      expect(screen.queryByText('Edit')).not.toBeInTheDocument();
-      expect(screen.queryByText('Delete')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Open menu')).not.toBeInTheDocument();
     });
   });
 

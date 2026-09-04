@@ -65,13 +65,14 @@ export function assessToolEvidence(
   const out = (stdout || "").trim();
   const tgt = (target ?? "").toString().trim();
 
-  // 1. Command shape — the exact misconfiguration bug: the command IS just the
-  //    bare target (empty baseCommand + positional target param), or our stub
-  //    sentinel. No real tool was driven.
+  // 1. Command shape — misconfiguration detection. The command stored now
+  //    includes binaryPath (e.g. "nmap 20.157.93.108"), so we check:
+  //    a) Legacy: command IS just the bare target (no binary prefix at all)
+  //    b) The no-target-supplied sentinel (anywhere in cmd)
   if (tgt && cmd === tgt) {
     return { hasEvidence: false, reason: "command was bare target (misconfigured baseCommand)" };
   }
-  if (/^#\s*no-target-supplied/.test(cmd)) {
+  if (/(?:^|\s)#\s*no-target-supplied/.test(cmd)) {
     return { hasEvidence: false, reason: "no-target-supplied sentinel command" };
   }
 

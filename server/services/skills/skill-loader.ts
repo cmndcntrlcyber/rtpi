@@ -3,6 +3,8 @@ import path from "path";
 import yaml from "yaml";
 import { skillFilePath, skillRelativePath, type SkillRegistry } from "./skill-paths";
 import type { SkillFrontmatter } from "./skill-renderer";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("skill-loader");
 
 export interface SkillSummary {
   name: string;
@@ -43,7 +45,7 @@ export async function loadSkillSummary(
     raw = await fs.readFile(filePath, "utf-8");
   } catch (err: any) {
     if (err?.code === "ENOENT") return null;
-    console.error(`[skill-loader] read ${filePath} failed:`, err);
+    log.error(`[skill-loader] read ${filePath} failed:`, err);
     return null;
   }
   const fm = parseFrontmatter(raw);
@@ -67,7 +69,7 @@ export async function loadSkillBody(
     return await fs.readFile(filePath, "utf-8");
   } catch (err: any) {
     if (err?.code === "ENOENT") return null;
-    console.error(`[skill-loader] read ${filePath} failed:`, err);
+    log.error(`[skill-loader] read ${filePath} failed:`, err);
     return null;
   }
 }
@@ -83,7 +85,7 @@ export async function loadSkillFileByRelativePath(relPath: string): Promise<stri
     return await fs.readFile(abs, "utf-8");
   } catch (err: any) {
     if (err?.code === "ENOENT") return null;
-    console.warn(`[skill-loader] read ${relPath} failed:`, err?.message ?? err);
+    log.warn(`[skill-loader] read ${relPath} failed:`, err?.message ?? err);
     return null;
   }
 }

@@ -5,6 +5,8 @@ import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { ensureAuthenticated, ensureRole, logAudit } from "../../auth/middleware";
 import { embedder, EmbedderError } from "../../services/knowledge/embedder";
 import { z } from "zod";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("offsec-rd-knowledge");
 
 const router = Router();
 
@@ -61,7 +63,7 @@ async function embedArticle(
     return null;
   } catch (err) {
     if (err instanceof EmbedderError) {
-      console.warn("[offsec-rd-knowledge] embed failed, persisting without vector:", err.message);
+      log.warn("[offsec-rd-knowledge] embed failed, persisting without vector:", err.message);
       return null;
     }
     throw err;
@@ -242,7 +244,7 @@ async function searchArticles(opts: SearchOpts): Promise<any[]> {
     }
   } catch (err: any) {
     // search_vector column may not exist in older schemas — fall through.
-    console.warn("[offsec-rd-knowledge] full-text search unavailable, falling back to ILIKE:", err?.message);
+    log.warn("[offsec-rd-knowledge] full-text search unavailable, falling back to ILIKE:", err?.message);
   }
 
   // Tier 3 — ILIKE substring match (always available).
@@ -343,7 +345,7 @@ router.get("/:id", async (req, res) => {
     db.update(knowledgeBase)
       .set({ viewCount: sql`${knowledgeBase.viewCount} + 1` })
       .where(eq(knowledgeBase.id, req.params.id))
-      .catch((e) => console.warn("[offsec-rd-knowledge] view increment failed:", e?.message));
+      .catch((e) => log.warn("[offsec-rd-knowledge] view increment failed:", e?.message));
 
     res.json({ article });
   } catch (error: any) {

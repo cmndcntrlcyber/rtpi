@@ -1,3 +1,6 @@
+import { createLogger } from '../../lib/logger';
+const log = createLogger("tavily-researcher");
+
 /**
  * Tavily-backed research for tool skill generation.
  *
@@ -139,7 +142,7 @@ export async function researchTool(input: ToolResearchInput): Promise<TavilyRese
       allResults.push(...results);
     } catch (err) {
       anyErrored = true;
-      console.error(`[tavily-researcher] search "${q}" failed:`, err);
+      log.error(`[tavily-researcher] search "${q}" failed:`, err);
     }
   }
 
@@ -154,7 +157,7 @@ export async function researchTool(input: ToolResearchInput): Promise<TavilyRese
       allResults.unshift(...extracted);
     } catch (err) {
       anyErrored = true;
-      console.error(`[tavily-researcher] extract failed:`, err);
+      log.error(`[tavily-researcher] extract failed:`, err);
     }
   }
 

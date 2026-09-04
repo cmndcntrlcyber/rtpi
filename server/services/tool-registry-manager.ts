@@ -26,6 +26,8 @@ import {
   validateUpdateToolRegistry,
 } from '../validation/tool-config-schema';
 import { enqueueSkillGeneration } from './skill-generator';
+import { createLogger } from '../lib/logger';
+const log = createLogger("tool-registry-manager");
 
 /**
  * Register a new tool in the registry
@@ -102,13 +104,13 @@ export async function registerTool(config: ToolConfiguration, _userId?: string):
       });
     }
 
-    console.log(`Tool '${config.name}' registered successfully with ID: ${tool.id}`);
+    log.info(`Tool '${config.name}' registered successfully with ID: ${tool.id}`);
     // FF_TOOL_SKILL_GENERATION — fire-and-forget Tavily research + SKILL.md
     // synthesis. Guarded inside enqueueSkillGeneration; never blocks.
     enqueueSkillGeneration('registry', tool.id);
     return tool.id;
   } catch (error: any) {
-    console.error('Failed to register tool:', error);
+    log.error('Failed to register tool:', error);
     throw new Error(`Failed to register tool: ${error.message}`);
   }
 }
@@ -231,7 +233,7 @@ export async function updateTool(
     .set(updateData)
     .where(eq(toolRegistry.id, id));
 
-  console.log(`Tool ${id} updated successfully`);
+  log.info(`Tool ${id} updated successfully`);
 }
 
 /**
@@ -284,7 +286,7 @@ export async function updateValidationStatus(
 export async function deleteTool(id: string): Promise<void> {
   // Parameters, parsers, executions, and test results will be cascade deleted
   await db.delete(toolRegistry).where(eq(toolRegistry.id, id));
-  console.log(`Tool ${id} deleted successfully`);
+  log.info(`Tool ${id} deleted successfully`);
 }
 
 /**

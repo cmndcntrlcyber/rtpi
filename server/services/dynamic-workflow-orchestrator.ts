@@ -24,6 +24,22 @@ import {
 } from '../../shared/schema';
 import { eq, and, inArray } from 'drizzle-orm';
 import { EventEmitter } from 'events';
+import { createLogger } from '../lib/logger';
+const log = createLogger("dynamic-workflow-orchestrator");
+
+// ============================================================================
+// Exported utilities
+// ============================================================================
+
+export function calculateBackoffDelay(
+  attempt: number,
+  baseDelayMs: number = 1000,
+  multiplier: number = 2,
+  maxDelayMs: number = 60000
+): number {
+  const delay = baseDelayMs * Math.pow(multiplier, attempt - 1);
+  return Math.min(delay, maxDelayMs);
+}
 
 // ============================================================================
 // Types
@@ -90,7 +106,7 @@ export class DynamicWorkflowOrchestrator extends EventEmitter {
   async initialize(): Promise<void> {
     await this.refreshCapabilityCache();
     this.startCapabilityRefresh();
-    console.log('DynamicWorkflowOrchestrator initialized');
+    log.info('DynamicWorkflowOrchestrator initialized');
   }
 
   /**
@@ -148,9 +164,9 @@ export class DynamicWorkflowOrchestrator extends EventEmitter {
         agentList.sort((a, b) => b.priority - a.priority);
       }
 
-      console.log(`Capability cache refreshed: ${this.capabilityCache.size} capabilities`);
+      log.info(`Capability cache refreshed: ${this.capabilityCache.size} capabilities`);
     } catch (error) {
-      console.error('Failed to refresh capability cache:', error);
+      log.error('Failed to refresh capability cache:', error);
     }
   }
 
@@ -201,7 +217,7 @@ export class DynamicWorkflowOrchestrator extends EventEmitter {
           return true;
       }
     } catch (error) {
-      console.warn('Failed to evaluate dependency condition:', error);
+      log.warn('Failed to evaluate dependency condition:', error);
       return true; // Default to including the dependency on error
     }
   }
@@ -285,7 +301,7 @@ export class DynamicWorkflowOrchestrator extends EventEmitter {
     }
 
     // Default to true for unrecognized expressions (safe fallback)
-    console.warn(`Unrecognized expression format: ${expression}`);
+    log.warn(`Unrecognized expression format: ${expression}`);
     return true;
   }
 
@@ -299,6 +315,35 @@ export class DynamicWorkflowOrchestrator extends EventEmitter {
     // Return highest priority available agent
     const available = agentList.filter(a => a.isAvailable);
     return available.length > 0 ? available[0] : null;
+  }
+
+  /**
+   * Resolve the agent for a capability string. Templates built from explicit
+   * agents (the linear builder and the visual canvas) encode each step as the
+   * pseudo-capability `agent:<uuid>`; resolve those directly against the agents
+   * table instead of the named-capability cache. All other capabilities use the
+   * capability cache as before.
+   */
+  async resolveCapabilityAgent(
+    capability: string,
+    context?: Record<string, any>,
+  ): Promise<AgentCapabilityMap | null> {
+    if (capability.startsWith('agent:')) {
+      const agentId = capability.slice('agent:'.length);
+      const [a] = await db.select().from(agents).where(eq(agents.id, agentId));
+      if (!a) return null;
+      return {
+        agentId: a.id,
+        agentName: a.name,
+        agentType: a.type,
+        capabilities: [capability],
+        inputTypes: [],
+        outputTypes: [],
+        priority: 0,
+        isAvailable: a.status === 'idle' || a.status === 'running',
+      };
+    }
+    return this.findAgentForCapability(capability, context);
   }
 
   /**
@@ -348,7 +393,7 @@ export class DynamicWorkflowOrchestrator extends EventEmitter {
     const optionalCapabilities = (template.optionalCapabilities as string[]) || [];
 
     for (const capability of requiredCapabilities) {
-      const agent = this.findAgentForCapability(capability, context);
+      const agent = await this.resolveCapabilityAgent(capability, context);
       if (agent) {
         resolvedAgents.push({
           agentId: agent.agentId,
@@ -369,12 +414,12 @@ export class DynamicWorkflowOrchestrator extends EventEmitter {
         throw new Error(`Missing required capabilities: ${missingCapabilities.join(', ')}`);
       }
       // 'skip' or 'substitute' - log warning and continue
-      console.warn(`Workflow missing capabilities: ${missingCapabilities.join(', ')}`);
+      log.warn(`Workflow missing capabilities: ${missingCapabilities.join(', ')}`);
     }
 
     // Add optional capabilities if available
     for (const capability of optionalCapabilities) {
-      const agent = this.findAgentForCapability(capability, context);
+      const agent = await this.resolveCapabilityAgent(capability, context);
       if (agent) {
         resolvedAgents.push({
           agentId: agent.agentId,
@@ -386,8 +431,16 @@ export class DynamicWorkflowOrchestrator extends EventEmitter {
       }
     }
 
+    // Explicit agent→agent handoff edges authored on the visual canvas. Each one
+    // forces the target agent into a phase after the source and lets it consume
+    // the source's output from the accumulated workflow context.
+    const explicitHandoffs =
+      ((template.configuration as any)?.handoffs as
+        | { from: string; to: string; condition?: DependencyCondition | null }[]
+        | undefined) || [];
+
     // Build dependency graph and calculate phases with conditional evaluation
-    const executionGraph = await this.buildExecutionGraph(resolvedAgents, context);
+    const executionGraph = await this.buildExecutionGraph(resolvedAgents, context, explicitHandoffs);
 
     // Create workflow instance
     const [instance] = await db
@@ -413,7 +466,8 @@ export class DynamicWorkflowOrchestrator extends EventEmitter {
    */
   private async buildExecutionGraph(
     agentNodes: ResolvedAgentNode[],
-    context: Record<string, any> = {}
+    context: Record<string, any> = {},
+    explicitHandoffs: { from: string; to: string; condition?: DependencyCondition | null }[] = []
   ): Promise<ExecutionGraph> {
     const graph: ExecutionGraph = {
       nodes: {},
@@ -468,9 +522,41 @@ export class DynamicWorkflowOrchestrator extends EventEmitter {
       depMap.get(dep.agentId)!.push(dep.dependsOnCapability);
     }
 
+    // Merge explicit canvas handoff edges into the dependency map. A handoff
+    // makes the target agent depend on the source agent's capability, so the
+    // target is scheduled into a later phase and reads the source's output from
+    // context. Endpoints are resolved by the source agent's *actual* capability
+    // (not an assumed `agent:<id>` string) so handoffs work for any template.
+    const capByAgentId = new Map(agentNodes.map((a) => [a.agentId, a.capability]));
+    const resolvedAgentIds = new Set(agentNodes.map((a) => a.agentId));
+    for (const handoff of explicitHandoffs) {
+      if (
+        !resolvedAgentIds.has(handoff.from) ||
+        !resolvedAgentIds.has(handoff.to) ||
+        handoff.from === handoff.to
+      ) {
+        continue;
+      }
+      if (handoff.condition && !this.evaluateDependencyCondition(handoff.condition, context)) {
+        skippedDeps.push({
+          agentId: handoff.to,
+          dependency: handoff.from,
+          reason: 'Handoff condition not met',
+        });
+        continue;
+      }
+      const fromCapability = capByAgentId.get(handoff.from)!;
+      if (!depMap.has(handoff.to)) {
+        depMap.set(handoff.to, []);
+      }
+      if (!depMap.get(handoff.to)!.includes(fromCapability)) {
+        depMap.get(handoff.to)!.push(fromCapability);
+      }
+    }
+
     // Log skipped dependencies for debugging
     if (skippedDeps.length > 0) {
-      console.log(
+      log.info(
         `Conditional dependency evaluation: ${skippedDeps.length} dependencies skipped`,
         skippedDeps
       );
@@ -659,7 +745,7 @@ export class DynamicWorkflowOrchestrator extends EventEmitter {
       });
 
       this.emit('workflow_failed', workflowId, new Error(errorMessage));
-      console.warn(`[DynamicWorkflowOrchestrator] Workflow ${workflowId} failed: no agents resolved`);
+      log.warn(`[DynamicWorkflowOrchestrator] Workflow ${workflowId} failed: no agents resolved`);
       return;
     }
 
@@ -790,17 +876,13 @@ export class DynamicWorkflowOrchestrator extends EventEmitter {
     this.emit('workflow_completed', workflowId);
   }
 
-  /**
-   * Calculate exponential backoff delay
-   */
   private calculateBackoffDelay(
     attempt: number,
     baseDelayMs: number = 1000,
     multiplier: number = 2,
     maxDelayMs: number = 60000
   ): number {
-    const delay = baseDelayMs * Math.pow(multiplier, attempt - 1);
-    return Math.min(delay, maxDelayMs);
+    return calculateBackoffDelay(attempt, baseDelayMs, multiplier, maxDelayMs);
   }
 
   /**
@@ -905,11 +987,12 @@ export class DynamicWorkflowOrchestrator extends EventEmitter {
             break;
           case 'anthropic':
           case 'openai':
+          case 'ollama':
             result = await this.executeAIAgent(agent, context, agentConfig);
             break;
           default:
             // Mark as skipped for unsupported types
-            console.warn(`Unsupported agent type: ${agent.type}`);
+            log.warn(`Unsupported agent type: ${agent.type}`);
             result = { skipped: true, reason: `Unsupported agent type: ${agent.type}` };
         }
 
@@ -945,7 +1028,7 @@ export class DynamicWorkflowOrchestrator extends EventEmitter {
 
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
-        console.error(`Agent ${agentNode.agentId} failed (attempt ${attempt}/${maxRetries + 1}):`, lastError.message);
+        log.error(`Agent ${agentNode.agentId} failed (attempt ${attempt}/${maxRetries + 1}):`, lastError.message);
 
         // Update task with error info
         await db
@@ -1044,20 +1127,26 @@ export class DynamicWorkflowOrchestrator extends EventEmitter {
     context: Record<string, any>,
     config: any
   ): Promise<any> {
-    // Use existing agent workflow orchestrator for AI agents
-    const { AgentWorkflowOrchestrator } = await import('./agent-workflow-orchestrator');
-    const orchestrator = new AgentWorkflowOrchestrator();
+    // Route through the inference router so the agent's configured provider/model
+    // (anthropic | openai | ollama) drives selection, with the standard fallback
+    // chain behind it. Passing agentId loads the agent's inferenceProviderId +
+    // config.model override; explicitModel pins the configured model.
+    const { routeAgent } = await import('./inference/inference-router');
+    const prompt = context.prompt || JSON.stringify(context);
 
-    const result = await orchestrator.callAgentAI(
-      agent.type as 'openai' | 'anthropic',
-      context.prompt || JSON.stringify(context),
-      {
-        model: config?.model,
-        systemPrompt: config?.systemPrompt,
-      }
-    );
+    const result = await routeAgent({
+      agentId: agent.id,
+      messages: [{ role: 'user', content: prompt }],
+      system: config?.systemPrompt,
+      explicitModel: config?.model?.trim() || undefined,
+    });
 
-    return result;
+    return {
+      provider: result.provider,
+      model: result.model,
+      source: result.source,
+      response: result.response.text,
+    };
   }
 
   /**

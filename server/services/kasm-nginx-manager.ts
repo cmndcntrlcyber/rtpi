@@ -5,6 +5,8 @@ import path from 'path';
 import { db } from '../db';
 import { empireListeners, kasmWorkspaces } from '@shared/schema';
 import { eq, desc } from 'drizzle-orm';
+import { createLogger } from '../lib/logger';
+const log = createLogger("kasm-nginx-manager");
 
 const execAsync = promisify(exec);
 
@@ -20,8 +22,8 @@ const execAsync = promisify(exec);
  * - Workspace: User Browser → Kasm Nginx Proxy → Workspace Container
  *
  * Example Routes:
- * - listener-abc123.kasm.attck.nexus:8443 → http://empire:8080
- * - workspace-def456.kasm.attck.nexus:8443 → http://kasm-guac:6901
+ * - listener-abc123.kasm.onoiroi.us:8443 → http://empire:8080
+ * - workspace-def456.kasm.onoiroi.us:8443 → http://kasm-guac:6901
  */
 
 export type ProxyType = 'empire-listener' | 'kasm-workspace';
@@ -80,7 +82,7 @@ export class KasmNginxManager {
   }) {
     this.configPath = options?.configPath || '/etc/nginx/conf.d';
     this.nginxContainer = options?.nginxContainer || 'rtpi-kasm-proxy';
-    this.kasmDomain = options?.kasmDomain || 'kasm.attck.nexus';
+    this.kasmDomain = options?.kasmDomain || 'kasm.onoiroi.us';
     this.enabled = options?.enabled ?? (process.env.KASM_PROXY_ENABLED === 'true');
     this.accessLogPath = options?.accessLogPath || '/var/log/nginx/kasm-proxy-access.log';
     this.callbackUrls = new Map();
@@ -91,7 +93,7 @@ export class KasmNginxManager {
    */
   async registerListenerProxy(listenerId: string, listenerPort: number, _listenerName: string): Promise<ProxyRoute | null> {
     if (!this.enabled) {
-      console.log('[KasmNginxManager] Kasm proxy disabled, skipping route registration');
+      log.info('[KasmNginxManager] Kasm proxy disabled, skipping route registration');
       return null;
     }
 
@@ -125,7 +127,7 @@ export class KasmNginxManager {
       // Reload nginx to apply changes
       await this.reloadNginx();
 
-      console.log(`[KasmNginxManager] Registered proxy route: ${subdomain}:${proxyPort} → ${route.target}`);
+      log.info(`[KasmNginxManager] Registered proxy route: ${subdomain}:${proxyPort} → ${route.target}`);
 
       // Update listener record with proxy information
       await db
@@ -141,7 +143,7 @@ export class KasmNginxManager {
 
       return route;
     } catch (error) {
-      console.error('[KasmNginxManager] Failed to register proxy route:', error);
+      log.error('[KasmNginxManager] Failed to register proxy route:', error);
       throw error;
     }
   }
@@ -159,9 +161,9 @@ export class KasmNginxManager {
       await this.removeNginxConfig(configFileName);
       await this.reloadNginx();
 
-      console.log(`[KasmNginxManager] Unregistered proxy route for listener ${listenerId}`);
+      log.info(`[KasmNginxManager] Unregistered proxy route for listener ${listenerId}`);
     } catch (error) {
-      console.error('[KasmNginxManager] Failed to unregister proxy route:', error);
+      log.error('[KasmNginxManager] Failed to unregister proxy route:', error);
       throw error;
     }
   }
@@ -171,7 +173,7 @@ export class KasmNginxManager {
    */
   async registerWorkspaceProxy(workspaceId: string, workspacePort: number): Promise<ProxyRoute | null> {
     if (!this.enabled) {
-      console.log('[KasmNginxManager] Kasm proxy disabled, skipping workspace route registration');
+      log.info('[KasmNginxManager] Kasm proxy disabled, skipping workspace route registration');
       return null;
     }
 
@@ -205,7 +207,7 @@ export class KasmNginxManager {
       // Reload nginx to apply changes
       await this.reloadNginx();
 
-      console.log(`[KasmNginxManager] Registered workspace proxy route: ${subdomain}:${proxyPort} → ${route.target}`);
+      log.info(`[KasmNginxManager] Registered workspace proxy route: ${subdomain}:${proxyPort} → ${route.target}`);
 
       // Update workspace record with proxy information
       await db
@@ -224,7 +226,7 @@ export class KasmNginxManager {
 
       return route;
     } catch (error) {
-      console.error('[KasmNginxManager] Failed to register workspace proxy route:', error);
+      log.error('[KasmNginxManager] Failed to register workspace proxy route:', error);
       throw error;
     }
   }
@@ -245,9 +247,9 @@ export class KasmNginxManager {
       // Remove callback URL
       this.unregisterCallbackUrl(workspaceId);
 
-      console.log(`[KasmNginxManager] Unregistered workspace proxy route for ${workspaceId}`);
+      log.info(`[KasmNginxManager] Unregistered workspace proxy route for ${workspaceId}`);
     } catch (error) {
-      console.error('[KasmNginxManager] Failed to unregister workspace proxy route:', error);
+      log.error('[KasmNginxManager] Failed to unregister workspace proxy route:', error);
       throw error;
     }
   }
@@ -261,7 +263,7 @@ export class KasmNginxManager {
    */
   registerCallbackUrl(routeId: string, callbackUrl: string): void {
     this.callbackUrls.set(routeId, callbackUrl);
-    console.log(`[KasmNginxManager] Registered callback URL for ${routeId}: ${callbackUrl}`);
+    log.info(`[KasmNginxManager] Registered callback URL for ${routeId}: ${callbackUrl}`);
   }
 
   /**
@@ -269,7 +271,7 @@ export class KasmNginxManager {
    */
   unregisterCallbackUrl(routeId: string): void {
     this.callbackUrls.delete(routeId);
-    console.log(`[KasmNginxManager] Unregistered callback URL for ${routeId}`);
+    log.info(`[KasmNginxManager] Unregistered callback URL for ${routeId}`);
   }
 
   /**
@@ -292,9 +294,9 @@ export class KasmNginxManager {
   updateCallbackUrl(routeId: string, newCallbackUrl: string): void {
     if (this.callbackUrls.has(routeId)) {
       this.callbackUrls.set(routeId, newCallbackUrl);
-      console.log(`[KasmNginxManager] Updated callback URL for ${routeId}: ${newCallbackUrl}`);
+      log.info(`[KasmNginxManager] Updated callback URL for ${routeId}: ${newCallbackUrl}`);
     } else {
-      console.warn(`[KasmNginxManager] No existing callback URL found for ${routeId}`);
+      log.warn(`[KasmNginxManager] No existing callback URL found for ${routeId}`);
     }
   }
 
@@ -478,7 +480,7 @@ ${sslConfig}${accessLogConfig}
 
       return logs;
     } catch (error) {
-      console.error('[KasmNginxManager] Failed to get access logs:', error);
+      log.error('[KasmNginxManager] Failed to get access logs:', error);
       return [];
     }
   }
@@ -547,7 +549,7 @@ ${sslConfig}${accessLogConfig}
         avgResponseTime,
       };
     } catch (error) {
-      console.error('[KasmNginxManager] Failed to get proxy stats:', error);
+      log.error('[KasmNginxManager] Failed to get proxy stats:', error);
       return {
         routeCount: 0,
         empireListenerRoutes: 0,
@@ -581,9 +583,9 @@ ${sslConfig}${accessLogConfig}
         );
       }
 
-      console.log(`[KasmNginxManager] Rotated access logs, kept last ${daysToKeep} days`);
+      log.info(`[KasmNginxManager] Rotated access logs, kept last ${daysToKeep} days`);
     } catch (error) {
-      console.error('[KasmNginxManager] Failed to rotate access logs:', error);
+      log.error('[KasmNginxManager] Failed to rotate access logs:', error);
     }
   }
 
@@ -608,9 +610,9 @@ ${sslConfig}${accessLogConfig}
         await fs.writeFile(configFilePath, content, 'utf8');
       }
 
-      console.log(`[KasmNginxManager] Wrote nginx config: ${filename}`);
+      log.info(`[KasmNginxManager] Wrote nginx config: ${filename}`);
     } catch (error) {
-      console.error('[KasmNginxManager] Failed to write nginx config:', error);
+      log.error('[KasmNginxManager] Failed to write nginx config:', error);
       throw error;
     }
   }
@@ -632,9 +634,9 @@ ${sslConfig}${accessLogConfig}
         await fs.unlink(configFilePath);
       }
 
-      console.log(`[KasmNginxManager] Removed nginx config: ${filename}`);
+      log.info(`[KasmNginxManager] Removed nginx config: ${filename}`);
     } catch (error) {
-      console.error('[KasmNginxManager] Failed to remove nginx config:', error);
+      log.error('[KasmNginxManager] Failed to remove nginx config:', error);
       throw error;
     }
   }
@@ -654,9 +656,9 @@ ${sslConfig}${accessLogConfig}
         await execAsync('nginx -s reload');
       }
 
-      console.log('[KasmNginxManager] Reloaded nginx configuration');
+      log.info('[KasmNginxManager] Reloaded nginx configuration');
     } catch (error) {
-      console.error('[KasmNginxManager] Failed to reload nginx:', error);
+      log.error('[KasmNginxManager] Failed to reload nginx:', error);
       throw error;
     }
   }
@@ -689,7 +691,7 @@ ${sslConfig}${accessLogConfig}
       }
       return true;
     } catch (error) {
-      console.error('[KasmNginxManager] Nginx configuration test failed:', error);
+      log.error('[KasmNginxManager] Nginx configuration test failed:', error);
       return false;
     }
   }
@@ -714,7 +716,7 @@ ${sslConfig}${accessLogConfig}
 
       return routes;
     } catch (error) {
-      console.error('[KasmNginxManager] Failed to list proxy routes:', error);
+      log.error('[KasmNginxManager] Failed to list proxy routes:', error);
       return [];
     }
   }
@@ -743,7 +745,7 @@ ${sslConfig}${accessLogConfig}
 
       return routes;
     } catch (error) {
-      console.error('[KasmNginxManager] Failed to list workspace proxy routes:', error);
+      log.error('[KasmNginxManager] Failed to list workspace proxy routes:', error);
       return [];
     }
   }
@@ -778,7 +780,7 @@ ${sslConfig}${accessLogConfig}
           : null;
       }
     } catch (error) {
-      console.error('[KasmNginxManager] Failed to get proxy route:', error);
+      log.error('[KasmNginxManager] Failed to get proxy route:', error);
       return null;
     }
   }
@@ -788,7 +790,7 @@ ${sslConfig}${accessLogConfig}
 export const kasmNginxManager = new KasmNginxManager({
   enabled: process.env.KASM_PROXY_ENABLED === 'true',
   nginxContainer: process.env.KASM_NGINX_CONTAINER || 'rtpi-kasm-proxy',
-  kasmDomain: process.env.KASM_DOMAIN || 'kasm.attck.nexus',
+  kasmDomain: process.env.KASM_DOMAIN || 'kasm.onoiroi.us',
   // Per-workspace configs live in their own subdir so they don't collide with
   // the templated default.conf. Matches the include directive in
   // docker/kasm-proxy/default.conf.template.

@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodic RTPI Container Healer
+Requires=rtpi-container-healer.service
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=2min
+Unit=rtpi-container-healer.service
+AccuracySec=15s
+
+[Install]
+WantedBy=timers.target

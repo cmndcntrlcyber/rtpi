@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         wireguard-tools \
         iptables \
         iproute2 \
-        resolvconf \
+        openresolv \
         ca-certificates \
         curl \
         netcat-openbsd \

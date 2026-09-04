@@ -1,6 +1,8 @@
 import { db } from "../db";
 import { ollamaModels } from "../../shared/schema";
 import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { createLogger } from '../lib/logger';
+const log = createLogger("ollama-manager");
 
 /**
  * Ollama Model Management Service
@@ -163,7 +165,7 @@ export class OllamaManager {
       const data: OllamaAPIResponse = await response.json();
       return data.models || [];
     } catch (error) {
-      console.error("[OllamaManager] Error listing models from API:", error);
+      log.error("[OllamaManager] Error listing models from API:", error);
       throw error;
     }
   }
@@ -176,7 +178,7 @@ export class OllamaManager {
       const models = await db.select().from(ollamaModels);
       return models as OllamaModel[];
     } catch (error) {
-      console.error("[OllamaManager] Error listing models from DB:", error);
+      log.error("[OllamaManager] Error listing models from DB:", error);
       throw error;
     }
   }
@@ -186,7 +188,7 @@ export class OllamaManager {
    */
   async syncModels(): Promise<{ added: number; updated: number; removed: number }> {
     try {
-      console.log("[OllamaManager] Syncing models from Ollama API to database...");
+      log.info("[OllamaManager] Syncing models from Ollama API to database...");
 
       const apiModels = await this.listModelsFromAPI();
       const dbModels = await this.listModelsFromDB();
@@ -254,10 +256,10 @@ export class OllamaManager {
         }
       }
 
-      console.log(`[OllamaManager] Sync complete: ${added} added, ${updated} updated, ${removed} removed`);
+      log.info(`[OllamaManager] Sync complete: ${added} added, ${updated} updated, ${removed} removed`);
       return { added, updated, removed };
     } catch (error) {
-      console.error("[OllamaManager] Error syncing models:", error);
+      log.error("[OllamaManager] Error syncing models:", error);
       throw error;
     }
   }
@@ -275,7 +277,7 @@ export class OllamaManager {
   ): Promise<{ success: boolean; error?: string }> {
     // RKLLama mode: models are pre-converted .rkllm files, not pulled via API
     if (process.env.RKLLM_MODE === "true") {
-      console.log(`[OllamaManager] RKLLama mode — pull not supported via API. Use 'rkllama_client pull ${modelName}' on the host.`);
+      log.info(`[OllamaManager] RKLLama mode — pull not supported via API. Use 'rkllama_client pull ${modelName}' on the host.`);
       return {
         success: false,
         error: "Model pulling not supported in RKLLama NPU mode. Models must be pre-converted to .rkllm format. Use 'rkllama_client pull' on the host.",
@@ -283,7 +285,7 @@ export class OllamaManager {
     }
 
     try {
-      console.log(`[OllamaManager] Pulling model: ${modelName}`);
+      log.info(`[OllamaManager] Pulling model: ${modelName}`);
 
       // Update status to downloading
       const [name, tag = "latest"] = modelName.split(":");
@@ -319,7 +321,7 @@ export class OllamaManager {
             for (const line of lines) {
               try {
                 const progress: ModelDownloadProgress = JSON.parse(line);
-                console.log(`[OllamaManager] Download progress: ${progress.status}`);
+                log.info(`[OllamaManager] Download progress: ${progress.status}`);
               } catch (e) {
                 // Ignore parse errors
               }
@@ -336,10 +338,10 @@ export class OllamaManager {
       // Sync to update database with latest info
       await this.syncModels();
 
-      console.log(`[OllamaManager] Successfully pulled model: ${modelName}`);
+      log.info(`[OllamaManager] Successfully pulled model: ${modelName}`);
       return { success: true };
     } catch (error) {
-      console.error("[OllamaManager] Error pulling model:", error);
+      log.error("[OllamaManager] Error pulling model:", error);
       const [name, tag = "latest"] = modelName.split(":");
       await this.updateModelStatus(name, tag, "error");
       return {
@@ -359,7 +361,7 @@ export class OllamaManager {
   async deleteModel(modelName: string): Promise<{ success: boolean; error?: string }> {
     // RKLLama mode: model deletion is managed on the host filesystem
     if (process.env.RKLLM_MODE === "true") {
-      console.log(`[OllamaManager] RKLLama mode — delete not supported via API. Remove .rkllm files from the model directory on the host.`);
+      log.info(`[OllamaManager] RKLLama mode — delete not supported via API. Remove .rkllm files from the model directory on the host.`);
       return {
         success: false,
         error: "Model deletion not supported in RKLLama NPU mode. Remove .rkllm files from the model directory on the host.",
@@ -367,7 +369,7 @@ export class OllamaManager {
     }
 
     try {
-      console.log(`[OllamaManager] Deleting model: ${modelName}`);
+      log.info(`[OllamaManager] Deleting model: ${modelName}`);
 
       const response = await fetch(`${this.OLLAMA_HOST}/api/delete`, {
         method: "DELETE",
@@ -388,10 +390,10 @@ export class OllamaManager {
           sql`${ollamaModels.modelName} = ${name} AND ${ollamaModels.modelTag} = ${tag}`
         );
 
-      console.log(`[OllamaManager] Successfully deleted model: ${modelName}`);
+      log.info(`[OllamaManager] Successfully deleted model: ${modelName}`);
       return { success: true };
     } catch (error) {
-      console.error("[OllamaManager] Error deleting model:", error);
+      log.error("[OllamaManager] Error deleting model:", error);
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
@@ -420,7 +422,7 @@ export class OllamaManager {
 
       return results.length > 0 ? (results[0] as OllamaModel) : null;
     } catch (error) {
-      console.error("[OllamaManager] Error getting model status:", error);
+      log.error("[OllamaManager] Error getting model status:", error);
       return null;
     }
   }
@@ -451,7 +453,7 @@ export class OllamaManager {
         });
       }
     } catch (error) {
-      console.error("[OllamaManager] Error updating model status:", error);
+      log.error("[OllamaManager] Error updating model status:", error);
       throw error;
     }
   }
@@ -472,7 +474,7 @@ export class OllamaManager {
           sql`${ollamaModels.modelName} = ${modelName} AND ${ollamaModels.modelTag} = ${modelTag}`
         );
     } catch (error) {
-      console.error("[OllamaManager] Error updating model metadata:", error);
+      log.error("[OllamaManager] Error updating model metadata:", error);
       throw error;
     }
   }
@@ -493,7 +495,7 @@ export class OllamaManager {
           sql`${ollamaModels.modelName} = ${modelName} AND ${ollamaModels.modelTag} = ${modelTag}`
         );
     } catch (error) {
-      console.error("[OllamaManager] Error tracking model usage:", error);
+      log.error("[OllamaManager] Error tracking model usage:", error);
     }
   }
 
@@ -506,11 +508,11 @@ export class OllamaManager {
    */
   startAutoUnloadJob(): void {
     if (this.unloadTimer) {
-      console.log("[OllamaManager] Auto-unload job already running");
+      log.info("[OllamaManager] Auto-unload job already running");
       return;
     }
 
-    console.log(
+    log.info(
       `[OllamaManager] Starting auto-unload job (check every ${this.CHECK_INTERVAL / 1000}s, unload after ${this.AUTO_UNLOAD_TIMEOUT / 1000}s inactivity)`
     );
 
@@ -526,7 +528,7 @@ export class OllamaManager {
     if (this.unloadTimer) {
       clearInterval(this.unloadTimer);
       this.unloadTimer = null;
-      console.log("[OllamaManager] Auto-unload job stopped");
+      log.info("[OllamaManager] Auto-unload job stopped");
     }
   }
 
@@ -558,7 +560,7 @@ export class OllamaManager {
         return 0;
       }
 
-      console.log(`[OllamaManager] Found ${inactiveModels.length} inactive models to unload`);
+      log.info(`[OllamaManager] Found ${inactiveModels.length} inactive models to unload`);
 
       let unloadedCount = 0;
       for (const model of inactiveModels) {
@@ -566,7 +568,7 @@ export class OllamaManager {
         const result = await this.unloadModel(fullName);
         if (result.success) unloadedCount++;
       }
-      console.log(`[OllamaManager] Unloaded ${unloadedCount} inactive models`);
+      log.info(`[OllamaManager] Unloaded ${unloadedCount} inactive models`);
       return unloadedCount;
     };
 
@@ -577,7 +579,7 @@ export class OllamaManager {
         // Wait a beat so postgres-js drops the stale socket from its pool,
         // then try once more on a fresh connection. Most CONNECTION_ENDED /
         // ECONNRESET drops recover on the very next call.
-        console.warn(
+        log.warn(
           "[OllamaManager] Transient DB drop in checkAndUnloadInactiveModels — retrying once on a fresh connection",
         );
         await new Promise((r) => setTimeout(r, 500));
@@ -585,16 +587,16 @@ export class OllamaManager {
           return await runOnce();
         } catch (retryErr: unknown) {
           if (isTransientDbError(retryErr)) {
-            console.warn(
+            log.warn(
               "[OllamaManager] Retry also failed (transient); the watcher / next tick will recover. No action taken this cycle.",
             );
             return 0;
           }
-          console.error("[OllamaManager] Retry failed with non-transient error:", retryErr);
+          log.error("[OllamaManager] Retry failed with non-transient error:", retryErr);
           return 0;
         }
       }
-      console.error("[OllamaManager] Error checking inactive models:", error);
+      log.error("[OllamaManager] Error checking inactive models:", error);
       return 0;
     }
   }
@@ -604,17 +606,17 @@ export class OllamaManager {
    */
   async unloadModel(modelName: string): Promise<{ success: boolean; error?: string }> {
     try {
-      console.log(`[OllamaManager] Unloading model: ${modelName}`);
+      log.info(`[OllamaManager] Unloading model: ${modelName}`);
 
       // Ollama doesn't have a direct unload API, but we can mark it as unloaded
       // The model will be unloaded automatically based on OLLAMA_KEEP_ALIVE setting
       const [name, tag = "latest"] = modelName.split(":");
       await this.updateModelStatus(name, tag, "unloaded");
 
-      console.log(`[OllamaManager] Marked model as unloaded: ${modelName}`);
+      log.info(`[OllamaManager] Marked model as unloaded: ${modelName}`);
       return { success: true };
     } catch (error) {
-      console.error("[OllamaManager] Error unloading model:", error);
+      log.error("[OllamaManager] Error unloading model:", error);
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
@@ -655,7 +657,7 @@ export class OllamaManager {
 
       return stats;
     } catch (error) {
-      console.error("[OllamaManager] Error getting usage stats:", error);
+      log.error("[OllamaManager] Error getting usage stats:", error);
       throw error;
     }
   }
@@ -671,7 +673,7 @@ export class OllamaManager {
       }
       return await response.json();
     } catch (error) {
-      console.error("[OllamaManager] Error getting server info:", error);
+      log.error("[OllamaManager] Error getting server info:", error);
       throw error;
     }
   }
@@ -708,4 +710,4 @@ export const ollamaManager = new OllamaManager();
 // Start auto-unload job on service initialization
 ollamaManager.startAutoUnloadJob();
 
-console.log(`[OllamaManager] Service initialized${process.env.RKLLM_MODE === "true" ? " (RKLLama NPU mode — pull/delete disabled)" : ""}`);
+log.info(`[OllamaManager] Service initialized${process.env.RKLLM_MODE === "true" ? " (RKLLama NPU mode — pull/delete disabled)" : ""}`);

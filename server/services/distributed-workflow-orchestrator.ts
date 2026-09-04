@@ -10,6 +10,8 @@ import {
 } from "@shared/schema";
 import { eq, and, inArray, sql, desc } from "drizzle-orm";
 import { taskDistributor } from "./rust-nexus-task-distributor";
+import { createLogger } from '../lib/logger';
+const log = createLogger("distributed-workflow-orchestrator");
 
 /**
  * Distributed Workflow Orchestrator for rust-nexus Implants
@@ -813,7 +815,7 @@ export class DistributedWorkflowOrchestrator {
       })
       .where(eq(agentWorkflows.id, workflowId));
 
-    console.log(`[KillSwitch] Workflow ${workflowId} terminated: ${reason}`);
+    log.info(`[KillSwitch] Workflow ${workflowId} terminated: ${reason}`);
   }
 
   /**
@@ -887,12 +889,12 @@ export class DistributedWorkflowOrchestrator {
       }
 
       // Also log to console for monitoring
-      console.log(
+      log.info(
         `[DistributedWorkflow] ${eventType}:`,
         JSON.stringify(metadata, null, 2)
       );
     } catch (error) {
-      console.error("Failed to write audit log:", error);
+      log.error("Failed to write audit log:", error);
     }
   }
 

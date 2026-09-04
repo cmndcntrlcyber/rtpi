@@ -25,6 +25,8 @@ import {
 } from '../../shared/schema';
 import { eq, and, inArray, isNull, or } from 'drizzle-orm';
 import { EventEmitter } from 'events';
+import { createLogger } from '../lib/logger';
+const log = createLogger("http-service-detection-automation");
 
 // ============================================================================
 // Types
@@ -96,22 +98,22 @@ export class HttpServiceDetectionAutomation extends EventEmitter {
    */
   async processOperation(operationId: string): Promise<InvestigationResult[]> {
     if (!this.config.enabled) {
-      console.log('[HttpServiceDetection] Automation disabled');
+      log.info('[HttpServiceDetection] Automation disabled');
       return [];
     }
 
-    console.log(`[HttpServiceDetection] Processing operation ${operationId}`);
+    log.info(`[HttpServiceDetection] Processing operation ${operationId}`);
 
     try {
       // Step 1: Detect HTTP/HTTPS services
       const httpServices = await this.detectHttpServices(operationId);
 
       if (httpServices.length === 0) {
-        console.log('[HttpServiceDetection] No HTTP/HTTPS services found');
+        log.info('[HttpServiceDetection] No HTTP/HTTPS services found');
         return [];
       }
 
-      console.log(`[HttpServiceDetection] Found ${httpServices.length} HTTP/HTTPS services`);
+      log.info(`[HttpServiceDetection] Found ${httpServices.length} HTTP/HTTPS services`);
       this.emit('services_detected', { operationId, count: httpServices.length, services: httpServices });
 
       // Step 2: Process each service
@@ -120,7 +122,7 @@ export class HttpServiceDetectionAutomation extends EventEmitter {
       for (const service of httpServices) {
         // Skip if already processing
         if (this.processingQueue.has(service.serviceId)) {
-          console.log(`[HttpServiceDetection] Service ${service.url} already being processed`);
+          log.info(`[HttpServiceDetection] Service ${service.url} already being processed`);
           continue;
         }
 
@@ -137,7 +139,7 @@ export class HttpServiceDetectionAutomation extends EventEmitter {
 
           this.emit('service_processed', { operationId, serviceId: service.serviceId, result });
         } catch (error) {
-          console.error(`[HttpServiceDetection] Failed to process service ${service.url}:`, error);
+          log.error(`[HttpServiceDetection] Failed to process service ${service.url}:`, error);
           this.processingQueue.delete(service.serviceId);
 
           results.push({
@@ -154,7 +156,7 @@ export class HttpServiceDetectionAutomation extends EventEmitter {
 
       return results;
     } catch (error) {
-      console.error(`[HttpServiceDetection] Failed to process operation ${operationId}:`, error);
+      log.error(`[HttpServiceDetection] Failed to process operation ${operationId}:`, error);
       throw error;
     }
   }
@@ -218,7 +220,7 @@ export class HttpServiceDetectionAutomation extends EventEmitter {
    * Step 2: Process a single HTTP/HTTPS service
    */
   async processHttpService(service: HttpServiceDetection): Promise<InvestigationResult> {
-    console.log(`[HttpServiceDetection] Processing ${service.url}`);
+    log.info(`[HttpServiceDetection] Processing ${service.url}`);
 
     const result: InvestigationResult = {
       serviceId: service.serviceId,
@@ -234,7 +236,7 @@ export class HttpServiceDetectionAutomation extends EventEmitter {
         if (targetId) {
           result.targetCreated = true;
           result.targetId = targetId;
-          console.log(`[HttpServiceDetection] Created target ${targetId} for ${service.url}`);
+          log.info(`[HttpServiceDetection] Created target ${targetId} for ${service.url}`);
         }
       }
 
@@ -243,7 +245,7 @@ export class HttpServiceDetectionAutomation extends EventEmitter {
         const frameworkTaskId = await this.triggerFrameworkAgent(service);
         if (frameworkTaskId) {
           result.frameworkAgentTaskId = frameworkTaskId;
-          console.log(`[HttpServiceDetection] Triggered framework agent task ${frameworkTaskId}`);
+          log.info(`[HttpServiceDetection] Triggered framework agent task ${frameworkTaskId}`);
         }
       }
 
@@ -252,7 +254,7 @@ export class HttpServiceDetectionAutomation extends EventEmitter {
         const webHackerTaskId = await this.triggerWebHackerAgent(service);
         if (webHackerTaskId) {
           result.webHackerAgentTaskId = webHackerTaskId;
-          console.log(`[HttpServiceDetection] Triggered web hacker agent task ${webHackerTaskId}`);
+          log.info(`[HttpServiceDetection] Triggered web hacker agent task ${webHackerTaskId}`);
         }
       }
 
@@ -261,7 +263,7 @@ export class HttpServiceDetectionAutomation extends EventEmitter {
 
       return result;
     } catch (error) {
-      console.error(`[HttpServiceDetection] Error processing service ${service.url}:`, error);
+      log.error(`[HttpServiceDetection] Error processing service ${service.url}:`, error);
       return {
         ...result,
         status: 'error',
@@ -288,7 +290,7 @@ export class HttpServiceDetectionAutomation extends EventEmitter {
         .limit(1);
 
       if (existing.length > 0) {
-        console.log(`[HttpServiceDetection] Target already exists for ${service.url}`);
+        log.info(`[HttpServiceDetection] Target already exists for ${service.url}`);
         return existing[0].id;
       }
 
@@ -340,7 +342,7 @@ export class HttpServiceDetectionAutomation extends EventEmitter {
 
       return newTarget.id;
     } catch (error) {
-      console.error(`[HttpServiceDetection] Failed to create target for ${service.url}:`, error);
+      log.error(`[HttpServiceDetection] Failed to create target for ${service.url}:`, error);
       return null;
     }
   }
@@ -358,7 +360,7 @@ export class HttpServiceDetectionAutomation extends EventEmitter {
         .limit(1);
 
       if (!frameworkAgent) {
-        console.warn('[HttpServiceDetection] Framework Agent not found in database');
+        log.warn('[HttpServiceDetection] Framework Agent not found in database');
         return null;
       }
 
@@ -392,11 +394,11 @@ export class HttpServiceDetectionAutomation extends EventEmitter {
 
         return taskId;
       } catch (error) {
-        console.warn('[HttpServiceDetection] Operations Manager not available, framework agent task skipped');
+        log.warn('[HttpServiceDetection] Operations Manager not available, framework agent task skipped');
         return null;
       }
     } catch (error) {
-      console.error('[HttpServiceDetection] Failed to trigger framework agent:', error);
+      log.error('[HttpServiceDetection] Failed to trigger framework agent:', error);
       return null;
     }
   }
@@ -438,7 +440,7 @@ export class HttpServiceDetectionAutomation extends EventEmitter {
 
         return taskId;
       } catch (error) {
-        console.warn('[HttpServiceDetection] Operations Manager not available, triggering web hacker directly');
+        log.warn('[HttpServiceDetection] Operations Manager not available, triggering web hacker directly');
 
         // Fallback: Trigger web hacker agent directly
         // Note: This creates a vulnerability target that the web hacker can process
@@ -462,12 +464,12 @@ export class HttpServiceDetectionAutomation extends EventEmitter {
           .returning();
 
         // Web hacker agent will pick this up via its vulnerability target detection
-        console.log(`[HttpServiceDetection] Created vulnerability target ${vulnTarget.id} for web hacker agent`);
+        log.info(`[HttpServiceDetection] Created vulnerability target ${vulnTarget.id} for web hacker agent`);
 
         return vulnTarget.id;
       }
     } catch (error) {
-      console.error('[HttpServiceDetection] Failed to trigger web hacker agent:', error);
+      log.error('[HttpServiceDetection] Failed to trigger web hacker agent:', error);
       return null;
     }
   }
@@ -494,7 +496,7 @@ export class HttpServiceDetectionAutomation extends EventEmitter {
         .set({ metadata })
         .where(eq(discoveredServices.id, serviceId));
     } catch (error) {
-      console.warn('[HttpServiceDetection] Failed to mark service as investigated:', error);
+      log.warn('[HttpServiceDetection] Failed to mark service as investigated:', error);
     }
   }
 
@@ -573,7 +575,7 @@ export async function initializeHttpServiceDetectionAutomation(): Promise<void> 
         return;
       }
 
-      console.log(`[HttpServiceDetection] Nmap scan ${data.scanId} completed, checking for HTTP/HTTPS services...`);
+      log.info(`[HttpServiceDetection] Nmap scan ${data.scanId} completed, checking for HTTP/HTTPS services...`);
 
       try {
         const results = await httpServiceDetectionAutomation.processOperation(data.operationId);
@@ -583,13 +585,13 @@ export async function initializeHttpServiceDetectionAutomation(): Promise<void> 
           const skipped = results.filter(r => r.status === 'skipped').length;
           const errors = results.filter(r => r.status === 'error').length;
 
-          console.log(
+          log.info(
             `[HttpServiceDetection] Processed ${results.length} HTTP/HTTPS services: ` +
             `${triggered} triggered, ${skipped} skipped, ${errors} errors`
           );
         }
       } catch (error) {
-        console.error('[HttpServiceDetection] Failed to process HTTP/HTTPS services:', error);
+        log.error('[HttpServiceDetection] Failed to process HTTP/HTTPS services:', error);
       }
     });
 
@@ -600,17 +602,17 @@ export async function initializeHttpServiceDetectionAutomation(): Promise<void> 
       targetCount: number;
       targetIds: string[];
     }) => {
-      console.log(`[HttpServiceDetection] Targets auto-created, checking for HTTP/HTTPS services...`);
+      log.info(`[HttpServiceDetection] Targets auto-created, checking for HTTP/HTTPS services...`);
 
       try {
         await httpServiceDetectionAutomation.processOperation(data.operationId);
       } catch (error) {
-        console.error('[HttpServiceDetection] Failed to process HTTP/HTTPS services after target creation:', error);
+        log.error('[HttpServiceDetection] Failed to process HTTP/HTTPS services after target creation:', error);
       }
     });
 
-    console.log('✅ HTTP/HTTPS Service Detection Automation initialized');
+    log.info('✅ HTTP/HTTPS Service Detection Automation initialized');
   } catch (error) {
-    console.error('❌ Failed to initialize HTTP/HTTPS Service Detection Automation:', error);
+    log.error('❌ Failed to initialize HTTP/HTTPS Service Detection Automation:', error);
   }
 }

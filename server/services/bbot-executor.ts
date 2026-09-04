@@ -3,6 +3,11 @@ import { db } from '../db';
 import { discoveredAssets, discoveredServices, axScanResults, vulnerabilities } from '@shared/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { resolveTargetId } from './target-resolver';
+import { createLogger } from '../lib/logger';
+import { logToolAudit } from '../auth/middleware';
+import { scanDuration, toolExecutionsTotal } from '../lib/metrics';
+
+const log = createLogger("bbot-executor");
 
 interface BBOTOptions {
   preset?: string;
@@ -75,13 +80,15 @@ export class BBOTExecutor {
 
     const scanId = scanRecord.id;
 
+    logToolAudit(userId, "bbot_scan_start", "bbot", scanId, true, { targets, options });
+
     // Run the scan asynchronously (fire-and-forget with proper error handling)
     this.runScan(scanId, targets, options, operationId, scanRecord.startedAt!)
       .then((result) => {
-        console.log(`✅ BBOT scan ${scanId} completed: ${result.assetsCount} assets, ${result.servicesCount} services, ${result.vulnerabilitiesCount} vulnerabilities`);
+        log.info({ scanId, assets: result.assetsCount, services: result.servicesCount, vulnerabilities: result.vulnerabilitiesCount }, "BBOT scan completed");
       })
       .catch((error) => {
-        console.error(`❌ BBOT scan ${scanId} failed:`, error);
+        log.error({ scanId, err: error }, "BBOT scan failed");
       });
 
     return { scanId };
@@ -105,8 +112,8 @@ export class BBOTExecutor {
       // Build BBOT command arguments
       const args = this.buildArgs(targets, options);
 
-      console.log(`🔍 Starting BBOT scan ${scanId} for targets:`, targets);
-      console.log(`📋 BBOT args:`, args);
+      log.info({ scanId, targets }, "Starting BBOT scan");
+      log.info({ scanId, args }, "BBOT args");
 
       // Execute BBOT via Docker (rtpi-tools container) with automatic retry
       const result = await dockerExecutor.execWithRetry(
@@ -151,6 +158,11 @@ export class BBOTExecutor {
         })
         .where(eq(axScanResults.id, scanId));
 
+      const durationSecs = Math.floor((Date.now() - startedAt.getTime()) / 1000);
+      scanDuration.observe({ scanner: "bbot", target_type: "domain" }, durationSecs);
+      toolExecutionsTotal.inc({ tool: "bbot", status: "success" });
+      logToolAudit(null, "bbot_scan_complete", "bbot", scanId, true, { assets: assetsCount, services: servicesCount, vulnerabilities: vulnerabilitiesCount, duration: durationSecs });
+
       // Stop keepalive on success
       stopKeepalive();
 
@@ -159,7 +171,7 @@ export class BBOTExecutor {
         const { workflowEventHandlers } = await import('./workflow-event-handlers');
         await workflowEventHandlers.handleScanCompleted(scanId, 'bbot', operationId, 'system');
       } catch (eventError) {
-        console.error(`BBOT scan ${scanId}: Failed to emit scan_completed event:`, eventError);
+        log.error({ scanId, err: eventError }, "Failed to emit scan_completed event");
       }
 
       return {
@@ -176,7 +188,7 @@ export class BBOTExecutor {
       const [currentScan] = await db.select({ status: axScanResults.status })
         .from(axScanResults).where(eq(axScanResults.id, scanId)).limit(1);
       if (currentScan?.status === 'cancelled') {
-        console.log(`⛔ BBOT scan ${scanId} was cancelled, skipping error status update`);
+        log.info({ scanId }, "BBOT scan was cancelled, skipping error status update");
         return { assetsCount: 0, servicesCount: 0, vulnerabilitiesCount: 0, results: { domains: [], ips: [], urls: [], ports: [], technologies: [], asns: [], emails: [], storageBuckets: [], vulnerabilities: [], findings: [], raw: [] } };
       }
 
@@ -204,6 +216,9 @@ export class BBOTExecutor {
           completedAt: new Date(),
         })
         .where(eq(axScanResults.id, scanId));
+
+      toolExecutionsTotal.inc({ tool: "bbot", status: "failure" });
+      logToolAudit(null, "bbot_scan_complete", "bbot", scanId, false, { error: error instanceof Error ? error.message : "Unknown error" });
 
       throw error;
     }
@@ -234,6 +249,8 @@ export class BBOTExecutor {
 
     const scanId = scanRecord.id;
 
+    logToolAudit(userId, "bbot_scan_start", "bbot", scanId, true, { targets, options });
+
     // Start database keepalive for long-running scan
     const { keepDatabaseAlive } = await import('./docker-executor');
     const stopKeepalive = await keepDatabaseAlive(1800000); // 30 minutes
@@ -242,8 +259,8 @@ export class BBOTExecutor {
       // Build BBOT command arguments
       const args = this.buildArgs(targets, options);
 
-      console.log(`🔍 Starting BBOT scan ${scanId} for targets:`, targets);
-      console.log(`📋 BBOT args:`, args);
+      log.info({ scanId, targets }, "Starting BBOT scan");
+      log.info({ scanId, args }, "BBOT args");
 
       // Execute BBOT via Docker (rtpi-tools container) with automatic retry
       const result = await dockerExecutor.execWithRetry(
@@ -288,7 +305,12 @@ export class BBOTExecutor {
         })
         .where(eq(axScanResults.id, scanId));
 
-      console.log(`✅ BBOT scan ${scanId} completed: ${assetsCount} assets, ${servicesCount} services, ${vulnerabilitiesCount} vulnerabilities`);
+      log.info({ scanId, assets: assetsCount, services: servicesCount, vulnerabilities: vulnerabilitiesCount }, "BBOT scan completed");
+
+      const durationSecs = Math.floor((Date.now() - scanRecord.startedAt!.getTime()) / 1000);
+      scanDuration.observe({ scanner: "bbot", target_type: "domain" }, durationSecs);
+      toolExecutionsTotal.inc({ tool: "bbot", status: "success" });
+      logToolAudit(null, "bbot_scan_complete", "bbot", scanId, true, { assets: assetsCount, services: servicesCount, vulnerabilities: vulnerabilitiesCount, duration: durationSecs });
 
       // Stop keepalive on success
       stopKeepalive();
@@ -298,7 +320,7 @@ export class BBOTExecutor {
         const { workflowEventHandlers } = await import('./workflow-event-handlers');
         await workflowEventHandlers.handleScanCompleted(scanId, 'bbot', operationId, userId);
       } catch (eventError) {
-        console.error(`BBOT scan ${scanId}: Failed to emit scan_completed event:`, eventError);
+        log.error({ scanId, err: eventError }, "Failed to emit scan_completed event");
       }
 
       return {
@@ -333,7 +355,9 @@ export class BBOTExecutor {
         })
         .where(eq(axScanResults.id, scanId));
 
-      console.error(`❌ BBOT scan ${scanId} failed:`, error);
+      log.error({ scanId, err: error }, "BBOT scan failed");
+      toolExecutionsTotal.inc({ tool: "bbot", status: "failure" });
+      logToolAudit(null, "bbot_scan_complete", "bbot", scanId, false, { error: error instanceof Error ? error.message : "Unknown error" });
       throw error;
     }
   }
@@ -502,7 +526,7 @@ export class BBOTExecutor {
 
         if (asset) assetsCount++;
       } catch (err) {
-        console.warn(`Failed to store domain ${event.data}:`, err);
+        log.warn({ err, domain: event.data }, "Failed to store domain");
       }
     }
 
@@ -528,7 +552,7 @@ export class BBOTExecutor {
 
         if (asset) assetsCount++;
       } catch (err) {
-        console.warn(`Failed to store IP ${event.data}:`, err);
+        log.warn({ err, value: event.data }, "Failed to store IP");
       }
     }
 
@@ -553,7 +577,7 @@ export class BBOTExecutor {
 
         if (asset) assetsCount++;
       } catch (err) {
-        console.warn(`Failed to store URL ${event.data}:`, err);
+        log.warn({ err, value: event.data }, "Failed to store URL");
       }
     }
 
@@ -604,7 +628,7 @@ export class BBOTExecutor {
 
         if (service) servicesCount++;
       } catch (err) {
-        console.warn(`Failed to store port ${event.data}:`, err);
+        log.warn({ err, value: event.data }, "Failed to store port");
       }
     }
 
@@ -631,7 +655,7 @@ export class BBOTExecutor {
 
         if (asset) assetsCount++;
       } catch (err) {
-        console.warn(`Failed to store technology ${event.data}:`, err);
+        log.warn({ err, value: event.data }, "Failed to store technology");
       }
     }
 
@@ -657,7 +681,7 @@ export class BBOTExecutor {
 
         if (asset) assetsCount++;
       } catch (err) {
-        console.warn(`Failed to store ASN ${event.data}:`, err);
+        log.warn({ err, value: event.data }, "Failed to store ASN");
       }
     }
 
@@ -682,7 +706,7 @@ export class BBOTExecutor {
 
         if (asset) assetsCount++;
       } catch (err) {
-        console.warn(`Failed to store email ${event.data}:`, err);
+        log.warn({ err, value: event.data }, "Failed to store email");
       }
     }
 
@@ -707,7 +731,7 @@ export class BBOTExecutor {
 
         if (asset) assetsCount++;
       } catch (err) {
-        console.warn(`Failed to store storage bucket ${event.data}:`, err);
+        log.warn({ err, value: event.data }, "Failed to store storage bucket");
       }
     }
 
@@ -864,10 +888,10 @@ export class BBOTExecutor {
 
         if (vuln) {
           vulnerabilitiesCount++;
-          console.log(`  [VULN] Created vulnerability record: "${vuln.title}" (${severity}) for scan ${scanId}`);
+          log.info({ scanId, title: vuln.title, severity, type: "VULN" }, "Created vulnerability record");
         }
       } catch (err) {
-        console.warn(`Failed to store BBOT vulnerability:`, err);
+        log.warn({ err }, "Failed to store BBOT vulnerability");
       }
     }
 
@@ -927,15 +951,15 @@ export class BBOTExecutor {
 
         if (vuln) {
           vulnerabilitiesCount++;
-          console.log(`  [FINDING] Created vulnerability record: "${vuln.title}" (${severity}) for scan ${scanId}`);
+          log.info({ scanId, title: vuln.title, severity, type: "FINDING" }, "Created vulnerability record");
         }
       } catch (err) {
-        console.warn(`Failed to store BBOT finding:`, err);
+        log.warn({ err }, "Failed to store BBOT finding");
       }
     }
 
     if (vulnerabilitiesCount > 0) {
-      console.log(`📋 BBOT scan ${scanId}: auto-created ${vulnerabilitiesCount} vulnerability record(s) from findings/vulns (severity >= medium)`);
+      log.info({ scanId, vulnerabilitiesCount }, "BBOT scan auto-created vulnerability records from findings/vulns (severity >= medium)");
     }
 
     return vulnerabilitiesCount;
@@ -970,11 +994,11 @@ export class BBOTExecutor {
     }
 
     if (findingEvents.length === 0 && vulnEvents.length === 0) {
-      console.log(`BBOT extractFindingsAndVulns: no FINDING/VULNERABILITY events found in output for scan ${scanId}`);
+      log.info({ scanId }, "extractFindingsAndVulns: no FINDING/VULNERABILITY events found in output");
       return 0;
     }
 
-    console.log(`BBOT extractFindingsAndVulns: found ${vulnEvents.length} VULNERABILITY and ${findingEvents.length} FINDING events for scan ${scanId}`);
+    log.info({ scanId, vulnCount: vulnEvents.length, findingCount: findingEvents.length }, "extractFindingsAndVulns: found VULNERABILITY and FINDING events");
 
     // Build a minimal BBOTResult to reuse the existing storeVulnerabilities logic
     const partialResult: BBOTResult = {

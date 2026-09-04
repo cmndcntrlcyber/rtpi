@@ -4,6 +4,8 @@ import { db } from "../../db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { empireExecutor } from "../../services/empire-executor";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("google");
 
 // Check if Google OAuth is configured
 const isGoogleOAuthConfigured = 
@@ -14,7 +16,7 @@ const isGoogleOAuthConfigured =
 
 // Only configure Google OAuth if credentials are provided
 if (isGoogleOAuthConfigured) {
-  console.log('✓ Google OAuth is configured');
+  log.info('✓ Google OAuth is configured');
   
   passport.use(
     new GoogleStrategy(
@@ -108,8 +110,8 @@ if (isGoogleOAuthConfigured) {
     )
   );
 } else {
-  console.log('⚠ Google OAuth is not configured - OAuth routes will be disabled');
-  console.log('  To enable Google OAuth, set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env');
+  log.info('⚠ Google OAuth is not configured - OAuth routes will be disabled');
+  log.info('  To enable Google OAuth, set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env');
 }
 
 // Export flag to check if OAuth is available

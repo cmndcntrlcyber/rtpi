@@ -163,6 +163,7 @@ burp-projects/
 *.bak
 *.backup
 *.orig
+backups/
 
 # Credentials
 credentials.json

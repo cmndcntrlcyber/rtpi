@@ -11,6 +11,8 @@ import { toolRegistry, toolTestResults } from '../../shared/schema';
 import { eq } from 'drizzle-orm';
 import { getToolById, updateValidationStatus, addToolTestResult } from './tool-registry-manager';
 import type { ToolConfiguration, ToolTestConfig } from '../../shared/types/tool-config';
+import { createLogger } from '../lib/logger';
+const log = createLogger("tool-tester");
 
 /** Event emitter for tool test results — used by R&D feedback loop */
 export const toolTestEvents = new EventEmitter();
@@ -109,7 +111,7 @@ export async function runAllTests(
   const effectiveBinary = (config as any)?.baseCommand || tool.binaryPath;
   const results: TestResult[] = [];
 
-  console.log(`Running all tests for tool: ${tool.name} (container: ${containerName}, user: ${containerUser})`);
+  log.info(`Running all tests for tool: ${tool.name} (container: ${containerName}, user: ${containerUser})`);
 
   // 1. Syntax test — runs help command inside Docker container
   const syntaxResult = await testSyntax(effectiveBinary, config, containerName, containerUser, toolShortId);
@@ -132,7 +134,7 @@ export async function runAllTests(
 
   // If syntax test fails, don't continue with other tests
   if (!syntaxResult.passed) {
-    console.error(`Syntax test failed for ${tool.name}`);
+    log.error(`Syntax test failed for ${tool.name}`);
     await updateValidationStatus(toolId, 'tested');
     return results;
   }
@@ -201,7 +203,7 @@ export async function runAllTests(
   const allPassed = results.every(r => r.passed);
   await updateValidationStatus(toolId, allPassed ? 'validated' : 'tested');
 
-  console.log(
+  log.info(
     `All tests completed for ${tool.name}: ${allPassed ? 'PASSED' : 'FAILED'}`
   );
 
@@ -635,7 +637,7 @@ export async function revalidateAllTools(userId?: string): Promise<{
         failed++;
       }
     } catch (error) {
-      console.error(`Failed to validate tool ${tool.name}:`, error);
+      log.error(`Failed to validate tool ${tool.name}:`, error);
       failed++;
     }
   }

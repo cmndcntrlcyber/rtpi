@@ -14,6 +14,8 @@ import { db } from "../db";
 import { agents, agentTactics, attackTactics, mcpServers } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { agentMCPConnector } from "./agent-mcp-connector";
+import { createLogger } from '../lib/logger';
+const log = createLogger("agent-backup-service");
 
 const BACKUPS_ROOT =
   process.env.AGENT_BACKUPS_DIR ||
@@ -153,7 +155,7 @@ export async function snapshotAgent(
       .where(eq(agents.id, agentId))
       .limit(1);
     if (!agent) {
-      console.warn(`[agent-backup] snapshot skipped: agent ${agentId} not found`);
+      log.warn(`[agent-backup] snapshot skipped: agent ${agentId} not found`);
       return;
     }
 
@@ -189,7 +191,7 @@ export async function snapshotAgent(
     await atomicWriteJson(filePath, payload);
     await pruneSnapshots(slug, MAX_SNAPSHOTS_PER_AGENT);
   } catch (err: any) {
-    console.error(`[agent-backup] snapshot failed for ${agentId} (${trigger}):`, err?.message || err);
+    log.error(`[agent-backup] snapshot failed for ${agentId} (${trigger}):`, err?.message || err);
   }
 }
 
@@ -205,7 +207,7 @@ export async function pruneSnapshots(slug: string, keep = MAX_SNAPSHOTS_PER_AGEN
     await Promise.all(toDelete.map((f) => fs.unlink(path.join(dir, f))));
   } catch (err: any) {
     if (err?.code === "ENOENT") return;
-    console.warn(`[agent-backup] prune failed for ${slug}:`, err?.message || err);
+    log.warn(`[agent-backup] prune failed for ${slug}:`, err?.message || err);
   }
 }
 

@@ -307,7 +307,7 @@ CREATE TABLE empire_listeners (
   
   -- Proxy configuration (for Kasm nginx integration)
   proxy_enabled BOOLEAN DEFAULT false,
-  proxy_subdomain TEXT, -- e.g., 'listener-abc123.kasm.attck.nexus'
+  proxy_subdomain TEXT, -- e.g., 'listener-abc123.kasm.onoiroi.us'
   proxy_port INTEGER,
   
   -- RTPI relationships
@@ -1986,7 +1986,7 @@ External Implant → Cloudflare (optional) → Kasm Nginx Proxy → Empire Liste
                                               ↓
                                     Dynamic Route Registration
                                               ↓
-                                    listener-abc123.kasm.attck.nexus:8443
+                                    listener-abc123.kasm.onoiroi.us:8443
 ```
 
 ### How It Works
@@ -2041,7 +2041,7 @@ export class KasmNginxManager {
   async registerListenerRoute(listenerId: string, listenerName: string, port: number): Promise<string> {
     // Generate unique subdomain
     const subdomain = `listener-${listenerId.substring(0, 8)}`;
-    const domain = process.env.KASM_DOMAIN || 'kasm.attck.nexus';
+    const domain = process.env.KASM_DOMAIN || 'kasm.onoiroi.us';
     const fullDomain = `${subdomain}.${domain}`;
 
     // Create nginx configuration
@@ -2381,7 +2381,7 @@ Add to `.env.example`:
 # Kasm Nginx Proxy Configuration
 # ============================================================================
 
-KASM_DOMAIN=kasm.attck.nexus
+KASM_DOMAIN=kasm.onoiroi.us
 KASM_NGINX_CONTAINER=kasm-proxy
 
 # Cloudflare DNS Integration (Production only)
@@ -2428,7 +2428,7 @@ echo "   Listener ID: ${LISTENER_ID}"
 
 # 3. Verify proxy route was created
 echo "3. Checking proxy route..."
-PROXY_SUBDOMAIN="listener-${LISTENER_ID:0:8}.kasm.attck.nexus"
+PROXY_SUBDOMAIN="listener-${LISTENER_ID:0:8}.kasm.onoiroi.us"
 echo "   Proxy subdomain: ${PROXY_SUBDOMAIN}"
 
 # 4. Test proxy connection
@@ -2463,7 +2463,7 @@ curl -X POST http://localhost:5000/api/v1/empire/listeners \
 docker exec kasm-proxy ls -la /etc/nginx/conf.d/ | grep empire
 
 # Test connection
-curl -k https://listener-abc123.kasm.attck.nexus:8443
+curl -k https://listener-abc123.kasm.onoiroi.us:8443
 ```
 
 3. **Check Database:**
@@ -2532,7 +2532,7 @@ curl -X POST "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/d
   -d '{
     "type": "CNAME",
     "name": "listener-test",
-    "content": "kasm.attck.nexus"
+    "content": "kasm.onoiroi.us"
   }'
 ```
 
@@ -3751,7 +3751,7 @@ describe('KasmNginxManager', () => {
   it('should register listener route', async () => {
     const domain = await manager.registerListenerRoute('listener-123', 'test', 8080);
     expect(domain).toContain('listener-');
-    expect(domain).toContain('.kasm.attck.nexus');
+    expect(domain).toContain('.kasm.onoiroi.us');
   });
 
   it('should remove listener route', async () => {

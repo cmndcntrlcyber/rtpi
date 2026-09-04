@@ -53,9 +53,13 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 // Get CSRF token
-router.get("/csrf-token", (req, res) => {
-  const token = generateCsrfToken(req);
-  res.json({ csrfToken: token });
+router.get("/csrf-token", async (req, res) => {
+  try {
+    const token = await generateCsrfToken(req);
+    res.json({ csrfToken: token });
+  } catch {
+    res.status(500).json({ error: "Failed to generate CSRF token" });
+  }
 });
 
 // Login with username/password

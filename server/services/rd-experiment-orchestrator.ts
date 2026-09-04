@@ -18,6 +18,8 @@ import { eq, and } from 'drizzle-orm';
 import { researchAgent } from './agents/research-agent';
 import { pocDevelopmentAgent } from './agents/poc-development-agent';
 import { nucleiTemplateAgent } from './agents/nuclei-template-agent';
+import { createLogger } from '../lib/logger';
+const log = createLogger("rd-experiment-orchestrator");
 
 // ============================================================================
 // Types & Interfaces
@@ -585,7 +587,7 @@ class RDExperimentOrchestrator extends EventEmitter {
           dedupeTag: `artifact:${inserted.id}`,
         });
       } catch (err) {
-        console.warn('[orchestrator] S1 KB indexing failed (non-fatal):', err);
+        log.warn('[orchestrator] S1 KB indexing failed (non-fatal):', err);
       }
     }
 
@@ -649,7 +651,7 @@ class RDExperimentOrchestrator extends EventEmitter {
         }
       } catch (error) {
         failed++;
-        console.error(`Failed to execute experiment ${experiment.id}:`, error);
+        log.error(`Failed to execute experiment ${experiment.id}:`, error);
       }
     }
 

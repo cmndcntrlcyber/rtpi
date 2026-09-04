@@ -70,7 +70,7 @@ Add to `.env` file:
 ```bash
 # SSL Configuration
 CERTBOT_EMAIL=admin@example.com
-KASM_SERVER_HOSTNAME=kasm.attck.nexus
+KASM_SERVER_HOSTNAME=kasm.onoiroi.us
 CLOUDFLARE_API_TOKEN=your_cloudflare_api_token_here
 
 # Container names
@@ -90,7 +90,7 @@ KASM_NGINX_CONTAINER=rtpi-kasm-proxy
 curl -X POST http://localhost:3001/api/v1/ssl-certificates \
   -H "Content-Type: application/json" \
   -d '{
-    "domain": "kasm.attck.nexus",
+    "domain": "kasm.onoiroi.us",
     "email": "admin@example.com",
     "challengeType": "http-01"
   }'
@@ -107,7 +107,7 @@ curl -X POST http://localhost:3001/api/v1/ssl-certificates \
 curl -X POST http://localhost:3001/api/v1/ssl-certificates \
   -H "Content-Type: application/json" \
   -d '{
-    "domain": "attck.nexus",
+    "domain": "onoiroi.us",
     "email": "admin@example.com",
     "challengeType": "dns-01",
     "cloudflareApiToken": "your_token_here"
@@ -117,7 +117,7 @@ curl -X POST http://localhost:3001/api/v1/ssl-certificates \
 **Requirements:**
 - Cloudflare API token
 - DNS managed by Cloudflare
-- Creates wildcard: `*.attck.nexus`
+- Creates wildcard: `*.onoiroi.us`
 
 #### Dry Run (Testing)
 
@@ -125,7 +125,7 @@ curl -X POST http://localhost:3001/api/v1/ssl-certificates \
 curl -X POST http://localhost:3001/api/v1/ssl-certificates \
   -H "Content-Type: application/json" \
   -d '{
-    "domain": "kasm.attck.nexus",
+    "domain": "kasm.onoiroi.us",
     "email": "admin@example.com",
     "challengeType": "http-01",
     "dryRun": true
@@ -139,19 +139,19 @@ curl -X POST http://localhost:3001/api/v1/ssl-certificates \
 ```bash
 # HTTP-01 challenge
 ./scripts/ssl/setup-ssl.sh \
-  -d kasm.attck.nexus \
+  -d kasm.onoiroi.us \
   -e admin@example.com
 
 # DNS-01 challenge with wildcard
 ./scripts/ssl/setup-ssl.sh \
-  -d attck.nexus \
+  -d onoiroi.us \
   -e admin@example.com \
   -w \
   -k your_cloudflare_token
 
 # Dry run
 ./scripts/ssl/setup-ssl.sh \
-  -d kasm.attck.nexus \
+  -d kasm.onoiroi.us \
   -e admin@example.com \
   -n
 ```
@@ -210,10 +210,10 @@ docker exec rtpi-certbot certbot renew
 
 ```bash
 # Via API
-curl -X POST http://localhost:3001/api/v1/ssl-certificates/kasm.attck.nexus/renew
+curl -X POST http://localhost:3001/api/v1/ssl-certificates/kasm.onoiroi.us/renew
 
 # Via Docker
-docker exec rtpi-certbot certbot renew --cert-name kasm.attck.nexus
+docker exec rtpi-certbot certbot renew --cert-name kasm.onoiroi.us
 ```
 
 #### Force Renewal (Testing)
@@ -246,7 +246,7 @@ Nginx handles SSL termination for all Kasm workspaces and Empire listeners.
 
 ```bash
 # Via API
-curl http://localhost:3001/api/v1/ssl-certificates/kasm.attck.nexus/nginx-config
+curl http://localhost:3001/api/v1/ssl-certificates/kasm.onoiroi.us/nginx-config
 
 # Returns nginx SSL configuration template
 ```
@@ -258,10 +258,10 @@ Edit `/etc/nginx/conf.d/ssl-{domain}.conf`:
 ```nginx
 server {
     listen 443 ssl http2;
-    server_name kasm.attck.nexus;
+    server_name kasm.onoiroi.us;
 
-    ssl_certificate /etc/nginx/certs/kasm.attck.nexus.crt;
-    ssl_certificate_key /etc/nginx/certs/kasm.attck.nexus.key;
+    ssl_certificate /etc/nginx/certs/kasm.onoiroi.us.crt;
+    ssl_certificate_key /etc/nginx/certs/kasm.onoiroi.us.key;
 
     # SSL configuration
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -303,7 +303,7 @@ curl http://localhost:3001/api/v1/ssl-certificates
 # Returns:
 # [
 #   {
-#     "domain": "kasm.attck.nexus",
+#     "domain": "kasm.onoiroi.us",
 #     "issuer": "Let's Encrypt",
 #     "validFrom": "2025-01-01T00:00:00Z",
 #     "validUntil": "2025-04-01T00:00:00Z",
@@ -317,17 +317,17 @@ curl http://localhost:3001/api/v1/ssl-certificates
 
 ```bash
 # Via API
-curl http://localhost:3001/api/v1/ssl-certificates/kasm.attck.nexus
+curl http://localhost:3001/api/v1/ssl-certificates/kasm.onoiroi.us
 
 # Via Docker
-docker exec rtpi-certbot certbot certificates --cert-name kasm.attck.nexus
+docker exec rtpi-certbot certbot certificates --cert-name kasm.onoiroi.us
 ```
 
 ### Revoke Certificate
 
 ```bash
 # Via API
-curl -X DELETE http://localhost:3001/api/v1/ssl-certificates/kasm.attck.nexus \
+curl -X DELETE http://localhost:3001/api/v1/ssl-certificates/kasm.onoiroi.us \
   -H "Content-Type: application/json" \
   -d '{"reason": "keyCompromise"}'
 
@@ -347,7 +347,7 @@ curl -X DELETE http://localhost:3001/api/v1/ssl-certificates/kasm.attck.nexus \
 ### Automated Test Script
 
 ```bash
-./scripts/ssl/test-rotation.sh kasm.attck.nexus
+./scripts/ssl/test-rotation.sh kasm.onoiroi.us
 ```
 
 **Test Coverage:**
@@ -367,11 +367,11 @@ curl -X DELETE http://localhost:3001/api/v1/ssl-certificates/kasm.attck.nexus \
 
 ```bash
 # Check certificate details
-openssl s_client -connect kasm.attck.nexus:443 -servername kasm.attck.nexus < /dev/null 2>&1 | \
+openssl s_client -connect kasm.onoiroi.us:443 -servername kasm.onoiroi.us < /dev/null 2>&1 | \
   openssl x509 -noout -text
 
 # Check expiry date
-echo | openssl s_client -connect kasm.attck.nexus:443 2>/dev/null | \
+echo | openssl s_client -connect kasm.onoiroi.us:443 2>/dev/null | \
   openssl x509 -noout -dates
 ```
 
@@ -395,17 +395,17 @@ docker exec rtpi-kasm-proxy nginx -t
 docker exec rtpi-kasm-proxy nginx -s reload
 
 # Check nginx is serving HTTPS
-curl -k https://kasm.attck.nexus/health
+curl -k https://kasm.onoiroi.us/health
 ```
 
 #### Test 4: SSL/TLS Quality
 
 ```bash
 # Test SSL configuration (requires external access)
-curl https://www.ssllabs.com/ssltest/analyze.html?d=kasm.attck.nexus
+curl https://www.ssllabs.com/ssltest/analyze.html?d=kasm.onoiroi.us
 
 # Test cipher suites
-nmap --script ssl-enum-ciphers -p 443 kasm.attck.nexus
+nmap --script ssl-enum-ciphers -p 443 kasm.onoiroi.us
 ```
 
 ---
@@ -464,10 +464,10 @@ docker exec rtpi-certbot certbot certificates | grep "Expiry Date"
 1. **HTTP-01 Challenge Issues:**
    ```bash
    # Check port 80 is accessible
-   curl -I http://kasm.attck.nexus/.well-known/acme-challenge/test
+   curl -I http://kasm.onoiroi.us/.well-known/acme-challenge/test
 
    # Verify DNS resolution
-   dig kasm.attck.nexus +short
+   dig kasm.onoiroi.us +short
 
    # Check firewall
    sudo iptables -L -n | grep 80
@@ -480,7 +480,7 @@ docker exec rtpi-certbot certbot certificates | grep "Expiry Date"
      -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"
 
    # Check DNS propagation
-   dig _acme-challenge.kasm.attck.nexus TXT +short
+   dig _acme-challenge.kasm.onoiroi.us TXT +short
    ```
 
 3. **Rate Limiting:**
@@ -520,7 +520,7 @@ docker exec rtpi-certbot certbot certificates | grep "Expiry Date"
 3. **Check Renewal Configuration:**
    ```bash
    # View renewal config
-   docker exec rtpi-certbot cat /etc/letsencrypt/renewal/kasm.attck.nexus.conf
+   docker exec rtpi-certbot cat /etc/letsencrypt/renewal/kasm.onoiroi.us.conf
 
    # Verify webroot or DNS credentials
    ```
@@ -539,8 +539,8 @@ docker exec rtpi-certbot certbot certificates | grep "Expiry Date"
    docker exec rtpi-kasm-proxy ls -la /etc/nginx/certs/
 
    # Compare with Let's Encrypt cert
-   docker exec rtpi-certbot openssl x509 -in /etc/letsencrypt/live/kasm.attck.nexus/fullchain.pem -noout -dates
-   docker exec rtpi-kasm-proxy openssl x509 -in /etc/nginx/certs/kasm.attck.nexus.crt -noout -dates
+   docker exec rtpi-certbot openssl x509 -in /etc/letsencrypt/live/kasm.onoiroi.us/fullchain.pem -noout -dates
+   docker exec rtpi-kasm-proxy openssl x509 -in /etc/nginx/certs/kasm.onoiroi.us.crt -noout -dates
    ```
 
 2. **Reload Nginx:**
@@ -561,7 +561,7 @@ docker exec rtpi-certbot certbot certificates | grep "Expiry Date"
    docker exec rtpi-kasm-proxy nginx -T | grep ssl_certificate
 
    # Ensure correct domain configuration
-   docker exec rtpi-kasm-proxy cat /etc/nginx/conf.d/ssl-kasm.attck.nexus.conf
+   docker exec rtpi-kasm-proxy cat /etc/nginx/conf.d/ssl-kasm.onoiroi.us.conf
    ```
 
 ### Issue 4: SSL Connection Errors
@@ -575,25 +575,25 @@ docker exec rtpi-certbot certbot certificates | grep "Expiry Date"
 1. **Check Certificate Chain:**
    ```bash
    # Verify full chain
-   openssl s_client -connect kasm.attck.nexus:443 -showcerts
+   openssl s_client -connect kasm.onoiroi.us:443 -showcerts
 
    # Check for intermediate certificates
-   curl https://kasm.attck.nexus -v 2>&1 | grep "SSL certificate"
+   curl https://kasm.onoiroi.us -v 2>&1 | grep "SSL certificate"
    ```
 
 2. **Test Cipher Compatibility:**
    ```bash
    # Test TLS 1.2
-   openssl s_client -connect kasm.attck.nexus:443 -tls1_2
+   openssl s_client -connect kasm.onoiroi.us:443 -tls1_2
 
    # Test TLS 1.3
-   openssl s_client -connect kasm.attck.nexus:443 -tls1_3
+   openssl s_client -connect kasm.onoiroi.us:443 -tls1_3
    ```
 
 3. **Verify OCSP Stapling:**
    ```bash
    # Check OCSP response
-   openssl s_client -connect kasm.attck.nexus:443 -status
+   openssl s_client -connect kasm.onoiroi.us:443 -status
    ```
 
 ---
@@ -655,13 +655,13 @@ docker exec rtpi-certbot certbot certificates | grep "Expiry Date"
 curl -X POST http://localhost:3001/api/v1/ssl-certificates \
   -H "Content-Type: application/json" \
   -d '{
-    "domain": "kasm.attck.nexus",
+    "domain": "kasm.onoiroi.us",
     "email": "admin@example.com",
     "challengeType": "http-01"
   }'
 
 # 2. Get nginx configuration
-curl http://localhost:3001/api/v1/ssl-certificates/kasm.attck.nexus/nginx-config \
+curl http://localhost:3001/api/v1/ssl-certificates/kasm.onoiroi.us/nginx-config \
   > /tmp/ssl-kasm.conf
 
 # 3. Apply to nginx (manual step)
@@ -671,7 +671,7 @@ docker cp /tmp/ssl-kasm.conf rtpi-kasm-proxy:/etc/nginx/conf.d/
 curl -X POST http://localhost:3001/api/v1/ssl-certificates/nginx/reload
 
 # 5. Verify certificate
-curl https://kasm.attck.nexus/health
+curl https://kasm.onoiroi.us/health
 ```
 
 ---

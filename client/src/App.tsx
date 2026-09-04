@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Route, Switch, Redirect } from "wouter";
+import { Route, Switch, Redirect, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster, toast } from "sonner";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
@@ -11,6 +11,7 @@ import { initializeSessionManagement } from "@/lib/api";
 import MainLayout from "@/components/layout/MainLayout";
 import { KeyboardShortcutsDialog } from "@/components/shared/KeyboardShortcutsDialog";
 import { SearchDialog } from "@/components/shared/SearchDialog";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Dashboard from "@/pages/Dashboard";
 import Operations from "@/pages/Operations";
 import Targets from "@/pages/Targets";
@@ -44,6 +45,7 @@ const queryClient = new QueryClient();
 
 function AuthenticatedApp() {
   const { setIsOpen } = useSearch();
+  const [location] = useLocation();
 
   // Set up notification triggers
   useNotificationTriggers();
@@ -51,6 +53,7 @@ function AuthenticatedApp() {
   return (
     <KeyboardShortcutsProvider onSearchOpen={() => setIsOpen(true)}>
       <MainLayout>
+        <ErrorBoundary isolationLevel="route" key={location}>
         <Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/operations" component={Operations} />
@@ -89,6 +92,7 @@ function AuthenticatedApp() {
             </div>
           </Route>
         </Switch>
+        </ErrorBoundary>
       </MainLayout>
       <KeyboardShortcutsDialog />
       <SearchDialog />
@@ -178,9 +182,11 @@ function AppContent() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
+      <ErrorBoundary isolationLevel="app">
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
+      </ErrorBoundary>
       <Toaster
         position="top-right"
         expand={false}

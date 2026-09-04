@@ -16,6 +16,8 @@ import { workflowsReporter } from "./reporters/workflows-reporter";
 import { agentsReporter } from "./reporters/agents-reporter";
 
 import type { BaseReporter } from "./reporters/base-reporter";
+import { createLogger } from '../lib/logger';
+const log = createLogger("hourly-ops-workflow");
 
 const reporters: Record<string, BaseReporter> = {
   dashboard: dashboardReporter,
@@ -57,7 +59,7 @@ class HourlyOpsWorkflow {
   async executeHourlyCycle(operationId: string): Promise<HourlyCycleResult> {
     const startTime = Date.now();
 
-    console.log(`[HourlyOpsWorkflow] Starting hourly cycle for operation ${operationId}`);
+    log.info(`[HourlyOpsWorkflow] Starting hourly cycle for operation ${operationId}`);
 
     // Ensure memory context exists
     try {
@@ -75,12 +77,12 @@ class HourlyOpsWorkflow {
     const reportsGenerated = reportResults.filter((r) => r.success).length;
     const reportsFailed = reportResults.filter((r) => !r.success).length;
 
-    console.log(
+    log.info(
       `[HourlyOpsWorkflow] Reports: ${reportsGenerated} succeeded, ${reportsFailed} failed`,
     );
 
     if (reportsGenerated === 0) {
-      console.warn("[HourlyOpsWorkflow] No reports generated, skipping synthesis");
+      log.warn("[HourlyOpsWorkflow] No reports generated, skipping synthesis");
       return {
         operationId,
         reportsGenerated: 0,
@@ -100,11 +102,11 @@ class HourlyOpsWorkflow {
         insights: synthesis.insights,
         taskId: synthesis.taskId,
       };
-      console.log(
+      log.info(
         `[HourlyOpsWorkflow] Synthesis complete: ${synthesis.reportCount} reports synthesized`,
       );
     } catch (error) {
-      console.error("[HourlyOpsWorkflow] Synthesis failed:", error);
+      log.error("[HourlyOpsWorkflow] Synthesis failed:", error);
     }
 
     // 3. Generate follow-up tasks from synthesis insights
@@ -117,7 +119,7 @@ class HourlyOpsWorkflow {
     }
 
     const durationMs = Date.now() - startTime;
-    console.log(
+    log.info(
       `[HourlyOpsWorkflow] Hourly cycle complete in ${durationMs}ms: ` +
         `${reportsGenerated} reports, ${tasksGenerated} tasks generated`,
     );
@@ -147,7 +149,7 @@ class HourlyOpsWorkflow {
           return { pageRole, success: true };
         } catch (error) {
           const errMsg = error instanceof Error ? error.message : String(error);
-          console.error(
+          log.error(
             `[HourlyOpsWorkflow] Reporter ${pageRole} failed:`,
             errMsg,
           );
@@ -210,7 +212,7 @@ class HourlyOpsWorkflow {
         });
         count++;
       } catch (error) {
-        console.error(
+        log.error(
           "[HourlyOpsWorkflow] Failed to delegate task for insight:",
           error,
         );

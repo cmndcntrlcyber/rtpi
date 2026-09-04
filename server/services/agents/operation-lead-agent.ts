@@ -3,14 +3,14 @@
  *
  * Coordinates the Technical Operation System. Receives task specifications
  * from System 1, delegates to Technical Operator agents (web-hacker, rd-team,
- * tool-connector), collects results, and routes to Technical Reviewer for
+ * rd-team), collects results, and routes to Technical Reviewer for
  * validation before passing to Technical Writer.
  */
 
 import { BaseTaskAgent, TaskDefinition, TaskResult } from './base-task-agent';
 import { webHackerAgent } from './web-hacker-agent';
 import { rdTeamAgent } from './rd-team-agent';
-import { toolConnectorAgent } from './tool-connector-agent';
+import { technicalWriterAgent } from './technical-writer-agent';
 import { surfaceAssessmentAgent } from './surface-assessment-agent';
 import type { OperationTaskSpec } from './review-agent';
 
@@ -153,11 +153,11 @@ class OperationLeadAgent extends BaseTaskAgent {
       case 'exploitation':
         return rdTeamAgent;
       case 'post_exploitation':
-        return toolConnectorAgent;
+        return rdTeamAgent;
       case 'reporting':
-        return toolConnectorAgent; // Technical writer handles this upstream
+        return technicalWriterAgent;
       default:
-        return toolConnectorAgent;
+        return rdTeamAgent;
     }
   }
 

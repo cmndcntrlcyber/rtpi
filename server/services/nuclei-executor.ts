@@ -4,6 +4,11 @@ import { discoveredAssets, vulnerabilities, axScanResults } from '@shared/schema
 import { eq, and } from 'drizzle-orm';
 import { resolveTargetId } from './target-resolver';
 import { workflowEventHandlers } from './workflow-event-handlers';
+import { createLogger } from '../lib/logger';
+import { logToolAudit } from '../auth/middleware';
+import { scanDuration, toolExecutionsTotal } from '../lib/metrics';
+
+const log = createLogger("nuclei-executor");
 
 interface NucleiOptions {
   severity?: string;       // critical,high,medium,low,info
@@ -104,16 +109,16 @@ export class NucleiExecutor {
       return; // templates already present
     }
 
-    console.log('Nuclei templates not found — downloading on-demand...');
+    log.info("Downloading nuclei templates on-demand");
     const dl = await dockerExecutor.exec(this.containerName,
       ['nuclei', '-update-templates', '-silent'],
       { timeout: 300000 } // 5 min for download
     );
 
     if (dl.exitCode !== 0) {
-      console.warn('Template download exited with code', dl.exitCode, dl.stderr);
+      log.warn({ exitCode: dl.exitCode, stderr: dl.stderr }, "Template download failed");
     } else {
-      console.log('Nuclei templates downloaded successfully');
+      log.info("Nuclei templates downloaded successfully");
     }
   }
 
@@ -149,7 +154,7 @@ export class NucleiExecutor {
     // Always include helpers/ (required by many templates)
     const allDirs = [...new Set([...dirs, 'helpers'])];
 
-    console.log(`Downloading nuclei template categories: ${allDirs.join(', ')}`);
+    log.info({ categories: allDirs }, "Downloading nuclei template categories");
 
     // Try sparse-checkout first (much smaller download)
     const sparseCmd = [
@@ -166,11 +171,11 @@ export class NucleiExecutor {
     }).catch(() => null);
 
     if (result && result.exitCode === 0) {
-      console.log(`Template categories downloaded via sparse-checkout: ${allDirs.join(', ')}`);
+      log.info({ categories: allDirs }, "Template categories downloaded via sparse-checkout");
       return;
     }
 
-    console.warn('Sparse-checkout failed, falling back to full template download');
+    log.warn("Sparse-checkout failed, falling back to full template download");
     await this.ensureTemplates();
   }
 
@@ -263,9 +268,9 @@ export class NucleiExecutor {
         ['rm', '-rf', this.templateDir],
         {}
       );
-      console.log('Nuclei templates cleaned up to save space');
+      log.info("Nuclei templates cleaned up to save space");
     } catch (err) {
-      console.warn('Failed to clean up Nuclei templates:', err);
+      log.warn({ err }, "Failed to clean up nuclei templates");
     }
   }
 
@@ -295,13 +300,15 @@ export class NucleiExecutor {
 
     const scanId = scanRecord.id;
 
+    logToolAudit(userId, "nuclei_scan_start", "nuclei", scanId, true, { targets, options });
+
     // Run the scan asynchronously (fire-and-forget with proper error handling)
     this.runScan(scanId, targets, options, operationId, scanRecord.startedAt!)
       .then((result) => {
-        console.log(`✅ Nuclei scan ${scanId} completed: ${result.vulnerabilitiesCount} vulnerabilities found`);
+        log.info({ scanId, vulnerabilitiesCount: result.vulnerabilitiesCount }, "Nuclei scan completed");
       })
       .catch((error) => {
-        console.error(`❌ Nuclei scan ${scanId} failed:`, error);
+        log.error({ scanId, err: error }, "Nuclei scan failed");
       });
 
     return { scanId };
@@ -333,16 +340,16 @@ export class NucleiExecutor {
       // Build Nuclei command arguments
       const args = this.buildArgs(targets, options);
 
-      console.log(`Starting Nuclei scan ${scanId} for targets:`, targets);
-      console.log(`Nuclei args:`, args);
+      log.info({ scanId, targets }, "Starting Nuclei scan");
+      log.info({ args: args.join(" ") }, "Nuclei scan arguments");
 
       // Warn about large template sets
       if (options.templates) {
         const hasCVEs = options.templates.some(t => t.includes('cves'));
         const hasVulns = options.templates.some(t => t.includes('vulnerabilities'));
         if (hasCVEs || hasVulns) {
-          console.log(`Large template set detected (CVEs: ${hasCVEs ? '3600+' : '0'}, Vulns: ${hasVulns ? '900+' : '0'} templates)`);
-          console.log(`Scan may take 30-60+ minutes depending on targets and network conditions`);
+          log.info({ cveTemplates: hasCVEs ? "3600+" : "0", vulnTemplates: hasVulns ? "900+" : "0" }, "Large template set detected");
+          log.info("Scan may take 30-60+ minutes depending on targets and network conditions");
         }
       }
 
@@ -385,6 +392,11 @@ export class NucleiExecutor {
         })
         .where(eq(axScanResults.id, scanId));
 
+      const durationSecs = Math.floor((Date.now() - startedAt.getTime()) / 1000);
+      scanDuration.observe({ scanner: "nuclei", target_type: "web" }, durationSecs);
+      toolExecutionsTotal.inc({ tool: "nuclei", status: "success" });
+      logToolAudit(null, "nuclei_scan_complete", "nuclei", scanId, true, { vulnerabilities: vulnerabilitiesCount, duration: durationSecs });
+
       // Stop keepalive on success
       stopKeepalive();
 
@@ -395,7 +407,7 @@ export class NucleiExecutor {
       try {
         await workflowEventHandlers.handleScanCompleted(scanId, 'nuclei', operationId, 'system');
       } catch (eventError) {
-        console.error(`Nuclei scan ${scanId}: Failed to emit scan_completed event:`, eventError);
+        log.error({ scanId, err: eventError }, "Failed to emit scan_completed event");
       }
 
       return {
@@ -413,7 +425,7 @@ export class NucleiExecutor {
       const [currentScan] = await db.select({ status: axScanResults.status })
         .from(axScanResults).where(eq(axScanResults.id, scanId)).limit(1);
       if (currentScan?.status === 'cancelled') {
-        console.log(`Nuclei scan ${scanId} was cancelled, skipping error status update`);
+        log.info({ scanId }, "Nuclei scan was cancelled, skipping error status update");
         return { vulnerabilitiesCount: 0, results: { vulnerabilities: [], stats: { total: 0, critical: 0, high: 0, medium: 0, low: 0, info: 0 } } };
       }
 
@@ -441,6 +453,9 @@ export class NucleiExecutor {
           completedAt: new Date(),
         })
         .where(eq(axScanResults.id, scanId));
+
+      toolExecutionsTotal.inc({ tool: "nuclei", status: "failure" });
+      logToolAudit(null, "nuclei_scan_complete", "nuclei", scanId, false, { error: error instanceof Error ? error.message : "Unknown error" });
 
       throw error;
     }
@@ -471,6 +486,8 @@ export class NucleiExecutor {
 
     const scanId = scanRecord.id;
 
+    logToolAudit(userId, "nuclei_scan_start", "nuclei", scanId, true, { targets, options });
+
     // Start database keepalive for long-running scan
     const { keepDatabaseAlive } = await import('./docker-executor');
     const stopKeepalive = await keepDatabaseAlive(7200000); // 2 hours
@@ -487,16 +504,16 @@ export class NucleiExecutor {
       // Build Nuclei command arguments
       const args = this.buildArgs(targets, options);
 
-      console.log(`Starting Nuclei scan ${scanId} for targets:`, targets);
-      console.log(`Nuclei args:`, args);
+      log.info({ scanId, targets }, "Starting Nuclei scan");
+      log.info({ args: args.join(" ") }, "Nuclei scan arguments");
 
       // Warn about large template sets
       if (options.templates) {
         const hasCVEs = options.templates.some(t => t.includes('cves'));
         const hasVulns = options.templates.some(t => t.includes('vulnerabilities'));
         if (hasCVEs || hasVulns) {
-          console.log(`Large template set detected (CVEs: ${hasCVEs ? '3600+' : '0'}, Vulns: ${hasVulns ? '900+' : '0'} templates)`);
-          console.log(`Scan may take 30-60+ minutes depending on targets and network conditions`);
+          log.info({ cveTemplates: hasCVEs ? "3600+" : "0", vulnTemplates: hasVulns ? "900+" : "0" }, "Large template set detected");
+          log.info("Scan may take 30-60+ minutes depending on targets and network conditions");
         }
       }
 
@@ -539,7 +556,12 @@ export class NucleiExecutor {
         })
         .where(eq(axScanResults.id, scanId));
 
-      console.log(`Nuclei scan ${scanId} completed: ${vulnerabilitiesCount} vulnerabilities found`);
+      const durationSecs = Math.floor((Date.now() - scanRecord.startedAt!.getTime()) / 1000);
+      scanDuration.observe({ scanner: "nuclei", target_type: "web" }, durationSecs);
+      toolExecutionsTotal.inc({ tool: "nuclei", status: "success" });
+      logToolAudit(userId, "nuclei_scan_complete", "nuclei", scanId, true, { vulnerabilities: vulnerabilitiesCount, duration: durationSecs });
+
+      log.info({ scanId, vulnerabilitiesCount }, "Nuclei scan completed");
 
       // Stop keepalive on success
       stopKeepalive();
@@ -551,7 +573,7 @@ export class NucleiExecutor {
       try {
         await workflowEventHandlers.handleScanCompleted(scanId, 'nuclei', operationId, userId);
       } catch (eventError) {
-        console.error(`Nuclei scan ${scanId}: Failed to emit scan_completed event:`, eventError);
+        log.error({ scanId, err: eventError }, "Failed to emit scan_completed event");
       }
 
       return {
@@ -569,7 +591,7 @@ export class NucleiExecutor {
       const [currentScan2] = await db.select({ status: axScanResults.status })
         .from(axScanResults).where(eq(axScanResults.id, scanId)).limit(1);
       if (currentScan2?.status === 'cancelled') {
-        console.log(`Nuclei scan ${scanId} was cancelled, skipping error status update`);
+        log.info({ scanId }, "Nuclei scan was cancelled, skipping error status update");
         throw new Error('Scan was cancelled');
       }
 
@@ -598,7 +620,10 @@ export class NucleiExecutor {
         })
         .where(eq(axScanResults.id, scanId));
 
-      console.error(`Nuclei scan ${scanId} failed:`, error);
+      toolExecutionsTotal.inc({ tool: "nuclei", status: "failure" });
+      logToolAudit(userId, "nuclei_scan_complete", "nuclei", scanId, false, { error: error instanceof Error ? error.message : "Unknown error" });
+
+      log.error({ scanId, err: error }, "Nuclei scan failed");
       throw error;
     }
   }
@@ -831,7 +856,7 @@ export class NucleiExecutor {
 
         if (vulnerability) vulnerabilitiesCount++;
       } catch (err) {
-        console.warn(`Failed to store vulnerability ${vuln.info?.name}:`, err);
+        log.warn({ err, vuln: vuln.info?.name }, "Failed to store vulnerability");
       }
     }
 

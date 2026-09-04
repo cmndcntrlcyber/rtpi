@@ -1,12 +1,24 @@
 services:
+  # Cloudflare Tunnel — encrypted ingress for all subdomains (replaces NPM)
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: rtpi-cloudflared
+    command: tunnel run --token ${CF_TUNNEL_TOKEN}
+    environment:
+      - TUNNEL_METRICS=0.0.0.0:9301
+    network_mode: host
+    restart: unless-stopped
+
   # PostgreSQL Database (pgvector for memory embeddings)
   postgres:
     image: pgvector/pgvector:pg16
     container_name: rtpi-postgres
     environment:
       POSTGRES_USER: rtpi
-      POSTGRES_PASSWORD: rtpi
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-rtpi}
       POSTGRES_DB: rtpi_main
+      SYSREPTOR_DB_PASSWORD: ${SYSREPTOR_DB_PASSWORD:-}
+      DOCMOST_DB_PASSWORD: ${DOCMOST_DB_PASSWORD:-}
     ports:
       - "5434:5432"  # Changed from 5432 to avoid conflicts
     volumes:
@@ -24,37 +36,24 @@ services:
   redis:
     image: redis:7-alpine
     container_name: rtpi-redis
+    command: redis-server --requirepass "${REDIS_PASSWORD}"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     ports:
       - "6381:6379"  # Changed from 6379 to avoid conflicts
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping 2>/dev/null | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
       - rtpi-network
 
-  # RTPI Security Tools Container
-  rtpi-tools:
-    build:
-      context: .
-      dockerfile: Dockerfile.tools
-    container_name: rtpi-tools
-    network_mode: "host"
-    volumes:
-      - tool-results:/var/log/rtpi
-      - tool-configs:/opt/tools/config
-      - shared-data:/shared
-    stdin_open: true
-    tty: true
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "echo", "healthy"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+  # rtpi-tools REMOVED in v3.10.3b Phase 2: all tools available in nexus-kali
+  # container via nexus-harness skills. Image recovered: 7.47 GB.
+  # Tool execution now routes through FF_FERRY_BRIDGE → harness-tool-executor.
 
   # PowerShell Empire C2 Server
   empire-server:
@@ -69,7 +68,7 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_DB: rtpi_main
       POSTGRES_USER: rtpi
-      POSTGRES_PASSWORD: rtpi
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-rtpi}
       # Empire configuration
       EMPIRE_USERNAME: empireadmin
       EMPIRE_PASSWORD: ${EMPIRE_PASSWORD:-Islamist-Repeal1-Unhealthy-Amulet-Survival}
@@ -108,6 +107,12 @@ services:
     networks:
       - rtpi-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1:1337/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   # ATT&CK Workbench MongoDB Database
   workbench-db:
@@ -144,7 +149,7 @@ services:
       # API configuration
       PORT: 3010
       # CORS configuration - allow RTPI frontend
-      CORS_ORIGIN: "http://localhost:5000,http://localhost:3000,http://localhost:3001,http://localhost:3020"
+      CORS_ALLOWED_ORIGINS: "http://localhost:5000,http://localhost:3000,http://localhost:3001,http://localhost:3020,https://c3s-workbench.onoiroi.us,https://c3s-admin.onoiroi.us"
       # Session configuration
       SESSION_SECRET: ${WORKBENCH_SESSION_SECRET:-change-this-secret-key}
       # Authentication (optional)
@@ -183,6 +188,12 @@ services:
     networks:
       - rtpi-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:80/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
 
   # ============================================================================
   # Kasm Workspaces - Browser-Based Desktop Streaming Platform
@@ -226,6 +237,24 @@ services:
     networks:
       - rtpi-network
 
+  # Kasm Web UI Init — extracts the Angular SPA from the official proxy image
+  # into a shared volume. Idempotent: skips if index.html already exists.
+  kasm-web-init:
+    image: kasmweb/proxy:1.19.0-rolling
+    container_name: rtpi-kasm-web-init
+    profiles:
+      - kasm
+    volumes:
+      - kasm-www:/www
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ -f /www/index.html ]; then echo "[kasm-web-init] Web UI already extracted"; exit 0; fi
+        cp -r /srv/www/* /www/
+        echo "[kasm-web-init] Web UI extracted to /www"
+    networks:
+      - rtpi-network
+
   # Kasm PostgreSQL Database (separate from main RTPI database)
   kasm-db:
     image: postgres:16-alpine
@@ -242,10 +271,18 @@ services:
       - ssl_cert_file=/etc/ssl/certs/kasm/db_server.crt
       - -c
       - ssl_key_file=/etc/ssl/certs/kasm/db_server.key
+      - -c
+      - statement_timeout=120000
+      - -c
+      - idle_in_transaction_session_timeout=60000
+      - -c
+      - lock_timeout=30000
     environment:
       POSTGRES_USER: kasmapp
       POSTGRES_PASSWORD: ${KASM_DB_PASSWORD:-kasm123secure}
-      POSTGRES_DB: kasm
+      # Do NOT set POSTGRES_DB: kasm — it creates an empty database that prevents
+      # kasm-api's DB_AUTO_INITIALIZE from running schema migrations. Let kasm-api
+      # create and populate the database itself on first start.
     ports:
       - "5433:5432"  # Different port to avoid conflict with main postgres
     volumes:
@@ -308,6 +345,10 @@ services:
       POSTGRES_PASSWORD: ${KASM_DB_PASSWORD:-kasm123secure}
       POSTGRES_DB: kasm
       DB_AUTO_INITIALIZE: "1"   # tells startup.sh to create schema if absent
+      DEFAULT_ADMIN_PASSWORD: ${KASM_ADMIN_PASSWORD:-kasmadmin}
+      DEFAULT_USER_PASSWORD: ${KASM_USER_PASSWORD:-kasmuser}
+      DEFAULT_MANAGER_TOKEN: ${KASM_MANAGER_TOKEN}
+      DEFAULT_REGISTRATION_TOKEN: ${KASM_REGISTRATION_TOKEN}
       # API configuration
       API_SERVER_ID: ${KASM_API_SERVER_ID:-default}
       SERVER_HOSTNAME: ${KASM_SERVER_HOSTNAME:-localhost}
@@ -329,6 +370,15 @@ services:
           sed -i "s|^  password: .*|  password: $${POSTGRES_PASSWORD}|" "$$CFG"
           sed -i 's|^  redis_password: .*|  redis_password: ""|' "$$CFG"
           echo "[kasm-api] Patched $$CFG"
+        fi
+        if command -v psql >/dev/null 2>&1; then
+          echo "[kasm-api] Clearing stale DB connections..."
+          PGPASSWORD="$${POSTGRES_PASSWORD}" psql \
+            -h "$${POSTGRES_HOST:-db}" -p "$${POSTGRES_PORT:-5432}" \
+            -U "$${POSTGRES_USER:-kasmapp}" -d "$${POSTGRES_DB:-kasm}" -tAc \
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='$${POSTGRES_DB:-kasm}' AND pid != pg_backend_pid() AND state != 'active';" \
+            2>/dev/null && echo "[kasm-api] Stale connections cleared" \
+            || echo "[kasm-api] Stale connection cleanup skipped (DB not ready)"
         fi
         exec /usr/bin/startup.sh
     # No host port mapping — kasm-proxy fronts the API on the internal network.
@@ -391,6 +441,12 @@ services:
     networks:
       - rtpi-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -so /dev/null -w '%{http_code}' http://localhost:8181/ | grep -qE '^[2-4]' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   # Kasm Proxy (Nginx) - Reverse proxy for workspace access
   kasm-proxy:
@@ -415,15 +471,21 @@ services:
       - ./docker/kasm-proxy/default.conf.template:/etc/nginx/templates/default.conf.template:ro
       - kasm-proxy-config:/etc/nginx/conf.d/containers.d
       - kasm-certs:/etc/nginx/certs:ro
+      - kasm-www:/srv/www:ro
     depends_on:
       kasm-proxy-init:
+        condition: service_completed_successfully
+      kasm-web-init:
         condition: service_completed_successfully
       kasm-api:
         condition: service_healthy
       kasm-guac:
-        condition: service_healthy
+        condition: service_started
     networks:
-      - rtpi-network
+      rtpi-network:
+        aliases:
+          - kasm_proxy
+          - proxy
     restart: unless-stopped
     healthcheck:
       # Probe HTTPS with -k (self-signed) instead of HTTP, since :80 is just a redirect.
@@ -448,6 +510,25 @@ services:
       # Guacamole configuration
       GUACD_HOSTNAME: localhost
       GUACD_PORT: 4822
+      DEFAULT_MANAGER_TOKEN: ${KASM_MANAGER_TOKEN}
+      DEFAULT_REGISTRATION_TOKEN: ${KASM_REGISTRATION_TOKEN}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        SRC=/opt/kasm/current/conf/app/guac/kasmguac.app.config.yaml
+        TMP=/tmp/kasmguac.app.config.yaml
+        cp "$$SRC" "$$TMP"
+        sed -i "s|APIHOSTNAME|kasm_proxy|g" "$$TMP"
+        sed -i "s|SERVER_ADDRESS|kasm_proxy|g" "$$TMP"
+        sed -i "s|registration_token: REGISTRATION_TOKEN|registration_token: $${DEFAULT_REGISTRATION_TOKEN}|" "$$TMP"
+        sed -i "s|zone: ZONE|zone: default|" "$$TMP"
+        sed -i "s|server_port: SERVER_PORT|server_port: 443|" "$$TMP"
+        echo "[kasm-guac] Patched $$TMP — resolved hostnames, registration token, zone"
+        export KASM_CONFIG_FILE="$$TMP"
+        /usr/sbin/guacd -f -b 0.0.0.0 -l 4822 -L debug 2>&1 | grep -v 'guacd Handler not found for ""' &
+        cd /gclient
+        exec node app.js
     ports:
       - "4822:4822"  # Guacamole daemon port
     volumes:
@@ -458,6 +539,12 @@ services:
     networks:
       - rtpi-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -so /dev/null -w '%{http_code}' http://localhost:3000/ | grep -qE '^[2-4]' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   # Kasm Agent - Workspace provisioning and monitoring
   kasm-agent:
@@ -476,6 +563,17 @@ services:
       AGENT_ID: ${KASM_AGENT_ID:-default-agent}
       SERVER_HOSTNAME: ${KASM_SERVER_HOSTNAME:-localhost}
       PUBLIC_HOSTNAME: ${KASM_PUBLIC_HOSTNAME:-localhost}
+      DEFAULT_MANAGER_TOKEN: ${KASM_MANAGER_TOKEN}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        CFG=/opt/kasm/current/conf/app/agent/agent.app.config.yaml
+        if [ -f "$$CFG" ]; then
+          sed -i "s|token: .*|token: $${DEFAULT_MANAGER_TOKEN}|" "$$CFG"
+          echo "[kasm-agent] Patched manager token in $$CFG"
+        fi
+        exec python3 /src/ProvisionAgent/__init__.pyc --cfg "$$CFG"
     volumes:
       - kasm-agent-data:/opt/kasm/current
       - /var/run/docker.sock:/var/run/docker.sock  # Docker socket for container management
@@ -487,6 +585,12 @@ services:
     networks:
       - rtpi-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   # Kasm Share - File sharing service for workspaces
   kasm-share:
@@ -533,6 +637,12 @@ services:
     networks:
       - rtpi-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c 'import socket; s=socket.create_connection((\"127.0.0.1\",8182),2); s.close()'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   # Certbot - Automated SSL/TLS certificate management
   # Supports both HTTP-01 and DNS-01 (Cloudflare) challenges
@@ -671,7 +781,7 @@ services:
       - rtpi-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD", "ollama", "list"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -698,7 +808,7 @@ services:
       - rtpi-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD", "ollama", "list"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -729,329 +839,17 @@ services:
       start_period: 20s
 
   # ===========================================================================
-  # OffSec Agent Containers (v2.2 Enhancement)
-  # Specialized security tool containers with MCP server integration
+  # OffSec Agent Containers REMOVED in v3.10.3b Phase 2
+  # All 14 specialized containers (maldev, azure-ad, burp, empire, c3, sliver,
+  # loki, adaptix, fuzzing, framework, research, cloud, llm-sec, web-injection)
+  # plus the shared base image are replaced by the single nexus-kali container
+  # in nexus-harness with 260 skills and 280+ tools.
+  # Images recovered: ~127 GB. Build time eliminated: ~2 hours.
+  # Tool execution now routes through FF_FERRY_BRIDGE → harness-tool-executor.
   # ===========================================================================
 
-  # OffSec Base Image (built first, used by all agents)
-  offsec-base:
-    build:
-      context: ./docker/offsec-agents
-      dockerfile: Dockerfile.base
-    image: rtpi/offsec-base:latest
-    profiles:
-      - build-only  # Only used for building, not running
+  # REMOVED: offsec-base, offsec-maldev, offsec-azure-ad (see above)
 
-  # Maldev Agent - Binary Analysis, Reverse Engineering, ROP Development
-  # MITRE Tactics: Defense Evasion, Execution, Persistence
-  offsec-maldev:
-    build:
-      context: ./docker/offsec-agents
-      dockerfile: Dockerfile.maldev-tools
-    image: rtpi/maldev-tools:latest
-    profiles:
-      - offsec-agents
-    container_name: rtpi-maldev-agent
-    stdin_open: true
-    environment:
-      - AGENT_TYPE=maldev
-      - TOOLS_PATH=/opt/tools
-      - DOCS_PATH=/docs
-    volumes:
-      - maldev-tools:/opt/tools
-      - shared-data:/shared
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - rtpi-network
-    restart: unless-stopped
-    init: true
-    healthcheck:
-      test: ["CMD-SHELL", "true"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-
-  # Azure-AD Agent - Azure & Active Directory Attack Research
-  # MITRE Tactics: Credential Access, Persistence, Lateral Movement
-  offsec-azure-ad:
-    build:
-      context: ./docker/offsec-agents
-      dockerfile: Dockerfile.azure-ad-tools
-    image: rtpi/azure-ad-tools:latest
-    profiles:
-      - offsec-agents
-    container_name: rtpi-azure-ad-agent
-    stdin_open: true
-    environment:
-      - AGENT_TYPE=azure-ad
-      - TOOLS_PATH=/opt/tools
-      - DOCS_PATH=/docs
-    volumes:
-      - azure-ad-tools:/opt/tools
-      - shared-data:/shared
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - rtpi-network
-    restart: unless-stopped
-    init: true
-    healthcheck:
-      test: ["CMD-SHELL", "true"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-
-  # Burp Suite Agent - Web Application Security Testing
-  # MITRE Tactics: Reconnaissance, Initial Access
-  offsec-burp:
-    build:
-      context: ./docker/offsec-agents
-      dockerfile: Dockerfile.burp-tools
-    image: rtpi/burp-tools:latest
-    profiles:
-      - offsec-agents
-    container_name: rtpi-burp-agent
-    stdin_open: true
-    environment:
-      - AGENT_TYPE=burp-suite
-      - TOOLS_PATH=/opt/tools
-      - DOCS_PATH=/docs
-      - BURP_MCP_ENABLED=true
-      - MCP_PORT=9876
-      - ACTIVATION_MODE=dormant
-    ports:
-      - "9876:9876"   # Burp MCP Server
-      - "8283:8082"   # Burp Proxy (when active) — avoids 8182 conflict with kasm-share
-    volumes:
-      - burp-tools:/opt/tools
-      - /mnt/nvme/tmp/burp-setup:/opt/burp-setup
-      - burp-projects:/opt/burp-projects
-      - shared-data:/shared
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - rtpi-network
-    restart: unless-stopped
-    init: true
-    healthcheck:
-      test: ["CMD-SHELL", "pgrep -f burp-entrypoint || true"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-
-  # Empire C2 Agent - Command & Control, Post-Exploitation
-  # MITRE Tactics: Command and Control, Lateral Movement, Persistence
-  offsec-empire:
-    build:
-      context: ./docker/offsec-agents
-      dockerfile: Dockerfile.empire-tools
-    image: rtpi/empire-tools:latest
-    profiles:
-      - offsec-agents
-    container_name: rtpi-empire-agent
-    stdin_open: true
-    environment:
-      - AGENT_TYPE=empire-c2
-      - TOOLS_PATH=/opt/tools
-      - DOCS_PATH=/docs
-    volumes:
-      - empire-tools:/opt/tools
-      - shared-data:/shared
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - rtpi-network
-    restart: unless-stopped
-    init: true
-    healthcheck:
-      test: ["CMD-SHELL", "true"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-
-  # C3 C2 Framework - ReversecLabs
-  offsec-c3:
-    build:
-      context: ./docker/offsec-agents
-      dockerfile: Dockerfile.c3-tools
-    image: rtpi/c3-tools:latest
-    profiles:
-      - offsec-agents
-    container_name: rtpi-c3-agent
-    stdin_open: true
-    environment:
-      - AGENT_TYPE=c3-c2
-      - TOOLS_PATH=/opt/tools
-    volumes:
-      - c3-tools:/opt/tools
-      - c2-setup:/opt/c2-setup
-      - shared-data:/shared
-    networks:
-      - rtpi-network
-    restart: unless-stopped
-    init: true
-
-  # Sliver C2 Framework - BishopFox
-  offsec-sliver:
-    build:
-      context: ./docker/offsec-agents
-      dockerfile: Dockerfile.sliver-tools
-    image: rtpi/sliver-tools:latest
-    profiles:
-      - offsec-agents
-    container_name: rtpi-sliver-agent
-    stdin_open: true
-    environment:
-      - AGENT_TYPE=sliver-c2
-      - TOOLS_PATH=/opt/tools
-    volumes:
-      - sliver-tools:/opt/tools
-      - c2-setup:/opt/c2-setup
-      - shared-data:/shared
-    networks:
-      - rtpi-network
-    restart: unless-stopped
-    init: true
-
-  # Loki C2 Framework - boku7
-  offsec-loki:
-    build:
-      context: ./docker/offsec-agents
-      dockerfile: Dockerfile.loki-tools
-    image: rtpi/loki-tools:latest
-    profiles:
-      - offsec-agents
-    container_name: rtpi-loki-agent
-    stdin_open: true
-    environment:
-      - AGENT_TYPE=loki-c2
-      - TOOLS_PATH=/opt/tools
-    volumes:
-      - loki-tools:/opt/tools
-      - c2-setup:/opt/c2-setup
-      - shared-data:/shared
-    networks:
-      - rtpi-network
-    restart: unless-stopped
-    init: true
-
-  # AdaptixC2 Framework - Adaptix-Framework
-  offsec-adaptix:
-    build:
-      context: ./docker/offsec-agents
-      dockerfile: Dockerfile.adaptix-tools
-    image: rtpi/adaptix-tools:latest
-    profiles:
-      - offsec-agents
-    container_name: rtpi-adaptix-agent
-    stdin_open: true
-    environment:
-      - AGENT_TYPE=adaptix-c2
-      - TOOLS_PATH=/opt/tools
-    volumes:
-      - adaptix-tools:/opt/tools
-      - c2-setup:/opt/c2-setup
-      - shared-data:/shared
-    networks:
-      - rtpi-network
-    restart: unless-stopped
-    init: true
-
-  # Fuzzing Agent - Web Fuzzing, Directory Discovery
-  # MITRE Tactics: Discovery, Reconnaissance
-  offsec-fuzzing:
-    build:
-      context: ./docker/offsec-agents
-      dockerfile: Dockerfile.fuzzing-tools
-    image: rtpi/fuzzing-tools:latest
-    profiles:
-      - offsec-agents
-    container_name: rtpi-fuzzing-agent
-    stdin_open: true
-    environment:
-      - AGENT_TYPE=fuzzing
-      - TOOLS_PATH=/opt/tools
-      - DOCS_PATH=/docs
-      - R2_ENDPOINT=${R2_ENDPOINT}
-      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
-      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
-      - R2_BUCKET_NAME=${R2_BUCKET_NAME:-wordlist-storag}
-    volumes:
-      - fuzzing-tools:/opt/tools
-      - fuzzing-wordlists:/opt/wordlists
-      - shared-data:/shared
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - rtpi-network
-    restart: unless-stopped
-    init: true
-    healthcheck:
-      test: ["CMD-SHELL", "true"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-
-  # Framework Security Agent - Technology Stack Detection
-  # MITRE Tactics: Reconnaissance, Initial Access
-  offsec-framework:
-    build:
-      context: ./docker/offsec-agents
-      dockerfile: Dockerfile.framework-tools
-    image: rtpi/framework-tools:latest
-    profiles:
-      - offsec-agents
-    container_name: rtpi-framework-agent
-    stdin_open: true
-    environment:
-      - AGENT_TYPE=framework-security
-      - TOOLS_PATH=/opt/tools
-      - DOCS_PATH=/docs
-    volumes:
-      - framework-tools:/opt/tools
-      - shared-data:/shared
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - rtpi-network
-    restart: unless-stopped
-    init: true
-    healthcheck:
-      test: ["CMD-SHELL", "true"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-
-  # Research Agent - General R&D, Tool Testing, POC Creation
-  # MITRE Tactics: All (General Research)
-  offsec-research:
-    build:
-      context: ./docker/offsec-agents
-      dockerfile: Dockerfile.research-tools
-    image: rtpi/research-tools:latest
-    profiles:
-      - offsec-agents
-    container_name: rtpi-research-agent
-    stdin_open: true
-    ports:
-      - "8888:8888"  # JupyterLab for research notebooks
-    environment:
-      - AGENT_TYPE=research
-      - TOOLS_PATH=/opt/tools
-      - DOCS_PATH=/docs
-      - R2_ENDPOINT=${R2_ENDPOINT}
-      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID}
-      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY}
-      - R2_BUCKET_NAME=${R2_BUCKET_NAME:-wordlist-storag}
-    volumes:
-      - research-tools:/opt/tools
-      - research-notebooks:/home/rtpi-agent/research
-      - shared-data:/shared
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - rtpi-network
-    restart: unless-stopped
-    init: true
-    healthcheck:
-      test: ["CMD-SHELL", "true"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
 
 # Application (Development)
 #  app:
@@ -1134,6 +932,12 @@ services:
       - rtpi-network
     dns:
       - 127.0.0.11
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 7777"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     logging:
       driver: "json-file"
       options:
@@ -1299,7 +1103,7 @@ services:
       - docmost
     restart: unless-stopped
     ports:
-      - "127.0.0.1:13000:3000"
+      - "13000:3000"
     environment:
       - APP_URL=${DOCMOST_APP_URL:-http://localhost:13000}
       - APP_SECRET=${DOCMOST_APP_SECRET:-change-this-to-a-random-32-byte-secret}
@@ -1365,9 +1169,10 @@ services:
     profiles:
       - pdf
     restart: unless-stopped
-    # Defaults expose CDP on :9222 with no auth — keep on the rtpi-network only.
+    # CDP port — use 9223 to avoid conflict with nexus-kali's 9222 binding.
+    # Internal network services access this container via rtpi-chromium-shell:9222.
     ports:
-      - "127.0.0.1:9222:9222"
+      - "127.0.0.1:9223:9222"
     networks:
       - rtpi-network
     dns:
@@ -1381,7 +1186,7 @@ services:
     tmpfs:
       - /tmp:size=256m,exec
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9222/json/version"]
+      test: ["CMD", "bash", "-c", "(echo > /dev/tcp/127.0.0.1/9222) 2>/dev/null"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -1414,7 +1219,7 @@ services:
     networks:
       - rtpi-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "-k", "https://localhost:9443/"]
+      test: ["NONE"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -1547,208 +1352,25 @@ services:
     networks:
       - rtpi-network
 
-  # mem0 API Service
-  mem0-api:
-    build:
-      context: ./services/mem0
-      dockerfile: Dockerfile
-    container_name: rtpi-mem0-api
-    profiles:
-      - mem0
-    ports:
-      - "8005:8000"  # Avoids conflict with portainer edge agent on 8000
-    environment:
-      MEM0_LLM_PROVIDER: ollama
-      MEM0_LLM_MODEL: qwen2.5-coder:7b
-      MEM0_LLM_BASE_URL: http://ollama:11434
-      MEM0_EMBEDDER_PROVIDER: ollama
-      MEM0_EMBEDDER_MODEL: nomic-embed-text
-      MEM0_EMBEDDER_BASE_URL: http://ollama:11434
-      MEM0_VECTOR_HOST: mem0-postgres
-      MEM0_VECTOR_PORT: 5432
-      MEM0_VECTOR_DBNAME: rtpi_memory
-      MEM0_VECTOR_USER: rtpi
-      MEM0_VECTOR_PASSWORD: "${MEM0_POSTGRES_PASSWORD:-rtpi_mem0}"
-      MEM0_GRAPH_URL: bolt://neo4j:7687
-      MEM0_GRAPH_USER: neo4j
-      MEM0_GRAPH_PASSWORD: "${NEO4J_PASSWORD:-rtpi_neo4j}"
-    depends_on:
-      mem0-postgres:
-        condition: service_healthy
-      neo4j:
-        condition: service_healthy
-      ollama:
-        condition: service_started
-        required: false
-    networks:
-      - rtpi-network
+  # mem0-api REMOVED in v3.10.3b Phase 0: replaced by native memory-service.ts
+  # with pgvector. Python mem0 wrapper had zero TypeScript callers. Image: 656 MB.
 
   # ============================================================================
-  # v2.5 — LangGraph Orchestrator
+  # v2.5 LangGraph Orchestrator REMOVED in v3.10.3b Phase 1
+  # Replaced by: ferry-orchestrator-client.ts → rust-nexus ferry gateway →
+  # nexus-harness skill engine. All orchestrator routes dual-pathed via
+  # FF_FERRY_BRIDGE. Python service (services/orchestrator/) deleted.
+  # Image recovered: 656 MB. Docker socket mount eliminated.
   # ============================================================================
 
-  rtpi-orchestrator:
-    build:
-      context: ./services/orchestrator
-      dockerfile: Dockerfile
-    container_name: rtpi-orchestrator
-    ports:
-      - "8185:8080"
-    volumes:
-      - ./skills:/app/skills:ro
-      - tool-results:/app/findings
-      - shared-data:/app/samples
-      - /var/run/docker.sock:/var/run/docker.sock:ro  # Docker exec into tool containers
-    environment:
-      MEM0_API_URL: http://mem0-api:8000
-      OLLAMA_BASE_URL: http://ollama:11434
-      METASPLOIT_HOST: attackbox
-      REDIS_URL: redis://redis:6379
-      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
-      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
-      # Container names for tool execution (agent-to-container mapping)
-      CONTAINER_RECON_PRIMARY: rtpi-fuzzing-agent
-      CONTAINER_RECON_FINGERPRINT: rtpi-framework-agent
-      CONTAINER_RECON_NETWORK: rtpi-tools
-      CONTAINER_WEB_VULN: rtpi-burp-agent
-      CONTAINER_AD_VULN: rtpi-azure-ad-agent
-      CONTAINER_CLOUD_VULN: rtpi-cloud-agent
-      CONTAINER_EXPLOIT_CORE: rtpi-tools
-      CONTAINER_EXPLOIT_BINARY: rtpi-maldev-agent
-      CONTAINER_EXPLOIT_PAYLOAD: rtpi-empire-agent
-      CONTAINER_POSTEX_PRIMARY: rtpi-empire-agent
-      CONTAINER_POSTEX_SLIVER: rtpi-sliver-agent
-      CONTAINER_POSTEX_C3: rtpi-c3-agent
-      CONTAINER_POSTEX_LOKI: rtpi-loki-agent
-      CONTAINER_POSTEX_ADAPTIX: rtpi-adaptix-agent
-      CONTAINER_RE_PRIMARY: rtpi-maldev-agent
-      CONTAINER_RE_GHIDRA: rtpi-ghidra
-      CONTAINER_RE_FUZZING: rtpi-aflplusplus
-      CONTAINER_CODEREVIEW: rtpi-framework-agent
-      CONTAINER_VULNRESEARCH: rtpi-research-agent
-      CONTAINER_LLM_SECURITY: rtpi-llm-sec-agent
-    depends_on:
-      mem0-api:
-        condition: service_started
-        required: false
-      redis:
-        condition: service_started
-      ollama:
-        condition: service_started
-        required: false
-    networks:
-      - rtpi-network
+  # v2.5 offsec-cloud, offsec-llm-sec, offsec-web-injection REMOVED in v3.10.3b
+  # Phase 2 (see offsec removal note above)
 
   # ============================================================================
-  # v2.5 — Cloud Security Tools (NEW — fills AWS/GCP gap)
+  # v2.5 RE containers (ghidra-headless, aflplusplus) REMOVED in v3.10.3b
+  # Phase 0: replaced by nexus-harness skills offense/reverse-engineering/
+  # ghidra-headless + afl-fuzz. Images recovered: ~7.5 GB.
   # ============================================================================
-
-  offsec-cloud:
-    build:
-      context: ./docker/offsec-agents
-      dockerfile: Dockerfile.cloud-tools
-    image: rtpi/cloud-tools:latest
-    profiles:
-      - offsec-agents
-    container_name: rtpi-cloud-agent
-    stdin_open: true
-    environment:
-      - AGENT_TYPE=cloud-security
-      - TOOLS_PATH=/opt/tools
-      - DOCS_PATH=/docs
-      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
-    volumes:
-      - cloud-tools:/opt/tools
-      - shared-data:/shared
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - rtpi-network
-    restart: unless-stopped
-    init: true
-    healthcheck:
-      test: ["CMD-SHELL", "true"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-
-  # ============================================================================
-  # v2.5 — LLM Security Tools (activated from unmapped Dockerfile)
-  # ============================================================================
-
-  offsec-llm-sec:
-    build:
-      context: ./docker/offsec-agents
-      dockerfile: Dockerfile.agent-tools-llm-sec-tools
-    image: rtpi/llm-sec-tools:latest
-    profiles:
-      - offsec-agents
-    container_name: rtpi-llm-sec-agent
-    stdin_open: true
-    environment:
-      - AGENT_TYPE=llm-security
-      - TOOLS_PATH=/opt/tools
-    volumes:
-      - shared-data:/shared
-    networks:
-      - rtpi-network
-    restart: unless-stopped
-    init: true
-    healthcheck:
-      test: ["CMD-SHELL", "true"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-
-  # ============================================================================
-  # v2.5 — Web Injection Tools (activated, merged into web vuln pipeline)
-  # ============================================================================
-
-  offsec-web-injection:
-    build:
-      context: ./docker/offsec-agents
-      dockerfile: Dockerfile.agent-tools-web-injection
-    image: rtpi/web-injection-tools:latest
-    profiles:
-      - offsec-agents
-    container_name: rtpi-web-injection-agent
-    stdin_open: true
-    environment:
-      - AGENT_TYPE=web-injection
-      - TOOLS_PATH=/opt/tools
-    volumes:
-      - shared-data:/shared
-    networks:
-      - rtpi-network
-    restart: unless-stopped
-    init: true
-
-  # ============================================================================
-  # v2.5 — RE Tool Containers (Phase C)
-  # Ghidra & AFL++ are NOT redundant — maldev has radare2/angr/pwntools
-  # but lacks headless Ghidra decompilation and coverage-guided fuzzing
-  # ============================================================================
-
-  ghidra-headless:
-    build:
-      context: ./services/ghidra
-      dockerfile: Dockerfile
-    container_name: rtpi-ghidra
-    networks:
-      - rtpi-network
-    volumes:
-      - shared-data:/samples
-      - tool-results:/findings
-    entrypoint: ["tail", "-f", "/dev/null"]
-
-  aflplusplus:
-    image: aflplusplus/aflplusplus:latest
-    container_name: rtpi-aflplusplus
-    networks:
-      - rtpi-network
-    volumes:
-      - shared-data:/samples
-      - tool-results:/findings
-    entrypoint: ["tail", "-f", "/dev/null"]
 
   # ===========================================================================
   # Bootstrap — one-shot secret generator (profile: bootstrap)
@@ -1840,6 +1462,7 @@ volumes:
   kasm-api-data:
   kasm-manager-data:
   kasm-proxy-config:
+  kasm-www:
   kasm-guac-data:
   kasm-agent-data:
   kasm-share-data:
@@ -1851,23 +1474,7 @@ volumes:
   open-webui-data:
   # Phase 6: Hugging Face cache for vLLM-served Qwen weights
   vllm-hf-cache:
-  # OffSec Agent volumes (v2.2)
-  maldev-tools:
-  azure-ad-tools:
-  burp-tools:
-  burp-setup:
-  burp-projects:
-  empire-tools:
-  c3-tools:
-  sliver-tools:
-  loki-tools:
-  adaptix-tools:
-  c2-setup:
-  fuzzing-tools:
-  fuzzing-wordlists:
-  framework-tools:
-  research-tools:
-  research-notebooks:
+  # OffSec Agent volumes REMOVED in v3.10.3b Phase 2 (14 containers eliminated)
   # SysReptor volumes
   sysreptor-app-data:
   sysreptor-caddy-data:
@@ -1883,7 +1490,6 @@ volumes:
   neo4j-data:
   neo4j-logs:
   skills-data:
-  cloud-tools:
   # v2.9.2 Phase 1 — VPN manager config + log volumes
   vpn-configs:
   wg-configs:

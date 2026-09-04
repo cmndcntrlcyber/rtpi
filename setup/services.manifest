@@ -29,11 +29,14 @@
 #     only intended way to reach it from outside the host.
 
 # suffix    | profile_gate | upstream_url            | websocket | tls_upstream
-            |              | http://localhost:5000   | false     | false
--reports    | sysreptor    | http://localhost:7777   | false     | false
--empire     |              | http://localhost:1337   | false     | false
--mgmt       | management   | https://localhost:9443  | false     | true
--kasm       | kasm         | https://localhost:8443  | true      | true
--wiki       | docmost      | http://localhost:13000  | false     | false
--vscode     | kasm         | https://localhost:6901  | true      | true
--kali       | kasm         | https://localhost:6902  | true      | true
+            | kasm         | https://0.0.0.0:8443  | true      | true
+-admin      |              | http://0.0.0.0:3001   | false     | false
+-reports    | sysreptor    | http://0.0.0.0:7777   | false     | false
+-empire     |              | http://0.0.0.0:1337   | false     | false
+-mgmt       | management   | https://0.0.0.0:9443  | false     | true
+-kasm       | kasm         | https://0.0.0.0:8443  | true      | true
+-wiki       | docmost      | http://0.0.0.0:13000  | false     | false
+-vscode     | kasm         | https://0.0.0.0:6901  | true      | true
+-kali       | kasm         | https://0.0.0.0:6902  | true      | true
+-workbench  |              | http://0.0.0.0:3020   | false     | false
+-api        |              | http://0.0.0.0:3001   | true      | false

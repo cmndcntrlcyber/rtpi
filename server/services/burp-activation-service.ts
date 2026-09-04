@@ -15,6 +15,8 @@ import { promisify } from 'util';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
+import { createLogger } from '../lib/logger';
+const log = createLogger("burp-activation-service");
 
 const execFileAsync = promisify(execFile);
 
@@ -221,12 +223,12 @@ class BurpActivationService {
         });
       }
 
-      console.log(`[BurpActivation] JAR uploaded: ${filename} (${(fileSize / 1024 / 1024).toFixed(2)}MB)`);
+      log.info(`[BurpActivation] JAR uploaded: ${filename} (${(fileSize / 1024 / 1024).toFixed(2)}MB)`);
       return { success: true };
     } catch (error) {
       // Clean up staging file on error
       await fs.unlink(filePath).catch(() => {});
-      console.error('[BurpActivation] JAR upload failed:', error);
+      log.error('[BurpActivation] JAR upload failed:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Upload failed',
@@ -304,11 +306,11 @@ class BurpActivationService {
         });
       }
 
-      console.log(`[BurpActivation] License uploaded: ${filename} (${validation.type})`);
+      log.info(`[BurpActivation] License uploaded: ${filename} (${validation.type})`);
       return { success: true, validation };
     } catch (error) {
       await fs.unlink(filePath).catch(() => {});
-      console.error('[BurpActivation] License upload failed:', error);
+      log.error('[BurpActivation] License upload failed:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Upload failed',
@@ -394,7 +396,7 @@ class BurpActivationService {
           .where(eq(burpSetup.id, setup.id));
       }
 
-      console.log('[BurpActivation] Starting activation process...');
+      log.info('[BurpActivation] Starting activation process...');
 
       // Create activation flag file
       const flagPath = path.join(BURP_SETUP_DIR, '.activate');
@@ -404,7 +406,7 @@ class BurpActivationService {
       // (frontend polls /status every 3s while activationStatus === "activating")
       if (setup) {
         this.pollForActivation(setup.id).catch(err => {
-          console.error('[BurpActivation] Background activation polling failed:', err);
+          log.error('[BurpActivation] Background activation polling failed:', err);
         });
       }
 
@@ -415,7 +417,7 @@ class BurpActivationService {
       };
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Activation failed';
-      console.error('[BurpActivation] Activation failed:', error);
+      log.error('[BurpActivation] Activation failed:', error);
 
       // Update status to error
       const [setup] = await db.select().from(burpSetup).limit(1);
@@ -447,7 +449,7 @@ class BurpActivationService {
     const pollInterval = 5000; // 5 seconds
     const startTime = Date.now();
 
-    console.log('[BurpActivation] Waiting for MCP server to become healthy...');
+    log.info('[BurpActivation] Waiting for MCP server to become healthy...');
 
     while (Date.now() - startTime < maxWaitTime) {
       await new Promise(resolve => setTimeout(resolve, pollInterval));
@@ -467,7 +469,7 @@ class BurpActivationService {
           })
           .where(eq(burpSetup.id, setupId));
 
-        console.log('[BurpActivation] Activation successful!');
+        log.info('[BurpActivation] Activation successful!');
 
         // Auto-register BurpSuite MCP server so it appears in agent config dropdown
         await this.registerMCPServer();
@@ -486,7 +488,7 @@ class BurpActivationService {
       })
       .where(eq(burpSetup.id, setupId));
 
-    console.error(`[BurpActivation] ${errorMsg}`);
+    log.error(`[BurpActivation] ${errorMsg}`);
   }
 
   /**
@@ -494,7 +496,7 @@ class BurpActivationService {
    */
   async deactivate(): Promise<{ success: boolean; error?: string }> {
     try {
-      console.log('[BurpActivation] Deactivating BurpSuite...');
+      log.info('[BurpActivation] Deactivating BurpSuite...');
 
       // Remove activation flag
       const flagPath = path.join(BURP_SETUP_DIR, '.activate');
@@ -521,10 +523,10 @@ class BurpActivationService {
       // Mark MCP server as stopped so it disappears from agent config dropdown
       await this.unregisterMCPServer();
 
-      console.log('[BurpActivation] Deactivation complete');
+      log.info('[BurpActivation] Deactivation complete');
       return { success: true };
     } catch (error) {
-      console.error('[BurpActivation] Deactivation failed:', error);
+      log.error('[BurpActivation] Deactivation failed:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Deactivation failed',
@@ -556,7 +558,7 @@ class BurpActivationService {
             updatedAt: new Date(),
           })
           .where(eq(mcpServers.id, existing.id));
-        console.log(`[BurpActivation] MCP server record updated to running: ${existing.id}`);
+        log.info(`[BurpActivation] MCP server record updated to running: ${existing.id}`);
       } else {
         const [server] = await db
           .insert(mcpServers)
@@ -572,10 +574,10 @@ class BurpActivationService {
             uptime: new Date(),
           })
           .returning();
-        console.log(`[BurpActivation] MCP server registered: ${server.id}`);
+        log.info(`[BurpActivation] MCP server registered: ${server.id}`);
       }
     } catch (error) {
-      console.error('[BurpActivation] MCP server registration failed:', error);
+      log.error('[BurpActivation] MCP server registration failed:', error);
     }
   }
 
@@ -592,9 +594,9 @@ class BurpActivationService {
           updatedAt: new Date(),
         })
         .where(eq(mcpServers.name, BurpActivationService.MCP_SERVER_NAME));
-      console.log('[BurpActivation] MCP server marked as stopped');
+      log.info('[BurpActivation] MCP server marked as stopped');
     } catch (error) {
-      console.error('[BurpActivation] MCP server unregistration failed:', error);
+      log.error('[BurpActivation] MCP server unregistration failed:', error);
     }
   }
 
@@ -673,10 +675,10 @@ class BurpActivationService {
           .where(eq(burpSetup.id, setup.id));
       }
 
-      console.log('[BurpActivation] JAR file removed');
+      log.info('[BurpActivation] JAR file removed');
       return { success: true };
     } catch (error) {
-      console.error('[BurpActivation] JAR removal failed:', error);
+      log.error('[BurpActivation] JAR removal failed:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Removal failed',
@@ -720,10 +722,10 @@ class BurpActivationService {
           .where(eq(burpSetup.id, setup.id));
       }
 
-      console.log('[BurpActivation] License file removed');
+      log.info('[BurpActivation] License file removed');
       return { success: true };
     } catch (error) {
-      console.error('[BurpActivation] License removal failed:', error);
+      log.error('[BurpActivation] License removal failed:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Removal failed',
@@ -742,7 +744,7 @@ class BurpActivationService {
         licenseUploaded: false,
         activationStatus: 'dormant',
       });
-      console.log('[BurpActivation] Initialized burp_setup record');
+      log.info('[BurpActivation] Initialized burp_setup record');
     }
   }
 }

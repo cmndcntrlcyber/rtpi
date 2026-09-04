@@ -19,6 +19,8 @@ import {
 import { ollamaAIClient } from "../../services/ollama-ai-client";
 import { randomUUID } from "crypto";
 import multer from "multer";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("attack");
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -597,7 +599,7 @@ ${techniqueList}
           truncated: response.truncated || false,
         };
       } catch (error: any) {
-        console.error("[Attack] Test plan generation failed:", error);
+        log.error("[Attack] Test plan generation failed:", error);
         job.status = "failed";
         job.error = error?.message || "Internal server error";
       }
@@ -606,7 +608,7 @@ ${techniqueList}
     // Return immediately with the job ID
     res.status(202).json({ jobId });
   } catch (error: any) {
-    console.error("[Attack] Failed to start test plan generation:", error);
+    log.error("[Attack] Failed to start test plan generation:", error);
     res.status(500).json({
       error: "Failed to start test plan generation",
       details: error?.message || "Internal server error",

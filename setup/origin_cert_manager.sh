@@ -17,7 +17,7 @@
 #   ./setup/origin_cert_manager.sh validate <slug>
 #
 # Required env (load via build.sh's `source .env`):
-#   CF_DOMAIN                         apex domain (e.g. attck.nexus)
+#   CF_DOMAIN                         apex domain (e.g. onoiroi.us)
 #   CLOUDFLARE_API_USER_SERVICE_KEY   Origin CA Key from Cloudflare dashboard
 #                                     (My Profile → API Tokens → Origin CA Key,
 #                                     format starts with `v1.0-`). NOT a

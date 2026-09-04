@@ -10,12 +10,18 @@ export default defineConfig({
     setupFiles: ["./tests/setup.ts"],
     include: [
       "tests/unit/**/*.test.{ts,tsx}",
+      "tests/integration/**/*.test.{ts,tsx}",
       "server/**/__tests__/**/*.test.{ts,tsx}"
     ],
     exclude: ["tests/e2e/**/*"],
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
+      include: [
+        "client/src/**/*.{ts,tsx}",
+        "server/**/*.ts",
+        "shared/**/*.ts",
+      ],
       exclude: [
         "node_modules/",
         "tests/",

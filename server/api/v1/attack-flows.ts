@@ -4,6 +4,8 @@ import { attackFlows } from "@shared/schema";
 import { eq, desc, and } from "drizzle-orm";
 import { z } from "zod";
 import { attackWorkflowBuilder } from "../../services/attack-workflow-builder";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("attack-flows");
 
 const router = Router();
 
@@ -74,7 +76,7 @@ router.get("/", async (req, res) => {
 
     res.json({ flows });
   } catch (error: any) {
-    console.error("Failed to list attack flows:", error);
+    log.error("Failed to list attack flows:", error);
     res.status(500).json({
       error: "Failed to list attack flows",
       details: error?.message || "Internal server error"
@@ -97,7 +99,7 @@ router.get("/:id", async (req, res) => {
 
     res.json(flow);
   } catch (error: any) {
-    console.error("Failed to get attack flow:", error);
+    log.error("Failed to get attack flow:", error);
     res.status(500).json({
       error: "Failed to get attack flow",
       details: error?.message || "Internal server error"
@@ -141,7 +143,7 @@ router.post("/", async (req, res) => {
 
     res.status(201).json(flow);
   } catch (error: any) {
-    console.error("Failed to create attack flow:", error);
+    log.error("Failed to create attack flow:", error);
     res.status(500).json({
       error: "Failed to create attack flow",
       details: error?.message || "Internal server error"
@@ -190,7 +192,7 @@ router.put("/:id", async (req, res) => {
 
     res.json(updated);
   } catch (error: any) {
-    console.error("Failed to update attack flow:", error);
+    log.error("Failed to update attack flow:", error);
     res.status(500).json({
       error: "Failed to update attack flow",
       details: error?.message || "Internal server error"
@@ -228,7 +230,7 @@ router.delete("/:id", async (req, res) => {
 
     res.status(204).send();
   } catch (error: any) {
-    console.error("Failed to delete attack flow:", error);
+    log.error("Failed to delete attack flow:", error);
     res.status(500).json({
       error: "Failed to delete attack flow",
       details: error?.message || "Internal server error"
@@ -272,7 +274,7 @@ router.post("/:id/duplicate", async (req, res) => {
 
     res.status(201).json(duplicate);
   } catch (error: any) {
-    console.error("Failed to duplicate attack flow:", error);
+    log.error("Failed to duplicate attack flow:", error);
     res.status(500).json({
       error: "Failed to duplicate attack flow",
       details: error?.message || "Internal server error"

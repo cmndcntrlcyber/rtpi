@@ -1,6 +1,8 @@
 import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
+import { createLogger } from '../lib/logger';
+const log = createLogger("rust-nexus-security");
 
 /**
  * rust-nexus Security Hardening Module
@@ -215,7 +217,7 @@ export class CertificatePinning {
 
     this.pinnedCertificates.set(fingerprint, pinnedCert);
 
-    console.log(`[CertificatePinning] Pinned certificate: ${fingerprint}`);
+    log.info(`[CertificatePinning] Pinned certificate: ${fingerprint}`);
     return pinnedCert;
   }
 
@@ -226,14 +228,14 @@ export class CertificatePinning {
     const pinnedCert = this.pinnedCertificates.get(fingerprint);
 
     if (!pinnedCert) {
-      console.warn(`[CertificatePinning] Certificate not pinned: ${fingerprint}`);
+      log.warn(`[CertificatePinning] Certificate not pinned: ${fingerprint}`);
       return false;
     }
 
     // Check if certificate is still valid
     const now = new Date();
     if (now < pinnedCert.validFrom || now > pinnedCert.validTo) {
-      console.error(`[CertificatePinning] Certificate expired: ${fingerprint}`);
+      log.error(`[CertificatePinning] Certificate expired: ${fingerprint}`);
       return false;
     }
 
@@ -250,7 +252,7 @@ export class CertificatePinning {
       }
     }
 
-    console.warn(`[CertificatePinning] Public key not pinned: ${publicKeyHash}`);
+    log.warn(`[CertificatePinning] Public key not pinned: ${publicKeyHash}`);
     return false;
   }
 
@@ -480,7 +482,7 @@ export class ProtocolHardening {
     const size = Buffer.isBuffer(message) ? message.length : Buffer.from(message).length;
 
     if (size > this.config.maxMessageSize) {
-      console.error(
+      log.error(
         `[ProtocolHardening] Message too large: ${size} > ${this.config.maxMessageSize}`
       );
       return false;
@@ -506,7 +508,7 @@ export class ProtocolHardening {
     }
 
     if (record.count >= this.config.maxMessagesPerSecond) {
-      console.warn(
+      log.warn(
         `[ProtocolHardening] Rate limit exceeded for connection: ${connectionId}`
       );
       return false;
@@ -528,7 +530,7 @@ export class ProtocolHardening {
     const diff = Math.abs(now - timestamp);
 
     if (diff > this.config.maxClockSkewMs) {
-      console.error(
+      log.error(
         `[ProtocolHardening] Timestamp out of range: ${diff}ms > ${this.config.maxClockSkewMs}ms`
       );
       return false;
@@ -546,7 +548,7 @@ export class ProtocolHardening {
     }
 
     if (received !== expected) {
-      console.error(
+      log.error(
         `[ProtocolHardening] Sequence number mismatch: expected ${expected}, got ${received}`
       );
       return false;
@@ -564,7 +566,7 @@ export class ProtocolHardening {
     }
 
     if (this.seenMessages.has(messageId)) {
-      console.error(`[ProtocolHardening] Replay attack detected: ${messageId}`);
+      log.error(`[ProtocolHardening] Replay attack detected: ${messageId}`);
       return false;
     }
 

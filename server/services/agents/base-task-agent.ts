@@ -6,6 +6,9 @@ import { memoryService, SearchResult, AddMemoryParams } from "../memory-service"
 import { agentMessageBus, AgentMessage } from "../agent-message-bus";
 import { agentConfig } from "../../config/agent-config";
 import { ToolExecutionLoop, LoopConstraints, LoopResult, ApprovalCallback } from "./tool-execution-loop";
+import { readFeatureFlags } from '../../../shared/feature-flags';
+import { createLogger } from '../../lib/logger';
+const log = createLogger("base-task-agent");
 
 // ============================================================================
 // Types
@@ -93,7 +96,7 @@ export abstract class BaseTaskAgent extends EventEmitter {
     });
 
     this._initialized = true;
-    console.log(`[${this.agentName}] Initialized with ID ${this.agentId}`);
+    log.info(`[${this.agentName}] Initialized with ID ${this.agentId}`);
   }
 
   // ============================================================================
@@ -111,6 +114,29 @@ export abstract class BaseTaskAgent extends EventEmitter {
     const query = [context.taskType, this.agentRole].filter(Boolean).join(" ");
     if (!query || !context.operationId) return [];
 
+    const flags = readFeatureFlags(process.env);
+    if (flags.memoryRouter) {
+      try {
+        const { memoryRouter } = await import("../memory/memory-router");
+        const hits = await memoryRouter.query(
+          query,
+          { operationId: context.operationId, agentId: this.agentId || undefined },
+          "all",
+          context.limit || 10,
+        );
+        return hits.map((h) => ({
+          id: h.id,
+          memoryText: h.text,
+          memoryType: "fact" as const,
+          relevanceScore: h.score,
+          tags: [],
+          metadata: h.metadata || {},
+        }));
+      } catch (err) {
+        log.warn(`[${this.agentName}] Memory router query failed, falling back:`, err);
+      }
+    }
+
     try {
       return await memoryService.searchMemories({
         query,
@@ -118,7 +144,7 @@ export abstract class BaseTaskAgent extends EventEmitter {
         limit: context.limit || 10,
       });
     } catch (error) {
-      console.error(`[${this.agentName}] Memory query failed:`, error);
+      log.error(`[${this.agentName}] Memory query failed:`, error);
       return [];
     }
   }
@@ -155,7 +181,7 @@ export abstract class BaseTaskAgent extends EventEmitter {
       const memory = await memoryService.addMemory(memoryParams);
       return memory.id;
     } catch (error) {
-      console.error(`[${this.agentName}] Failed to store task memory:`, error);
+      log.error(`[${this.agentName}] Failed to store task memory:`, error);
       return null;
     }
   }
@@ -224,9 +250,89 @@ export abstract class BaseTaskAgent extends EventEmitter {
     loop.on("tool_start", (data) => this.emit("tool_start", data));
     loop.on("tool_complete", (data) => this.emit("tool_complete", data));
     loop.on("iteration_complete", (data) => this.emit("iteration_complete", data));
+    loop.on("judgment_update", (data) => this.emit("judgment_update", data));
+
+    const flags = readFeatureFlags(process.env);
+    if (flags.memoryRouter) {
+      try {
+        const { createMemoryNudgeHook } = await import("../memory/memory-nudger");
+        const nudgeInterval = parseInt(process.env.MEMORY_NUDGE_INTERVAL || "5");
+        loop.addPrePromptHook(createMemoryNudgeHook({
+          intervalIterations: nudgeInterval,
+          operationId,
+          agentId: this.agentId || undefined,
+        }));
+      } catch (err) {
+        log.warn(`[${this.agentName}] memory nudge hook registration failed:`, err);
+      }
+    }
 
     try {
       const result = await loop.run();
+
+      const flags = readFeatureFlags(process.env);
+
+      if (flags.memoryRouter) {
+        try {
+          const { extractExperience, storeExperience } = await import("../memory/experience-extractor");
+          const experience = extractExperience(result, objective, this.agentName);
+          await storeExperience(experience, { operationId });
+        } catch (err) {
+          log.warn(`[${this.agentName}] experience extraction failed (non-fatal):`, err);
+        }
+      }
+
+      if (flags.agentPersonas) {
+        try {
+          const { personaManager } = await import("./persona-manager");
+          await personaManager.updatePerformance(this.agentName, {
+            iterations: result.iterations.length,
+            findingsCount: result.iterations.reduce((sum, i) => sum + (i.findings?.length || 0), 0),
+            success: result.status === "completed",
+          });
+        } catch (err) {
+          log.warn(`[${this.agentName}] persona update failed (non-fatal):`, err);
+        }
+      }
+
+      if (flags.crossSessionLearning) {
+        try {
+          const { sessionIndexer } = await import("../memory/session-index");
+          await sessionIndexer.summarizeAndIndex({
+            operationId,
+            agentType: this.agentName,
+            loopResult: result,
+            objective,
+          });
+        } catch (err) {
+          log.warn(`[${this.agentName}] session indexing failed (non-fatal):`, err);
+        }
+      }
+
+      if (flags.loopEngineering) {
+        try {
+          const { behaviorBaseline } = await import("./behavior-baseline");
+          const alerts = await behaviorBaseline.checkDrift(this.agentName, {
+            iterations: result.iterations.length,
+            findings: result.iterations.reduce((sum, i) => sum + (i.findings?.length || 0), 0),
+            durationMs: result.totalDurationMs,
+            toolsUsed: result.toolsUsed,
+          });
+          if (alerts.length > 0) {
+            log.warn(`[${this.agentName}] behavioral drift detected:`, alerts.map(a => a.message));
+            this.emit("drift_alert", alerts);
+          }
+          await behaviorBaseline.updateBaseline(this.agentName, {
+            iterations: result.iterations.length,
+            findings: result.iterations.reduce((sum, i) => sum + (i.findings?.length || 0), 0),
+            durationMs: result.totalDurationMs,
+            toolsUsed: result.toolsUsed,
+            success: result.status === "completed",
+          });
+        } catch (err) {
+          log.warn(`[${this.agentName}] drift detection failed (non-fatal):`, err);
+        }
+      }
 
       if (result.summary && operationId) {
         await this.storeTaskMemory({

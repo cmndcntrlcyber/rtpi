@@ -14,6 +14,8 @@
 import fs from "fs/promises";
 import path from "path";
 import { documentRenderer, RendererError } from "./reports/document-renderer";
+import { createLogger } from '../lib/logger';
+const log = createLogger("pdf-report-generator");
 
 const REPORTS_DIR = process.env.REPORTS_DIR || "./uploads/reports";
 const LOGO_PATH = process.env.COMPANY_LOGO_PATH || "./assets/logo.png";
@@ -162,7 +164,7 @@ export class PDFReportGenerator {
       } catch (err) {
         if (err instanceof RendererError) {
           // Log diagnostic, then fall through to HTML fallback below.
-          console.warn(
+          log.warn(
             `[PDFReportGenerator] Renderer ${err.code}: ${err.message}. Falling back to HTML.`,
           );
         } else {

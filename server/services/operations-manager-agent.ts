@@ -17,6 +17,8 @@ import { memoryService } from "./memory-service";
 import { agentMessageBus } from "./agent-message-bus";
 import { agentConfig } from "../config/agent-config";
 import { routeAgent, NoInferenceProviderAvailable } from "./inference/inference-router";
+import { createLogger } from '../lib/logger';
+const log = createLogger("operations-manager-agent");
 
 interface QuestionWithReporter {
   question: typeof reporterQuestions.$inferSelect;
@@ -71,7 +73,7 @@ class OperationsManagerAgent extends EventEmitter {
   async start(): Promise<void> {
     if (this.isActive) return;
 
-    console.log("[OpsManager] Starting Operations Manager Agent...");
+    log.info("[OpsManager] Starting Operations Manager Agent...");
     this.isActive = true;
 
     // Start periodic question processing
@@ -85,7 +87,7 @@ class OperationsManagerAgent extends EventEmitter {
     }, this.LOOP_CHECK_INTERVAL_MS);
 
     this.emit("started");
-    console.log("[OpsManager] Operations Manager Agent started");
+    log.info("[OpsManager] Operations Manager Agent started");
   }
 
   /**
@@ -94,7 +96,7 @@ class OperationsManagerAgent extends EventEmitter {
   async stop(): Promise<void> {
     if (!this.isActive) return;
 
-    console.log("[OpsManager] Stopping Operations Manager Agent...");
+    log.info("[OpsManager] Stopping Operations Manager Agent...");
     this.isActive = false;
 
     if (this.questionProcessingInterval) {
@@ -108,7 +110,7 @@ class OperationsManagerAgent extends EventEmitter {
     }
 
     this.emit("stopped");
-    console.log("[OpsManager] Operations Manager Agent stopped");
+    log.info("[OpsManager] Operations Manager Agent stopped");
   }
 
   /**
@@ -366,7 +368,7 @@ class OperationsManagerAgent extends EventEmitter {
       if (decision.terminate) {
         const success = agentLoopService.stopLoop(loop.id);
         if (success) {
-          console.log(`[OpsManager] Terminated loop ${loop.id}: ${decision.reason}`);
+          log.info(`[OpsManager] Terminated loop ${loop.id}: ${decision.reason}`);
           this.emit("loop_terminated", {
             loopId: loop.id,
             reason: decision.reason,
@@ -432,7 +434,7 @@ class OperationsManagerAgent extends EventEmitter {
   terminateLoop(loopId: string, reason: string): boolean {
     const success = agentLoopService.stopLoop(loopId);
     if (success) {
-      console.log(`[OpsManager] Manually terminated loop ${loopId}: ${reason}`);
+      log.info(`[OpsManager] Manually terminated loop ${loopId}: ${reason}`);
       this.emit("loop_terminated", {
         loopId,
         reason,
@@ -539,9 +541,9 @@ Provide:
       insights = insightLines.map((l) => l.trim().replace(/^[-*]\s*/, ""));
     } catch (error) {
       if (error instanceof NoInferenceProviderAvailable) {
-        console.error("[OpsManager] AI synthesis — providers exhausted:", error.message);
+        log.error("[OpsManager] AI synthesis — providers exhausted:", error.message);
       } else {
-        console.error("[OpsManager] AI synthesis failed:", error);
+        log.error("[OpsManager] AI synthesis failed:", error);
       }
       summary = `Synthesis of ${reports.length} reports from ${[...new Set(reports.map((r) => r.agentPageRole))].join(", ")}`;
     }
@@ -595,10 +597,10 @@ Provide:
         metadata: { taskId: task.id, reportCount: reports.length },
       });
     } catch (error) {
-      console.error("[OpsManager] Failed to store synthesis in memory:", error);
+      log.error("[OpsManager] Failed to store synthesis in memory:", error);
     }
 
-    console.log(`[OpsManager] Synthesized ${reports.length} reports for operation ${operationId}`);
+    log.info(`[OpsManager] Synthesized ${reports.length} reports for operation ${operationId}`);
 
     return { summary, reportCount: reports.length, insights, taskId: task.id };
   }
@@ -649,7 +651,7 @@ Provide:
         },
       });
     } catch (error) {
-      console.error("[OpsManager] Failed to send task via message bus:", error);
+      log.error("[OpsManager] Failed to send task via message bus:", error);
     }
 
     this.emit("task_delegated", { taskId: task.id, targetRole: params.targetAgentRole });
@@ -685,9 +687,9 @@ Generate a single, clear question that helps clarify what action to take.`;
       }
     } catch (error) {
       if (error instanceof NoInferenceProviderAvailable) {
-        console.error("[OpsManager] AI question — providers exhausted:", error.message);
+        log.error("[OpsManager] AI question — providers exhausted:", error.message);
       } else {
-        console.error("[OpsManager] AI question generation failed:", error);
+        log.error("[OpsManager] AI question generation failed:", error);
       }
     }
 
@@ -776,7 +778,7 @@ Generate a single, clear question that helps clarify what action to take.`;
           .set({ answerStoredAsMemoryId: memoryId })
           .where(eq(assetQuestions.id, questionId));
       } catch (error) {
-        console.error("[OpsManager] Failed to store answer in memory:", error);
+        log.error("[OpsManager] Failed to store answer in memory:", error);
       }
     }
 

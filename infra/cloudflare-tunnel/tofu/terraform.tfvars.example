@@ -1,0 +1,19 @@
+cloudflare_account_id = "REPLACE_WITH_32_CHAR_HEX_ACCOUNT_ID"
+tunnel_name           = "rtpi-c3s"
+slug                  = "c3s"
+domain                = "onoiroi.us"
+config_src            = "cloudflare"
+
+ingress_rules = [
+  { hostname = "c3s.onoiroi.us",           service = "https://localhost:8443", no_tls_verify = true, connect_timeout = "30s" },
+  { hostname = "c3s-admin.onoiroi.us",     service = "http://localhost:5000" },
+  { hostname = "c3s-api.onoiroi.us",       service = "http://localhost:3001" },
+  { hostname = "c3s-kasm.onoiroi.us",      service = "https://localhost:8443", no_tls_verify = true, connect_timeout = "30s" },
+  { hostname = "c3s-reports.onoiroi.us",   service = "http://localhost:7777" },
+  { hostname = "c3s-empire.onoiroi.us",    service = "http://localhost:1337" },
+  { hostname = "c3s-mgmt.onoiroi.us",      service = "https://localhost:9443", no_tls_verify = true },
+  { hostname = "c3s-wiki.onoiroi.us",      service = "http://localhost:13000" },
+  { hostname = "c3s-vscode.onoiroi.us",    service = "https://localhost:6901", no_tls_verify = true, connect_timeout = "30s" },
+  { hostname = "c3s-kali.onoiroi.us",      service = "https://localhost:6902", no_tls_verify = true, connect_timeout = "30s" },
+  { hostname = "c3s-workbench.onoiroi.us", service = "http://localhost:3020" },
+]

@@ -1,15 +1,17 @@
 /**
- * Skills API Routes — v2.5
+ * Skills API Routes — v3.10.3a
  *
- * Proxies skill discovery requests to the LangGraph orchestrator service.
- * Provides the Express backend's interface to the unified skills library.
+ * Provides skill discovery via the ferry-based skill catalog.
+ * Legacy LangGraph orchestrator has been removed (v3.10.3b Phase 1).
  */
 
 import { Router, Request, Response } from "express";
 import { ensureAuthenticated } from "../../auth/middleware";
 import { z } from "zod";
-import { searchSkills, getSkillContent } from "../../services/langgraph-client";
-import { clearSkillCache } from "../../services/skill-discovery-service";
+import { searchFerrySkills, listFerrySkills } from "../../services/ferry-skill-catalog";
+import { clearSkillCache, loadSkill } from "../../services/skill-discovery-service";
+import { createLogger } from '../../lib/logger';
+const log = createLogger("skills");
 
 const router = Router();
 
@@ -32,33 +34,41 @@ const skillSearchSchema = z.object({
 
 /**
  * POST /api/v1/skills/search
- * Search the unified skills library.
+ * Search the unified skills library via the ferry skill catalog.
  */
 router.post("/search", async (req: Request, res: Response) => {
   try {
     const parsed = skillSearchSchema.parse(req.body);
-    const results = await searchSkills(parsed);
-    res.json(results);
+    const ferryResults = searchFerrySkills(parsed.query);
+    const skills = ferryResults.map((s) => ({
+      ...s,
+      source: "harness" as const,
+    }));
+    res.json({ skills });
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: "Validation error", details: error.errors });
       return;
     }
-    console.error("[Skills] Search error:", error);
+    log.error("[Skills] Search error:", error);
     res.status(502).json({ error: "Skill discovery service unavailable" });
   }
 });
 
 /**
  * GET /api/v1/skills/:skillName
- * Get full content of a specific skill.
+ * Get full content of a specific skill via the ferry gateway.
  */
 router.get("/:skillName", async (req: Request, res: Response) => {
   try {
-    const result = await getSkillContent(req.params.skillName);
-    res.json(result);
+    const content = await loadSkill(req.params.skillName);
+    if (!content) {
+      res.status(404).json({ error: "Skill not found" });
+      return;
+    }
+    res.json({ name: req.params.skillName, content });
   } catch (error) {
-    console.error("[Skills] Get skill error:", error);
+    log.error("[Skills] Get skill error:", error);
     res.status(404).json({ error: "Skill not found" });
   }
 });

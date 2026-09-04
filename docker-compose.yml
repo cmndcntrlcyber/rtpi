@@ -485,6 +485,7 @@ services:
       rtpi-network:
         aliases:
           - kasm_proxy
+          - proxy
     restart: unless-stopped
     healthcheck:
       # Probe HTTPS with -k (self-signed) instead of HTTP, since :80 is just a redirect.
@@ -509,6 +510,8 @@ services:
       # Guacamole configuration
       GUACD_HOSTNAME: localhost
       GUACD_PORT: 4822
+      DEFAULT_MANAGER_TOKEN: ${KASM_MANAGER_TOKEN}
+      DEFAULT_REGISTRATION_TOKEN: ${KASM_REGISTRATION_TOKEN}
     entrypoint:
       - /bin/sh
       - -c
@@ -518,7 +521,10 @@ services:
         cp "$$SRC" "$$TMP"
         sed -i "s|APIHOSTNAME|kasm_proxy|g" "$$TMP"
         sed -i "s|SERVER_ADDRESS|kasm_proxy|g" "$$TMP"
-        echo "[kasm-guac] Patched $$TMP — resolved APIHOSTNAME → kasm_proxy"
+        sed -i "s|registration_token: REGISTRATION_TOKEN|registration_token: $${DEFAULT_REGISTRATION_TOKEN}|" "$$TMP"
+        sed -i "s|zone: ZONE|zone: default|" "$$TMP"
+        sed -i "s|server_port: SERVER_PORT|server_port: 443|" "$$TMP"
+        echo "[kasm-guac] Patched $$TMP — resolved hostnames, registration token, zone"
         export KASM_CONFIG_FILE="$$TMP"
         /usr/sbin/guacd -f -b 0.0.0.0 -l 4822 -L debug 2>&1 | grep -v 'guacd Handler not found for ""' &
         cd /gclient
@@ -557,6 +563,17 @@ services:
       AGENT_ID: ${KASM_AGENT_ID:-default-agent}
       SERVER_HOSTNAME: ${KASM_SERVER_HOSTNAME:-localhost}
       PUBLIC_HOSTNAME: ${KASM_PUBLIC_HOSTNAME:-localhost}
+      DEFAULT_MANAGER_TOKEN: ${KASM_MANAGER_TOKEN}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        CFG=/opt/kasm/current/conf/app/agent/agent.app.config.yaml
+        if [ -f "$$CFG" ]; then
+          sed -i "s|token: .*|token: $${DEFAULT_MANAGER_TOKEN}|" "$$CFG"
+          echo "[kasm-agent] Patched manager token in $$CFG"
+        fi
+        exec python3 /src/ProvisionAgent/__init__.pyc --cfg "$$CFG"
     volumes:
       - kasm-agent-data:/opt/kasm/current
       - /var/run/docker.sock:/var/run/docker.sock  # Docker socket for container management

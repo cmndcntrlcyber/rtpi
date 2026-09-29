@@ -10,20 +10,7 @@ summary: "MCP Fetch is a mcp-server registered in RTPI. No description
   available. Use it when the task aligns with its category. Invocation: `uvx
   mcp-server-fetch`. This summary is a fallback generated without LLM or web
   research — consult the upstream documentation for accurate usage."
-sources:
-  - https://glama.ai/mcp/servers/modelcontextprotocol/fetch
-  - https://github.com/zcaceres/fetch-mcp
-  - https://mcp.so/server/fetch/test
-  - https://github.com/wolfyy970/docs-fetch-mcp
-  - https://agentskillshub.dev/skills/fetch
-  - https://lib.rs/crates/mcp-server-fetch
-  - https://mcpservers.org/servers/zcaceres/fetch-mcp
-  - https://mcp.so/servers/mcp_server_fetch
-  - https://github.com/modelcontextprotocol/servers/blob/main/src/fetch/README.md
-  - https://mcpmarket.com/server/redteam-1
-  - https://github.com/GH05TCREW/ghostcrew
-  - https://pentest.qa/blog/mcp-server-security-testing-red-team-guide
-generated_at: 2026-09-04T07:50:40.638Z
+generated_at: 2026-09-23T17:35:28.163Z
 generated_by: template
 source_hash: 4195fc904223cce05bd98d6e5426a11af915e4d3cf644d1df266c8cbf511443e
 ---
@@ -60,15 +47,4 @@ None documented in fallback mode.
 
 ## References
 
-- https://glama.ai/mcp/servers/modelcontextprotocol/fetch
-- https://github.com/zcaceres/fetch-mcp
-- https://mcp.so/server/fetch/test
-- https://github.com/wolfyy970/docs-fetch-mcp
-- https://agentskillshub.dev/skills/fetch
-- https://lib.rs/crates/mcp-server-fetch
-- https://mcpservers.org/servers/zcaceres/fetch-mcp
-- https://mcp.so/servers/mcp_server_fetch
-- https://github.com/modelcontextprotocol/servers/blob/main/src/fetch/README.md
-- https://mcpmarket.com/server/redteam-1
-- https://github.com/GH05TCREW/ghostcrew
-- https://pentest.qa/blog/mcp-server-security-testing-red-team-guide
+_No references available._

@@ -53,18 +53,51 @@ preflight() {
 cleanup_dns() {
     log "Cleaning DNS records for slug '${SLUG}' in zone ${DOMAIN}..."
 
-    local response
-    response=$(curl -sf \
-        -H "Authorization: Bearer ${ZONE_TOKEN}" \
-        "${CF_API}/zones/${ZONE_ID}/dns_records?per_page=500" 2>/dev/null || echo "")
+    # Try ZONE_TOKEN first, fall back to ACCOUNT_TOKEN; auto-discover zone ID by domain
+    local active_token="${ZONE_TOKEN}"
+    local active_zone="${ZONE_ID}"
+    local response=""
 
-    if [ -z "$response" ]; then
+    for try_token in "${ZONE_TOKEN}" "${ACCOUNT_TOKEN}"; do
+        [ -z "$try_token" ] && continue
+        response=$(curl -s \
+            -H "Authorization: Bearer ${try_token}" \
+            "${CF_API}/zones/${active_zone}/dns_records?per_page=500" 2>/dev/null || echo "")
+        local resp_ok
+        resp_ok=$(echo "$response" | jq -r '.success // false' 2>/dev/null)
+        if [ "$resp_ok" = "true" ]; then
+            active_token="$try_token"
+            break
+        fi
+        # Zone ID may be stale — try domain lookup
+        local lookup discovered
+        lookup=$(curl -s -H "Authorization: Bearer ${try_token}" \
+            "${CF_API}/zones?name=${DOMAIN}&status=active" 2>/dev/null || echo "")
+        discovered=$(echo "$lookup" | jq -r '.result[0].id // empty' 2>/dev/null)
+        if [ -n "$discovered" ] && [ "$discovered" != "$active_zone" ]; then
+            info "Zone ID updated: ${active_zone} → ${discovered}"
+            active_zone="$discovered"
+            ZONE_ID="$discovered"
+            response=$(curl -s \
+                -H "Authorization: Bearer ${try_token}" \
+                "${CF_API}/zones/${active_zone}/dns_records?per_page=500" 2>/dev/null || echo "")
+            resp_ok=$(echo "$response" | jq -r '.success // false' 2>/dev/null)
+            if [ "$resp_ok" = "true" ]; then
+                active_token="$try_token"
+                break
+            fi
+        fi
+        response=""
+    done
+
+    if [ -z "$response" ] || [ "$(echo "$response" | jq -r '.success // false' 2>/dev/null)" != "true" ]; then
         warn "Could not list DNS records — API unreachable"
         return 1
     fi
 
     local count
     count=$(echo "$response" | jq '.result | length' 2>/dev/null || echo "0")
+    count="${count:-0}"
 
     if [ "$count" -eq 0 ]; then
         info "No DNS records found for slug '${SLUG}'"
@@ -79,8 +112,8 @@ cleanup_dns() {
             ${SLUG}.${DOMAIN}|${SLUG}-*.${DOMAIN})
                 log "Deleting ${type} record: ${name} (${id})"
                 curl -sf -X DELETE \
-                    -H "Authorization: Bearer ${ZONE_TOKEN}" \
-                    "${CF_API}/zones/${ZONE_ID}/dns_records/${id}" >/dev/null 2>&1 \
+                    -H "Authorization: Bearer ${active_token}" \
+                    "${CF_API}/zones/${active_zone}/dns_records/${id}" >/dev/null 2>&1 \
                     && log "  Deleted ${name}" \
                     || warn "  Failed to delete ${name}"
                 ;;

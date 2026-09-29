@@ -12,20 +12,7 @@ summary: "MCP Filesystem is a mcp-server registered in RTPI. No description
   /home/cmndcntrl/code/rtpi/mcp-workspace`. This summary is a fallback generated
   without LLM or web research — consult the upstream documentation for accurate
   usage."
-sources:
-  - https://docs.stacklok.com/toolhive/guides-mcp/filesystem
-  - https://dev.to/furudo_erika_7633eee4afa5/how-to-use-local-filesystem-mcp-server-363e
-  - https://skyvia.com/blog/filesystem-mcp-server
-  - https://www.pulsemcp.com/servers/modelcontextprotocol-filesystem
-  - https://github.com/safurrier/mcp-filesystem
-  - https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem
-  - https://www.philschmid.de/mcp-cli
-  - https://lobehub.com/mcp/marcusjellinghaus-mcp-server-filesystem
-  - https://agentskillshub.dev/skills/filesystem
-  - https://www.verdent.ai/guides/filesystem-mcp-server
-  - https://pentest.qa/blog/mcp-server-security-testing-red-team-guide
-  - https://www.youtube.com/watch?v=D4c7I9QzHMo
-generated_at: 2026-09-04T07:50:38.186Z
+generated_at: 2026-09-23T17:35:28.397Z
 generated_by: template
 source_hash: 4447056b5ddd4003e289d5da271f76a7f5b13c44e6dd9e2dcfe5d1864552469c
 ---
@@ -62,15 +49,4 @@ None documented in fallback mode.
 
 ## References
 
-- https://docs.stacklok.com/toolhive/guides-mcp/filesystem
-- https://dev.to/furudo_erika_7633eee4afa5/how-to-use-local-filesystem-mcp-server-363e
-- https://skyvia.com/blog/filesystem-mcp-server
-- https://www.pulsemcp.com/servers/modelcontextprotocol-filesystem
-- https://github.com/safurrier/mcp-filesystem
-- https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem
-- https://www.philschmid.de/mcp-cli
-- https://lobehub.com/mcp/marcusjellinghaus-mcp-server-filesystem
-- https://agentskillshub.dev/skills/filesystem
-- https://www.verdent.ai/guides/filesystem-mcp-server
-- https://pentest.qa/blog/mcp-server-security-testing-red-team-guide
-- https://www.youtube.com/watch?v=D4c7I9QzHMo
+_No references available._

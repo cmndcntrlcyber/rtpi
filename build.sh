@@ -38,6 +38,7 @@ set -e
 CERT_MANAGER="./setup/cert_manager.sh"
 ORIGIN_CERT_MANAGER="./setup/origin_cert_manager.sh"
 DNS_MANAGER="./setup/cloudflare_dns_manager.sh"
+TUNNEL_MANAGER="./setup/tunnel_config_manager.sh"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MANIFEST_PATH="${PROJECT_ROOT}/setup/services.manifest"
 # shellcheck disable=SC1091
@@ -418,6 +419,16 @@ main() {
             cp "$PROJECT_ROOT/docker/nginx-ssl.conf" /etc/nginx/conf.d/rtpi-ssl.conf
             nginx -t && systemctl reload nginx && log "nginx reloaded ✅"
         fi
+    fi
+
+    # ── Phase 3h: Sync Cloudflare Tunnel ingress rules ─────────────────────
+    # Auto-detects the host's network IP and pushes the services.manifest
+    # entries to the remotely-managed tunnel via the Cloudflare API.
+    if [ -n "${CF_TUNNEL_TOKEN:-}" ]; then
+        section "Phase 3h — Cloudflare Tunnel Ingress Sync"
+        ACTIVE_PROFILES="$PROFILES" "$TUNNEL_MANAGER" sync
+    else
+        info "CF_TUNNEL_TOKEN not set — skipping tunnel ingress sync"
     fi
 
     start_services

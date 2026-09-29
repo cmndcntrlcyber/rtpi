@@ -11,20 +11,7 @@ summary: "MCP Sequential Thinking is a mcp-server registered in RTPI. No
   Invocation: `npx -y @modelcontextprotocol/server-sequential-thinking`. This
   summary is a fallback generated without LLM or web research — consult the
   upstream documentation for accurate usage."
-sources:
-  - https://github.com/arben-adm/mcp-sequential-thinking
-  - https://mcpservers.org/servers/modelcontextprotocol/sequentialthinking
-  - https://docs.typingmind.com/model-context-protocol-(mcp)-in-typingmind/typingmind-mcp-sequential-thinking
-  - https://www.npmjs.com/package/@modelcontextprotocol/server-sequential-thinking
-  - https://github.com/spences10/mcp-sequentialthinking-tools
-  - https://github.com/open-webui/mcpo/discussions/80
-  - https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking
-  - https://mcp.so/servers/sequentialthinking
-  - https://mcpmarket.com/server/redteam-1
-  - https://arxiv.org/html/2511.15998v1
-  - https://pentest.qa/blog/mcp-server-security-testing-red-team-guide
-  - https://evalian.co.uk/penetration-testing-vs-red-team-testing
-generated_at: 2026-09-04T07:50:38.753Z
+generated_at: 2026-09-23T17:35:28.104Z
 generated_by: template
 source_hash: ec64c95057c2e6b53aac2cb8a5126ba2e2a561e8a7471a3393835473887b1613
 ---
@@ -61,15 +48,4 @@ None documented in fallback mode.
 
 ## References
 
-- https://github.com/arben-adm/mcp-sequential-thinking
-- https://mcpservers.org/servers/modelcontextprotocol/sequentialthinking
-- https://docs.typingmind.com/model-context-protocol-(mcp)-in-typingmind/typingmind-mcp-sequential-thinking
-- https://www.npmjs.com/package/@modelcontextprotocol/server-sequential-thinking
-- https://github.com/spences10/mcp-sequentialthinking-tools
-- https://github.com/open-webui/mcpo/discussions/80
-- https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking
-- https://mcp.so/servers/sequentialthinking
-- https://mcpmarket.com/server/redteam-1
-- https://arxiv.org/html/2511.15998v1
-- https://pentest.qa/blog/mcp-server-security-testing-red-team-guide
-- https://evalian.co.uk/penetration-testing-vs-red-team-testing
+_No references available._

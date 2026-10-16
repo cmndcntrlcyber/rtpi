@@ -1,0 +1,86 @@
+# Cloudflare Tunnel ingress rules — generated from this template by build.sh Phase 03
+# Placeholders: __HOST_IP__, __SLUG__, __DOMAIN__, __TUNNEL_ID__
+
+tunnel: __TUNNEL_ID__
+credentials-file: /etc/cloudflared/__TUNNEL_ID__.json
+
+ingress:
+  # ── bare-slug ──
+  - hostname: __SLUG__.__DOMAIN__
+    service: https://__HOST_IP__:8443
+    originRequest:
+      noTLSVerify: true
+      connectTimeout: 30s
+
+  # ── admin ──
+  - hostname: __SLUG__-admin.__DOMAIN__
+    service: http://__HOST_IP__:3001
+    originRequest:
+      connectTimeout: 10s
+
+  # ── reports ──
+  - hostname: __SLUG__-reports.__DOMAIN__
+    service: http://__HOST_IP__:7777
+    originRequest:
+      connectTimeout: 10s
+
+  # ── empire ──
+  - hostname: __SLUG__-empire.__DOMAIN__
+    service: http://__HOST_IP__:1337
+    originRequest:
+      connectTimeout: 10s
+
+  # ── mgmt ──
+  - hostname: __SLUG__-mgmt.__DOMAIN__
+    service: https://__HOST_IP__:9443
+    originRequest:
+      noTLSVerify: true
+      connectTimeout: 10s
+
+  # ── kasm ──
+  - hostname: __SLUG__-kasm.__DOMAIN__
+    service: https://__HOST_IP__:8443
+    originRequest:
+      noTLSVerify: true
+      connectTimeout: 30s
+
+  # ── wiki ──
+  - hostname: __SLUG__-wiki.__DOMAIN__
+    service: http://__HOST_IP__:13000
+    originRequest:
+      connectTimeout: 10s
+
+  # ── vscode ──
+  - hostname: __SLUG__-vscode.__DOMAIN__
+    service: https://__HOST_IP__:6901
+    originRequest:
+      noTLSVerify: true
+      connectTimeout: 30s
+
+  # ── kali ──
+  - hostname: __SLUG__-kali.__DOMAIN__
+    service: https://__HOST_IP__:6902
+    originRequest:
+      noTLSVerify: true
+      connectTimeout: 30s
+
+  # ── workbench ──
+  - hostname: __SLUG__-workbench.__DOMAIN__
+    service: http://__HOST_IP__:3020
+    originRequest:
+      connectTimeout: 10s
+
+  # ── api ──
+  - hostname: __SLUG__-api.__DOMAIN__
+    service: http://__HOST_IP__:3001
+    originRequest:
+      connectTimeout: 30s
+
+  # ── join ──
+  - hostname: __SLUG__-join.__DOMAIN__
+    service: http://__HOST_IP__:8099
+    originRequest:
+      connectTimeout: 30s
+
+  # ── Catch-all ──
+  - service: http_status:404

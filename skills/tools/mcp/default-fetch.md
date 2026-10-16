@@ -10,7 +10,7 @@ summary: "MCP Fetch is a mcp-server registered in RTPI. No description
   available. Use it when the task aligns with its category. Invocation: `uvx
   mcp-server-fetch`. This summary is a fallback generated without LLM or web
   research — consult the upstream documentation for accurate usage."
-generated_at: 2026-10-07T10:05:39.505Z
+generated_at: 2026-10-16T03:54:00.391Z
 generated_by: template
 source_hash: 4195fc904223cce05bd98d6e5426a11af915e4d3cf644d1df266c8cbf511443e
 ---

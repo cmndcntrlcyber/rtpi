@@ -175,6 +175,9 @@ service-account*.json
 *.tfstate.*
 .terraform/
 
+# Generated tunnel config (built from config.yml.template by build.sh Phase 03)
+infra/cloudflare-tunnel/config.yml
+
 # Runtime
 .cache/
 *.pid

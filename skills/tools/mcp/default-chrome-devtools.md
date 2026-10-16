@@ -10,7 +10,7 @@ summary: "Chrome DevTools is a mcp-server registered in RTPI. No description
   available. Use it when the task aligns with its category. Invocation: `npx -y
   chrome-devtools-mcp@latest`. This summary is a fallback generated without LLM
   or web research — consult the upstream documentation for accurate usage."
-generated_at: 2026-10-07T10:05:39.471Z
+generated_at: 2026-10-16T03:54:00.094Z
 generated_by: template
 source_hash: adce2514b3aa6da536b6221b9bc85a4eaecf5a0422a3b22808e9ca3844183e32
 ---

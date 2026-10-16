@@ -49,7 +49,17 @@ err()  { echo "${RED}✗${NC} $*" >&2; }
 # ---------------------------------------------------------------------------
 # Parse args
 # ---------------------------------------------------------------------------
-SRC="${RTPI_UFW_SOURCE:-192.168.1.0/24}"
+if [ -z "${RTPI_UFW_SOURCE:-}" ]; then
+    _UFW_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [ -f "${_UFW_SCRIPT_DIR}/../setup/lib-detect-ip.sh" ]; then
+        source "${_UFW_SCRIPT_DIR}/../setup/lib-detect-ip.sh"
+        SRC=$(detect_subnet "$(detect_primary_ip)") || SRC="192.168.1.0/24"
+    else
+        SRC="192.168.1.0/24"
+    fi
+else
+    SRC="${RTPI_UFW_SOURCE}"
+fi
 DRY_RUN=0
 REVOKE=0
 

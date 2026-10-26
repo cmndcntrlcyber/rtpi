@@ -11,7 +11,7 @@ summary: "arXiv is a mcp-server registered in RTPI. No description available.
   git+https://github.com/blazickjp/arxiv-mcp-server arxiv-mcp-server`. This
   summary is a fallback generated without LLM or web research — consult the
   upstream documentation for accurate usage."
-generated_at: 2026-10-07T10:05:39.582Z
+generated_at: 2026-10-26T19:50:26.917Z
 generated_by: template
 source_hash: eb4f34dfc7d18a288104aa54b7d7e1b28b320abbcbe086e94de62a838e70c9e9
 ---

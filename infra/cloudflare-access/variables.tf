@@ -48,6 +48,14 @@ variable "applications" {
     # Authorization policy. Each entry becomes one cloudflare_zero_trust_access_policy.
     same_site_cookie = optional(string, "lax")
 
+    cors_headers = optional(object({
+      allowed_origins   = list(string)
+      allowed_methods   = optional(list(string), ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+      allowed_headers   = optional(list(string), ["Content-Type", "Authorization", "X-CSRF-Token"])
+      allow_credentials = optional(bool, true)
+      max_age           = optional(number, 86400)
+    }))
+
     policies = optional(list(object({
       name           = string
       decision       = string                 # "allow" | "deny" | "non_identity" | "bypass"

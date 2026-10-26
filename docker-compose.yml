@@ -51,6 +51,21 @@ services:
     networks:
       - rtpi-network
 
+  # Local Docker registry for staging workspace and agent images
+  registry:
+    image: registry:2.8
+    container_name: rtpi-registry
+    ports:
+      - "127.0.0.1:5000:5000"
+    volumes:
+      - registry-data:/var/lib/registry
+    environment:
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+    restart: unless-stopped
+    profiles:
+      - registry
+      - kasm
+
   # rtpi-tools REMOVED in v3.10.3b Phase 2: all tools available in nexus-kali
   # container via nexus-harness skills. Image recovered: 7.47 GB.
   # Tool execution now routes through FF_FERRY_BRIDGE → harness-tool-executor.
@@ -249,9 +264,15 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        if [ -f /www/index.html ]; then echo "[kasm-web-init] Web UI already extracted"; exit 0; fi
+        MARKER="/www/.kasm-version"
+        CURRENT="kasmweb/proxy:1.19.0-rolling"
+        if [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$CURRENT" ]; then
+            echo "[kasm-web-init] Web UI already at $CURRENT"; exit 0
+        fi
+        rm -rf /www/*
         cp -r /srv/www/* /www/
-        echo "[kasm-web-init] Web UI extracted to /www"
+        echo "$CURRENT" > "$MARKER"
+        echo "[kasm-web-init] Web UI extracted ($CURRENT)"
     networks:
       - rtpi-network
 
@@ -1494,3 +1515,5 @@ volumes:
   vpn-configs:
   wg-configs:
   vpn-logs:
+  # Local Docker registry storage
+  registry-data:

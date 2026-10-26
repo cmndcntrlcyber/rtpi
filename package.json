@@ -18,6 +18,7 @@
     "start:stack": "bash scripts/rtpi-startup.sh",
     "start:stack:core": "bash scripts/rtpi-startup.sh --core-only",
     "build:offsec": "bash scripts/build-resilient.sh",
+    "registry:stage": "bash server/scripts/infra/stage-images.sh",
     "dev": "tsx watch server/index.ts",
     "dev:frontend": "vite",
     "build": "vite build",

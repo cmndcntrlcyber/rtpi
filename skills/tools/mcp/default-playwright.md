@@ -11,7 +11,7 @@ summary: "Microsoft Playwright is a mcp-server registered in RTPI. No
   Invocation: `npx -y @playwright/mcp@latest`. This summary is a fallback
   generated without LLM or web research — consult the upstream documentation for
   accurate usage."
-generated_at: 2026-10-07T10:05:39.510Z
+generated_at: 2026-10-26T19:50:26.865Z
 generated_by: template
 source_hash: 31443b217674de7bf666aca246f2f3a31e02eb99977235fcde65a8ac32d166fb
 ---

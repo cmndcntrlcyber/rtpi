@@ -30,31 +30,30 @@ warn()  { echo -e "${YELLOW}[$(date +'%H:%M:%S')] TUNNEL WARNING: $1${NC}"; }
 error() { echo -e "${RED}[$(date +'%H:%M:%S')] TUNNEL ERROR: $1${NC}"; }
 info()  { echo -e "${BLUE}[$(date +'%H:%M:%S')] TUNNEL INFO: $1${NC}"; }
 
-# ── Detect primary LAN IP ────────────────────────────────────────────────────
-detect_network_ip() {
-    local ip=""
-
-    ip=$(ip -4 route show default 2>/dev/null \
-        | grep -oP 'dev \K\S+' | head -1 \
-        | xargs -I{} ip -4 addr show dev {} 2>/dev/null \
-        | grep -oP 'inet \K[0-9.]+' | head -1) || true
-
-    if [ -z "$ip" ]; then
-        ip=$(ip -4 addr show scope global 2>/dev/null \
-            | grep -v 'docker\|br-\|veth\|virbr\|tun\|wg' \
+# ── Detect primary LAN IP (shared library) ───────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "${SCRIPT_DIR}/lib-detect-ip.sh" ]; then
+    source "${SCRIPT_DIR}/lib-detect-ip.sh"
+    detect_network_ip() { detect_primary_ip; }
+else
+    detect_network_ip() {
+        local ip=""
+        ip=$(ip -4 route show default 2>/dev/null \
+            | grep -oP 'dev \K\S+' | head -1 \
+            | xargs -I{} ip -4 addr show dev {} 2>/dev/null \
             | grep -oP 'inet \K[0-9.]+' | head -1) || true
-    fi
-
-    if [ -z "$ip" ]; then
-        ip=$(hostname -I 2>/dev/null | awk '{print $1}') || true
-    fi
-
-    if [ -z "$ip" ]; then
-        error "Could not detect network IP"
-        return 1
-    fi
-    echo "$ip"
-}
+        if [ -z "$ip" ]; then
+            ip=$(ip -4 addr show scope global 2>/dev/null \
+                | grep -v 'docker\|br-\|veth\|virbr\|tun\|wg' \
+                | grep -oP 'inet \K[0-9.]+' | head -1) || true
+        fi
+        if [ -z "$ip" ]; then
+            ip=$(hostname -I 2>/dev/null | awk '{print $1}') || true
+        fi
+        if [ -z "$ip" ]; then error "Could not detect network IP"; return 1; fi
+        echo "$ip"
+    }
+fi
 
 # ── Extract account & tunnel IDs from the connector token ─────────────────────
 parse_tunnel_token() {

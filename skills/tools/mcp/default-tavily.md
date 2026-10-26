@@ -10,7 +10,7 @@ summary: "Tavily Search is a mcp-server registered in RTPI. No description
   available. Use it when the task aligns with its category. Invocation: `npx -y
   tavily-mcp@latest`. This summary is a fallback generated without LLM or web
   research — consult the upstream documentation for accurate usage."
-generated_at: 2026-10-07T10:05:39.440Z
+generated_at: 2026-10-26T19:50:26.880Z
 generated_by: template
 source_hash: 44a4931b9d7e8188278db2000cb24e4240b08d275140d2f40a8bb20de245dbe0
 ---

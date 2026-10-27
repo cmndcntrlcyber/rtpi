@@ -121,6 +121,9 @@ app.set("trust proxy", 1);
 
 // Middleware
 app.use(requestIdMiddleware);
+const corsOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(",").map(s => s.trim()).filter(Boolean)
+  : ["http://0.0.0.0:5000"];
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -144,9 +147,6 @@ app.use(
     },
   })
 );
-const corsOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(",").map(s => s.trim()).filter(Boolean)
-  : ["http://0.0.0.0:5000"];
 app.use(cors({
   origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
   credentials: true,

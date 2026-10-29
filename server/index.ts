@@ -121,9 +121,22 @@ app.set("trust proxy", 1);
 
 // Middleware
 app.use(requestIdMiddleware);
-const corsOrigins = (process.env.CORS_ALLOWED_ORIGINS || process.env.CORS_ORIGIN || "")
+const PRODUCTION_ORIGINS = [
+  'https://c3s-admin.onoiroi.us',
+  'https://c3s-rtpi.onoiroi.us',
+  'https://c3s-api.onoiroi.us',
+  'https://c3s-workbench.onoiroi.us',
+];
+const DEV_ORIGINS = [
+  'http://localhost:5000',
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:5173',
+];
+const envOrigins = (process.env.CORS_ALLOWED_ORIGINS || process.env.CORS_ORIGIN || "")
   .split(",").map(s => s.trim()).filter(Boolean);
-if (corsOrigins.length === 0) corsOrigins.push("http://0.0.0.0:5000");
+const corsOrigins = [...new Set([...PRODUCTION_ORIGINS, ...DEV_ORIGINS, ...envOrigins])];
+log.info(`[CORS] Allowed origins (${corsOrigins.length}): ${corsOrigins.join(', ')}`);
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -134,6 +147,7 @@ app.use(
         imgSrc: ["'self'", "data:", "blob:"],
         connectSrc: [
           "'self'",
+          'https://c3s-api.onoiroi.us',
           ...(process.env.VITE_API_HOST
             ? [`https://${process.env.VITE_API_HOST}`]
             : []),
@@ -148,7 +162,7 @@ app.use(
   })
 );
 app.use(cors({
-  origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
+  origin: corsOrigins,
   credentials: true,
 }));
 app.use(express.json({ limit: '10mb' }));

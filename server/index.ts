@@ -105,6 +105,7 @@ import frameworkDeployRoutes from "./api/v1/framework-deploy";
 import infrastructureCertificatesRoutes from "./api/v1/infrastructure-certificates";
 import harnessEvaluationsRoutes from "./api/v1/harness-evaluations";
 import ferryRoutes from "./api/v1/ferry";
+import kasmRegistryRoutes, { registryHostnameMiddleware } from "./api/v1/kasm-registry";
 import { readFeatureFlags } from "@shared/feature-flags";
 import "./services/rd-feedback-loop"; // Activate R&D tool testing feedback loop
 import { initializeDefaultAdmin } from "./services/admin-initialization";
@@ -254,6 +255,7 @@ app.use("/api/v1/tool-workflows", toolWorkflowsRoutes);
 app.use("/api/v1/agent-tool-validation", agentToolValidationRoutes);
 app.use("/api/v1/kasm-workspaces", kasmWorkspacesRoutes);
 app.use("/api/v1/kasm-proxy", kasmProxyRoutes);
+app.use("/api/v1/kasm-registry", kasmRegistryRoutes);
 app.use("/api/v1/ssl-certificates", sslCertificatesRoutes);
 app.use("/api/v1/burp-builder", burpBuilderRoutes);
 app.use("/api/v1/burp-activation", burpActivationRoutes);
@@ -349,6 +351,13 @@ app.get("/api/v1", (_req, res) => {
     },
   });
 });
+
+// Kasm registry hostname middleware — serves the workspace schema when
+// the request arrives on the registry subdomain (via Cloudflare Tunnel).
+const registryHost = process.env.KASM_REGISTRY_HOSTNAME;
+if (registryHost) {
+  app.use(registryHostnameMiddleware(registryHost));
+}
 
 // Production static file serving — Vite build output
 if (process.env.NODE_ENV === "production") {

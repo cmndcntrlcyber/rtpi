@@ -147,6 +147,16 @@ applications = [
     same_site_cookie   = "none"
     policies           = []
   },
+  # ── Kasm Workspace Registry (suffix=-registry, profile=kasm) ─────────────
+  {
+    id                 = "rtpi-registry-c3s"
+    name               = "Kasm Registry (c3s)"
+    domain             = "c3s-registry.onoiroi.us"
+    allowed_tenant_ids = ["c3s"]
+    session_duration   = "24h"
+    auto_redirect      = true
+    policies           = []
+  },
   # ── Cross-tenant admin console (NOT slug-based — illustrative only) ──────
   # Accepts logins from all three Workspaces; gated by a platform-admins group.
   # Provision its DNS and cert outside build.sh (this hostname is not in the manifest).

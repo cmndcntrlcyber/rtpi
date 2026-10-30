@@ -86,5 +86,11 @@ ingress:
     originRequest:
       connectTimeout: 10s
 
+  # ── Kasm Workspace Registry ─────────────────────────────────────────────────
+  - hostname: c3s-registry.onoiroi.us
+    service: http://localhost:3001
+    originRequest:
+      connectTimeout: 10s
+
   # ── Catch-all ───────────────────────────────────────────────────────────────
   - service: http_status:404

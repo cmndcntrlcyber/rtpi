@@ -137,7 +137,7 @@ const DEV_ORIGINS = [
 const envOrigins = (process.env.CORS_ALLOWED_ORIGINS || process.env.CORS_ORIGIN || "")
   .split(",").map(s => s.trim()).filter(Boolean);
 const corsOrigins = [...new Set([...PRODUCTION_ORIGINS, ...DEV_ORIGINS, ...envOrigins])];
-log.info(`[CORS] Allowed origins (${corsOrigins.length}): ${corsOrigins.join(', ')}`);
+console.log(`[CORS] Allowed origins (${corsOrigins.length}): ${corsOrigins.join(', ')}`);
 app.use(
   helmet({
     contentSecurityPolicy: {

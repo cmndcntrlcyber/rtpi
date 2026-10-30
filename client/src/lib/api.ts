@@ -6,8 +6,8 @@
 import { fetchWithRetry } from "@/utils/api-retry";
 import { getFriendlyError } from "@/utils/errors";
 
-const API_BASE = import.meta.env.VITE_API_HOST
-  ? `https://${import.meta.env.VITE_API_HOST}/v1`
+export const API_BASE = import.meta.env.VITE_API_HOST
+  ? `https://${import.meta.env.VITE_API_HOST}/api/v1`
   : "/api/v1";
 
 interface RequestParams {

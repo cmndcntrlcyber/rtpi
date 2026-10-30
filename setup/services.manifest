@@ -41,3 +41,4 @@
 -workbench  |              | http://0.0.0.0:3020   | false     | false
 -api        |              | http://0.0.0.0:3001   | true      | false
 -registry   | kasm         | http://0.0.0.0:3001   | false     | false
+-join       |              | http://0.0.0.0:8099   | false     | false

@@ -38,6 +38,7 @@ set -e
 CERT_MANAGER="./setup/cert_manager.sh"
 ORIGIN_CERT_MANAGER="./setup/origin_cert_manager.sh"
 DNS_MANAGER="./setup/cloudflare_dns_manager.sh"
+TUNNEL_MANAGER="./setup/tunnel_config_manager.sh"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MANIFEST_PATH="${PROJECT_ROOT}/setup/services.manifest"
 # shellcheck disable=SC1091
@@ -198,6 +199,19 @@ build_compose_flags() {
     echo "$flags"
 }
 
+# ─── Stage Images to Local Registry ──────────────────────────────────────────
+stage_images() {
+    if echo "$PROFILES" | grep -qE 'kasm|registry'; then
+        section "Registry Image Staging"
+        if [ -x "${PROJECT_ROOT}/server/scripts/infra/stage-images.sh" ]; then
+            bash "${PROJECT_ROOT}/server/scripts/infra/stage-images.sh" --all || \
+                warn "Image staging had failures — continuing"
+        else
+            warn "stage-images.sh not found — skipping registry staging"
+        fi
+    fi
+}
+
 # ─── Start Services ──────────────────────────────────────────────────────────
 start_services() {
     section "Starting Services"
@@ -210,6 +224,9 @@ start_services() {
     # Pull latest images first
     # shellcheck disable=SC2086
     docker compose $compose_flags pull --quiet 2>/dev/null || true
+
+    # Stage local images to registry before starting services
+    stage_images
 
     # Start services
     # shellcheck disable=SC2086
@@ -332,6 +349,38 @@ post_deploy_heal() {
         warn "deploy-verify.sh not found or not executable — skipping"
     fi
 
+    # ── 5. Kasm web assets (font files in kasm-www volume) ────────────
+    checks=$((checks + 1))
+    log "Checking kasm-proxy web asset integrity..."
+    if docker ps --format '{{.Names}}' | grep -q '^rtpi-kasm-proxy$'; then
+        local font_count
+        font_count=$(docker exec rtpi-kasm-proxy sh -c \
+            'ls /srv/www/*.woff /srv/www/*.ttf /srv/www/*.woff2 2>/dev/null | wc -l')
+        font_count=${font_count:-0}
+        if [ "$font_count" -lt 1 ]; then
+            warn "kasm-proxy: no font files in /srv/www/ — forcing web UI re-extraction..."
+            docker exec rtpi-kasm-proxy sh -c 'rm -f /srv/www/.kasm-version' 2>/dev/null
+            docker compose $compose_flags rm -f kasm-web-init 2>/dev/null
+            docker compose $compose_flags run --rm kasm-web-init 2>/dev/null
+            docker exec rtpi-kasm-proxy nginx -s reload 2>/dev/null
+            sleep 3
+            local recheck
+            recheck=$(docker exec rtpi-kasm-proxy sh -c \
+                'ls /srv/www/*.woff /srv/www/*.ttf /srv/www/*.woff2 2>/dev/null | wc -l')
+            recheck=${recheck:-0}
+            if [ "$recheck" -ge 1 ]; then
+                log "kasm-proxy: web assets restored ($recheck font files) ✅"
+                healed=$((healed + 1))
+            else
+                error "kasm-proxy: font files still missing after re-extraction"
+            fi
+        else
+            log "kasm-proxy: web assets OK ($font_count font files) ✅"
+        fi
+    else
+        info "kasm-proxy not running (skipped)"
+    fi
+
     echo ""
     log "Self-healing complete: ${checks} checks, ${healed} repairs applied"
 }
@@ -418,6 +467,16 @@ main() {
             cp "$PROJECT_ROOT/docker/nginx-ssl.conf" /etc/nginx/conf.d/rtpi-ssl.conf
             nginx -t && systemctl reload nginx && log "nginx reloaded ✅"
         fi
+    fi
+
+    # ── Phase 3h: Sync Cloudflare Tunnel ingress rules ─────────────────────
+    # Auto-detects the host's network IP and pushes the services.manifest
+    # entries to the remotely-managed tunnel via the Cloudflare API.
+    if [ -n "${CF_TUNNEL_TOKEN:-}" ]; then
+        section "Phase 3h — Cloudflare Tunnel Ingress Sync"
+        ACTIVE_PROFILES="$PROFILES" "$TUNNEL_MANAGER" sync
+    else
+        info "CF_TUNNEL_TOKEN not set — skipping tunnel ingress sync"
     fi
 
     start_services

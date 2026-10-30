@@ -26,6 +26,7 @@ export interface BuildOptions {
   platform: AgentPlatform;
   architecture: AgentArchitecture;
   features?: string[];
+  embedCerts?: boolean;
   userId: string;
   metadata?: Record<string, unknown>;
 }
@@ -126,10 +127,42 @@ class AgentBuildService {
   }
 
   /**
+   * Generate per-agent ephemeral certs using the rust-nexus PKI script.
+   * Returns the temp directory containing ca.crt.pem, agent.crt.pem, agent.key.pem.
+   */
+  private async generateAgentCerts(buildId: string): Promise<string> {
+    const certDir = path.join(this.buildsDir, buildId, 'certs');
+    await fs.mkdir(certDir, { recursive: true });
+
+    const genScript = path.join(this.rustNexusPath, 'scripts', 'gen-certs.sh');
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn('bash', [genScript, certDir]);
+      let stderr = '';
+      proc.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+      proc.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`gen-certs.sh exited ${code}: ${stderr}`));
+      });
+      proc.on('error', reject);
+    });
+
+    // Rename client cert/key to agent.crt.pem / agent.key.pem for embedded-certs feature
+    const clientCrt = path.join(certDir, 'client.crt.pem');
+    const clientKey = path.join(certDir, 'client.key.pem');
+    const agentCrt = path.join(certDir, 'agent.crt.pem');
+    const agentKey = path.join(certDir, 'agent.key.pem');
+    try { await fs.rename(clientCrt, agentCrt); } catch { /* already named correctly */ }
+    try { await fs.rename(clientKey, agentKey); } catch { /* already named correctly */ }
+
+    return certDir;
+  }
+
+  /**
    * Execute the Docker build
    */
   private async executeBuild(buildId: string, options: BuildOptions): Promise<void> {
     const outputDir = path.join(this.buildsDir, buildId);
+    let certDir: string | undefined;
 
     try {
       // Create output directory
@@ -143,18 +176,40 @@ class AgentBuildService {
       log.info(`[AgentBuildService] Starting build ${buildId}`);
       const startTime = Date.now();
 
+      // WS6 Phase 6h: generate per-agent certs when embedCerts is requested
+      if (options.embedCerts) {
+        log.info(`[AgentBuildService] Generating ephemeral certs for build ${buildId}`);
+        certDir = await this.generateAgentCerts(buildId);
+      }
+
       // Construct Docker command
-      const features = (options.features || []).join(',');
+      const featureList = [...(options.features || [])];
+      if (options.embedCerts) {
+        featureList.push('embedded-certs');
+      }
+      const features = featureList.join(',');
       const dockerArgs = [
         'run', '--rm',
         '-v', `${path.resolve(this.rustNexusPath)}:/build/rust-nexus`,
         '-v', `${path.resolve(outputDir)}:/output`,
+      ];
+
+      // Mount cert dir and set env vars for embedded-certs feature
+      if (certDir) {
+        dockerArgs.push(
+          '-v', `${path.resolve(certDir)}:/build/certs:ro`,
+          '-e', 'NEXUS_EMBED_CERTS=1',
+          '-e', 'NEXUS_CERT_DIR=/build/certs',
+        );
+      }
+
+      dockerArgs.push(
         this.dockerImage,
         options.platform,
         options.architecture,
-        features || '',  // Pass empty string if no features (build script handles it)
+        features || '',
         '/output'
-      ];
+      );
 
       log.info(`[AgentBuildService] Docker command: docker ${dockerArgs.join(' ')}`);
 
@@ -242,6 +297,10 @@ class AgentBuildService {
       }).where(eq(agentBuilds.id, buildId));
 
       log.error(`[AgentBuildService] Build ${buildId} error:`, errorMessage);
+    } finally {
+      if (certDir) {
+        await fs.rm(certDir, { recursive: true, force: true }).catch(() => {});
+      }
     }
   }
 

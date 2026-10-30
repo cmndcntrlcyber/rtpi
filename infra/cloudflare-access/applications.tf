@@ -30,6 +30,17 @@ resource "cloudflare_zero_trust_access_application" "app" {
   http_only_cookie_attribute = true
   same_site_cookie_attribute = each.value.same_site_cookie
   app_launcher_visible       = false
+
+  dynamic "cors_headers" {
+    for_each = each.value.cors_headers != null ? [each.value.cors_headers] : []
+    content {
+      allowed_origins   = cors_headers.value.allowed_origins
+      allowed_methods   = cors_headers.value.allowed_methods
+      allowed_headers   = cors_headers.value.allowed_headers
+      allow_credentials = cors_headers.value.allow_credentials
+      max_age           = cors_headers.value.max_age
+    }
+  }
 }
 
 ###############################################################################
@@ -83,9 +94,8 @@ resource "cloudflare_zero_trust_access_policy" "custom" {
   dynamic "include" {
     for_each = length(each.value.policy.include_groups) > 0 ? [1] : []
     content {
-      # Workspace groups exposed via SCIM appear as `gsuite { name = [...] }`.
       gsuite {
-        name                  = each.value.policy.include_groups
+        email                 = each.value.policy.include_groups
         identity_provider_id  = cloudflare_zero_trust_access_identity_provider.tenant[
           local.app_by_id[each.value.app_id].allowed_tenant_ids[0]
         ].id
@@ -97,7 +107,7 @@ resource "cloudflare_zero_trust_access_policy" "custom" {
     for_each = length(each.value.policy.require_groups) > 0 ? [1] : []
     content {
       gsuite {
-        name                 = each.value.policy.require_groups
+        email                = each.value.policy.require_groups
         identity_provider_id = cloudflare_zero_trust_access_identity_provider.tenant[
           local.app_by_id[each.value.app_id].allowed_tenant_ids[0]
         ].id

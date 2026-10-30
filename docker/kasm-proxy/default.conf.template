@@ -76,6 +76,12 @@ server {
         proxy_set_header Connection "Upgrade";
     }
 
+    # Static assets — return 404 if missing, never the SPA index.html
+    location ~* \.(woff2?|ttf|eot|otf|js|css|map|ico|png|jpg|gif|webp)$ {
+        root /srv/www;
+        try_files $uri =404;
+    }
+
     # Kasm web UI (static Angular SPA from kasmweb/proxy www assets)
     location / {
         root /srv/www;

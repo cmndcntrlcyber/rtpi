@@ -12,7 +12,7 @@ summary: "MCP Filesystem is a mcp-server registered in RTPI. No description
   /home/cmndcntrl/code/rtpi/mcp-workspace`. This summary is a fallback generated
   without LLM or web research — consult the upstream documentation for accurate
   usage."
-generated_at: 2026-11-02T23:37:14.324Z
+generated_at: 2026-11-03T11:57:43.852Z
 generated_by: template
 source_hash: 4447056b5ddd4003e289d5da271f76a7f5b13c44e6dd9e2dcfe5d1864552469c
 ---

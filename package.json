@@ -115,6 +115,8 @@
     "@testing-library/user-event": "^14.5.1",
     "@types/archiver": "^6.0.2",
     "@types/bcrypt": "^5.0.2",
+    "@types/cookie": "^0.6.0",
+    "@types/cookie-signature": "^1.1.2",
     "@types/cors": "^2.8.17",
     "@types/cron": "^2.4.3",
     "@types/express": "^4.17.21",

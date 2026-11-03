@@ -147,7 +147,7 @@ export class AgentWebSocketManager {
         const message: ClientMessage = JSON.parse(data.toString());
         this.handleClientMessage(clientId, message);
       } catch (err) {
-        log.error("[AgentWebSocket] Invalid message:", err);
+        log.error({ err }, "[AgentWebSocket] Invalid message");
       }
     });
 
@@ -157,7 +157,7 @@ export class AgentWebSocketManager {
     });
 
     ws.on("error", (err) => {
-      log.error(`[AgentWebSocket] Client error ${clientId}:`, err);
+      log.error({ err, clientId }, "[AgentWebSocket] Client error");
       this.clients.delete(clientId);
     });
   }
@@ -227,9 +227,15 @@ export class AgentWebSocketManager {
       if (!signed) return null;
 
       // express-session prefixes signed cookies with "s:"
-      const raw = signed.startsWith("s:")
-        ? signed.slice(2)
-        : signed;
+      let decoded = signed;
+      try {
+        decoded = decodeURIComponent(signed);
+      } catch {
+        // cookie.parse already decodes normal percent-encoded values.
+      }
+      const raw = decoded.startsWith("s:")
+        ? decoded.slice(2)
+        : decoded;
 
       const sessionId = cookieSignature.unsign(raw, sessionSecret);
       if (sessionId === false) return null;
@@ -241,7 +247,7 @@ export class AgentWebSocketManager {
       const userId = session?.passport?.user;
       return typeof userId === "string" ? userId : null;
     } catch (err) {
-      log.error("[AgentWebSocket] Session auth error:", err);
+      log.error({ err }, "[AgentWebSocket] Session auth error");
       return null;
     }
   }

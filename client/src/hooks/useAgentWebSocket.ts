@@ -153,9 +153,15 @@ export function useAgentWebSocket(
         }
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         setConnected(false);
         wsRef.current = null;
+
+        if (event.code === 1008) {
+          setError("Authentication required. Refresh your session and reconnect.");
+          reconnectAttemptsRef.current = maxReconnectAttempts;
+          return;
+        }
 
         if (autoReconnect && reconnectAttemptsRef.current < maxReconnectAttempts) {
           const delay = Math.min(1000 * 2 ** reconnectAttemptsRef.current, 30000);

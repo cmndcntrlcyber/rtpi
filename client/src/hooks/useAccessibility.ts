@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { generateId, focus, keyboard } from '@/utils/accessibility';
+import { generateId, focus } from '@/utils/accessibility';
 
 /**
  * useAriaAnnounce Hook
@@ -46,7 +46,7 @@ export function useAriaAnnounce() {
  *
  * return (
  *   <div ref={dialogRef} role="dialog">
- *     {/* Content */}
+ *     <span>Content</span>
  *   </div>
  * );
  * ```

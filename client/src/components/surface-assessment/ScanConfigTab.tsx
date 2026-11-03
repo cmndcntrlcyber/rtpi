@@ -12,6 +12,157 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { targetsService, type Target } from '@/services/targets';
 import ScheduleManagerTab from './ScheduleManagerTab';
 
+// ── Enum definitions ────────────────────────────────────────────────────────
+
+const BBOT_PRESETS = [
+  { value: 'subdomain-enum', label: 'Subdomain Enum' },
+  { value: 'kitchen-sink', label: 'Kitchen Sink' },
+  { value: 'web-basic', label: 'Web Basic' },
+  { value: 'web-thorough', label: 'Web Thorough' },
+  { value: 'cloud-enum', label: 'Cloud Enum' },
+  { value: 'email-enum', label: 'Email Enum' },
+  { value: 'spider', label: 'Spider' },
+  { value: 'paramminer', label: 'Param Miner' },
+  { value: 'dirbust-light', label: 'Dirbust Light' },
+  { value: 'dirbust-heavy', label: 'Dirbust Heavy' },
+  { value: 'iis-shortnames', label: 'IIS Shortnames' },
+  { value: 'dotnet-audit', label: '.NET Audit' },
+] as const;
+
+const BBOT_FLAGS = [
+  { value: 'safe', label: 'Safe', group: 'scope' },
+  { value: 'passive', label: 'Passive', group: 'scope' },
+  { value: 'active', label: 'Active', group: 'scope' },
+  { value: 'aggressive', label: 'Aggressive', group: 'scope' },
+  { value: 'slow', label: 'Slow', group: 'scope' },
+  { value: 'subdomain-enum', label: 'Subdomain Enum', group: 'module' },
+  { value: 'cloud-enum', label: 'Cloud Enum', group: 'module' },
+  { value: 'email-enum', label: 'Email Enum', group: 'module' },
+  { value: 'social-enum', label: 'Social Enum', group: 'module' },
+  { value: 'web-basic', label: 'Web Basic', group: 'module' },
+  { value: 'web-thorough', label: 'Web Thorough', group: 'module' },
+  { value: 'portscanner', label: 'Port Scanner', group: 'module' },
+  { value: 'service-enum', label: 'Service Enum', group: 'module' },
+  { value: 'affiliates', label: 'Affiliates', group: 'module' },
+  { value: 'code-enum', label: 'Code Enum', group: 'module' },
+  { value: 'iis-shortnames', label: 'IIS Shortnames', group: 'module' },
+] as const;
+
+const BBOT_MODULES = [
+  { value: 'subfinder', label: 'Subfinder', group: 'recon' },
+  { value: 'assetfinder', label: 'Assetfinder', group: 'recon' },
+  { value: 'amass', label: 'Amass', group: 'recon' },
+  { value: 'dnsdumpster', label: 'DNSDumpster', group: 'recon' },
+  { value: 'crt', label: 'crt.sh', group: 'recon' },
+  { value: 'certspotter', label: 'CertSpotter', group: 'recon' },
+  { value: 'waybackurls', label: 'Wayback URLs', group: 'recon' },
+  { value: 'httpx', label: 'httpx', group: 'active' },
+  { value: 'nmap', label: 'Nmap', group: 'active' },
+  { value: 'sslcert', label: 'SSL Cert', group: 'active' },
+  { value: 'dnsbrute', label: 'DNS Brute', group: 'active' },
+  { value: 'gowitness', label: 'GoWitness', group: 'active' },
+  { value: 'wappalyzer', label: 'Wappalyzer', group: 'active' },
+  { value: 'shodan_dns', label: 'Shodan', group: 'api' },
+  { value: 'censys', label: 'Censys', group: 'api' },
+  { value: 'virustotal', label: 'VirusTotal', group: 'api' },
+  { value: 'securitytrails', label: 'SecurityTrails', group: 'api' },
+  { value: 'binaryedge', label: 'BinaryEdge', group: 'api' },
+] as const;
+
+const BBOT_ARGS = [
+  { value: '--strict-scope', label: 'Strict Scope' },
+  { value: '--no-deps', label: 'No Deps' },
+  { value: '--dry-run', label: 'Dry Run' },
+  { value: '--fast-mode', label: 'Fast Mode' },
+  { value: '--ignore-failed-deps', label: 'Ignore Failed Deps' },
+] as const;
+
+const NUCLEI_SEVERITIES = [
+  { value: 'critical', label: 'Critical', color: 'bg-red-600' },
+  { value: 'high', label: 'High', color: 'bg-orange-500' },
+  { value: 'medium', label: 'Medium', color: 'bg-yellow-500' },
+  { value: 'low', label: 'Low', color: 'bg-blue-500' },
+  { value: 'info', label: 'Info', color: 'bg-gray-500' },
+] as const;
+
+const NUCLEI_TEMPLATES = [
+  { value: 'http/cves', label: 'CVEs', group: 'http' },
+  { value: 'http/vulnerabilities', label: 'Vulnerabilities', group: 'http' },
+  { value: 'http/default-logins', label: 'Default Logins', group: 'http' },
+  { value: 'http/exposed-panels', label: 'Exposed Panels', group: 'http' },
+  { value: 'http/exposures', label: 'Exposures', group: 'http' },
+  { value: 'http/misconfiguration', label: 'Misconfig', group: 'http' },
+  { value: 'http/technologies', label: 'Technologies', group: 'http' },
+  { value: 'http/takeovers', label: 'Takeovers', group: 'http' },
+  { value: 'http/token-spray', label: 'Token Spray', group: 'http' },
+  { value: 'http/iot', label: 'IoT', group: 'http' },
+  { value: 'cloud', label: 'Cloud', group: 'other' },
+  { value: 'network', label: 'Network', group: 'other' },
+  { value: 'dns', label: 'DNS', group: 'other' },
+  { value: 'ssl', label: 'SSL/TLS', group: 'other' },
+  { value: 'dast', label: 'DAST', group: 'other' },
+] as const;
+
+// ── Multi-toggle component ──────────────────────────────────────────────────
+
+function MultiToggle({ options, selected, onChange, grouped }: {
+  options: readonly { value: string; label: string; group?: string; color?: string }[];
+  selected: string[];
+  onChange: (v: string[]) => void;
+  grouped?: boolean;
+}) {
+  const toggle = (v: string) => {
+    onChange(selected.includes(v) ? selected.filter(x => x !== v) : [...selected, v]);
+  };
+
+  if (grouped) {
+    const groups = new Map<string, typeof options[number][]>();
+    for (const o of options) {
+      const g = (o as any).group || 'default';
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g)!.push(o);
+    }
+    return (
+      <div className="space-y-2">
+        {[...groups.entries()].map(([group, items]) => (
+          <div key={group}>
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">{group}</span>
+            <div className="flex flex-wrap gap-1.5 mt-0.5">
+              {items.map(o => (
+                <button key={o.value} type="button" onClick={() => toggle(o.value)}
+                  className={`px-2 py-0.5 rounded text-xs font-medium border transition-colors ${
+                    selected.includes(o.value)
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-muted/50 text-muted-foreground border-border hover:border-primary/50'
+                  }`}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {options.map(o => (
+        <button key={o.value} type="button" onClick={() => toggle(o.value)}
+          className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
+            selected.includes(o.value)
+              ? ((o as any).color ? `${(o as any).color} text-white border-transparent` : 'bg-primary text-primary-foreground border-primary')
+              : 'bg-muted/50 text-muted-foreground border-border hover:border-primary/50'
+          }`}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── Component ───────────────────────────────────────────────────────────────
+
 interface ScanConfigTabProps {
   operationId: string;
 }
@@ -41,47 +192,42 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
   const [targetScanLoading, setTargetScanLoading] = useState(false);
   const [bbotConfig, setBbotConfig] = useState({
     enabled: true,
-    preset: 'kitchen-sink',
-    modules: '',
-    flags: '',  // Changed from 'safe' to empty - only use if user enters value
-    args: ''  // bbot v3 removed --allow-deadly and --force; leave empty for default behavior
+    preset: 'subdomain-enum',
+    modules: [] as string[],
+    flags: [] as string[],
+    args: [] as string[],
   });
   const [nucleiConfig, setNucleiConfig] = useState({
     enabled: true,
-    severity: 'critical,high,medium',
+    severity: ['critical', 'high', 'medium'] as string[],
     rateLimit: 50,
-    templates: 'cves/,vulnerabilities/'
+    templates: ['http/cves', 'http/vulnerabilities'] as string[],
   });
-  const [targets, setTargets] = useState('');
   const [isPolling, setIsPolling] = useState(false);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Check if any scans are currently running
   const hasRunningScans = scanHistory.some(scan => scan.status === 'running' || scan.status === 'pending');
 
   useEffect(() => {
     if (operationId) {
       loadScanHistory();
+      loadTargets();
     }
   }, [operationId]);
 
-  // Start polling when there are running scans
   useEffect(() => {
     if (hasRunningScans && !isPolling) {
       setIsPolling(true);
       pollingIntervalRef.current = setInterval(async () => {
         await loadScanHistory();
-      }, 5000); // Poll every 5 seconds
+      }, 5000);
     } else if (!hasRunningScans && isPolling) {
-      // Stop polling when no more running scans
       setIsPolling(false);
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
         pollingIntervalRef.current = null;
       }
     }
-
-    // Cleanup on unmount
     return () => {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
@@ -89,12 +235,6 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
       }
     };
   }, [hasRunningScans, isPolling]);
-
-  useEffect(() => {
-    if (operationId) {
-      loadTargets();
-    }
-  }, [operationId]);
 
   const loadTargets = async () => {
     try {
@@ -111,18 +251,29 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
     return target?.value || null;
   };
 
+  // Build API config objects (join arrays to comma-separated strings)
+  const buildBbotApiConfig = () => ({
+    preset: bbotConfig.preset,
+    modules: bbotConfig.modules.join(','),
+    flags: bbotConfig.flags.join(','),
+    args: bbotConfig.args.join(','),
+  });
+
+  const buildNucleiApiConfig = () => ({
+    severity: nucleiConfig.severity.join(','),
+    rateLimit: nucleiConfig.rateLimit,
+    templates: nucleiConfig.templates.join(','),
+  });
+
   const handleTargetNmapScan = async () => {
     if (!selectedTargetId) {
       toast.warning("Please select a target");
       return;
     }
-
     try {
       setTargetScanLoading(true);
       const response = await targetsService.scan(selectedTargetId);
       toast.success(`Nmap scan completed! Found ${(response as any).openPorts || 0} open ports`);
-
-      // Reload targets to get updated scan results
       await loadTargets();
     } catch (error) {
       console.error('Failed to scan target:', error);
@@ -138,23 +289,13 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
       toast.warning("Please select a target");
       return;
     }
-
     try {
       setTargetScanLoading(true);
-
       await api.post(`/surface-assessment/${operationId}/scan/bbot`, {
         targets: [targetValue],
-        config: {
-          preset: bbotConfig.preset,
-          modules: bbotConfig.modules,
-          flags: bbotConfig.flags,
-          args: bbotConfig.args,
-        }
+        config: buildBbotApiConfig(),
       });
-
       toast.success("BBOT scan started against target! Scan is running in the background.");
-
-      // Immediately reload scan history to show the running scan
       await loadScanHistory();
     } catch (error) {
       console.error('Failed to start BBOT scan:', error);
@@ -170,18 +311,13 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
       toast.warning("Please select a target");
       return;
     }
-
     try {
       setTargetScanLoading(true);
-
       await api.post(`/surface-assessment/${operationId}/scan/nuclei`, {
         targets: [targetValue],
-        config: nucleiConfig
+        config: buildNucleiApiConfig(),
       });
-
       toast.success("Nuclei scan started against target! Scan is running in the background.");
-
-      // Immediately reload scan history to show the running scan
       await loadScanHistory();
     } catch (error) {
       console.error('Failed to start Nuclei scan:', error);
@@ -200,65 +336,6 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
     }
   };
 
-  const handleBBOTScan = async () => {
-    if (!targets.trim()) {
-      toast.warning("Please enter at least one target");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const targetList = targets.split('\n').map(t => t.trim()).filter(Boolean);
-      
-      await api.post(`/surface-assessment/${operationId}/scan/bbot`, {
-        targets: targetList,
-        config: {
-          preset: bbotConfig.preset,
-          modules: bbotConfig.modules,
-          flags: bbotConfig.flags,
-          args: bbotConfig.args,  // Pass additional arguments
-        }
-      });
-      
-      toast.success("BBOT scan started successfully! Scan is running in the background.");
-      setTargets(''); // Clear targets after successful start
-
-      // Immediately reload scan history to show the running scan
-      await loadScanHistory();
-    } catch (error) {
-      console.error('Failed to start BBOT scan:', error);
-      toast.error(`Failed to start BBOT scan: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleNucleiScan = async () => {
-    if (!targets.trim()) {
-      toast.warning("Please enter at least one target");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const targetList = targets.split('\n').map(t => t.trim()).filter(Boolean);
-      
-      // TODO: Implement actual API call
-      await api.post(`/surface-assessment/${operationId}/scan/nuclei`, {
-        targets: targetList,
-        config: nucleiConfig
-      });
-      
-      toast.success("Nuclei scan started successfully");
-      await loadScanHistory();
-    } catch (error) {
-      console.error('Failed to start Nuclei scan:', error);
-      toast.error("Failed to start Nuclei scan");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
       pending: 'bg-secondary text-foreground',
@@ -272,16 +349,11 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'running':
-        return Clock;
-      case 'completed':
-        return CheckCircle;
-      case 'failed':
-        return XCircle;
-      case 'cancelled':
-        return StopCircle;
-      default:
-        return Clock;
+      case 'running': return Clock;
+      case 'completed': return CheckCircle;
+      case 'failed': return XCircle;
+      case 'cancelled': return StopCircle;
+      default: return Clock;
     }
   };
 
@@ -289,11 +361,9 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
     setSelectedScanId(scanId);
     setLoadingOutput(true);
     setScanOutput('');
-
     try {
       const response = await api.get<{ rawOutput: string }>(`/surface-assessment/${operationId}/scan/${scanId}/output`);
       const raw = response.rawOutput || 'No output available';
-      // Strip ANSI escape codes for clean display
       setScanOutput(raw.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, ''));
     } catch (error) {
       console.error('Failed to load scan output:', error);
@@ -309,7 +379,7 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
   };
 
   const handleCancelScan = async (scanId: string, e: React.MouseEvent) => {
-    e.stopPropagation(); // Don't trigger tile click (output dialog)
+    e.stopPropagation();
     try {
       await api.post(`/surface-assessment/${operationId}/scans/${scanId}/cancel`);
       toast.success("Scan cancelled");
@@ -356,41 +426,44 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
           </div>
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium text-foreground block mb-1">Preset</label>
-              <Input
-                value={bbotConfig.preset}
-                onChange={(e) => setBbotConfig({ ...bbotConfig, preset: e.target.value })}
-                placeholder="subdomain-enum"
+              <label className="text-sm font-medium text-foreground block mb-1.5">Preset</label>
+              <Select value={bbotConfig.preset} onValueChange={(v) => setBbotConfig({ ...bbotConfig, preset: v })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {BBOT_PRESETS.map(p => (
+                    <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground block mb-1.5">Flags</label>
+              <MultiToggle
+                options={BBOT_FLAGS}
+                selected={bbotConfig.flags}
+                onChange={(flags) => setBbotConfig({ ...bbotConfig, flags })}
+                grouped
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-foreground block mb-1">Modules (comma-separated)</label>
-              <Input
-                value={bbotConfig.modules}
-                onChange={(e) => setBbotConfig({ ...bbotConfig, modules: e.target.value })}
-                placeholder="subfinder,assetfinder,amass"
+              <label className="text-sm font-medium text-foreground block mb-1.5">Modules</label>
+              <MultiToggle
+                options={BBOT_MODULES}
+                selected={bbotConfig.modules}
+                onChange={(modules) => setBbotConfig({ ...bbotConfig, modules })}
+                grouped
               />
+              <p className="text-[10px] text-muted-foreground mt-1">Leave empty to use preset defaults</p>
             </div>
             <div>
-              <label className="text-sm font-medium text-foreground block mb-1">Flags</label>
-              <Input
-                value={bbotConfig.flags}
-                onChange={(e) => setBbotConfig({ ...bbotConfig, flags: e.target.value })}
-                placeholder="safe"
+              <label className="text-sm font-medium text-foreground block mb-1.5">Options</label>
+              <MultiToggle
+                options={BBOT_ARGS}
+                selected={bbotConfig.args}
+                onChange={(args) => setBbotConfig({ ...bbotConfig, args })}
               />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-foreground block mb-1">
-                Additional Arguments (comma-separated)
-              </label>
-              <Input
-                value={bbotConfig.args}
-                onChange={(e) => setBbotConfig({ ...bbotConfig, args: e.target.value })}
-                placeholder="--strict-scope, --no-deps"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Examples: --strict-scope, --no-deps, --dry-run
-              </p>
             </div>
           </div>
         </div>
@@ -406,72 +479,37 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
           </div>
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium text-foreground block mb-1">Severity Levels</label>
-              <Input
-                value={nucleiConfig.severity}
-                onChange={(e) => setNucleiConfig({ ...nucleiConfig, severity: e.target.value })}
-                placeholder="critical,high,medium"
+              <label className="text-sm font-medium text-foreground block mb-1.5">Severity Levels</label>
+              <MultiToggle
+                options={NUCLEI_SEVERITIES}
+                selected={nucleiConfig.severity}
+                onChange={(severity) => setNucleiConfig({ ...nucleiConfig, severity })}
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-foreground block mb-1">Rate Limit</label>
+              <label className="text-sm font-medium text-foreground block mb-1.5">Rate Limit</label>
               <Input
                 type="number"
                 value={nucleiConfig.rateLimit}
                 onChange={(e) => setNucleiConfig({ ...nucleiConfig, rateLimit: parseInt(e.target.value) || 50 })}
-                placeholder="50"
+                className="w-32"
               />
+              <p className="text-[10px] text-muted-foreground mt-1">Requests per second</p>
             </div>
             <div>
-              <label className="text-sm font-medium text-foreground block mb-1">Templates</label>
-              <Input
-                value={nucleiConfig.templates}
-                onChange={(e) => setNucleiConfig({ ...nucleiConfig, templates: e.target.value })}
-                placeholder="cves/,vulnerabilities/"
+              <label className="text-sm font-medium text-foreground block mb-1.5">Templates</label>
+              <MultiToggle
+                options={NUCLEI_TEMPLATES}
+                selected={nucleiConfig.templates}
+                onChange={(templates) => setNucleiConfig({ ...nucleiConfig, templates })}
+                grouped
               />
             </div>
           </div>
         </div>
       </div>
 
-      {/* Scan Execution */}
-      <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
-        <h3 className="text-lg font-semibold text-foreground mb-4">Execute Scan</h3>
-        <div className="space-y-4">
-          <div>
-            <label className="text-sm font-medium text-foreground block mb-1">
-              Targets (one per line)
-            </label>
-            <textarea
-              value={targets}
-              onChange={(e) => setTargets(e.target.value)}
-              placeholder="example.com&#10;192.168.1.0/24&#10;https://app.example.com"
-              rows={4}
-              className="w-full px-4 py-2 border border-border rounded-lg font-mono text-sm"
-            />
-          </div>
-          <div className="flex gap-3">
-            <Button
-              onClick={handleBBOTScan}
-              disabled={!bbotConfig.enabled || loading}
-              className="flex items-center gap-2"
-            >
-              <Play className="w-4 h-4" />
-              Run BBOT Scan
-            </Button>
-            <Button
-              onClick={handleNucleiScan}
-              disabled={!nucleiConfig.enabled || loading}
-              className="flex items-center gap-2"
-            >
-              <Play className="w-4 h-4" />
-              Run Nuclei Scan
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Target Scan */}
+      {/* Execute Scan Against Target */}
       <div className="bg-card p-6 rounded-lg shadow-sm border border-border">
         <h3 className="text-lg font-semibold text-foreground mb-4">Execute Scan Against Target</h3>
         <p className="text-sm text-muted-foreground mb-4">
@@ -590,7 +628,6 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
           <div className="space-y-3">
             {scanHistory.map((scan) => {
               const StatusIcon = getStatusIcon(scan.status);
-              
               return (
                 <div
                   key={scan.id}

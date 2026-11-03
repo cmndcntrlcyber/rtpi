@@ -44,7 +44,7 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
     preset: 'kitchen-sink',
     modules: '',
     flags: '',  // Changed from 'safe' to empty - only use if user enters value
-    args: '--force,--allow-deadly'  // Additional -- arguments (--force bypasses scope restrictions)
+    args: ''  // bbot v3 removed --allow-deadly and --force; leave empty for default behavior
   });
   const [nucleiConfig, setNucleiConfig] = useState({
     enabled: true,
@@ -386,10 +386,10 @@ export default function ScanConfigTab({ operationId }: ScanConfigTabProps) {
               <Input
                 value={bbotConfig.args}
                 onChange={(e) => setBbotConfig({ ...bbotConfig, args: e.target.value })}
-                placeholder="--allow-deadly, --strict-scope"
+                placeholder="--strict-scope, --no-deps"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Examples: --allow-deadly, --strict-scope, --force
+                Examples: --strict-scope, --no-deps, --dry-run
               </p>
             </div>
           </div>

@@ -86,11 +86,11 @@ export class NucleiExecutor {
     'helpers':           ['helpers'],
   };
 
-  constructor(containerName: string = 'rtpi-tools') {
+  constructor(containerName: string = 'nexus-kali') {
     this.containerName = containerName;
     this.homeDir = containerName === 'rtpi-fuzzing-agent'
       ? '/home/rtpi-agent'
-      : '/home/rtpi-tools';
+      : '/home/kasm-user';
     this.templateDir = `${this.homeDir}/nuclei-templates`;
   }
 
@@ -102,7 +102,7 @@ export class NucleiExecutor {
     // Quick check: does the template dir exist and contain the http/ folder?
     const check = await dockerExecutor.exec(this.containerName,
       ['test', '-d', `${this.templateDir}/http`],
-      {}
+      { user: 'kasm-user' }
     ).catch(() => null);
 
     if (check && check.exitCode === 0) {
@@ -112,7 +112,7 @@ export class NucleiExecutor {
     log.info("Downloading nuclei templates on-demand");
     const dl = await dockerExecutor.exec(this.containerName,
       ['nuclei', '-update-templates', '-silent'],
-      { timeout: 300000 } // 5 min for download
+      { timeout: 300000, user: 'kasm-user' }
     );
 
     if (dl.exitCode !== 0) {
@@ -140,7 +140,7 @@ export class NucleiExecutor {
     for (const dir of dirs) {
       const check = await dockerExecutor.exec(this.containerName,
         ['test', '-d', `${this.templateDir}/${dir}`],
-        {}
+        { user: 'kasm-user' }
       ).catch(() => null);
       if (!check || check.exitCode !== 0) {
         missingDirs.push(dir);
@@ -167,7 +167,7 @@ export class NucleiExecutor {
     ];
 
     const result = await dockerExecutor.exec(this.containerName, sparseCmd, {
-      timeout: 180000 // 3 min
+      timeout: 180000, user: 'kasm-user'
     }).catch(() => null);
 
     if (result && result.exitCode === 0) {
@@ -266,7 +266,7 @@ export class NucleiExecutor {
     try {
       await dockerExecutor.exec(this.containerName,
         ['rm', '-rf', this.templateDir],
-        {}
+        { user: 'kasm-user' }
       );
       log.info("Nuclei templates cleaned up to save space");
     } catch (err) {
@@ -357,7 +357,7 @@ export class NucleiExecutor {
       const result = await dockerExecutor.execWithRetry(
         this.containerName,
         ['nuclei', ...args],
-        {}
+        { user: 'kasm-user' }
       );
 
       // Parse Nuclei output
@@ -521,7 +521,7 @@ export class NucleiExecutor {
       const result = await dockerExecutor.execWithRetry(
         this.containerName,
         ['nuclei', ...args],
-        {}
+        { user: 'kasm-user' }
       );
 
       // Parse Nuclei output
@@ -666,7 +666,7 @@ export class NucleiExecutor {
     }
 
     // Add specific templates
-    // Templates live at /home/rtpi-tools/nuclei-templates/ inside the container.
+    // Templates live at ${this.homeDir}/nuclei-templates/ inside the container.
     // We must use absolute paths because the docker executor CWD is /tmp.
     //
     // Directory layout (nuclei-templates v10.x):
@@ -745,7 +745,7 @@ export class NucleiExecutor {
   /**
    * Parse Nuclei JSON output
    */
-  private parseOutput(stdout: string): NucleiResult {
+  public parseOutput(stdout: string): NucleiResult {
     const result: NucleiResult = {
       vulnerabilities: [],
       stats: {
@@ -797,7 +797,7 @@ export class NucleiExecutor {
   /**
    * Store Nuclei results in database
    */
-  private async storeResults(
+  public async storeResults(
     results: NucleiResult,
     operationId: string,
     _scanId: string

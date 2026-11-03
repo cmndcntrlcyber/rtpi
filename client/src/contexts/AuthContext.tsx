@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { api } from "@/lib/api";
+import { api, API_BASE } from "@/lib/api";
 
 interface User {
   id: string;
@@ -53,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { csrfToken } = csrfResponse;
 
     // Login with CSRF token
-    const response = await fetch("/api/v1/auth/login", {
+    const response = await fetch(`${API_BASE}/auth/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -76,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       // Use plain fetch() instead of api.post() to avoid triggering
       // the 401 handler if session is already expired
-      const response = await fetch("/api/v1/auth/logout", {
+      const response = await fetch(`${API_BASE}/auth/logout`, {
         method: "POST",
         credentials: "include",
         headers: {

@@ -11,7 +11,7 @@ summary: "MCP GitHub is a mcp-server registered in RTPI. No description
   @modelcontextprotocol/server-github`. This summary is a fallback generated
   without LLM or web research — consult the upstream documentation for accurate
   usage."
-generated_at: 2026-11-03T21:48:24.539Z
+generated_at: 2026-11-03T23:18:27.430Z
 generated_by: template
 source_hash: 4609141c08b57b12156c0466622df290f299b4ef1593e0031d287167b3bf2dff
 ---

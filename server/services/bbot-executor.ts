@@ -115,12 +115,13 @@ export class BBOTExecutor {
       log.info({ scanId, targets }, "Starting BBOT scan");
       log.info({ scanId, args }, "BBOT args");
 
-      // Execute BBOT via Docker (rtpi-tools container) with automatic retry
+      // Execute BBOT via Docker (nexus-kali container) with automatic retry
       const result = await dockerExecutor.execWithRetry(
-        'rtpi-tools',
+        'nexus-kali',
         ['bbot', ...args],
         {
-          timeout: 1800000 // 30 minutes
+          timeout: 1800000, // 30 minutes
+          user: 'kasm-user',
         }
       );
 
@@ -262,12 +263,13 @@ export class BBOTExecutor {
       log.info({ scanId, targets }, "Starting BBOT scan");
       log.info({ scanId, args }, "BBOT args");
 
-      // Execute BBOT via Docker (rtpi-tools container) with automatic retry
+      // Execute BBOT via Docker (nexus-kali container) with automatic retry
       const result = await dockerExecutor.execWithRetry(
-        'rtpi-tools',
+        'nexus-kali',
         ['bbot', ...args],
         {
-          timeout: 1800000 // 30 minutes
+          timeout: 1800000, // 30 minutes
+          user: 'kasm-user',
         }
       );
 
@@ -425,7 +427,7 @@ export class BBOTExecutor {
   /**
    * Parse BBOT JSON output
    */
-  private parseOutput(stdout: string): BBOTResult {
+  public parseOutput(stdout: string): BBOTResult {
     const result: BBOTResult = {
       domains: [],
       ips: [],
@@ -496,7 +498,7 @@ export class BBOTExecutor {
   /**
    * Store BBOT results in database
    */
-  private async storeResults(
+  public async storeResults(
     results: BBOTResult,
     operationId: string,
     scanId: string

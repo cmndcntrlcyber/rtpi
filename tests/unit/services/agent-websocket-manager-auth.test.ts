@@ -20,8 +20,8 @@ describe('AgentWebSocketManager — session authentication', () => {
     });
 
     it('imports cookie parsing dependencies', () => {
-      expect(src).toMatch(/require\(["']cookie["']\)/);
-      expect(src).toMatch(/require\(["']cookie-signature["']\)/);
+      expect(src).toMatch(/from\s+["']cookie["']/);
+      expect(src).toMatch(/from\s+["']cookie-signature["']/);
     });
 
     it('imports redisClient and sessionSecret from auth/session', () => {
@@ -35,6 +35,10 @@ describe('AgentWebSocketManager — session authentication', () => {
 
     it('parses rtpi.sid cookie', () => {
       expect(src).toMatch(/["']rtpi\.sid["']/);
+    });
+
+    it('decodes URL-encoded signed cookies', () => {
+      expect(src).toMatch(/decodeURIComponent\(signed\)/);
     });
 
     it('looks up session in Redis with sess: prefix', () => {

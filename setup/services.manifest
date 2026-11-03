@@ -42,3 +42,4 @@
 -api        |              | http://0.0.0.0:3001   | true      | false
 -registry   | kasm         | http://0.0.0.0:3001   | false     | false
 -join       |              | http://0.0.0.0:8099   | false     | false
+-a2a        |              | grpc://localhost:50052 | false     | false

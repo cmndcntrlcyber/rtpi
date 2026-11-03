@@ -312,6 +312,21 @@ done
 echo
 
 if [ "${#HARD_FAILED[@]}" -eq 0 ]; then
+    if [ "${RTPI_VERIFY_WEBSOCKET:-true}" = "true" ] && command -v curl >/dev/null; then
+        WS_BASE_URL="${RTPI_APP_URL:-http://127.0.0.1:3000}"
+        HTTP_CODE=$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' \
+            -H 'Connection: Upgrade' \
+            -H 'Upgrade: websocket' \
+            -H 'Sec-WebSocket-Version: 13' \
+            -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+            "${WS_BASE_URL%/}/api/v1/ws/agents" || true)
+        if [ "$HTTP_CODE" != "101" ]; then
+            err "Agent WebSocket upgrade probe failed (HTTP ${HTTP_CODE:-unreachable}) at ${WS_BASE_URL%/}/api/v1/ws/agents"
+            err "Expected an HTTP 101 upgrade; anonymous sessions should then be closed with policy code 1008."
+            exit 2
+        fi
+        ok "Agent WebSocket upgrade route is reachable."
+    fi
     ok "All containers reached a stable healthy state."
     exit 0
 fi

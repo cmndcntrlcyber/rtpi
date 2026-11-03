@@ -169,7 +169,13 @@ if [ -f ".env" ]; then
     fi
     
     if grep -q "SESSION_SECRET=" .env && [ -n "$(grep SESSION_SECRET= .env | cut -d= -f2)" ]; then
-        print_success "SESSION_SECRET is configured"
+        SESSION_SECRET_VALUE=$(grep "^SESSION_SECRET=" .env | cut -d= -f2-)
+        if [ "$SESSION_SECRET_VALUE" = "change-this-to-a-random-secret-in-production" ]; then
+            print_fail "SESSION_SECRET uses the insecure example value"
+            print_info "Generate with: openssl rand -hex 64"
+        else
+            print_success "SESSION_SECRET is configured"
+        fi
     else
         print_fail "SESSION_SECRET is not configured (required)"
         print_info "Generate with: openssl rand -base64 32"
@@ -180,6 +186,12 @@ if [ -f ".env" ]; then
     else
         print_fail "JWT_SECRET is not configured (required)"
         print_info "Generate with: openssl rand -base64 64"
+    fi
+
+    if grep -q "^COOKIE_SECURE=" .env && [ "$(grep "^COOKIE_SECURE=" .env | cut -d= -f2)" = "true" ]; then
+        print_success "Secure session cookies are enabled"
+    elif [ "${NODE_ENV:-}" = "production" ] || [ "${RTPI_DEPLOY_ENV:-}" = "production" ]; then
+        print_warning "COOKIE_SECURE is not explicitly enabled for production"
     fi
 else
     print_fail ".env file not found"

@@ -11,7 +11,12 @@ import {
 import { eq, and, sql, desc, inArray } from 'drizzle-orm';
 import { ensureRole, logAudit } from '../../auth/middleware';
 import { toCsvMultiSection, toTxtReport } from '../../utils/export-format';
+import { readFeatureFlags } from '@shared/feature-flags';
+import { harnessToolExecutor } from '../../services/harness-tool-executor';
+import { ferryClient } from '../../services/ferry-client';
+import { createLogger } from '../../lib/logger';
 
+const log = createLogger('surface-assessment');
 const router = Router();
 
 /**
@@ -601,17 +606,40 @@ router.post('/:operationId/scan/bbot', async (req, res) => {
 
     const userId = (req.user as any).id;
 
-    // Start scan and get scanId immediately (scan runs asynchronously)
+    // Try ferry bridge first when enabled
+    const flags = readFeatureFlags(process.env);
+    if (flags.ferryBridge) {
+      try {
+        await ferryClient.checkHealth();
+
+        const [scanRecord] = await db.insert(axScanResults).values({
+          operationId, toolName: 'bbot', status: 'running',
+          targets: targets as any, config: bbotOptions as any,
+          createdBy: userId, startedAt: new Date(),
+        }).returning();
+
+        executeBBOTViaFerry(scanRecord.id, targets, bbotOptions, operationId)
+          .catch(err => log.error({ err, scanId: scanRecord.id }, 'Ferry BBOT execution failed'));
+
+        return res.json({
+          message: 'BBOT scan started via harness',
+          status: 'running',
+          scanId: scanRecord.id,
+        });
+      } catch {
+        log.warn('Ferry unreachable, falling back to direct docker execution for BBOT');
+      }
+    }
+
+    // Direct execution fallback
     const { scanId } = await bbotExecutor.startScan(targets, bbotOptions, operationId, userId);
 
-    // Return immediately with scan ID
     res.json({
       message: 'BBOT scan started successfully',
       status: 'running',
       scanId,
     });
   } catch (error: any) {
-    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to start BBOT scan',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -702,17 +730,40 @@ router.post('/:operationId/scan/nuclei', async (req, res) => {
 
     const userId = (req.user as any).id;
 
-    // Start scan and get scanId immediately (scan runs asynchronously)
+    // Try ferry bridge first when enabled
+    const flags = readFeatureFlags(process.env);
+    if (flags.ferryBridge) {
+      try {
+        await ferryClient.checkHealth();
+
+        const [scanRecord] = await db.insert(axScanResults).values({
+          operationId, toolName: 'nuclei', status: 'running',
+          targets: targets as any, config: nucleiOptions as any,
+          createdBy: userId, startedAt: new Date(),
+        }).returning();
+
+        executeNucleiViaFerry(scanRecord.id, targets, nucleiOptions, operationId)
+          .catch(err => log.error({ err, scanId: scanRecord.id }, 'Ferry Nuclei execution failed'));
+
+        return res.json({
+          message: 'Nuclei scan started via harness',
+          status: 'running',
+          scanId: scanRecord.id,
+        });
+      } catch {
+        log.warn('Ferry unreachable, falling back to direct docker execution for Nuclei');
+      }
+    }
+
+    // Direct execution fallback
     const { scanId } = await nucleiExecutor.startScan(targets, nucleiOptions, operationId, userId);
 
-    // Return immediately with scan ID
     res.json({
       message: 'Nuclei scan started successfully',
       status: 'running',
       scanId,
     });
   } catch (error: any) {
-    // Error logged for debugging
     res.status(500).json({
       error: 'Failed to start Nuclei scan',
       message: error instanceof Error ? error.message : 'Unknown error',
@@ -1062,17 +1113,20 @@ router.post('/:operationId/scans/:scanId/cancel', async (req, res) => {
       });
     }
 
-    // Kill the process inside the rtpi-tools container
+    // Kill the process (direct docker path only — ferry has no remote cancel yet)
     if (scan.status === 'running') {
-      const { dockerExecutor } = await import('../../services/docker-executor');
-      try {
-        await dockerExecutor.exec(
-          'rtpi-tools',
-          ['pkill', '-f', scan.toolName],
-          { user: 'root' }
-        );
-      } catch {
-        // pkill returns exit code 1 if no matching process found — that's OK
+      const cancelFlags = readFeatureFlags(process.env);
+      if (!cancelFlags.ferryBridge) {
+        const { dockerExecutor } = await import('../../services/docker-executor');
+        try {
+          await dockerExecutor.exec(
+            'nexus-kali',
+            ['pkill', '-f', scan.toolName],
+            { user: 'root' }
+          );
+        } catch {
+          // pkill returns exit code 1 if no matching process found — that's OK
+        }
       }
     }
 
@@ -1383,5 +1437,106 @@ router.get('/:operationId/export', async (req, res) => {
     });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Ferry bridge scan helpers
+// ---------------------------------------------------------------------------
+
+async function executeBBOTViaFerry(
+  scanId: string, targets: string[], options: any, operationId: string
+) {
+  const startedAt = Date.now();
+  try {
+    const result = await harnessToolExecutor.executeViaHarness('bbot', {
+      targets,
+      preset: options.preset,
+      modules: options.modules,
+      flags: options.flags,
+      args: options.args,
+    });
+
+    if (!result.success) {
+      await db.update(axScanResults).set({
+        status: 'failed', errorMessage: result.output,
+        rawOutput: result.output, completedAt: new Date(),
+      }).where(eq(axScanResults.id, scanId));
+      return;
+    }
+
+    const { bbotExecutor } = await import('../../services/bbot-executor');
+    const parsed = bbotExecutor.parseOutput(result.output);
+    const counts = await bbotExecutor.storeResults(parsed, operationId, scanId);
+
+    await db.update(axScanResults).set({
+      status: 'completed', results: parsed as any,
+      rawOutput: result.output,
+      assetsFound: counts.assetsCount,
+      servicesFound: counts.servicesCount,
+      vulnerabilitiesFound: counts.vulnerabilitiesCount,
+      completedAt: new Date(),
+      duration: Math.floor((Date.now() - startedAt) / 1000),
+    }).where(eq(axScanResults.id, scanId));
+
+    try {
+      const { workflowEventHandlers } = await import('../../services/workflow-event-handlers');
+      await workflowEventHandlers.handleScanCompleted(scanId, 'bbot', operationId, 'system');
+    } catch { /* non-fatal */ }
+  } catch (error) {
+    log.error({ err: error, scanId }, 'executeBBOTViaFerry failed');
+    await db.update(axScanResults).set({
+      status: 'failed',
+      errorMessage: error instanceof Error ? error.message : 'Unknown error',
+      completedAt: new Date(),
+    }).where(eq(axScanResults.id, scanId));
+  }
+}
+
+async function executeNucleiViaFerry(
+  scanId: string, targets: string[], options: any, operationId: string
+) {
+  const startedAt = Date.now();
+  try {
+    const result = await harnessToolExecutor.executeViaHarness('nuclei', {
+      targets,
+      severity: options.severity,
+      rateLimit: options.rateLimit,
+      templates: options.templates,
+      tags: options.tags,
+      excludeTags: options.excludeTags,
+    });
+
+    if (!result.success) {
+      await db.update(axScanResults).set({
+        status: 'failed', errorMessage: result.output,
+        rawOutput: result.output, completedAt: new Date(),
+      }).where(eq(axScanResults.id, scanId));
+      return;
+    }
+
+    const { nucleiExecutor } = await import('../../services/nuclei-executor');
+    const parsed = nucleiExecutor.parseOutput(result.output);
+    const vulnCount = await nucleiExecutor.storeResults(parsed, operationId, scanId);
+
+    await db.update(axScanResults).set({
+      status: 'completed', results: parsed as any,
+      rawOutput: result.output,
+      vulnerabilitiesFound: vulnCount,
+      completedAt: new Date(),
+      duration: Math.floor((Date.now() - startedAt) / 1000),
+    }).where(eq(axScanResults.id, scanId));
+
+    try {
+      const { workflowEventHandlers } = await import('../../services/workflow-event-handlers');
+      await workflowEventHandlers.handleScanCompleted(scanId, 'nuclei', operationId, 'system');
+    } catch { /* non-fatal */ }
+  } catch (error) {
+    log.error({ err: error, scanId }, 'executeNucleiViaFerry failed');
+    await db.update(axScanResults).set({
+      status: 'failed',
+      errorMessage: error instanceof Error ? error.message : 'Unknown error',
+      completedAt: new Date(),
+    }).where(eq(axScanResults.id, scanId));
+  }
+}
 
 export default router;

@@ -65,6 +65,7 @@ export class NucleiExecutor {
   private readonly containerName: string;
   private readonly templateDir: string;
   private readonly homeDir: string;
+  private _templatesAvailable: boolean = true;
 
   // Category paths in the nuclei-templates repo (relative to repo root)
   private static readonly CATEGORY_MAP: Record<string, string[]> = {
@@ -97,6 +98,10 @@ export class NucleiExecutor {
   /**
    * Ensure Nuclei templates are present in the container.
    * Downloads them on-demand if missing, so the Docker image stays lean.
+   *
+   * nuclei v3.x stores templates at its own default location (~/.local/nuclei-templates)
+   * which differs from our expected templateDir. We use -td to force the location,
+   * and fall back to symlinking from nuclei's default if -td isn't supported.
    */
   private async ensureTemplates(): Promise<void> {
     // Quick check: does the template dir exist and contain the http/ folder?
@@ -110,15 +115,47 @@ export class NucleiExecutor {
     }
 
     log.info("Downloading nuclei templates on-demand");
+
+    // Try downloading with explicit template directory
     const dl = await dockerExecutor.exec(this.containerName,
-      ['nuclei', '-update-templates', '-silent'],
+      ['nuclei', '-update-templates', '-ud', this.templateDir],
       { timeout: 300000, user: 'kasm-user' }
     );
 
     if (dl.exitCode !== 0) {
-      log.warn({ exitCode: dl.exitCode, stderr: dl.stderr }, "Template download failed");
-    } else {
+      log.warn({ exitCode: dl.exitCode, stderr: dl.stderr }, "Template download with -ud failed, trying default");
+      // Fallback: download to nuclei's default location, then symlink
+      const dl2 = await dockerExecutor.exec(this.containerName,
+        ['nuclei', '-update-templates'],
+        { timeout: 300000, user: 'kasm-user' }
+      );
+      if (dl2.exitCode === 0) {
+        // Find where nuclei put the templates and symlink to our expected path
+        await dockerExecutor.exec(this.containerName, [
+          'bash', '-c',
+          `for d in ${this.homeDir}/.local/nuclei-templates ${this.homeDir}/nuclei-templates; do ` +
+          `  if [ -d "$d/http" ]; then ` +
+          `    if [ "$d" != "${this.templateDir}" ]; then ` +
+          `      rm -rf "${this.templateDir}" && ln -s "$d" "${this.templateDir}"; ` +
+          `    fi; ` +
+          `    exit 0; ` +
+          `  fi; ` +
+          `done; exit 1`
+        ], { user: 'kasm-user' }).catch(() => null);
+      }
+    }
+
+    // Verify templates actually exist now
+    const verify = await dockerExecutor.exec(this.containerName,
+      ['test', '-d', `${this.templateDir}/http`],
+      { user: 'kasm-user' }
+    ).catch(() => null);
+
+    if (verify && verify.exitCode === 0) {
       log.info("Nuclei templates downloaded successfully");
+    } else {
+      log.warn("Nuclei templates NOT found after download — scan will use nuclei defaults");
+      this._templatesAvailable = false;
     }
   }
 
@@ -329,6 +366,9 @@ export class NucleiExecutor {
     const stopKeepalive = await keepDatabaseAlive(7200000); // 2 hours
 
     try {
+      // Reset template availability flag each scan (container state may change)
+      this._templatesAvailable = true;
+
       // Ensure templates are present (prefer category-level sparse download)
       const requiredCategories = this.resolveRequiredCategories(options);
       if (requiredCategories) {
@@ -493,6 +533,9 @@ export class NucleiExecutor {
     const stopKeepalive = await keepDatabaseAlive(7200000); // 2 hours
 
     try {
+      // Reset template availability flag each scan
+      this._templatesAvailable = true;
+
       // Ensure templates are present (prefer category-level sparse download)
       const requiredCategories = this.resolveRequiredCategories(options);
       if (requiredCategories) {
@@ -665,27 +708,13 @@ export class NucleiExecutor {
       }
     }
 
-    // Add specific templates
-    // Templates live at ${this.homeDir}/nuclei-templates/ inside the container.
-    // We must use absolute paths because the docker executor CWD is /tmp.
-    //
-    // Directory layout (nuclei-templates v10.x):
-    //   Top-level: cloud, code, dast, dns, file, headless, helpers, http,
-    //              javascript, network, profiles, ssl, workflows
-    //   Under http/: cnvd, credential-stuffing, cves, default-logins,
-    //                 exposed-panels, exposures, fuzzing, global-matchers,
-    //                 honeypot, iot, miscellaneous, misconfiguration, osint,
-    //                 takeovers, technologies, token-spray, vulnerabilities
-    //
-    // Resolution rules:
-    //   1. Absolute paths (/...) → pass through
-    //   2. Starts with a known top-level dir (e.g. "cloud/aws/") → TEMPLATE_ROOT/<path>
-    //   3. Starts with "http/<subdir>" explicitly → TEMPLATE_ROOT/<path>
-    //   4. Otherwise assume it's an http/ subdirectory → TEMPLATE_ROOT/http/<path>
-    if (options.templates && options.templates.length > 0) {
+    // Add specific templates — only use explicit -t paths when our managed
+    // template directory exists. When templates couldn't be downloaded to our
+    // expected location, omit -t entirely so nuclei uses its own default
+    // template store (populated via nuclei -update-templates).
+    if (options.templates && options.templates.length > 0 && this._templatesAvailable) {
       const ROOT = this.templateDir;
 
-      // All 14 top-level directories in nuclei-templates
       const TOP_LEVEL_DIRS = new Set([
         'cloud', 'code', 'dast', 'dns', 'file', 'headless', 'helpers',
         'http', 'javascript', 'network', 'profiles', 'ssl', 'workflows',
@@ -695,26 +724,41 @@ export class NucleiExecutor {
         if (template && template.trim()) {
           let p = template.trim();
 
-          // Already absolute — use as-is
           if (p.startsWith('/')) {
             args.push('-t', p);
             return;
           }
 
-          // Strip legacy "nuclei-templates/" prefix if present
           p = p.replace(/^nuclei-templates\//, '');
-
           const firstSegment = p.split('/')[0].replace(/\/$/, '');
 
           if (TOP_LEVEL_DIRS.has(firstSegment)) {
-            // Explicit top-level path (e.g. "network/cves/", "dast/vulnerabilities/", "http/cves/")
             args.push('-t', `${ROOT}/${p}`);
           } else {
-            // Short name → lives under http/ (e.g. "cves/", "vulnerabilities/", "technologies/")
             args.push('-t', `${ROOT}/http/${p}`);
           }
         }
       });
+    } else if (options.templates && options.templates.length > 0 && !this._templatesAvailable) {
+      // Templates dir unavailable — convert directory-based templates to -tags where possible
+      log.info("Template directory unavailable, using nuclei default templates with tag filters");
+      const tagMap: Record<string, string> = {
+        'cves': 'cve', 'http/cves': 'cve',
+        'vulnerabilities': 'vulnerability', 'http/vulnerabilities': 'vulnerability',
+        'default-logins': 'default-login', 'http/default-logins': 'default-login',
+        'exposed-panels': 'panel', 'http/exposed-panels': 'panel',
+        'technologies': 'tech', 'http/technologies': 'tech',
+        'takeovers': 'takeover', 'http/takeovers': 'takeover',
+        'misconfiguration': 'misconfig', 'http/misconfiguration': 'misconfig',
+      };
+      const fallbackTags = new Set<string>();
+      for (const t of options.templates) {
+        const normalized = t.trim().replace(/^nuclei-templates\//, '').replace(/\/+$/, '');
+        if (tagMap[normalized]) fallbackTags.add(tagMap[normalized]);
+      }
+      if (fallbackTags.size > 0) {
+        args.push('-tags', [...fallbackTags].join(','));
+      }
     }
 
     // Performance optimizations - balanced settings to avoid overwhelming targets

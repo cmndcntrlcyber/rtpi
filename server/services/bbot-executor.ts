@@ -396,15 +396,29 @@ export class BBOTExecutor {
       }
     }
 
-    // Add additional -- arguments (like --allow-deadly)
+    // Add additional -- arguments, with bbot v3.x compatibility
     if (options.args && options.args.length > 0) {
+      const V3_REMOVED = new Set(['--allow-deadly', '--force']);
+      let needDeadlyFlag = false;
       options.args.forEach(arg => {
         if (arg && arg.trim()) {
-          // Ensure arg starts with --
           const normalizedArg = arg.startsWith('--') ? arg : `--${arg}`;
-          args.push(normalizedArg);
+          if (normalizedArg === '--allow-deadly') {
+            needDeadlyFlag = true; // convert to -f deadly below
+          } else if (!V3_REMOVED.has(normalizedArg)) {
+            args.push(normalizedArg);
+          }
         }
       });
+      if (needDeadlyFlag) {
+        // bbot v3 equivalent: add 'deadly' to the flags list
+        const existingFlagIdx = args.indexOf('-f');
+        if (existingFlagIdx >= 0 && existingFlagIdx + 1 < args.length) {
+          args[existingFlagIdx + 1] += ',deadly';
+        } else {
+          args.push('-f', 'deadly');
+        }
+      }
     }
 
     // CRITICAL: Auto-confirm flag (skip "Press enter" prompt)

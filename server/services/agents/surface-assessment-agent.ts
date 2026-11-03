@@ -74,7 +74,7 @@ export interface FindingSummary {
 const DEFAULT_CONFIG: SurfaceAssessmentConfig = {
   defaultBBOTPreset: 'kitchen-sink',
   defaultBBOTFlags: [],
-  defaultBBOTArgs: ['--force', '--allow-deadly'],
+  defaultBBOTArgs: [],
   maxConcurrentScans: 3,
   autoStartOnOperationCreate: true,
   findingNoteTemplate: `

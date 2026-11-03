@@ -501,8 +501,16 @@ async function initializeServer() {
 
     // Start rust-nexus implant controller (FF_NEXUS_MESH)
     if (readFeatureFlags(process.env).nexusMesh) {
+      const certsDir = process.env.NEXUS_CERTS_DIR || './certs/prod';
+      const tlsCertPath = process.env.NEXUS_SERVER_CERT || `${certsDir}/server.crt.pem`;
+      const tlsKeyPath = process.env.NEXUS_SERVER_KEY || `${certsDir}/server.key.pem`;
+      const tlsCaPath = process.env.NEXUS_CA_CERT || `${certsDir}/ca.crt.pem`;
+      const wsPort = parseInt(process.env.NEXUS_IMPLANT_WS_PORT || '9443', 10);
+
       import("./services/rust-nexus-controller")
-        .then(({ rustNexusController }) => rustNexusController.start())
+        .then(({ rustNexusController }) =>
+          rustNexusController.start({ port: wsPort, tlsCertPath, tlsKeyPath, tlsCaPath })
+        )
         .then(() => logger.info("rust-nexus controller started"))
         .catch((err) => logger.warn({ err }, "rust-nexus controller start failed (non-fatal)"));
     }

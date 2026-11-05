@@ -11,7 +11,7 @@ summary: "MCP Sequential Thinking is a mcp-server registered in RTPI. No
   Invocation: `npx -y @modelcontextprotocol/server-sequential-thinking`. This
   summary is a fallback generated without LLM or web research — consult the
   upstream documentation for accurate usage."
-generated_at: 2026-11-05T15:55:37.578Z
+generated_at: 2026-11-05T18:05:36.101Z
 generated_by: template
 source_hash: ec64c95057c2e6b53aac2cb8a5126ba2e2a561e8a7471a3393835473887b1613
 ---

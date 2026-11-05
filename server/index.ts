@@ -61,6 +61,7 @@ import sslCertificatesRoutes from "./api/v1/ssl-certificates";
 import burpBuilderRoutes from "./api/v1/burp-builder";
 import burpActivationRoutes from "./api/v1/burp-activation";
 import rustNexusRoutes from "./api/v1/rust-nexus";
+import nexusKaliRoutes from "./api/v1/nexus-kali";
 import agentPublicRoutes from "./api/v1/agent-public";
 import ollamaRoutes from "./api/v1/ollama";
 import notificationsRoutes from "./api/v1/notifications";
@@ -311,6 +312,7 @@ app.use("/api/v1/bug-bounty-import", bugBountyImportRoutes);
 app.use("/api/v1/agent-chat", agentChatRoutes);
 app.use("/api/v1/harness-evaluations", harnessEvaluationsRoutes);
 app.use("/api/v1/ferry", ferryRoutes);
+app.use("/api/v1/nexus-kali", nexusKaliRoutes);
 
 // Bug-hunter admin/introspection routes (FF_BUG_HUNTER). Workflow + query
 // endpoints land in subsequent PRs (workflows.ts, queries.ts, memory.ts).

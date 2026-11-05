@@ -132,10 +132,12 @@ class RustNexusController {
     }
     const { port, tlsCertPath, tlsKeyPath, tlsCaPath } = options;
 
-    // Verify cert files exist before attempting to read them
-    for (const [label, path] of [['cert', tlsCertPath], ['key', tlsKeyPath], ['ca', tlsCaPath]] as const) {
-      if (!fs.existsSync(path)) {
-        log.warn(`[RustNexusController] ${label} file not found: ${path} — skipping start`);
+    // Verify cert files exist and are readable before attempting to load them
+    for (const [label, filePath] of [['cert', tlsCertPath], ['key', tlsKeyPath], ['ca', tlsCaPath]] as const) {
+      try {
+        fs.accessSync(filePath, fs.constants.R_OK);
+      } catch {
+        log.warn(`[RustNexusController] ${label} file not readable: ${filePath} — skipping start`);
         return;
       }
     }

@@ -76,7 +76,7 @@ services:
     container_name: rtpi-empire
     ports:
       # REST API (1337) and Web UI (5001) proxied through empire-proxy
-      - "8080-8100:8080-8100"  # Dynamic listener ports (direct, no proxy needed)
+      - "8100-8120:8100-8120"  # Dynamic listener ports (shifted to avoid NEXUS_WORKER_LOCAL_PORT=8084)
     environment:
       # Database connection (shared PostgreSQL)
       POSTGRES_HOST: postgres
@@ -482,7 +482,7 @@ services:
       - KASM_PUBLIC_HTTPS_PORT=${KASM_PUBLIC_HTTPS_PORT:-8443}
     ports:
       - "8443:443"  # HTTPS for workspace access
-      - "8444:80"   # HTTP redirect to HTTPS (8080 reserved by rtpi-empire 8080-8100)
+      - "8444:80"   # HTTP redirect to HTTPS (8080 reserved by rtpi-empire 8100-8120)
     volumes:
       # Kasm-aware nginx config template. nginx:alpine's entrypoint runs
       # envsubst over /etc/nginx/templates/*.template and writes the result
@@ -1297,38 +1297,10 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  kasm-kali:
-    image: kasmweb/kali-rolling-desktop:1.16.0
-    container_name: rtpi-kasm-kali
-    profiles:
-      - kasm
-    platform: linux/amd64
-    restart: unless-stopped
-    ports:
-      - "6902:6901"  # Kali web interface (mapped to different host port)
-    volumes:
-      - kasm-kali-data:/home/kasm-user
-    environment:
-      - VNC_PW=${KASM_VNC_PASSWORD:-password}
-      - KASM_SVC_AUDIO=1
-      - KASM_SVC_UPLOADS=1
-      - KASM_SVC_DOWNLOADS=1
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    networks:
-      - rtpi-network
-    # See note on kasm-vscode — same 401-on-everything behavior.
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sk -o /dev/null -w '%{http_code}' --max-time 5 https://localhost:6901/ | grep -qE '^[234]'"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+  # kasm-kali: REMOVED — the Kali workspace is now the nexus-kali container
+  # from nexus-harness/docker/docker-compose.yml (image: nexus-offense:latest).
+  # Tunnel routes c3s-kali.$DOMAIN → host:6902 → nexus-kali.
+  # Do NOT recreate a stock Kali container here — it causes duplication.
 
   # ============================================================================
   # v2.5 — mem0 Memory Infrastructure
@@ -1505,7 +1477,7 @@ volumes:
   portainer-data:
   # Kasm containerized workspace volumes
   kasm-vscode-data:
-  kasm-kali-data:
+  # kasm-kali-data: removed with kasm-kali service
   # v2.5 — mem0 & orchestrator volumes
   mem0-pg-data:
   neo4j-data:

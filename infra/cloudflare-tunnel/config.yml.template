@@ -59,7 +59,7 @@ ingress:
 
   # ── kali ──
   - hostname: __SLUG__-kali.__DOMAIN__
-    service: https://__HOST_IP__:6902
+    service: https://__HOST_IP__:__NEXUS_KALI_VNC_PORT__
     originRequest:
       noTLSVerify: true
       connectTimeout: 30s

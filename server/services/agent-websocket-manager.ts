@@ -114,12 +114,21 @@ export class AgentWebSocketManager {
   // Connection handling
   // --------------------------------------------------------------------------
 
+  private unauthRejections = 0;
+  private lastUnauthLog = 0;
+
   private async handleConnection(ws: WebSocket, request: IncomingMessage): Promise<void> {
     const clientId = randomUUID();
 
     const userId = await this.authenticateRequest(request);
     if (!userId) {
-      log.warn(`[AgentWebSocket] Rejected unauthenticated connection: ${clientId}`);
+      this.unauthRejections++;
+      const now = Date.now();
+      if (now - this.lastUnauthLog > 60_000) {
+        log.warn(`[AgentWebSocket] Rejected ${this.unauthRejections} unauthenticated connection(s) in the last ${this.lastUnauthLog ? '60s' : 'period'}`);
+        this.unauthRejections = 0;
+        this.lastUnauthLog = now;
+      }
       ws.close(1008, "Authentication required");
       return;
     }

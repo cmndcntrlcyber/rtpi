@@ -10,8 +10,23 @@ const redisClient = createClient({
   url: process.env.REDIS_URL || "redis://localhost:6381",
 });
 
-redisClient.on("error", (err) => log.error({ err }, "Redis client error"));
-redisClient.on("connect", () => log.info("Redis connected for sessions"));
+let redisUp = false;
+let redisErrorsSuppressed = 0;
+redisClient.on("error", () => {
+  if (redisUp) {
+    log.warn("Redis disconnected — session store unavailable, suppressing further errors until reconnect");
+    redisUp = false;
+  }
+  redisErrorsSuppressed++;
+});
+redisClient.on("connect", () => {
+  const msg = redisErrorsSuppressed > 0
+    ? `Redis connected for sessions (${redisErrorsSuppressed} error(s) while disconnected)`
+    : "Redis connected for sessions";
+  if (!redisUp) log.info(msg);
+  redisUp = true;
+  redisErrorsSuppressed = 0;
+});
 
 // Deferred connection — called from initializeServer() with retry logic.
 // RedisStore handles reconnection internally; the client reference is stable.

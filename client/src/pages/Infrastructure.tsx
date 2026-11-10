@@ -14,6 +14,10 @@ import { useFeatureFlag } from "@/lib/feature-flags";
 import FerryStatusPanel from "@/components/ferry/FerryStatusPanel";
 import MeshStatusCard from "@/components/ferry/MeshStatusCard";
 import GmlAnomalyPanel from "@/components/ferry/GmlAnomalyPanel";
+import NexusKaliStatusPanel from "@/components/nexus-kali/NexusKaliStatusPanel";
+import NexusKaliResultsPanel from "@/components/nexus-kali/NexusKaliResultsPanel";
+import NexusKaliLogsPanel from "@/components/nexus-kali/NexusKaliLogsPanel";
+import NexusKaliEngagementsPanel from "@/components/nexus-kali/NexusKaliEngagementsPanel";
 
 function fmtTime(value?: string | null): string {
   if (!value) return "—";
@@ -68,16 +72,20 @@ export default function Infrastructure() {
         </div>
       </div>
 
-      {nexusMeshEnabled && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <FerryStatusPanel />
-          <MeshStatusCard />
-          <GmlAnomalyPanel />
-        </div>
-      )}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <NexusKaliStatusPanel />
+        {nexusMeshEnabled && (
+          <>
+            <FerryStatusPanel />
+            <MeshStatusCard />
+            <GmlAnomalyPanel />
+          </>
+        )}
+      </div>
 
       <Tabs defaultValue="containers" className="space-y-6">
         <TabsList>
+          <TabsTrigger value="nexus-kali">Nexus Kali</TabsTrigger>
           <TabsTrigger value="containers">Containers</TabsTrigger>
           <TabsTrigger value="deployments">Deployments</TabsTrigger>
           <TabsTrigger value="devices">Devices</TabsTrigger>
@@ -86,6 +94,14 @@ export default function Infrastructure() {
           <TabsTrigger value="empire">C2 Warroom</TabsTrigger>
           <TabsTrigger value="workspaces">Workspaces</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="nexus-kali" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <NexusKaliLogsPanel />
+            <NexusKaliResultsPanel />
+          </div>
+          <NexusKaliEngagementsPanel />
+        </TabsContent>
 
         {/* Containers — live, read-only (no generic docker-control endpoint) */}
         <TabsContent value="containers" className="space-y-4">

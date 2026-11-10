@@ -10,7 +10,7 @@ summary: "searchcode is a mcp-server registered in RTPI. No description
   available. Use it when the task aligns with its category. Invocation: `npx -y
   searchcode-mcp`. This summary is a fallback generated without LLM or web
   research — consult the upstream documentation for accurate usage."
-generated_at: 2026-11-03T11:57:43.884Z
+generated_at: 2026-11-10T07:20:53.569Z
 generated_by: template
 source_hash: e1782f87a59c433da4b0fe9383e2dda315ba562f589225ac19ac9b1a8b539a87
 ---

@@ -59,7 +59,7 @@ ingress:
 
   # ── kali ──
   - hostname: c3s-kali.onoiroi.us
-    service: https://192.168.8.248:6902
+    service: https://192.168.8.248:6903
     originRequest:
       noTLSVerify: true
       connectTimeout: 30s

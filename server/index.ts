@@ -61,6 +61,7 @@ import sslCertificatesRoutes from "./api/v1/ssl-certificates";
 import burpBuilderRoutes from "./api/v1/burp-builder";
 import burpActivationRoutes from "./api/v1/burp-activation";
 import rustNexusRoutes from "./api/v1/rust-nexus";
+import nexusKaliRoutes from "./api/v1/nexus-kali";
 import agentPublicRoutes from "./api/v1/agent-public";
 import ollamaRoutes from "./api/v1/ollama";
 import notificationsRoutes from "./api/v1/notifications";
@@ -313,6 +314,7 @@ app.use("/api/v1/bug-bounty-import", bugBountyImportRoutes);
 app.use("/api/v1/agent-chat", agentChatRoutes);
 app.use("/api/v1/harness-evaluations", harnessEvaluationsRoutes);
 app.use("/api/v1/ferry", ferryRoutes);
+app.use("/api/v1/nexus-kali", nexusKaliRoutes);
 
 // Bug-hunter admin/introspection routes (FF_BUG_HUNTER). Workflow + query
 // endpoints land in subsequent PRs (workflows.ts, queries.ts, memory.ts).
@@ -510,8 +512,16 @@ async function initializeServer() {
 
     // Start rust-nexus implant controller (FF_NEXUS_MESH)
     if (readFeatureFlags(process.env).nexusMesh) {
+      const certsDir = process.env.NEXUS_CERTS_DIR || './certs/prod';
+      const tlsCertPath = process.env.NEXUS_SERVER_CERT || `${certsDir}/server.crt.pem`;
+      const tlsKeyPath = process.env.NEXUS_SERVER_KEY || `${certsDir}/server.key.pem`;
+      const tlsCaPath = process.env.NEXUS_CA_CERT || `${certsDir}/ca.crt.pem`;
+      const wsPort = parseInt(process.env.NEXUS_IMPLANT_WS_PORT || '9443', 10);
+
       import("./services/rust-nexus-controller")
-        .then(({ rustNexusController }) => rustNexusController.start())
+        .then(({ rustNexusController }) =>
+          rustNexusController.start({ port: wsPort, tlsCertPath, tlsKeyPath, tlsCaPath })
+        )
         .then(() => logger.info("rust-nexus controller started"))
         .catch((err) => logger.warn({ err }, "rust-nexus controller start failed (non-fatal)"));
     }

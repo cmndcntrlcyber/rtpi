@@ -120,13 +120,27 @@ class RustNexusController {
   /**
    * Start the WebSocket server with mTLS
    */
-  async start(options: {
+  async start(options?: {
     port: number;
     tlsCertPath: string;
     tlsKeyPath: string;
     tlsCaPath: string;
   }): Promise<void> {
+    if (!options) {
+      log.warn("[RustNexusController] No options provided — skipping start");
+      return;
+    }
     const { port, tlsCertPath, tlsKeyPath, tlsCaPath } = options;
+
+    // Verify cert files exist and are readable before attempting to load them
+    for (const [label, filePath] of [['cert', tlsCertPath], ['key', tlsKeyPath], ['ca', tlsCaPath]] as const) {
+      try {
+        fs.accessSync(filePath, fs.constants.R_OK);
+      } catch {
+        log.warn(`[RustNexusController] ${label} file not readable: ${filePath} — skipping start`);
+        return;
+      }
+    }
 
     // Create HTTPS server with mTLS
     this.httpsServer = https.createServer({

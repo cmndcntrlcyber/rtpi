@@ -396,13 +396,16 @@ export class BBOTExecutor {
       }
     }
 
-    // Add additional -- arguments (like --allow-deadly)
+    // Add additional -- arguments, with bbot v3.x compatibility
     if (options.args && options.args.length > 0) {
+      const V3_REMOVED = new Set(['--allow-deadly', '--force', '--deadly', 'allow-deadly', 'force', 'deadly']);
       options.args.forEach(arg => {
         if (arg && arg.trim()) {
-          // Ensure arg starts with --
-          const normalizedArg = arg.startsWith('--') ? arg : `--${arg}`;
-          args.push(normalizedArg);
+          const stripped = arg.trim().replace(/^-+/, '');
+          if (!V3_REMOVED.has(stripped)) {
+            const normalizedArg = arg.startsWith('--') ? arg : `--${arg}`;
+            args.push(normalizedArg);
+          }
         }
       });
     }

@@ -131,7 +131,11 @@ export async function queryAnomaly(): Promise<FerryAnomalyResponse> {
 }
 
 export async function checkHealth(): Promise<FerryHealthResponse> {
-  return ferryFetch<FerryHealthResponse>('/ferry/health');
+  const health = await ferryFetch<FerryHealthResponse>('/ferry/health');
+  if (health.agents_connected < 1) {
+    throw new FerryClientError('No agents connected to ferry gateway', 503);
+  }
+  return health;
 }
 
 export async function submitTelemetry(snapshot: {

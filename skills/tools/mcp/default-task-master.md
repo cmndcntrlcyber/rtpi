@@ -10,7 +10,7 @@ summary: "Claude Task Master is a mcp-server registered in RTPI. No description
   available. Use it when the task aligns with its category. Invocation: `npx -y
   task-master-ai`. This summary is a fallback generated without LLM or web
   research — consult the upstream documentation for accurate usage."
-generated_at: 2026-11-03T11:57:43.853Z
+generated_at: 2026-11-10T07:20:53.640Z
 generated_by: template
 source_hash: be3166de9b8678202338ff841d2f920a8e540d5c76e669f6f2d4001ea325e12f
 ---
